@@ -1,0 +1,13 @@
+// Bug Fix Validation: Function call + loop combination
+int16 double_value(int16 x){
+    return x + x;
+}
+
+void main(){
+    int16 result = 0;
+    int16 i;
+    for(i = 1; i <= 2; i = i + 1){
+        result = result + double_value(i);
+    }
+    halt();
+}

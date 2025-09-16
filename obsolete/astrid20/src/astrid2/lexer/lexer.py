@@ -1,0 +1,358 @@
+"""
+Astrid 2.0 Lexer Implementation
+"""
+
+import re
+from typing import List, Optional
+
+from ..utils.error import LexerError
+from ..utils.logger import get_logger
+from .tokens import (
+    Token, TokenType, KEYWORDS, SINGLE_CHAR_TOKENS,
+    MULTI_CHAR_OPERATORS
+)
+
+logger = get_logger(__name__)
+
+
+class Lexer:
+    """Lexical analyzer for Astrid 2.0 source code."""
+
+    def __init__(self):
+        self.source = ""
+        self.filename = "<stdin>"
+        self.position = 0
+        self.line = 1
+        self.column = 1
+        self.tokens = []
+
+    def tokenize(self, source: str, filename: str = "<stdin>") -> List[Token]:
+        """
+        Tokenize the source code into a list of tokens.
+
+        Args:
+            source: The source code to tokenize
+            filename: Source filename for error reporting
+
+        Returns:
+            List of Token objects
+
+        Raises:
+            LexerError: If lexical analysis fails
+        """
+        self.source = source
+        self.filename = filename
+        self.position = 0
+        self.line = 1
+        self.column = 1
+        self.tokens = []
+
+        logger.debug(f"Starting lexical analysis of {filename}")
+
+        while self.position < len(self.source):
+            try:
+                token = self._scan_token()
+                if token:
+                    self.tokens.append(token)
+            except LexerError:
+                raise
+            except Exception as e:
+                raise LexerError(
+                    f"Unexpected error during tokenization: {e}",
+                    self.filename, self.line, self.column
+                ) from e
+
+        # Add EOF token
+        self.tokens.append(Token(TokenType.EOF, "", self.line, self.column, self.filename))
+
+        logger.debug(f"Lexical analysis complete: {len(self.tokens)} tokens generated")
+        return self.tokens
+
+    def _scan_token(self) -> Optional[Token]:
+        """Scan the next token from the source."""
+        char = self._advance()
+
+        # Skip whitespace
+        if char in " \t\r":
+            return None
+
+        # Handle newlines
+        if char == "\n":
+            self.line += 1
+            self.column = 1
+            return None
+
+        # Single-line comments
+        if char == "/" and self._peek() == "/":
+            self._advance()  # Consume the second /
+            while self.position < len(self.source) and self.source[self.position] != "\n":
+                self._advance()
+            return None
+
+        # Multi-line comments
+        if char == "/" and self._peek() == "*":
+            self._advance()  # Consume the *
+            while self.position < len(self.source):
+                if self._advance() == "*" and self._peek() == "/":
+                    self._advance()  # Consume the /
+                    break
+            else:
+                raise LexerError(
+                    "Unterminated multi-line comment",
+                    self.filename, self.line, self.column
+                )
+            return None
+
+        # String literals
+        if char == '"':
+            return self._scan_string()
+
+        # Character literals
+        if char == "'":
+            return self._scan_char_literal()
+
+        # Numbers
+        if char.isdigit():
+            return self._scan_number()
+
+        # Identifiers and keywords
+        if char.isalpha() or char == "_":
+            # Back up one position since _advance() already consumed the first character
+            self.position -= 1
+            self.column -= 1
+            return self._scan_identifier()
+
+        # Multi-character operators
+        if char in "<>=!&|:+-":
+            return self._scan_operator(char)
+
+        # Single character tokens
+        if char in SINGLE_CHAR_TOKENS:
+            return Token(
+                SINGLE_CHAR_TOKENS[char], char,
+                self.line, self.column - 1, self.filename
+            )
+
+        # Invalid character
+        raise LexerError(
+            f"Unexpected character: '{char}'",
+            self.filename, self.line, self.column - 1
+        )
+
+    def _scan_string(self) -> Token:
+        """Scan a string literal."""
+        start_line = self.line
+        start_column = self.column - 1  # -1 because we already consumed the opening quote
+
+        string_value = ""
+        while self.position < len(self.source):
+            char = self._advance()
+            if char == '"':
+                break
+            if char == "\n":
+                raise LexerError(
+                    "Unterminated string literal",
+                    self.filename, start_line, start_column
+                )
+            if char == "\\":
+                # Handle escape sequences
+                if self.position >= len(self.source):
+                    raise LexerError(
+                        "Unterminated escape sequence in string",
+                        self.filename, self.line, self.column
+                    )
+                escape_char = self._advance()
+                if escape_char == "n":
+                    string_value += "\n"
+                elif escape_char == "t":
+                    string_value += "\t"
+                elif escape_char == "r":
+                    string_value += "\r"
+                elif escape_char == "\\":
+                    string_value += "\\"
+                elif escape_char == '"':
+                    string_value += '"'
+                else:
+                    raise LexerError(
+                        f"Invalid escape sequence: \\{escape_char}",
+                        self.filename, self.line, self.column
+                    )
+            else:
+                string_value += char
+        else:
+            raise LexerError(
+                "Unterminated string literal",
+                self.filename, start_line, start_column
+            )
+
+        return Token(
+            TokenType.STRING_LITERAL, string_value,
+            start_line, start_column, self.filename
+        )
+
+    def _scan_number(self) -> Token:
+        """Scan a number literal."""
+        start_column = self.column - 1
+        number_str = self.source[self.position - 1]  # Include the digit we already consumed
+
+        # Handle hexadecimal numbers
+        if number_str == "0" and self._peek().lower() == "x":
+            self._advance()  # Consume 'x'
+            number_str += "x"
+            while self.position < len(self.source) and self._peek().isalnum():
+                number_str += self._advance()
+
+            try:
+                value = int(number_str, 16)
+            except ValueError:
+                raise LexerError(
+                    f"Invalid hexadecimal number: {number_str}",
+                    self.filename, self.line, start_column
+                )
+        else:
+            # Handle decimal numbers
+            while self.position < len(self.source) and self._peek().isdigit():
+                number_str += self._advance()
+
+            try:
+                value = int(number_str)
+            except ValueError:
+                raise LexerError(
+                    f"Invalid number: {number_str}",
+                    self.filename, self.line, start_column
+                )
+
+        return Token(
+            TokenType.INTEGER_LITERAL, str(value),
+            self.line, start_column, self.filename
+        )
+
+    def _scan_identifier(self) -> Token:
+        """Scan an identifier or keyword."""
+        start = self.position
+        
+        while (self.position < len(self.source) and 
+               (self.source[self.position].isalnum() or self.source[self.position] == '_')):
+            self.position += 1
+        
+        identifier = self.source[start:self.position]
+        
+        # Check if it's a keyword
+        if identifier in KEYWORDS:
+            return Token(KEYWORDS[identifier], identifier, self.line, self.column - len(identifier))
+        
+        # Regular identifier
+        return Token(TokenType.IDENTIFIER, identifier, self.line, self.column - len(identifier))
+
+    def _scan_operator(self, char: str) -> Token:
+        """Scan a multi-character operator."""
+        start_column = self.column - 1
+        operator = char
+
+        # Check for two-character operators
+        if self.position < len(self.source):
+            two_char = char + self._peek()
+            if two_char in MULTI_CHAR_OPERATORS:
+                operator = two_char
+                self._advance()
+
+        # Check for three-character operators (none currently, but for future expansion)
+        # if self.position < len(self.source):
+        #     three_char = operator + self._peek()
+        #     if three_char in MULTI_CHAR_OPERATORS:
+        #         operator = three_char
+        #         self._advance()
+
+        token_type = MULTI_CHAR_OPERATORS.get(operator)
+        if token_type:
+            return Token(
+                token_type, operator,
+                self.line, start_column, self.filename
+            )
+
+        # If not a multi-char operator, it should be a single char
+        if operator in SINGLE_CHAR_TOKENS:
+            return Token(
+                SINGLE_CHAR_TOKENS[operator], operator,
+                self.line, start_column, self.filename
+            )
+
+        raise LexerError(
+            f"Unexpected operator: {operator}",
+            self.filename, self.line, start_column
+        )
+
+    def _advance(self) -> str:
+        """Advance to the next character and return it."""
+        if self.position >= len(self.source):
+            return "\0"
+
+        char = self.source[self.position]
+        self.position += 1
+        self.column += 1
+        return char
+
+    def _peek(self, offset: int = 0) -> str:
+        """Peek at the next character without advancing."""
+        pos = self.position + offset
+        if pos >= len(self.source):
+            return "\0"
+        return self.source[pos]
+
+    def _scan_char_literal(self) -> Token:
+        """Scan a character literal."""
+        start_line = self.line
+        start_column = self.column - 1  # -1 because we already consumed the opening quote
+
+        if self.position >= len(self.source):
+            raise LexerError(
+                "Unterminated character literal",
+                self.filename, start_line, start_column
+            )
+        
+        char = self._advance()
+        if char == "'":
+            raise LexerError(
+                "Empty character literal",
+                self.filename, start_line, start_column
+            )
+        
+        char_value = char
+        if char == "\\":
+            # Handle escape sequences
+            if self.position >= len(self.source):
+                raise LexerError(
+                    "Unterminated escape sequence in character literal",
+                    self.filename, self.line, self.column
+                )
+            escape_char = self._advance()
+            if escape_char == "n":
+                char_value = "\\n"
+            elif escape_char == "t":
+                char_value = "\\t"
+            elif escape_char == "r":
+                char_value = "\\r"
+            elif escape_char == "\\":
+                char_value = "\\\\"
+            elif escape_char == "'":
+                char_value = "\\'"
+            else:
+                raise LexerError(
+                    f"Invalid escape sequence in character literal: \\{escape_char}",
+                    self.filename, self.line, self.column
+                )
+        
+        if self.position >= len(self.source) or self._advance() != "'":
+            raise LexerError(
+                "Unterminated character literal",
+                self.filename, start_line, start_column
+            )
+
+        return Token(
+            TokenType.CHAR_LITERAL, char_value,
+            start_line, start_column, self.filename
+        )
+
+    def _is_at_end(self) -> bool:
+        """Check if we've reached the end of the source."""
+        return self.position >= len(self.source)

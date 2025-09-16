@@ -1,0 +1,8 @@
+// Simple Variable Test
+// Test basic variable allocation
+
+void main() {
+    int16 test_var = 42;
+    test_var = test_var + 1;
+    halt();
+}

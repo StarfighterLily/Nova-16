@@ -1,0 +1,22 @@
+// Test program to verify all fixed features
+
+void main() {
+    // Test stack variables with modulo
+    int16 a = 255;
+    int16 b = 10;
+    int16 result = a % b;
+    
+    // Test builtin functions with stack variables
+    set_pixel(result, 100, 15);
+    
+    // Test arithmetic operations
+    int16 sum = a + b;
+    int16 diff = a - b;
+    int16 product = a * b;
+    int16 quotient = a / b;
+    int16 remainder = a % b;
+    
+    // Test more complex expressions
+    set_pixel((sum % 256), 110, 10);
+    set_pixel((product % 320), 120, 11);
+}

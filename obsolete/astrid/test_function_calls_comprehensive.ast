@@ -1,0 +1,77 @@
+/*
+Comprehensive test for function calls throughout the Astrid pipeline.
+Tests various scenarios: no parameters, parameters, return values, nested calls, etc.
+*/
+
+// Function with no parameters and no return value
+void simple_function() {
+    int8 x = 10;
+}
+
+// Function with no parameters but return value
+int8 get_constant() {
+    return 42;
+}
+
+// Function with one parameter
+void set_value(int8 val) {
+    int8 temp = val;
+}
+
+// Function with multiple parameters
+int16 add_numbers(int8 a, int8 b) {
+    int16 result = a + b;
+    return result;
+}
+
+// Function with different parameter types
+void mix_types(int8 byte_val, int16 word_val) {
+    int8 local_byte = byte_val;
+    int16 local_word = word_val;
+}
+
+// Function that calls other functions
+int16 complex_calculation(int8 x, int8 y) {
+    int8 constant = get_constant();
+    int16 sum = add_numbers(x, y);
+    int16 total = sum + constant;
+    return total;
+}
+
+// Recursive function (simple case)
+int16 factorial(int16 n) {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+void main() {
+    // Test simple function call with no parameters
+    simple_function();
+    
+    // Test function call with return value
+    int8 const_val = get_constant();
+    
+    // Test function call with single parameter
+    set_value(25);
+    
+    // Test function call with multiple parameters
+    int16 sum = add_numbers(10, 20);
+    
+    // Test function call with mixed parameter types
+    mix_types(5, 1000);
+    
+    // Test nested function calls
+    int16 result = complex_calculation(15, 25);
+    
+    // Test recursive function call (small value to avoid stack overflow)
+    int16 fact = factorial(4);
+    
+    // Test function calls with variables as parameters
+    int8 a = 7;
+    int8 b = 13;
+    int16 variable_sum = add_numbers(a, b);
+    
+    halt();
+}

@@ -1,0 +1,74 @@
+// Edge Case Random Test
+// Tests problematic edge cases and potential failure modes
+
+void main() {
+    // Test 1: Minimum and maximum possible values
+    int16 min_test = random_range(0, 0);        // Should always be 0
+    int16 max_test = random_range(65535, 65535); // Should always be 65535
+    
+    // Verify edge cases
+    if (min_test != 0) {
+        set_pixel(0, 0, 31); // Error: min range failed
+    }
+    if (max_test != 65535) {
+        set_pixel(1, 0, 31); // Error: max range failed
+    }
+    
+    // Test 2: Inverted ranges (min > max) - should handle gracefully
+    int16 inverted1 = random_range(100, 50);    // Invalid range
+    int16 inverted2 = random_range(65535, 0);   // Invalid range
+    
+    // Test 3: Boundary stress test
+    for (int8 i = 0; i < 50; i = i + 1) {
+        int16 boundary = random_range(254, 256);
+        
+        // Should only produce 254, 255, or 256
+        if (boundary < 254 || boundary > 256) {
+            set_pixel(i, 1, 31); // Mark errors
+        } else {
+            // Visualize valid values
+            int8 x = i;
+            int8 y = 10 + (boundary - 254); // y=10,11,12 for values 254,255,256
+            set_pixel(x, y, 15);
+        }
+    }
+    
+    // Test 4: Large range stress test
+    for (int8 i = 0; i < 100; i = i + 1) {
+        int16 large_range = random_range(0, 60000);
+        
+        // Visualize distribution in buckets
+        int8 bucket = (large_range / 2000); // 30 buckets
+        if (bucket < 30) {
+            int8 x = bucket * 8;
+            int8 y = 50 + (i / 10);
+            set_pixel(x, y, 20);
+        }
+    }
+    
+    // Test 5: Power-of-2 ranges (common edge case)
+    int16 pow2_1 = random_range(0, 255);    // 2^8 - 1
+    int16 pow2_2 = random_range(0, 511);    // 2^9 - 1
+    int16 pow2_3 = random_range(0, 1023);   // 2^10 - 1
+    int16 pow2_4 = random_range(0, 32767);  // 2^15 - 1
+    
+    // Test 6: Rapid consecutive calls
+    set_layer(2);
+    for (int8 rapid = 0; rapid < 100; rapid = rapid + 1) {
+        int16 quick1 = random();
+        int16 quick2 = random();
+        int16 quick3 = random();
+        
+        // Check for obvious patterns (consecutive numbers)
+        if (quick2 == quick1 + 1 && quick3 == quick2 + 1) {
+            set_pixel(rapid, 100, 31); // Pattern detected
+        }
+        
+        // Visualize some values
+        int8 x = quick1 % 256;
+        int8 y = 150 + (rapid % 20);
+        set_pixel(x, y, 5);
+    }
+    
+    halt();
+}

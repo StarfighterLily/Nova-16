@@ -1,0 +1,17 @@
+// main.ast - Main program using modules
+import graphics;
+import sound;
+
+void main() {
+    pixel x = 100;
+    pixel y = 120;
+    color red = 0x1F;
+
+    // Use graphics module
+    graphics.draw_pixel(x, y, red);
+    graphics.clear_screen();
+
+    // Use sound module
+    sound.play_tone(440, 128);
+    sound.set_master_volume(96);
+}

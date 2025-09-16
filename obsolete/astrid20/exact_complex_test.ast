@@ -1,0 +1,23 @@
+// Test exact sequence from complex test
+void main(){
+    int8 colors[5];
+    int16 i = 0;
+    
+    for(i = 0; i < 5; i++){
+        colors[i] = i + 10;
+    }
+    
+    draw_single_pixel(100, 50, 15);
+    int16 result = calculate_sum(10, 20);
+    halt();
+}
+
+void draw_single_pixel(int8 x, int8 y, int8 color){
+    set_layer(1);
+    set_pixel(x, y, color);
+}
+
+int16 calculate_sum(int16 a, int16 b){
+    int16 result = a + b;
+    return result;
+}

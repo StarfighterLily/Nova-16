@@ -1,0 +1,13 @@
+// Test conditional logic in function
+void main(){
+    int16 result = calculate_sum(10, 20);
+    halt();
+}
+
+int16 calculate_sum(int16 a, int16 b){
+    int16 result = a + b;
+    if(result > 100){
+        result = result - 50;
+    }
+    return result;
+}

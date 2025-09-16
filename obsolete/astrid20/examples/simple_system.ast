@@ -1,0 +1,18 @@
+// Astrid 2.0 Simple System Programming Example
+// Demonstrates basic hardware-specific types
+
+// Hardware-specific system types
+interrupt_vector timer_vector = vector(0);      // Timer interrupt
+interrupt_vector keyboard_vector = vector(2);   // Keyboard interrupt
+
+// Memory-mapped I/O regions
+memory_region zero_page = memory.region(0x0000, 0x0100);
+memory_region interrupt_table = memory.region(0x0100, 0x0120);
+
+void main() {
+    // Basic hardware initialization
+    hardware.reset();
+    
+    // Simple pixel drawing
+    set_pixel(10, 10, 15);
+}

@@ -1,0 +1,31 @@
+void main(){
+    set_layer(1);
+    // Draw multiple stars 
+    int8 c1 = 0;
+    for(c1 = 0; c1 < 65; c1++){
+        // Inline random_star to avoid register conflicts
+        int16 x1 = random_range(0, 255);
+        int16 y1 = random_range(0, 255);
+        color pcol = random_range(1, 5);
+        set_pixel(x1, y1, pcol);
+    }
+    set_layer(2);
+    int8 c2 = 0;
+    for(c2 = 0; c2 < 65; c2++){
+        // Inline random_star to avoid register conflicts
+        int16 x2 = random_range(0, 255);
+        int16 y2 = random_range(0, 255);
+        color pcol = random_range(6, 11);
+        set_pixel(x2, y2, pcol);
+    }
+    set_layer(3);
+    int8 c3 = 0;
+    for(c3 = 0; c3 < 65; c3++){
+        // Inline random_star to avoid register conflicts
+        int16 x3 = random_range(0, 255);
+        int16 y3 = random_range(0, 255);
+        color pcol = random_range(12, 15);
+        set_pixel(x3, y3, pcol);
+    }
+    halt();
+}

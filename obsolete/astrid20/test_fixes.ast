@@ -1,0 +1,22 @@
+// Test the compiler fixes
+// Tests parameter passing, caller preservation, and loop counter protection
+
+int8 add_two(int8 a, int8 b) {
+    return a + b;
+}
+
+void main() {
+    int8 local_var = 42;
+    
+    // Test function call with caller preservation
+    int8 result = add_two(10, 20);
+    
+    // local_var should still be 42 after the call
+    
+    // Test loop with counter protection
+    for (int8 i = 0; i < 3; i++) {
+        result = add_two(i, local_var);  // Function call inside loop should not corrupt 'i'
+    }
+    
+    halt();
+}

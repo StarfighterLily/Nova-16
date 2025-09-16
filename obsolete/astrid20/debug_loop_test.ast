@@ -1,0 +1,9 @@
+// Test loop logic
+void main(){
+    int16 counter = 0;
+    int16 i = 0;
+    for(i = 0; i < 3; i = i + 1){
+        counter = counter + 1;
+    }
+    halt();
+}

@@ -1,0 +1,76 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Compile Astrid",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "run_astrid.py",
+                "${file}"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": "$astrid"
+        },
+        {
+            "label": "Assemble",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "nova_assembler.py",
+                "${fileDirname}/${fileBasenameNoExtension}.asm"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Run",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "nova.py",
+                "${fileDirname}/${fileBasenameNoExtension}.bin"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Run Headless",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "nova.py",
+                "${fileDirname}/${fileBasenameNoExtension}.bin",
+                "--headless",
+                "--cycles",
+                "1000"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        }
+    ]
+}

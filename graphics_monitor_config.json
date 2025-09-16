@@ -1,0 +1,11 @@
+{
+  "regions": [
+    {"name": "top_left", "x": 0, "y": 0, "width": 50, "height": 50},
+    {"name": "center", "x": 100, "y": 100, "width": 56, "height": 56},
+    {"name": "bottom_right", "x": 200, "y": 200, "width": 50, "height": 50}
+  ],
+  "layers": [0, 1, 5],
+  "verbose": true,
+  "export": true,
+  "check_interval": 25
+}

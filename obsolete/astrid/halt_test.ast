@@ -1,0 +1,8 @@
+/*
+Simple halt test
+*/
+
+void main(){
+    set_layer(1);
+    set_pixel(10, 10, 1);
+}

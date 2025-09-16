@@ -1,0 +1,5 @@
+fn main() {
+    int8 x = 5;
+    int8 y = 10;
+    int8 result = (x > y) ? x : y;
+}

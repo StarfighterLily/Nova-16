@@ -1,0 +1,87 @@
+// Comprehensive stress test for Astrid compiler
+struct Point {
+    int8 x;
+    int8 y;
+}
+
+struct Rectangle {
+    Point top_left;
+    Point bottom_right;
+    int8 color;
+}
+
+void draw_pixel(int8 x, int8 y, int8 color) {
+    set_pixel(x, y, color);
+}
+
+int16 calculate_area(Rectangle rect) {
+    int8 width = rect.bottom_right.x - rect.top_left.x;
+    int8 height = rect.bottom_right.y - rect.top_left.y;
+    return width * height;
+}
+
+void draw_rectangle(Rectangle rect) {
+    int8 x = rect.top_left.x;
+    while (x <= rect.bottom_right.x) {
+        int8 y = rect.top_left.y;
+        while (y <= rect.bottom_right.y) {
+            draw_pixel(x, y, rect.color);
+            y = y + 1;
+        }
+        x = x + 1;
+    }
+}
+
+void main() {
+    Rectangle rect;
+    rect.top_left.x = 10;
+    rect.top_left.y = 20;
+    rect.bottom_right.x = 50;
+    rect.bottom_right.y = 60;
+    rect.color = 15;
+    
+    // Test ternary in complex expression
+    int16 area = calculate_area(rect);
+    int8 size_category = area > 1000 ? 3 : (area > 500 ? 2 : 1);
+    
+    // Test nested switch
+    switch (size_category) {
+        case 1:
+            rect.color = 1;  // Small - red
+            break;
+        case 2:
+            rect.color = 2;  // Medium - green 
+            break;
+        case 3:
+            rect.color = 4;  // Large - blue
+            break;
+        default:
+            rect.color = 7;  // Unknown - white
+            break;
+    }
+    
+    // Test complex loops with function calls
+    int8 i = 0;
+    while (i < 3) {
+        Rectangle smaller;
+        smaller.top_left.x = rect.top_left.x + i * 5;
+        smaller.top_left.y = rect.top_left.y + i * 5;
+        smaller.bottom_right.x = smaller.top_left.x + 10;
+        smaller.bottom_right.y = smaller.top_left.y + 10;
+        smaller.color = rect.color + i;
+        
+        draw_rectangle(smaller);
+        i = i + 1;
+    }
+    
+    // Test for loop with complex condition
+    for (int8 j = 0; j < 5; j = j + 1) {
+        if (j % 2 == 0) {
+            draw_pixel(j * 10, j * 10, j + 1);
+        } else {
+            draw_pixel(j * 10 + 5, j * 10 + 5, j + 1);
+        }
+    }
+    
+    halt();
+}

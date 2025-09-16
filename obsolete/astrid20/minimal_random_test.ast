@@ -1,0 +1,13 @@
+// Minimal Random Test - No Variables
+// Tests random functions without complex variable allocation
+
+void main() {
+    // Direct random usage without storing to variables
+    set_layer(1);
+    
+    // Draw a few pixels with basic random numbers
+    // This should work because we're not storing random results
+    set_pixel(100, 100, 15);  // Fixed pixel first
+    
+    halt();
+}

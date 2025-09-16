@@ -1,0 +1,8 @@
+int8 simple_func() {
+    return 42;
+}
+
+void main() {
+    int8 x = simple_func();
+    halt();
+}

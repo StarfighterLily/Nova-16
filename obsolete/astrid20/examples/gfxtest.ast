@@ -1,0 +1,26 @@
+void main() {
+    int16 i = 0;
+    int16 j = 0;
+    int16 x = 0;
+    int8 pcol = 0;
+    string str = "De Nova Stella";
+    
+    set_layer(1);
+    for(j = 0; j <= 256; j++){
+        for(i = 0; i <= 256; i++){
+            set_pixel(i, j, pcol);
+            pcol++;
+        }
+    }
+
+    set_layer(5);
+    print_string(str, 90, 124, 0x1F);
+
+    set_layer(1);
+    for(x = 0; x < 512; x++){
+        if(x == 511){
+            roll_screen_x(1);
+            x = 0;
+        }
+    }
+}

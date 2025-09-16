@@ -1,0 +1,9 @@
+void main(){
+    int8 count = 0;
+    for(count = 50; count == 50; count++){
+        // This should execute once when count=50, then exit when count=51
+        count = count + 100; // This will make count 150, so condition becomes false
+    }
+    // count should be 151 here (150 + increment)
+    halt();
+}

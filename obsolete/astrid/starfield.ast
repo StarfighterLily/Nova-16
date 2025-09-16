@@ -1,0 +1,63 @@
+/*
+Draw stars on 3 layers to create a parallax effect.
+Print a string in the center of the screen.
+Print a darker text shadow behind the string.
+*/
+
+void main(){
+    int16 x = 0;
+
+    draw_layer1();
+    draw_layer2();
+    draw_layer3();
+    
+    for(x = 0; x < 64; x++){
+        if(x == 64){
+            x = 0;
+        }
+        roll_screen();
+    }
+    //halt();
+}
+
+void roll_screen(){
+    set_layer(1);
+    roll_screen_x(1);
+    set_layer(2);
+    roll_screen_x(2);
+    set_layer(3);
+    roll_screen_x(3);    
+}
+
+void draw_layer1(){
+    int16 i = 0;
+    set_layer(1);
+    for( i = 0; i <= 200; i = i + 1 ){
+        int16 star1_x = random_range(0, 256);
+        int16 star1_y = random_range(0, 256);
+        int8 star1_brightness = random_range( 0x00, 0x05 );
+        set_pixel( star1_x, star1_y, star1_brightness ); // dimmest stars
+    }
+}
+
+void draw_layer2(){
+    int16 j = 0;
+    set_layer(2);
+    for( j = 0; j <= 100; j = j + 1 ){
+        int16 star2_x = random_range(0, 256);
+        int16 star2_y = random_range(0, 256);
+        int8 star2_brightness = random_range( 0x06, 0x0A );
+        set_pixel( star2_x, star2_y, star2_brightness ); // medium stars
+    }
+}
+
+void draw_layer3(){
+    int16 k = 0;
+    set_layer(3);
+    for( k = 0; k <= 100; k = k + 1 ){
+        int16 star3_x = random_range(0, 256);
+        int16 star3_y = random_range(0, 256);
+        int8 star3_brightness = random_range( 0x0B, 0x0F );
+        set_pixel( star3_x, star3_y, star3_brightness ); // brightest stars
+    }
+}

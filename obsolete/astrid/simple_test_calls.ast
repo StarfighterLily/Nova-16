@@ -1,0 +1,24 @@
+/*
+Simple test for function calls
+*/
+
+void main(){
+    func1();
+    func2();
+    func3();
+}
+
+void func1(){
+    set_layer(1);
+    set_pixel(10, 10, 1);
+}
+
+void func2(){
+    set_layer(2);
+    set_pixel(20, 20, 2);
+}
+
+void func3(){
+    set_layer(3);
+    set_pixel(30, 30, 3);
+}

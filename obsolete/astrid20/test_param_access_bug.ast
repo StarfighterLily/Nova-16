@@ -1,0 +1,9 @@
+// Test case to reproduce parameter access bug
+int add_two_numbers(int a, int b) {
+    return a + b;  // This should access parameters from stack frame
+}
+
+void main() {
+    int result = add_two_numbers(10, 20);
+    halt();
+}

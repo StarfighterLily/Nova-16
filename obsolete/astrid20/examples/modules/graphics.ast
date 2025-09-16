@@ -1,0 +1,15 @@
+// graphics.ast - Graphics utility module
+export void draw_pixel(pixel x, pixel y, color c) {
+    set_pixel(x, y, c);
+}
+
+export void clear_screen() {
+    // Implementation would clear the screen
+    set_pixel(0, 0, 0);
+}
+
+export void draw_line(pixel x1, pixel y1, pixel x2, pixel y2, color c) {
+    // Bresenham's line algorithm would go here
+    set_pixel(x1, y1, c);
+    set_pixel(x2, y2, c);
+}

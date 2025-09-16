@@ -1,0 +1,43 @@
+// Comprehensive test of complex functionality
+void main(){
+    int8 data[10];
+    int16 i = 0;
+    int16 total = 0;
+    
+    // Initialize array with calculations
+    for(i = 0; i < 10; i++){
+        data[i] = calculate_value(i, 5);
+    }
+    
+    // Calculate sum using array values
+    for(i = 0; i < 10; i++){
+        total = add_with_overflow_check(total, data[i]);
+    }
+    
+    // Display result using graphics
+    draw_results(total);
+    halt();
+}
+
+int8 calculate_value(int16 index, int16 multiplier){
+    int16 result = index * multiplier;
+    if(result > 50){
+        result = result - 20;
+    }
+    return result;
+}
+
+int16 add_with_overflow_check(int16 a, int16 b){
+    int16 sum = a + b;
+    if(sum > 200){
+        sum = 200;  // Cap at 200
+    }
+    return sum;
+}
+
+void draw_results(int16 value){
+    set_layer(2);
+    int16 x = value / 10;
+    int16 y = value % 10;
+    set_pixel(x, y, 255);
+}

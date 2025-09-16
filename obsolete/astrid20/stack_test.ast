@@ -1,0 +1,8 @@
+int8 add(int8 x, int8 y) {
+    return x + y;
+}
+
+void main() {
+    int8 result = add(15, 25);
+    halt();
+}

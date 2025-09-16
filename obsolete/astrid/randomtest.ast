@@ -1,0 +1,6 @@
+void main(){
+    int16 x = random_range(0, 256);
+    int16 y = random_range(0, 256);
+    int8 brightness = random_range(0, 15);
+    set_pixel(x, y, brightness);
+}

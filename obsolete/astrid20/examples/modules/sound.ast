@@ -1,0 +1,14 @@
+// sound.ast - Sound utility module
+export void play_tone(sound frequency, sound volume) {
+    play_sound(0, frequency, volume);
+}
+
+export void stop_audio() {
+    // Stop all audio channels
+    stop_sound(0);
+}
+
+export void set_master_volume(sound volume) {
+    // Set master volume (would need hardware support)
+    set_volume(0, volume);
+}

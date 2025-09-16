@@ -1,0 +1,45 @@
+// Test comprehensive compiler features - struct member access, ternary operator, switch statement
+struct Point {
+    int8 x;
+    int8 y;
+    int8 color;
+}
+
+struct Player {
+    Point position;
+    int16 health;
+    int8 level;
+}
+
+void main() {
+    Player player;
+    player.position.x = 50;
+    player.position.y = 100;
+    player.position.color = 15;
+    player.health = 100;
+    player.level = 1;
+    
+    // Test ternary operator - NOW WORKING!
+    int8 status = player.health > 50 ? 1 : 0;
+    
+    // Test member access - NOW WORKING!
+    set_pixel(player.position.x, player.position.y, player.position.color);
+    
+    // Test switch statement - NOW WORKING!
+    switch(player.level) {
+        case 1:
+            player.position.color = 2;
+            break;
+        case 2:
+            player.position.color = 4;
+            break;
+        default:
+            player.position.color = 7;
+            break;
+    }
+    
+    // Update pixel with new color
+    set_pixel(player.position.x, player.position.y, player.position.color);
+    
+    halt();
+}

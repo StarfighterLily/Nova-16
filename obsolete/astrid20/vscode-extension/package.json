@@ -1,0 +1,113 @@
+{
+    "name": "astrid2-language-support",
+    "displayName": "Astrid 2.0 Language Support",
+    "description": "Language support for Astrid 2.0 programming language",
+    "version": "0.1.0",
+    "engines": {
+        "vscode": "^1.70.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "astrid",
+                "aliases": ["Astrid", "astrid"],
+                "extensions": [".ast"],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "astrid",
+                "scopeName": "source.astrid",
+                "path": "./syntaxes/astrid.tmLanguage.json"
+            }
+        ],
+        "configuration": {
+            "type": "object",
+            "title": "Astrid 2.0",
+            "properties": {
+                "astrid2.lsp.server.path": {
+                    "type": "string",
+                    "default": "lsp_server.py",
+                    "description": "Path to the Astrid 2.0 LSP server"
+                },
+                "astrid2.debug.adapter.path": {
+                    "type": "string",
+                    "default": "debug_adapter.py",
+                    "description": "Path to the Astrid 2.0 debug adapter"
+                }
+            }
+        },
+        "debuggers": [
+            {
+                "type": "astrid",
+                "label": "Astrid 2.0 Debug",
+                "program": "./out/extension.js",
+                "runtime": "node",
+                "configurationAttributes": {
+                    "launch": {
+                        "required": ["program"],
+                        "properties": {
+                            "program": {
+                                "type": "string",
+                                "description": "Path to Astrid source file",
+                                "default": "${file}"
+                            },
+                            "stopOnEntry": {
+                                "type": "boolean",
+                                "description": "Stop on entry",
+                                "default": true
+                            }
+                        }
+                    }
+                },
+                "initialConfigurations": [
+                    {
+                        "type": "astrid",
+                        "request": "launch",
+                        "name": "Debug Astrid Program",
+                        "program": "${file}",
+                        "stopOnEntry": true
+                    }
+                ]
+            }
+        ],
+        "taskDefinitions": [
+            {
+                "type": "astrid",
+                "required": ["file"],
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "description": "The Astrid source file to compile"
+                    },
+                    "output": {
+                        "type": "string",
+                        "description": "The output assembly file"
+                    }
+                }
+            }
+        ],
+        "problemMatchers": [
+            {
+                "name": "astrid",
+                "owner": "astrid",
+                "fileLocation": ["relative", "${workspaceFolder}"],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):\\s+(error|warning):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "severity": 3,
+                    "message": 4
+                }
+            }
+        ]
+    },
+    "activationEvents": [
+        "onLanguage:astrid"
+    ],
+    "main": "./out/extension.js"
+}

@@ -1,0 +1,20 @@
+// Test random range boundaries
+void main() {
+    // Test the specific ranges used in the comprehensive test
+    int16 x_val = random_range(0, 255);    // Should be 0-255
+    int16 y_val = random_range(0, 191);    // Should be 0-191
+    int16 color_val = random_range(1, 31); // Should be 1-31
+    
+    // Test if any value is out of expected range
+    if (x_val > 255) {
+        set_pixel(0, 0, 31); // Red if x_val out of range
+    } else if (y_val > 191) {
+        set_pixel(1, 0, 31); // Red if y_val out of range  
+    } else if (color_val > 31 || color_val < 1) {
+        set_pixel(2, 0, 31); // Red if color_val out of range
+    } else {
+        set_pixel(0, 0, 1); // Green if all in range
+    }
+    
+    halt();
+}

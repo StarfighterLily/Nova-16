@@ -1,0 +1,44 @@
+void main() {
+    // Test 1: Basic random function
+    int16 basic_random = random();
+    
+    // Test 2: Random range with 8-bit values
+    int8 dice_roll = random_range(1, 6);
+    int8 percentage = random_range(0, 100);
+    
+    // Test 3: Random range with 16-bit values  
+    int16 large_range = random_range(0, 32767);
+    int16 coordinate_x = random_range(0, 512);
+    
+    // Test 4: Random range with variables
+    int16 min_val = 10;
+    int16 max_val = 50;
+    int16 var_range = random_range(min_val, max_val);
+    
+    // Test 5: Random in expressions
+    int16 result = random_range(0, 10) + random_range(20, 30);
+    
+    // Test 6: Random in function calls
+    set_pixel(random_range(0, 255), random_range(0, 191), random_range(1, 31));
+    
+    // Test 7: Random in loops
+    for (int8 i = 0; i < 5; i++) {
+        int16 rand_val = random_range(0, 100);
+        set_pixel(i * 10, rand_val / 2, random_range(1, 15));
+    }
+    
+    // Test 8: Edge cases - boundary values
+    int16 edge1 = random_range(0, 255);    // 8-bit boundary
+    int16 edge2 = random_range(0, 256);    // Just over 8-bit
+    int16 edge3 = random_range(254, 256);  // Cross boundary
+    
+    // Test 9: Random in conditionals
+    int16 rand_choice = random_range(0, 1);
+    if (rand_choice == 1) {
+        set_pixel(100, 100, 31);
+    } else {
+        set_pixel(100, 100, 0);
+    }
+    
+    halt();
+}

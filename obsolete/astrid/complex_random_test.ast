@@ -1,0 +1,64 @@
+void main() {
+    // Test random in complex expressions and control flow
+    
+    // Initialize graphics
+    set_layer(1);
+    clear_screen(0);
+    
+    // Test 1: Random in loop with complex calculations
+    for (int8 i = 0; i < 10; i++) {
+        int16 x = random_range(0, 255);
+        int16 y = random_range(0, 191); 
+        int8 color = random_range(1, 31);
+        
+        // Use random values in calculations
+        int16 adjusted_x = x / 2 + random_range(0, 50);
+        int16 adjusted_y = y / 3 + random_range(0, 30);
+        
+        set_pixel(adjusted_x, adjusted_y, color);
+    }
+    
+    // Test 2: Random in nested conditionals
+    int16 rand_val = random_range(0, 100);
+    if (rand_val < 25) {
+        // Draw red pixels
+        for (int8 j = 0; j < 5; j++) {
+            set_pixel(random_range(10, 50), random_range(10, 50), 31);
+        }
+    } else if (rand_val < 50) {
+        // Draw green pixels
+        for (int8 j = 0; j < 5; j++) {
+            set_pixel(random_range(60, 100), random_range(10, 50), 28);
+        }
+    } else if (rand_val < 75) {
+        // Draw blue pixels
+        for (int8 j = 0; j < 5; j++) {
+            set_pixel(random_range(110, 150), random_range(10, 50), 20);
+        }
+    } else {
+        // Draw white pixels
+        for (int8 j = 0; j < 5; j++) {
+            set_pixel(random_range(160, 200), random_range(10, 50), 15);
+        }
+    }
+    
+    // Test 3: Random with arithmetic and comparisons
+    int16 a = random_range(1, 50);
+    int16 b = random_range(51, 100);
+    int16 sum = a + b;
+    int16 diff = b - a;
+    
+    if (sum > 75) {
+        set_pixel(100, 100, random_range(1, 31));
+    }
+    
+    if (diff > 25) {
+        set_pixel(120, 120, random_range(1, 31));
+    }
+    
+    // Test 4: Multiple random calls in single expression
+    int16 complex_calc = random_range(0, 10) * random_range(1, 5) + random_range(0, 20);
+    set_pixel(150, 150, complex_calc % 32);
+    
+    halt();
+}

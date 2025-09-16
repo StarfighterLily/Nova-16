@@ -1,0 +1,16 @@
+// Test multiple parameter function calls to verify the fix
+int multiply_three(int a, int b, int c) {
+    int temp = a * b;
+    return temp * c;
+}
+
+int add_and_subtract(int x, int y, int z) {
+    int sum = x + y;
+    return sum - z;
+}
+
+void main() {
+    int result1 = multiply_three(2, 3, 4);  // Should be 24
+    int result2 = add_and_subtract(10, 5, 3);  // Should be 12
+    halt();
+}

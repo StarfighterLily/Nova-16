@@ -1,0 +1,9 @@
+// Test with user function with two parameters
+void main(){
+    test_two_params(10, 20);
+    halt();
+}
+
+void test_two_params(int8 a, int8 b){
+    set_layer(a);
+}

@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Astrid Program",
+            "type": "astrid",
+            "request": "launch",
+            "program": "${file}",
+            "stopOnEntry": true,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug Astrid Program (No Stop)",
+            "type": "astrid",
+            "request": "launch",
+            "program": "${file}",
+            "stopOnEntry": false,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Run Astrid Program",
+            "type": "astrid",
+            "request": "launch",
+            "program": "${file}",
+            "noDebug": true,
+            "console": "integratedTerminal"
+        }
+    ]
+}

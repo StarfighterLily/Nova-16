@@ -1,0 +1,11 @@
+// Minimal Random Test
+// Test single random value
+
+void main(){
+    set_layer(1);
+    
+    // Test direct random usage
+    set_pixel(100, 100, 15);  // Fixed pixel first
+    
+    halt();
+}

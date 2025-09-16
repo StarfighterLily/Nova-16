@@ -1,0 +1,41 @@
+// Comprehensive compiler validation test
+// Tests all fixed aspects: register allocation, spilling, memory management
+void main() {
+    // Test 1: Basic variable allocation (should use registers)
+    int16 a = 100;
+    int16 b = 200;
+    int16 c = a + b;
+    
+    // Test 2: Many variables to force spilling
+    int16 var0 = 0; int16 var1 = 1; int16 var2 = 2; int16 var3 = 3;
+    int16 var4 = 4; int16 var5 = 5; int16 var6 = 6; int16 var7 = 7;
+    int16 var8 = 8; int16 var9 = 9; int16 var10 = 10; int16 var11 = 11;
+    
+    // Test 3: Loop with register pressure
+    for (int16 i = 0; i < 5; i++) {
+        int16 temp1 = var0 + var1;
+        int16 temp2 = var2 * var3;
+        int16 temp3 = temp1 + temp2;
+        set_pixel(i, i, temp3 % 256);
+    }
+    
+    // Test 4: Function calls with parameters
+    int16 result = calculate_value(var4, var5, var6);
+    
+    // Test 5: Complex expressions
+    int16 complex = ((var7 + var8) * (var9 - var10)) / (var11 + 1);
+    
+    // Test 6: Graphics operations
+    set_layer(1);
+    for (int16 y = 0; y < 10; y++) {
+        for (int16 x = 0; x < 10; x++) {
+            set_pixel(x, y, (x + y + complex) % 256);
+        }
+    }
+}
+
+int16 calculate_value(int16 p1, int16 p2, int16 p3) {
+    int16 local1 = p1 * 2;
+    int16 local2 = p2 + p3;
+    return local1 + local2;
+}

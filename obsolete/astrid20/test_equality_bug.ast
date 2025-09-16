@@ -1,0 +1,8 @@
+void main(){
+    int8 count = 0;
+    for(count = 0; count == 50; count++){
+        // This should never execute because count starts at 0, not 50
+        count = count + 100; // If this executes, we'll see a wrong final value
+    }
+    halt();
+}

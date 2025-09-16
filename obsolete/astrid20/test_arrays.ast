@@ -1,0 +1,12 @@
+// Test array support
+void main() {
+    int8 scores[10];
+    int16 positions[5];
+    
+    scores[0] = 100;
+    scores[1] = 85;
+    positions[0] = 50;
+    
+    int8 total = scores[0] + scores[1];
+    halt();
+}

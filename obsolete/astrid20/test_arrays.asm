@@ -1,0 +1,47 @@
+; Astrid 2.0 Generated Assembly
+ORG 0x1000
+STI
+
+; Initialize stack pointer
+MOV P8, 0xFFFF
+
+; Function main
+main:
+PUSH FP
+MOV FP, SP
+entry:
+MOV R8, 0
+MOV R9, 100
+MOV P6, R2
+ADD P6, R8
+MOV [P6], R9
+MOV R1, 1
+MOV R0, 85
+MOV P6, R2
+ADD P6, R1
+MOV [P6], R0
+MOV R5, 0
+MOV R6, 50
+MOV P7, P6
+ADD P7, R5
+MOV [P7], R6
+MOV R7, 0
+MOV P7, R2
+ADD P7, R7
+MOV R9, [P7]
+MOV R5, R9
+MOV R9, 1
+MOV P7, R2
+ADD P7, R9
+MOV R9, [P7]
+MOV R5, R9
+MOV R9, R5
+MOV R8, R5
+ADD R9, R8
+MOV R6, R9
+MOV R7, R6
+; Halt processor
+MOV SP, FP
+POP FP
+HLT
+

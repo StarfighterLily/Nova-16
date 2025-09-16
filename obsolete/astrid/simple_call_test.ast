@@ -1,0 +1,7 @@
+int8 get_constant() {
+    return 42;
+}
+
+void main() {
+    int8 x = get_constant();
+}

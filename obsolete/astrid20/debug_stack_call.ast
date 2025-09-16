@@ -1,0 +1,9 @@
+// Test stack initialization for function calls
+void simple_func(){
+    return;
+}
+
+void main(){
+    simple_func();
+    halt();
+}

@@ -1,0 +1,197 @@
+"""
+Astrid 2.0 Token Definitions
+"""
+
+from enum import Enum
+from typing import Any, Optional
+from dataclasses import dataclass
+
+
+class TokenType(Enum):
+    """Token types for Astrid 2.0 lexer."""
+
+    # Keywords
+    VOID = "void"
+    INT8 = "int8"
+    INT16 = "int16"
+    UINT8 = "uint8"
+    UINT16 = "uint16"
+    CHAR = "char"
+    STRING = "string"
+    PIXEL = "pixel"
+    COLOR = "color"
+    SOUND = "sound"
+    LAYER = "layer"
+    SPRITE = "sprite"
+    INTERRUPT = "interrupt"
+    INTERRUPT_VECTOR = "interrupt_vector"
+    MEMORY_REGION = "memory_region"
+    IF = "if"
+    ELSE = "else"
+    WHILE = "while"
+    FOR = "for"
+    SWITCH = "switch"
+    CASE = "case"
+    DEFAULT = "default"
+    BREAK = "break"
+    CONTINUE = "continue"
+    RETURN = "return"
+    STRUCT = "struct"
+    FUNCTION = "function"
+    IMPORT = "import"
+    EXPORT = "export"
+    FROM = "from"
+    AS = "as"
+    TRUE = "true"
+    FALSE = "false"
+    NULL = "null"
+
+    # Operators
+    PLUS = "+"
+    MINUS = "-"
+    MULTIPLY = "*"
+    DIVIDE = "/"
+    MODULO = "%"
+    ASSIGN = "="
+    EQUAL = "=="
+    NOT_EQUAL = "!="
+    LESS = "<"
+    LESS_EQUAL = "<="
+    GREATER = ">"
+    GREATER_EQUAL = ">="
+    AND = "&&"
+    OR = "||"
+    NOT = "!"
+    BIT_AND = "&"
+    BIT_OR = "|"
+    BIT_XOR = "^"
+    BIT_NOT = "~"
+    SHIFT_LEFT = "<<"
+    SHIFT_RIGHT = ">>"
+    INCREMENT = "++"
+    DECREMENT = "--"
+    ARROW = "->"
+
+    # Delimiters
+    LPAREN = "("
+    RPAREN = ")"
+    LBRACE = "{"
+    RBRACE = "}"
+    LBRACKET = "["
+    RBRACKET = "]"
+    SEMICOLON = ";"
+    COMMA = ","
+    DOT = "."
+    COLON = ":"
+    QUESTION = "?"
+    DOUBLE_COLON = "::"
+
+    # Literals
+    INTEGER_LITERAL = "INTEGER_LITERAL"
+    STRING_LITERAL = "STRING_LITERAL"
+    CHAR_LITERAL = "CHAR_LITERAL"
+    IDENTIFIER = "IDENTIFIER"
+
+    # Special
+    EOF = "EOF"
+    COMMENT = "COMMENT"
+    WHITESPACE = "WHITESPACE"
+
+
+@dataclass
+class Token:
+    """Represents a single token from the lexer."""
+    type: TokenType
+    value: str
+    line: int
+    column: int
+    filename: Optional[str] = None
+
+    def __repr__(self) -> str:
+        return f"Token({self.type.name}, '{self.value}', line={self.line}, col={self.column})"
+
+    def __str__(self) -> str:
+        return f"{self.type.value} '{self.value}'"
+
+
+# Keywords mapping
+KEYWORDS = {
+    "void": TokenType.VOID,
+    "int8": TokenType.INT8,
+    "int16": TokenType.INT16,
+    "uint8": TokenType.UINT8,
+    "uint16": TokenType.UINT16,
+    "char": TokenType.CHAR,
+    "string": TokenType.STRING,
+    "pixel": TokenType.PIXEL,
+    "color": TokenType.COLOR,
+    "sound": TokenType.SOUND,
+    "layer": TokenType.LAYER,
+    "sprite": TokenType.SPRITE,
+    "interrupt": TokenType.INTERRUPT,
+    "interrupt_vector": TokenType.INTERRUPT_VECTOR,
+    "memory_region": TokenType.MEMORY_REGION,
+    "if": TokenType.IF,
+    "else": TokenType.ELSE,
+    "while": TokenType.WHILE,
+    "for": TokenType.FOR,
+    "switch": TokenType.SWITCH,
+    "case": TokenType.CASE,
+    "default": TokenType.DEFAULT,
+    "break": TokenType.BREAK,
+    "continue": TokenType.CONTINUE,
+    "return": TokenType.RETURN,
+    "struct": TokenType.STRUCT,
+    "function": TokenType.FUNCTION,
+    "import": TokenType.IMPORT,
+    "export": TokenType.EXPORT,
+    "from": TokenType.FROM,
+    "as": TokenType.AS,
+    "true": TokenType.TRUE,
+    "false": TokenType.FALSE,
+    "null": TokenType.NULL,
+}
+
+# Single character tokens
+SINGLE_CHAR_TOKENS = {
+    "+": TokenType.PLUS,
+    "-": TokenType.MINUS,
+    "*": TokenType.MULTIPLY,
+    "/": TokenType.DIVIDE,
+    "%": TokenType.MODULO,
+    "=": TokenType.ASSIGN,
+    "<": TokenType.LESS,
+    ">": TokenType.GREATER,
+    "!": TokenType.NOT,
+    "&": TokenType.BIT_AND,
+    "|": TokenType.BIT_OR,
+    "^": TokenType.BIT_XOR,
+    "~": TokenType.BIT_NOT,
+    "(": TokenType.LPAREN,
+    ")": TokenType.RPAREN,
+    "{": TokenType.LBRACE,
+    "}": TokenType.RBRACE,
+    "[": TokenType.LBRACKET,
+    "]": TokenType.RBRACKET,
+    ";": TokenType.SEMICOLON,
+    ",": TokenType.COMMA,
+    ".": TokenType.DOT,
+    ":": TokenType.COLON,
+    "?": TokenType.QUESTION,
+}
+
+# Multi-character operators
+MULTI_CHAR_OPERATORS = {
+    "==": TokenType.EQUAL,
+    "!=": TokenType.NOT_EQUAL,
+    "<=": TokenType.LESS_EQUAL,
+    ">=": TokenType.GREATER_EQUAL,
+    "&&": TokenType.AND,
+    "||": TokenType.OR,
+    "<<": TokenType.SHIFT_LEFT,
+    ">>": TokenType.SHIFT_RIGHT,
+    "::": TokenType.DOUBLE_COLON,
+    "++": TokenType.INCREMENT,
+    "--": TokenType.DECREMENT,
+    "->": TokenType.ARROW,
+}

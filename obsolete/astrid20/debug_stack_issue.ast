@@ -1,0 +1,13 @@
+void main() {
+    int16 a = 1;
+    int16 b = 2;
+    int16 c = 3;
+    int16 d = 4;
+    int16 e = 5;
+    int16 f = 6;
+    int16 g = 7;
+    int16 h = 8;
+    int16 i = 9;
+    int16 j = 10;
+    halt();
+}

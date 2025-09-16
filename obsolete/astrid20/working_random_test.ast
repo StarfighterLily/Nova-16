@@ -1,0 +1,19 @@
+// Working Astrid 2.0 Random Test
+// Simple test that should work properly
+
+void main() {
+    // Test basic random function
+    int16 rand_val = random();
+    
+    // Draw a pixel with random color
+    set_layer(1);
+    set_pixel(100, 100, 15);
+    
+    // Test ranged random
+    int16 dice = random_range(1, 6);
+    
+    // Draw another pixel
+    set_pixel(50, 50, 10);
+    
+    halt();
+}

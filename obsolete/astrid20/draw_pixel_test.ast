@@ -1,0 +1,10 @@
+// Test the exact draw_single_pixel function from complex test
+void main(){
+    draw_single_pixel(100, 50, 15);
+    halt();
+}
+
+void draw_single_pixel(int8 x, int8 y, int8 color){
+    set_layer(1);
+    set_pixel(x, y, color);
+}

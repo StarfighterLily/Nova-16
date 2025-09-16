@@ -1,0 +1,27 @@
+// Test function parameters and complex control flow
+void main() {
+    int16 result = add_numbers(10, 20);
+    int8 status = process_data(result, 5);
+    
+    if(status > 0) {
+        display_result(result);
+    }
+    
+    halt();
+}
+
+int16 add_numbers(int16 a, int16 b) {
+    return a + b;
+}
+
+int8 process_data(int16 input, int8 factor) {
+    if(input > 100) {
+        return factor * 2;
+    } else {
+        return factor;
+    }
+}
+
+void display_result(int16 value) {
+    set_pixel(100, 100, value % 32);
+}

@@ -1,0 +1,12 @@
+void main(){
+    set_layer(1);
+    // Draw 50 stars without function calls
+    int8 count = 0;
+    for(count = 0; count < 50; count++){
+        int16 x = random_range(0, 255);
+        int16 y = random_range(0, 255);
+        color pcol = random_range(1, 15);
+        set_pixel(x, y, pcol);
+    }
+    halt();
+}

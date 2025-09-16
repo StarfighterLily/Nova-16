@@ -1,0 +1,10 @@
+void main(){
+    int8 count = 0;
+    for(count = 5; count == 5; count++){
+        // This should execute exactly once when count=5
+        // After execution: count = 5 + 100 = 105, then increment to 106
+        count = count + 100;
+    }
+    // count should be 106 here
+    halt();
+}

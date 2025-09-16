@@ -1,0 +1,22 @@
+// Test interrupt handling
+interrupt timer_handler() {
+    int8 x = 100;
+    int8 y = 100;
+    set_pixel(x, y, 15);
+    return;
+}
+
+void main() {
+    // Setup timer interrupt
+    configure_timer(255, 80, 3);
+    enable_interrupts();
+    
+    // Main loop
+    while(true) {
+        // Do work
+        int16 i = 0;
+        for(i = 0; i < 1000; i++) {
+            // Busy work
+        }
+    }
+}

@@ -1,0 +1,29 @@
+# Astrid 2.0 Requirements
+# Python dependencies for the Astrid 2.0 compiler
+
+# Core Python (should be available in most environments)
+# Python >= 3.8
+
+# Development and Testing
+pytest>=7.0.0          # Testing framework
+pytest-cov>=4.0.0      # Coverage reporting
+black>=22.0.0          # Code formatting
+flake8>=5.0.0          # Linting
+mypy>=1.0.0            # Type checking
+
+# Documentation
+sphinx>=5.0.0          # Documentation generator
+sphinx-rtd-theme>=1.2.0  # Read the Docs theme
+
+# Build and Distribution
+setuptools>=65.0.0     # Package building
+wheel>=0.37.0          # Wheel building
+build>=0.10.0          # Build frontend
+
+# Optional: For advanced features
+# graphviz>=0.20.0     # For IR visualization (optional)
+# numpy>=1.24.0        # For advanced optimizations (optional)
+
+# Development tools
+pre-commit>=3.0.0      # Pre-commit hooks
+tox>=4.0.0            # Testing in multiple environments

@@ -1,0 +1,186 @@
+// Astrid 2.0 Example: Interrupt and System Programming
+// Demonstrates hardware interrupt integration and system-level programming
+
+// Hardware-specific system types
+interrupt_vector timer_vector = vector(0);      // Timer interrupt
+interrupt_vector keyboard_vector = vector(2);   // Keyboard interrupt
+interrupt_vector custom_vector = vector(3);     // User interrupt
+
+// Memory-mapped I/O regions
+memory_region zero_page = memory.region(0x0000, 0x0100);
+memory_region interrupt_table = memory.region(0x0100, 0x0120);
+memory_region sprite_memory = memory.region(0xF000, 0xF100);
+
+// System state management
+struct SystemState {
+    int16 timer_ticks;
+    int8 keyboard_buffer[16];
+    int8 keyboard_count;
+    bool interrupts_enabled;
+    int16 free_memory;
+} system_state;
+
+void initialize_system() {
+    // Hardware initialization
+    hardware.reset();
+
+    // Configure timer system
+    timer.configure(255, 80, 3);     // TT=255, TM=80, TS=3, TC=3
+    timer_vector.handler = timer_interrupt;
+    timer_vector.enable = true;
+
+    // Configure keyboard system
+    keyboard.configure(16);          // 16-key buffer
+    keyboard_vector.handler = keyboard_interrupt;
+    keyboard_vector.enable = true;
+
+    // Initialize system state
+    system_state.timer_ticks = 0;
+    system_state.keyboard_count = 0;
+    system_state.interrupts_enabled = false;
+    system_state.free_memory = 0xE000;  // Start of free memory
+
+    // Memory management setup
+    memory.initialize_heap(0x2000, 0xE000);  // 64KB heap
+}
+
+void* allocate_memory(int16 size) {
+    if (system_state.free_memory + size > 0xFFFF) {
+        return null;  // Out of memory
+    }
+
+    void* ptr = (void*)system_state.free_memory;
+    system_state.free_memory += size;
+    return ptr;
+}
+
+void free_memory(void* ptr, int16 size) {
+    // Simple memory management - just update free pointer
+    // In a real implementation, this would be more sophisticated
+    if ((int16)ptr + size == system_state.free_memory) {
+        system_state.free_memory = (int16)ptr;
+    }
+}
+
+interrupt timer_interrupt() {
+    // Timer interrupt handler - called at regular intervals
+    system_state.timer_ticks++;
+
+    // Update game state
+    update_game_physics();
+
+    // Handle periodic tasks
+    if (system_state.timer_ticks % 60 == 0) {  // Every second at 60Hz
+        update_second_timer();
+    }
+
+    // Hardware-specific operations
+    hardware.clear_timer_interrupt();
+
+    return;  // Compiler generates IRET
+}
+
+interrupt keyboard_interrupt() {
+    // Keyboard interrupt handler
+    while (keyboard.has_key()) {
+        int8 key = keyboard.read_key();
+
+        // Add to circular buffer
+        if (system_state.keyboard_count < 16) {
+            system_state.keyboard_buffer[system_state.keyboard_count] = key;
+            system_state.keyboard_count++;
+        }
+    }
+
+    hardware.clear_keyboard_interrupt();
+    return;
+}
+
+int8 read_keyboard() {
+    if (system_state.keyboard_count > 0) {
+        int8 key = system_state.keyboard_buffer[0];
+
+        // Shift buffer
+        for (int8 i = 0; i < system_state.keyboard_count - 1; i++) {
+            system_state.keyboard_buffer[i] = system_state.keyboard_buffer[i + 1];
+        }
+        system_state.keyboard_count--;
+
+        return key;
+    }
+    return 0;  // No key available
+}
+
+void enable_interrupts() {
+    if (!system_state.interrupts_enabled) {
+        hardware.enable_interrupts();
+        system_state.interrupts_enabled = true;
+    }
+}
+
+void disable_interrupts() {
+    if (system_state.interrupts_enabled) {
+        hardware.disable_interrupts();
+        system_state.interrupts_enabled = false;
+    }
+}
+
+void update_game_physics() {
+    // Game physics update - called from timer interrupt
+    // This ensures consistent timing regardless of main loop speed
+
+    // Update sprite positions
+    for (int8 i = 0; i < 16; i++) {
+        if (sprite_table[i].active) {
+            sprite_table[i].x += sprite_table[i].velocity_x;
+            sprite_table[i].y += sprite_table[i].velocity_y;
+
+            // Boundary checking
+            if (sprite_table[i].x < 0 || sprite_table[i].x > 255) {
+                sprite_table[i].velocity_x = -sprite_table[i].velocity_x;
+            }
+            if (sprite_table[i].y < 0 || sprite_table[i].y > 255) {
+                sprite_table[i].velocity_y = -sprite_table[i].velocity_y;
+            }
+        }
+    }
+}
+
+void update_second_timer() {
+    // Tasks that run once per second
+    update_score_display();
+    check_game_conditions();
+    save_checkpoint();
+}
+
+void main() {
+    initialize_system();
+    enable_interrupts();
+
+    // Main game loop
+    while (true) {
+        // Handle user input
+        int8 key = read_keyboard();
+        if (key != 0) {
+            process_input(key);
+        }
+
+        // Update game logic (non-time-critical)
+        update_game_logic();
+
+        // Render frame
+        render_frame();
+
+        // Small delay to prevent busy waiting
+        hardware.delay(1);
+    }
+}
+
+// Custom interrupt handler example
+interrupt custom_interrupt_handler() {
+    // User-defined interrupt processing
+    handle_custom_event();
+
+    hardware.clear_custom_interrupt();
+    return;
+}

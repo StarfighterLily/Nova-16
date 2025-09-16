@@ -1,0 +1,25 @@
+struct Point {
+    int8 x;
+    int8 y;
+}
+
+fn main() {
+    Point p;
+    p.x = 10;
+    p.y = 20;
+    
+    int8 max_coord = (p.x > p.y) ? p.x : p.y;
+    
+    int8 result = 0;
+    
+    switch (max_coord) {
+        case 10:
+            result = 1;
+            break;
+        case 20:
+            result = 2;
+            break;
+        default:
+            result = 3;
+    }
+}

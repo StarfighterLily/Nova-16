@@ -1,0 +1,33 @@
+// Comprehensive test for all compiler fixes
+// Tests: 1) Parameter passing consistency
+//        2) Caller register preservation  
+//        3) Loop counter protection
+
+int8 multiply(int8 a, int8 b) {
+    return a * b;
+}
+
+int8 add_three(int8 x, int8 y, int8 z) {
+    return x + y + z;
+}
+
+void main() {
+    int8 important_data = 99;  // This should be preserved across function calls
+    int8 sum = 0;
+    
+    // Test nested loops with function calls to stress all our fixes
+    for (int8 i = 1; i <= 3; i++) {              // Loop counter 'i' should be protected
+        for (int8 j = 1; j <= 2; j++) {          // Loop counter 'j' should be protected  
+            // Function calls inside loops - should preserve all data
+            int8 product = multiply(i, j);        // Test parameter consistency
+            int8 total = add_three(product, important_data, sum);  // Test caller preservation
+            sum = total;
+            
+            // important_data should still be 99
+            // i and j should maintain correct values across calls
+        }
+    }
+    
+    // Final verification - all variables should have expected values
+    halt();
+}

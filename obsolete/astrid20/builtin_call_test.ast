@@ -1,0 +1,5 @@
+// Test with built-in function call only
+void main(){
+    set_layer(1);
+    halt();
+}

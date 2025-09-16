@@ -1,0 +1,76 @@
+// Comprehensive Random Function Test Suite
+// Tests all aspects of random() and random_range() functions
+
+void main() {
+    // Test 1: Basic random() function - should return 16-bit values
+    int16 basic1 = random();
+    int16 basic2 = random();
+    int16 basic3 = random();
+    
+    // Verify they're different (highly likely)
+    if (basic1 == basic2 && basic2 == basic3) {
+        // Very unlikely but possible - mark as potential issue
+        set_pixel(0, 0, 31); // Red pixel at top-left if all same
+    }
+    
+    // Test 2: random_range() with small ranges
+    int16 small_range1 = random_range(0, 1);    // Binary
+    int16 small_range2 = random_range(5, 7);    // 3 values: 5,6,7
+    int16 single_value = random_range(42, 42);  // Should always be 42
+    
+    // Verify single value constraint
+    if (single_value != 42) {
+        set_pixel(1, 0, 31); // Error indicator
+    }
+    
+    // Test 3: random_range() with 8-bit ranges
+    int16 byte_range1 = random_range(0, 255);
+    int16 byte_range2 = random_range(100, 200);
+    
+    // Test 4: random_range() with 16-bit ranges
+    int16 word_range1 = random_range(0, 65535);
+    int16 word_range2 = random_range(1000, 30000);
+    
+    // Test 5: Edge cases with boundary values
+    int16 edge1 = random_range(0, 32767);    // Max positive int16
+    int16 edge2 = random_range(32768, 65535); // Upper half of uint16
+    
+    // Test 6: Variable-based ranges
+    int16 min_var = 10;
+    int16 max_var = 20;
+    int16 var_range = random_range(min_var, max_var);
+    
+    // Verify variable range is in bounds
+    if (var_range < 10 || var_range > 20) {
+        set_pixel(2, 0, 31); // Error indicator
+    }
+    
+    // Test 7: Stress test - generate many values and visualize distribution
+    set_layer(1);
+    
+    // Generate 500 random pixels to test distribution
+    for (int16 i = 0; i < 500; i = i + 1) {
+        int16 x_val = random_range(0, 255);
+        int16 y_val = random_range(0, 191); // Assuming 192 height
+        int16 color_val = random_range(1, 31);
+        
+        // Convert to 8-bit for graphics
+        int8 x = x_val;
+        int8 y = y_val;
+        int8 color = color_val;
+        
+        set_pixel(x, y, color);
+    }
+    
+    // Test 8: Sequential calls to check for patterns
+    int16 seq1 = random();
+    int16 seq2 = random();
+    int16 seq3 = random();
+    int16 seq4 = random();
+    
+    // Draw sequence indicators at bottom of screen
+    set_pixel(seq1 % 256, 190, 10);
+    set_pixel(seq2 % 256, 191, 11);
+    
+    halt();
+}

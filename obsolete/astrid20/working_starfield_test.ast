@@ -1,0 +1,24 @@
+// Working Starfield Test
+// Avoid variable assignments from random_range
+
+void main(){
+    int16 j = 0;
+
+    set_layer(1);
+    
+    // Draw stars in a simple loop
+    for(j = 0; j < 10; j++){
+        // Use direct function calls without storing in variables
+        draw_random_star();
+    }
+    
+    halt();
+}
+
+void draw_random_star(){
+    // Generate random position and draw immediately
+    // This avoids the variable assignment bug
+    set_pixel(128, 64, 15);  // For now, use fixed values
+    // TODO: Once the random variable assignment is fixed, use:
+    // set_pixel(random_range(0,255), random_range(0,255), random_range(1,31));
+}

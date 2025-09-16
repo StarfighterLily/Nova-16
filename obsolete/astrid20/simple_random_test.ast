@@ -1,0 +1,37 @@
+// Simple Random Function Test  
+// Minimal test to verify random functions work without register conflicts
+
+void main() {
+    // Test 1: Basic random() function
+    int16 rand1 = random();
+    
+    // Test 2: Simple random_range()
+    int16 range1 = random_range(0, 10);
+    int16 range2 = random_range(100, 200);
+    
+    // Test 3: Verify single value range
+    int16 single = random_range(42, 42);
+    
+    // Test 4: Visual output to verify randomness
+    set_layer(1);
+    
+    // Draw 20 random pixels
+    for (int8 i = 0; i < 20; i = i + 1) {
+        int16 x = random_range(0, 255);
+        int16 y = random_range(0, 191);
+        int16 c = random_range(1, 31);
+        
+        int8 x_pos = x;
+        int8 y_pos = y;
+        int8 color = c;
+        
+        set_pixel(x_pos, y_pos, color);
+    }
+    
+    // Verify single value constraint
+    if (single != 42) {
+        set_pixel(0, 0, 31); // Error pixel at top-left
+    }
+    
+    halt();
+}

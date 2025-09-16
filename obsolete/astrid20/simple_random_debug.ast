@@ -1,0 +1,22 @@
+// Simple Random Debug Test
+// Test basic random functions step by step
+
+void main() {
+    // Test 1: Basic random() function
+    int16 r1 = random();
+    
+    // Test 2: Simple small range
+    int16 r2 = random_range(0, 10);
+    
+    // Test 3: Single value (should always be 42)
+    int16 r3 = random_range(42, 42);
+    
+    // Test 4: Visual verification
+    if (r3 == 42) {
+        set_pixel(0, 0, 1); // Green pixel if working correctly
+    } else {
+        set_pixel(0, 0, 31); // Red pixel if error
+    }
+    
+    halt();
+}

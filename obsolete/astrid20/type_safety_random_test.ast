@@ -1,0 +1,74 @@
+// Random Function Type Safety Test
+// Tests type conversions and register usage
+
+void main() {
+    // Test 1: Type conversion issues
+    int8 small_val = 50;
+    int16 big_val = 30000;
+    
+    // Using 8-bit variable in 16-bit range
+    int16 mixed1 = random_range(small_val, 1000);
+    int16 mixed2 = random_range(0, small_val);
+    
+    // Using 16-bit variable in range
+    int16 mixed3 = random_range(big_val, 40000);
+    int16 mixed4 = random_range(1000, big_val);
+    
+    // Test 2: Register pressure scenarios
+    int16 r1 = random();
+    int16 r2 = random();
+    int16 r3 = random();
+    int16 r4 = random();
+    int16 r5 = random();
+    int16 r6 = random();
+    int16 r7 = random();
+    int16 r8 = random();
+    int16 r9 = random();
+    int16 r10 = random(); // This might stress register allocation
+    
+    // Use all values to prevent optimization
+    int16 sum = r1 + r2 + r3 + r4 + r5 + r6 + r7 + r8 + r9 + r10;
+    
+    // Test 3: Complex expressions with random
+    int16 expr1 = random() + random();
+    int16 expr2 = random_range(0, 100) * 2;
+    int16 expr3 = random_range(10, 20) + random_range(30, 40);
+    
+    // Test 4: Random in conditionals
+    if (random_range(0, 1) == 1) {
+        set_pixel(0, 0, 10);
+    } else {
+        set_pixel(0, 0, 20);
+    }
+    
+    // Test 5: Random in loops with variables
+    for (int8 i = 0; i < 20; i = i + 1) {
+        int8 loop_min = i;
+        int8 loop_max = i + 10;
+        int16 loop_rand = random_range(loop_min, loop_max);
+        
+        // Verify range
+        if (loop_rand < i || loop_rand > (i + 10)) {
+            set_pixel(i, 50, 31); // Error
+        } else {
+            set_pixel(i, 51, 15); // OK
+        }
+    }
+    
+    // Test 6: Nested random calls
+    int16 nested = random_range(random_range(0, 10), random_range(50, 60));
+    
+    // Test 7: Array indexing with random (if arrays are supported)
+    // This tests if random can be used in complex expressions
+    int8 rand_idx = random_range(0, 9);
+    
+    // Use random index for pixel placement
+    int8 x_pos = rand_idx * 20;
+    set_pixel(x_pos, 100, 25);
+    
+    // Visualize the sum to ensure all randoms were calculated
+    int8 sum_vis = sum % 256;
+    set_pixel(sum_vis, 150, 30);
+    
+    halt();
+}

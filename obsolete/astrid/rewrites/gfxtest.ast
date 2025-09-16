@@ -1,0 +1,36 @@
+void main() {
+    int16 x = 0;
+    int16 y = 0;
+    int8 z = 0;
+    int8 pcol = 0;
+    string str = "De Nova Stella";
+    
+    set_layer(1);
+    for(y = 0; y < 256; y++){        // Changed from <= 255 to < 256
+        for(x = 0; x < 256; x++){    // Changed from <= 255 to < 256
+            set_pixel(x, y, pcol);  // Use x,y directly
+            pcol++;
+        }
+        z++;
+        if(z == 4){
+            z = 0;
+            roll_screen_x(1);
+        }
+    }
+
+    set_layer(5);
+    print_string(str, 90, 124, 0x1F);
+
+    screen_roll();
+}
+
+void screen_roll(){
+    int16 x = 0;
+    set_layer(1);
+    for(x = 0; x <= 256; x++){
+        if(x == 256){
+            roll_screen_x(1);
+            x = 0;
+        }
+    }
+}

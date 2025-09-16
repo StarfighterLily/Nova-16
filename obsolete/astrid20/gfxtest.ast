@@ -1,0 +1,31 @@
+void main() {
+    int16 x = 0;  // Changed to int16 to avoid overflow
+    int16 y = 0;  // Changed to int16 to avoid overflow
+    int8 pcol = 0;
+    string str = "De Nova Stella";
+    
+    set_layer(1);
+    for(y = 0; y <= 255; y++){
+        for(x = 0; x <= 255; x++){
+            set_pixel(x, y, pcol);  // Use x,y directly
+            pcol++;
+        }
+    }
+
+    set_layer(5);
+    print_string(str, 90, 124, 0x1F);
+
+    screen_roll();
+
+}
+
+void screen_roll(){
+    int16 x = 0;
+    set_layer(1);
+    for(x = 0; x < 512; x++){
+        if(x == 511){
+            roll_screen_x(1);
+            x = 0;
+        }
+    }
+}

@@ -1,0 +1,7 @@
+void main(){
+    int8 count = 0;
+    for(count = 0; count < 3; count++){
+        count = count + 10; // This should execute 3 times, making count = 10, 21, 32
+    }
+    halt();
+}

@@ -1,0 +1,15 @@
+fn main() {
+    int8 x = 2;
+    int8 result = 0;
+    
+    switch (x) {
+        case 1:
+            result = 10;
+            break;
+        case 2:
+            result = 20;
+            break;
+        default:
+            result = 30;
+    }
+}

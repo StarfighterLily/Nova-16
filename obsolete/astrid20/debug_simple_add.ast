@@ -1,0 +1,9 @@
+// Debug function parameter access
+int simple_add(int a, int b) {
+    return a + b;
+}
+
+void main() {
+    int result = simple_add(15, 7);  // Should be 22
+    halt();
+}

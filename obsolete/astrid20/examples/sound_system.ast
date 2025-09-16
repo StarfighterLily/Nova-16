@@ -1,0 +1,134 @@
+// Astrid 2.0 Example: Sound System Integration
+// Demonstrates the new sound programming capabilities
+
+// Hardware-specific sound types
+sound_channel music_channel = channel(0);
+sound_channel sfx_channel = channel(1);
+sound_channel ambient_channel = channel(2);
+
+// Waveform definitions
+waveform square_wave = waveform.square;
+waveform sine_wave = waveform.sine;
+waveform noise_wave = waveform.noise;
+
+// Sound sample management
+sound explosion_sample;
+sound laser_sample;
+sound background_music;
+
+void initialize_sound() {
+    // Hardware register configuration
+    hardware.sound_master_volume = 128;
+
+    // Load sound samples (would be loaded from files in real implementation)
+    explosion_sample = load_sample("explosion.wav");
+    laser_sample = load_sample("laser.wav");
+    background_music = load_sample("background.mid");
+
+    // Configure channels
+    music_channel.volume = 96;
+    music_channel.pan = 64;        // Center
+    sfx_channel.volume = 128;
+    ambient_channel.volume = 64;
+}
+
+void play_background_music() {
+    // Direct hardware sound programming
+    music_channel.frequency = 440;     // A4 note
+    music_channel.waveform = sine_wave;
+    music_channel.attack = 10;         // ADSR envelope
+    music_channel.decay = 20;
+    music_channel.sustain = 80;
+    music_channel.release = 50;
+
+    music_channel.play();
+}
+
+void play_sound_effect(sound_channel ch, sound sample) {
+    // Sample playback with hardware acceleration
+    ch.stop();                        // Stop current sound
+    ch.sample = sample;
+    ch.volume = 255;                  // Full volume for SFX
+    ch.play_sample();
+}
+
+void generate_tone(sound_channel ch, int16 frequency, int8 duration) {
+    // Procedural sound generation
+    ch.frequency = frequency;
+    ch.waveform = square_wave;
+    ch.volume = 192;
+
+    // Hardware timing
+    int16 start_time = hardware.timer_value;
+    ch.play();
+
+    while (hardware.timer_value - start_time < duration) {
+        // Wait for duration
+    }
+
+    ch.stop();
+}
+
+void play_melody() {
+    // Simple melody using hardware sound generation
+    int16 notes[] = {262, 294, 330, 349, 392, 440, 494, 523};  // C major scale
+
+    for (int8 i = 0; i < 8; i++) {
+        generate_tone(music_channel, notes[i], 30);  // 30 timer ticks per note
+        generate_tone(music_channel, 0, 5);          // Short pause
+    }
+}
+
+void handle_game_audio() {
+    // Game state-based audio management
+    static int8 game_state = 0;
+
+    switch (game_state) {
+        case 0:  // Menu
+            if (!music_channel.is_playing) {
+                play_background_music();
+            }
+            break;
+
+        case 1:  // Gameplay
+            // Play sound effects based on game events
+            if (player_fired) {
+                play_sound_effect(sfx_channel, laser_sample);
+                player_fired = false;
+            }
+            if (enemy_destroyed) {
+                play_sound_effect(sfx_channel, explosion_sample);
+                enemy_destroyed = false;
+            }
+            break;
+
+        case 2:  // Game Over
+            music_channel.stop();
+            play_sound_effect(sfx_channel, explosion_sample);
+            break;
+    }
+}
+
+void main() {
+    initialize_sound();
+
+    // Main audio loop
+    while (true) {
+        handle_game_audio();
+
+        // Hardware audio processing
+        hardware.process_audio();
+
+        // Small delay to prevent busy waiting
+        hardware.delay(1);
+    }
+}
+
+// Interrupt-driven audio processing
+interrupt audio_interrupt() {
+    // High-priority audio processing
+    hardware.mix_channels();
+    hardware.output_audio();
+
+    return;  // Hardware-specific return
+}

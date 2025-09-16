@@ -1,0 +1,23 @@
+// Test switch statement implementation
+void main() {
+    int8 level = 2;
+    int8 color = 0;
+    
+    switch(level) {
+        case 1:
+            color = 2;
+            break;
+        case 2:
+            color = 4;
+            break;
+        case 3:
+            color = 8;
+            break;
+        default:
+            color = 7;
+            break;
+    }
+    
+    set_pixel(100, 100, color);
+    halt();
+}

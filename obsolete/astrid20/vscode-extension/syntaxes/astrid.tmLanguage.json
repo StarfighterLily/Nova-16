@@ -1,0 +1,112 @@
+{
+    "name": "Astrid 2.0",
+    "scopeName": "source.astrid",
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#functions"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#identifiers"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.astrid",
+                    "match": "//.*$"
+                },
+                {
+                    "name": "comment.block.astrid",
+                    "begin": "/\\*",
+                    "end": "\\*/"
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.astrid",
+                    "match": "\\b(if|else|while|for|return)\\b"
+                },
+                {
+                    "name": "keyword.other.astrid",
+                    "match": "\\b(void|struct|true|false|null)\\b"
+                }
+            ]
+        },
+        "types": {
+            "patterns": [
+                {
+                    "name": "storage.type.astrid",
+                    "match": "\\b(int8|int16|pixel|color|sound|layer|sprite|interrupt)\\b"
+                }
+            ]
+        },
+        "functions": {
+            "patterns": [
+                {
+                    "name": "entity.name.function.astrid",
+                    "match": "\\b(set_pixel|get_pixel|clear_screen|set_layer|play_sound|stop_sound|set_volume|set_frequency|delay|get_time|set_interrupt|clear_interrupt)\\b(?=\\s*\\()"
+                }
+            ]
+        },
+        "operators": {
+            "patterns": [
+                {
+                    "name": "keyword.operator.astrid",
+                    "match": "[+\\-*/%=<>!&|^~]=?|==|!=|<=|>=|&&|\\|\\||<<|>>"
+                }
+            ]
+        },
+        "numbers": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.astrid",
+                    "match": "\\b\\d+\\b"
+                },
+                {
+                    "name": "constant.numeric.hex.astrid",
+                    "match": "\\b0[xX][0-9a-fA-F]+\\b"
+                }
+            ]
+        },
+        "strings": {
+            "name": "string.quoted.double.astrid",
+            "begin": "\"",
+            "end": "\"",
+            "patterns": [
+                {
+                    "name": "constant.character.escape.astrid",
+                    "match": "\\\\."
+                }
+            ]
+        },
+        "identifiers": {
+            "patterns": [
+                {
+                    "name": "variable.other.astrid",
+                    "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+                }
+            ]
+        }
+    }
+}

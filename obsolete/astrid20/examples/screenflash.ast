@@ -1,0 +1,6 @@
+void main(){
+    while(1){
+        clear_screen(0x0F);
+        clear_screen(0x00);
+    }
+}

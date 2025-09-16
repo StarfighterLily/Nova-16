@@ -1,0 +1,115 @@
+; Astrid 2.0 Generated Assembly
+ORG 0x1000
+STI
+
+; Initialize stack pointer
+MOV P8, 0xFFFF
+
+; Function main
+main:
+PUSH FP
+MOV FP, SP
+SUB SP, 16  ; Allocate stack space for local variables
+entry:
+MOV P0, 255
+MOV P1, 10
+MOV R3, P0
+MOV R4, P1
+MOD R3, R4
+MOV P2, R3
+MOV P3, P2
+; Set pixel at (P3, 100) to color 15
+MOV VM, 0
+MOV VX, P3
+MOV VY, 100
+MOV R8, 15
+SWRITE R8
+MOV R5, P0
+MOV R6, P1
+ADD R5, R6
+MOV :P4, R5
+JC add_carry_0
+JMP add_done_0
+add_carry_0:
+MOV R5, P0:
+ADD R5, 1
+MOV P4:, R5
+add_done_0:
+MOV P5, P4
+MOV R7, P0
+MOV R8, P1
+SUB R7, R8
+MOV P6, R7
+MOV P7, P6
+MOV R9, P0
+MOV R1, P1
+MUL R9, R1
+MOV P7, P9
+SUB P7, 2
+MOV [P7], R9
+MOV P7, P9
+SUB P7, 2
+MOV R0, [P7]
+MOV P7, P9
+SUB P7, 4
+MOV [P7], R0
+MOV R0, P0
+MOV R8, P1
+DIV R0, R8
+MOV P7, P9
+SUB P7, 6
+MOV [P7], R0
+MOV P7, P9
+SUB P7, 6
+MOV R2, [P7]
+MOV P7, P9
+SUB P7, 8
+MOV [P7], R2
+MOV R9, P0
+MOV R8, P1
+MOD R9, R8
+MOV P7, P9
+SUB P7, 10
+MOV [P7], R9
+MOV P7, P9
+SUB P7, 10
+MOV R2, [P7]
+MOV P7, P9
+SUB P7, 12
+MOV [P7], R2
+MOV R9, P5
+MOV P7, 256
+MOV R8, :P7
+MOD R9, R8
+MOV P7, P9
+SUB P7, 14
+MOV [P7], R9
+MOV P7, P9
+SUB P7, 14
+MOV P7, [P7]
+; Set pixel at (P7, 110) to color 10
+MOV VM, 0
+MOV VX, P7
+MOV VY, 110
+MOV R8, 10
+SWRITE R8
+MOV R9, [FP-4]
+MOV P7, 320
+MOV R8, :P7
+MOD R9, R8
+MOV P7, P9
+SUB P7, 16
+MOV [P7], R9
+MOV P7, P9
+SUB P7, 16
+MOV P7, [P7]
+; Set pixel at (P7, 120) to color 11
+MOV VM, 0
+MOV VX, P7
+MOV VY, 120
+MOV R8, 11
+SWRITE R8
+MOV SP, FP
+POP FP
+HLT
+

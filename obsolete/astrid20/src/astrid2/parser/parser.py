@@ -1,0 +1,1063 @@
+"""
+Astrid 2.0 Parser Implementation
+"""
+
+from typing import List, Optional
+
+from ..utils.error import ParserError
+from ..utils.logger import get_logger
+from ..lexer.tokens import Token, TokenType
+from .ast import (
+    Program, Declaration, FunctionDeclaration, StructDeclaration,
+    Parameter, Statement, Expression, DataType, Type, StructType, ArrayType,
+    VariableDeclaration, Assignment, IfStatement, WhileStatement,
+    ForStatement, SwitchStatement, SwitchCase, BreakStatement, ContinueStatement,
+    ReturnStatement, ExpressionStatement, BlockStatement,
+    Literal, Variable, BinaryOp, UnaryOp, TernaryOp, FunctionCall, MemberAccess,
+    ArrayAccess, HardwareAccess, StructField
+)
+
+logger = get_logger(__name__)
+
+
+class Parser:
+    """Recursive descent parser for Astrid 2.0."""
+
+    def __init__(self):
+        self.tokens = []
+        self.current = 0
+        self.filename = "<stdin>"
+
+    def parse(self, tokens: List[Token], filename: str = "<stdin>") -> Program:
+        """
+        Parse tokens into an AST.
+
+        Args:
+            tokens: List of tokens from the lexer
+            filename: Source filename for error reporting
+
+        Returns:
+            Program AST node
+
+        Raises:
+            ParserError: If parsing fails
+        """
+        self.tokens = tokens
+        self.current = 0
+        self.filename = filename
+
+        logger.debug(f"Starting parsing of {filename}")
+
+        declarations = []
+        while not self._is_at_end():
+            try:
+                decl = self._parse_declaration()
+                if decl:
+                    declarations.append(decl)
+            except ParserError:
+                raise
+            except Exception as e:
+                token = self._peek()
+                raise ParserError(
+                    f"Unexpected error during parsing: {e}",
+                    self.filename, token.line, token.column
+                ) from e
+
+        program = Program(declarations)
+        logger.debug(f"Parsing complete: {len(declarations)} declarations")
+        return program
+
+    def _parse_declaration(self) -> Optional[Declaration]:
+        """Parse a top-level declaration."""
+        token = self._peek()
+
+        if token.type == TokenType.STRUCT:
+            return self._parse_struct_declaration()
+        elif token.type == TokenType.INTERRUPT:
+            # Handle interrupt function declaration
+            return self._parse_function_declaration()
+        elif token.type == TokenType.FUNCTION:
+            return self._parse_function_declaration()
+        elif token.type in (TokenType.VOID, TokenType.INT8, TokenType.INT16, TokenType.UINT8,
+                           TokenType.UINT16, TokenType.CHAR, TokenType.STRING, TokenType.PIXEL, TokenType.COLOR, 
+                           TokenType.SOUND, TokenType.LAYER, TokenType.SPRITE, TokenType.INTERRUPT,
+                           TokenType.INTERRUPT_VECTOR, TokenType.MEMORY_REGION):
+            # Check if this is a function or variable declaration
+            # Look ahead to determine the type
+            saved_pos = self.current
+            try:
+                return_type = self._parse_type()
+                name_token = self._consume(TokenType.IDENTIFIER, "Expected identifier after type")
+                
+                if self._check(TokenType.LPAREN):
+                    # This is definitely a function declaration
+                    self.current = saved_pos
+                    return self._parse_function_declaration()
+                else:
+                    # This is a variable declaration
+                    self.current = saved_pos
+                    return self._parse_variable_declaration()
+            except ParserError as e:
+                # Only try as variable if the lookahead itself failed,
+                # not if function body parsing failed
+                if self.current <= saved_pos + 2:  # Still in lookahead phase
+                    self.current = saved_pos
+                    return self._parse_variable_declaration()
+                else:
+                    # Error occurred in function body parsing - re-raise
+                    raise e
+        elif token.type == TokenType.IDENTIFIER:
+            # Could be a custom type variable declaration like "Point p;" 
+            # or a function with custom return type
+            saved_pos = self.current
+            try:
+                type_name = self._advance().value  # consume potential type
+                name_token = self._consume(TokenType.IDENTIFIER, "Expected identifier after type")
+                
+                if self._check(TokenType.LPAREN):
+                    # This is a function declaration with custom return type
+                    self.current = saved_pos
+                    return self._parse_function_declaration()
+                else:
+                    # This is a variable declaration with custom type
+                    self.current = saved_pos
+                    return self._parse_variable_declaration()
+            except ParserError as e:
+                # If lookahead fails, this isn't a valid declaration
+                self.current = saved_pos
+                raise ParserError(
+                    f"Expected declaration, found {token.type.name}",
+                    self.filename, token.line, token.column
+                )
+        else:
+            raise ParserError(
+                f"Expected declaration, found {token.type.name}",
+                self.filename, token.line, token.column
+            )
+
+    def _parse_struct_declaration(self) -> StructDeclaration:
+        """Parse a struct declaration."""
+        self._consume(TokenType.STRUCT, "Expected 'struct'")
+        name_token = self._consume(TokenType.IDENTIFIER, "Expected struct name")
+        self._consume(TokenType.LBRACE, "Expected '{' after struct name")
+
+        fields = []
+        while not self._check(TokenType.RBRACE) and not self._is_at_end():
+            field = self._parse_struct_field()
+            fields.append(field)
+            self._consume(TokenType.SEMICOLON, "Expected ';' after field")
+
+        self._consume(TokenType.RBRACE, "Expected '}' after struct body")
+        
+        # Optional semicolon after struct declaration
+        if self._check(TokenType.SEMICOLON):
+            self._advance()  # Consume optional semicolon
+
+        struct_decl = StructDeclaration(name_token.value, fields)
+        struct_decl.line = name_token.line
+        struct_decl.column = name_token.column
+        return struct_decl
+
+    def _parse_struct_field(self) -> StructField:
+        """Parse a struct field."""
+        type_token = self._peek()
+        field_type = self._parse_type()
+        name_token = self._consume_identifier_or_type("Expected field name")
+
+        return StructField(field_type, name_token.value)
+
+    def _parse_function_declaration(self) -> FunctionDeclaration:
+        """Parse function declaration with interrupt support."""
+        is_interrupt = False
+        
+        # Check for interrupt keyword
+        if self._check(TokenType.INTERRUPT):
+            is_interrupt = True
+            self._advance()  # consume 'interrupt'
+            # For interrupt functions, the return type is implicitly void
+            return_type = Type.VOID
+            name_token = self._consume(TokenType.IDENTIFIER, "Expected function name")
+        else:
+            # Handle both syntaxes:
+            # 1. function void main() { ... }  (Astrid style)
+            # 2. void main() { ... }          (C style)
+            if self._check(TokenType.FUNCTION):
+                self._advance()  # consume 'function'
+                return_type = self._parse_type()
+                name_token = self._consume(TokenType.IDENTIFIER, "Expected function name")
+            else:
+                # C-style: type identifier(params)
+                return_type = self._parse_type()
+                name_token = self._consume(TokenType.IDENTIFIER, "Expected function name")
+        
+        self._consume(TokenType.LPAREN, "Expected '(' after function name")
+        
+        parameters = []
+        if not self._check(TokenType.RPAREN):
+            while True:
+                param_type = self._parse_type()
+                param_name = self._consume_identifier_or_type("Expected parameter name")
+                
+                # Handle default values if present
+                default_value = None
+                if self._check(TokenType.ASSIGN):
+                    self._advance()  # consume '='
+                    default_value = self._parse_expression()
+                
+                param = Parameter(param_type, param_name.value, default_value)
+                param.line = param_name.line
+                param.column = param_name.column
+                parameters.append(param)
+                
+                if not self._check(TokenType.COMMA):
+                    break
+                self._advance()  # consume comma
+        
+        self._consume(TokenType.RPAREN, "Expected ')' after parameters")
+        
+        # Parse return type (if using colon syntax: function name(): type)
+        # If we already parsed return type from C-style syntax, skip this
+        if self._check(TokenType.COLON):
+            self._advance()  # consume ':'
+            return_type = self._parse_type()
+        
+        # Parse function body
+        body = self._parse_block_statement()
+        
+        func_decl = FunctionDeclaration(return_type, name_token.value, parameters, body.statements)
+        func_decl.is_interrupt = is_interrupt  # Set interrupt flag
+        func_decl.line = name_token.line
+        func_decl.column = name_token.column
+        
+        return func_decl
+
+    def _parse_type(self) -> DataType:
+        """Parse a data type with multi-dimensional array support."""
+        if self._check(TokenType.STRUCT):
+            self._advance()  # consume 'struct'
+            struct_name = self._consume(TokenType.IDENTIFIER, "Expected struct name").value
+            base_type = StructType(struct_name)
+        elif self._check(TokenType.IDENTIFIER):
+            # This could be a struct type reference (e.g., "Point p")
+            type_token = self._advance()
+            base_type = StructType(type_token.value)
+        else:
+            # Parse basic type
+            type_token = self._advance()
+            if type_token.type not in [TokenType.INT8, TokenType.INT16, TokenType.UINT8, 
+                                     TokenType.UINT16, TokenType.CHAR, TokenType.STRING, TokenType.VOID,
+                                     TokenType.PIXEL, TokenType.COLOR, TokenType.SOUND,
+                                     TokenType.LAYER, TokenType.SPRITE, TokenType.INTERRUPT,
+                                     TokenType.INTERRUPT_VECTOR, TokenType.MEMORY_REGION]:
+                raise ParserError(
+                    f"Expected type, got {type_token.type}",
+                    self.filename, type_token.line, type_token.column
+                )
+            
+            type_map = {
+                TokenType.INT8: Type.INT8,
+                TokenType.INT16: Type.INT16,
+                TokenType.UINT8: Type.UINT8,
+                TokenType.UINT16: Type.UINT16,
+                TokenType.CHAR: Type.CHAR,
+                TokenType.STRING: Type.STRING,
+                TokenType.VOID: Type.VOID,
+                TokenType.PIXEL: Type.PIXEL,
+                TokenType.COLOR: Type.COLOR,
+                TokenType.SOUND: Type.SOUND,
+                TokenType.LAYER: Type.LAYER,
+                TokenType.SPRITE: Type.SPRITE,
+                TokenType.INTERRUPT: Type.INTERRUPT,
+                TokenType.INTERRUPT_VECTOR: Type.INTERRUPT_VECTOR,
+                TokenType.MEMORY_REGION: Type.MEMORY_REGION
+            }
+            base_type = type_map[type_token.type]
+        
+        # Handle multi-dimensional arrays
+        while self._check(TokenType.LBRACKET):
+            self._advance()  # consume '['
+            
+            # Parse array size if present
+            size = None
+            if not self._check(TokenType.RBRACKET):
+                size = self._parse_expression()
+            
+            self._consume(TokenType.RBRACKET, "Expected ']' after array size")
+            
+            # Create array type
+            from .ast import ArrayType
+            base_type = ArrayType(base_type, size)
+        
+        return base_type
+
+    def _parse_statement_list(self) -> List[Statement]:
+        """Parse a list of statements."""
+        statements = []
+
+        while not self._check(TokenType.RBRACE) and not self._is_at_end():
+            stmt = self._parse_statement()
+            if stmt:
+                statements.append(stmt)
+
+        return statements
+
+    def _parse_statement(self) -> Optional[Statement]:
+        """Parse a single statement."""
+        token = self._peek()
+
+        if token.type in (TokenType.INT8, TokenType.INT16, TokenType.UINT8, TokenType.UINT16, 
+                         TokenType.CHAR, TokenType.STRING, TokenType.PIXEL, TokenType.COLOR, TokenType.SOUND, 
+                         TokenType.LAYER, TokenType.SPRITE, TokenType.INTERRUPT):
+            # Need to look ahead to distinguish between:
+            # - Variable declaration: "int8 x = 5;"
+            # - Expression statement: "color++;"
+            
+            # Save position for lookahead
+            saved_pos = self.current
+            try:
+                # Try to parse as variable declaration
+                self._parse_type()  # Consume the type token
+                next_token = self._peek()
+                
+                # Check if next token could be a variable name
+                if (next_token.type == TokenType.IDENTIFIER or
+                    next_token.type in (TokenType.COLOR, TokenType.LAYER, TokenType.SPRITE, 
+                                      TokenType.SOUND, TokenType.PIXEL, TokenType.INT8, TokenType.INT16,
+                                      TokenType.CHAR, TokenType.STRING,
+                                      TokenType.INTERRUPT, TokenType.INTERRUPT_VECTOR, TokenType.MEMORY_REGION)):
+                    # This looks like a variable declaration
+                    self.current = saved_pos
+                    return self._parse_variable_declaration()
+                else:
+                    # Not a variable declaration, treat as expression
+                    self.current = saved_pos
+                    return self._parse_expression_statement()
+            except:
+                # If lookahead fails, restore position and parse as expression
+                self.current = saved_pos
+                return self._parse_expression_statement()
+        elif token.type == TokenType.IDENTIFIER:
+            # Could be a custom type variable declaration like "Point p;" 
+            # or an expression statement like "x = 5;"
+            saved_pos = self.current
+            try:
+                # Look ahead to see if this is "Identifier identifier;" pattern
+                type_token = self._advance()  # consume potential type
+                next_token = self._peek()
+                
+                if (next_token.type == TokenType.IDENTIFIER or
+                    next_token.type in (TokenType.COLOR, TokenType.LAYER, TokenType.SPRITE, 
+                                      TokenType.SOUND, TokenType.PIXEL, TokenType.INT8, TokenType.INT16,
+                                      TokenType.CHAR, TokenType.STRING,
+                                      TokenType.INTERRUPT, TokenType.INTERRUPT_VECTOR, TokenType.MEMORY_REGION)):
+                    # This looks like "CustomType varname;" - variable declaration
+                    self.current = saved_pos
+                    return self._parse_variable_declaration()
+                else:
+                    # This is an expression statement
+                    self.current = saved_pos
+                    return self._parse_expression_statement()
+            except:
+                # If lookahead fails, restore position and parse as expression
+                self.current = saved_pos
+                return self._parse_expression_statement()
+        elif token.type == TokenType.IF:
+            return self._parse_if_statement()
+        elif token.type == TokenType.WHILE:
+            return self._parse_while_statement()
+        elif token.type == TokenType.FOR:
+            return self._parse_for_statement()
+        elif token.type == TokenType.SWITCH:
+            return self._parse_switch_statement()
+        elif token.type == TokenType.BREAK:
+            return self._parse_break_statement()
+        elif token.type == TokenType.CONTINUE:
+            return self._parse_continue_statement()
+        
+        elif token.type == TokenType.INTERRUPT:
+            # Handle interrupt function declarations
+            self._advance()  # consume 'interrupt'
+            if self._check(TokenType.FUNCTION):
+                return self._parse_function_declaration()
+            else:
+                # Treat as variable declaration with interrupt type
+                return self._parse_variable_declaration()
+        
+        elif token.type == TokenType.RETURN:
+            return self._parse_return_statement()
+        elif token.type == TokenType.LBRACE:
+            return self._parse_block_statement()
+        else:
+            return self._parse_expression_statement()
+
+    def _parse_expression_statement(self) -> ExpressionStatement:
+        """Parse an expression statement."""
+        expr = self._parse_expression()
+        self._consume(TokenType.SEMICOLON, "Expected ';' after expression")
+
+        expr_stmt = ExpressionStatement(expr)
+        expr_stmt.line = expr.line
+        expr_stmt.column = expr.column
+        return expr_stmt
+
+    def _parse_variable_declaration(self) -> VariableDeclaration:
+        """Parse a variable declaration."""
+        var_type = self._parse_type()
+        
+        # Variable name can be an identifier or a type keyword used as identifier
+        token = self._peek()
+        if token.type == TokenType.IDENTIFIER:
+            name_token = self._consume(TokenType.IDENTIFIER, "Expected variable name")
+        elif token.type in (TokenType.LAYER, TokenType.SPRITE, TokenType.SOUND, 
+                           TokenType.COLOR, TokenType.PIXEL, TokenType.INT8, TokenType.INT16,
+                           TokenType.VOID, TokenType.INTERRUPT, TokenType.INTERRUPT_VECTOR, 
+                           TokenType.MEMORY_REGION):
+            name_token = self._advance()
+        else:
+            raise ParserError(
+                f"Expected variable name, found {token.type.name}",
+                self.filename, token.line, token.column
+            )
+
+        # Check for array declaration: name[size][size]... (multi-dimensional)
+        while self._check(TokenType.LBRACKET):
+            self._advance()  # Consume [
+            # For now, just consume the array size and ignore it
+            # TODO: Properly handle array types in the type system
+            self._parse_expression()  # Array size
+            self._consume(TokenType.RBRACKET, "Expected ']' after array size")
+
+        initializer = None
+        if self._check(TokenType.ASSIGN):
+            self._advance()  # Consume =
+            initializer = self._parse_expression()
+
+        self._consume(TokenType.SEMICOLON, "Expected ';' after variable declaration")
+
+        var_decl = VariableDeclaration(
+            var_type, name_token.value, initializer
+        )
+        var_decl.line = name_token.line
+        var_decl.column = name_token.column
+        return var_decl
+
+    def _parse_if_statement(self) -> IfStatement:
+        """Parse an if statement."""
+        if_token = self._consume(TokenType.IF, "Expected 'if'")
+        self._consume(TokenType.LPAREN, "Expected '(' after 'if'")
+        condition = self._parse_expression()
+        self._consume(TokenType.RPAREN, "Expected ')' after condition")
+
+        then_branch = self._parse_statement_block()
+
+        else_branch = None
+        if self._check(TokenType.ELSE):
+            self._advance()  # Consume else
+            else_branch = self._parse_statement_block()
+
+        if_stmt = IfStatement(
+            condition, then_branch, else_branch
+        )
+        if_stmt.line = if_token.line
+        if_stmt.column = if_token.column
+        return if_stmt
+
+    def _parse_while_statement(self) -> WhileStatement:
+        """Parse a while statement."""
+        while_token = self._consume(TokenType.WHILE, "Expected 'while'")
+        self._consume(TokenType.LPAREN, "Expected '(' after 'while'")
+        condition = self._parse_expression()
+        self._consume(TokenType.RPAREN, "Expected ')' after condition")
+
+        body = self._parse_statement_block()
+
+        while_stmt = WhileStatement(
+            condition, body
+        )
+        while_stmt.line = while_token.line
+        while_stmt.column = while_token.column
+        return while_stmt
+
+    def _parse_for_statement(self) -> ForStatement:
+        """Parse a for statement."""
+        for_token = self._consume(TokenType.FOR, "Expected 'for'")
+        self._consume(TokenType.LPAREN, "Expected '(' after 'for'")
+
+        # Initializer
+        initializer = None
+        if not self._check(TokenType.SEMICOLON):
+            if self._peek().type in (TokenType.INT8, TokenType.INT16, TokenType.PIXEL,
+                                    TokenType.COLOR, TokenType.SOUND, TokenType.LAYER,
+                                    TokenType.SPRITE):
+                # Parse variable declaration without expecting semicolon
+                var_type = self._parse_type()
+                name_token = self._consume(TokenType.IDENTIFIER, "Expected variable name")
+                self._consume(TokenType.ASSIGN, "Expected '=' in variable initialization")
+                initializer_expr = self._parse_expression()
+                
+                var_decl = VariableDeclaration(var_type, name_token.value, initializer_expr)
+                var_decl.line = name_token.line
+                var_decl.column = name_token.column
+                initializer = var_decl
+            else:
+                # Parse expression without expecting semicolon (for loop handles it)
+                initializer = self._parse_expression()
+
+        self._consume(TokenType.SEMICOLON, "Expected ';' after initializer")
+
+        # Condition
+        condition = None
+        if not self._check(TokenType.SEMICOLON):
+            condition = self._parse_expression()
+        self._consume(TokenType.SEMICOLON, "Expected ';' after condition")
+
+        # Increment
+        increment = None
+        if not self._check(TokenType.RPAREN):
+            increment = self._parse_expression()
+        self._consume(TokenType.RPAREN, "Expected ')' after increment")
+
+        body = self._parse_statement_block()
+
+        for_stmt = ForStatement(
+            initializer, condition, increment, body
+        )
+        for_stmt.line = for_token.line
+        for_stmt.column = for_token.column
+        return for_stmt
+
+    def _parse_switch_statement(self) -> SwitchStatement:
+        """Parse a switch statement."""
+        switch_token = self._consume(TokenType.SWITCH, "Expected 'switch'")
+        self._consume(TokenType.LPAREN, "Expected '(' after 'switch'")
+        expression = self._parse_expression()
+        self._consume(TokenType.RPAREN, "Expected ')' after switch expression")
+        self._consume(TokenType.LBRACE, "Expected '{' after switch expression")
+
+        cases = []
+        default_case = None
+
+        while not self._check(TokenType.RBRACE) and not self._is_at_end():
+            if self._check(TokenType.CASE):
+                self._advance()  # consume 'case'
+                case_value = self._parse_expression()
+                self._consume(TokenType.COLON, "Expected ':' after case value")
+                
+                # Parse case body until next case, default, or }
+                case_body = []
+                while (not self._check(TokenType.CASE, TokenType.DEFAULT, TokenType.RBRACE) 
+                       and not self._is_at_end()):
+                    stmt = self._parse_statement()
+                    if stmt:
+                        case_body.append(stmt)
+                
+                cases.append(SwitchCase(case_value, case_body))
+                
+            elif self._check(TokenType.DEFAULT):
+                self._advance()  # consume 'default'
+                self._consume(TokenType.COLON, "Expected ':' after 'default'")
+                
+                # Parse default body until }
+                default_body = []
+                while not self._check(TokenType.RBRACE) and not self._is_at_end():
+                    stmt = self._parse_statement()
+                    if stmt:
+                        default_body.append(stmt)
+                        
+                default_case = default_body
+            else:
+                break
+
+        self._consume(TokenType.RBRACE, "Expected '}' after switch body")
+
+        switch_stmt = SwitchStatement(expression, cases, default_case)
+        switch_stmt.line = switch_token.line
+        switch_stmt.column = switch_token.column
+        return switch_stmt
+
+    def _parse_break_statement(self) -> BreakStatement:
+        """Parse a break statement."""
+        break_token = self._consume(TokenType.BREAK, "Expected 'break'")
+        self._consume(TokenType.SEMICOLON, "Expected ';' after 'break'")
+        
+        break_stmt = BreakStatement()
+        break_stmt.line = break_token.line
+        break_stmt.column = break_token.column
+        return break_stmt
+
+    def _parse_continue_statement(self) -> ContinueStatement:
+        """Parse a continue statement."""
+        continue_token = self._consume(TokenType.CONTINUE, "Expected 'continue'")
+        self._consume(TokenType.SEMICOLON, "Expected ';' after 'continue'")
+        
+        continue_stmt = ContinueStatement()
+        continue_stmt.line = continue_token.line
+        continue_stmt.column = continue_token.column
+        return continue_stmt
+
+    def _parse_return_statement(self) -> ReturnStatement:
+        """Parse a return statement."""
+        return_token = self._consume(TokenType.RETURN, "Expected 'return'")
+
+        value = None
+        if not self._check(TokenType.SEMICOLON):
+            value = self._parse_expression()
+
+        self._consume(TokenType.SEMICOLON, "Expected ';' after return")
+
+        return_stmt = ReturnStatement(value)
+        return_stmt.line = return_token.line
+        return_stmt.column = return_token.column
+        return return_stmt
+
+    def _parse_block_statement(self) -> BlockStatement:
+        """Parse a block statement."""
+        lbrace_token = self._consume(TokenType.LBRACE, "Expected '{'")
+        statements = self._parse_statement_list()
+        self._consume(TokenType.RBRACE, "Expected '}'")
+
+        block_stmt = BlockStatement(statements)
+        block_stmt.line = lbrace_token.line
+        block_stmt.column = lbrace_token.column
+        return block_stmt
+
+    def _parse_statement_block(self) -> List[Statement]:
+        """Parse a statement block (for if/while/for bodies)."""
+        if self._check(TokenType.LBRACE):
+            block = self._parse_block_statement()
+            return block.statements
+        else:
+            stmt = self._parse_statement()
+            return [stmt] if stmt else []
+
+    def _parse_expression(self) -> Expression:
+        """Parse an expression with precedence."""
+        return self._parse_assignment()
+
+    def _parse_assignment(self) -> Expression:
+        """Parse assignment expression."""
+        expr = self._parse_ternary()
+
+        if self._check(TokenType.ASSIGN):
+            operator = self._advance()  # Consume =
+            value = self._parse_assignment()
+
+            # Check if left side is a valid assignment target
+            if isinstance(expr, (Variable, HardwareAccess, MemberAccess, ArrayAccess)):
+                assign = Assignment(expr, value)
+                assign.line = operator.line
+                assign.column = operator.column
+                return assign
+            else:
+                raise ParserError(
+                    "Invalid assignment target",
+                    self.filename, operator.line, operator.column
+                )
+
+        return expr
+
+    def _parse_ternary(self) -> Expression:
+        """Parse ternary conditional expression."""
+        expr = self._parse_logical_or()
+        
+        if self._check(TokenType.QUESTION):
+            self._advance()  # consume '?'
+            then_expr = self._parse_expression()
+            self._consume(TokenType.COLON, "Expected ':' in ternary expression")
+            else_expr = self._parse_ternary()
+            ternary = TernaryOp(expr, then_expr, else_expr)
+            ternary.line = expr.line
+            ternary.column = expr.column
+            return ternary
+        
+        return expr
+
+    def _parse_logical_or(self) -> Expression:
+        """Parse logical OR expression."""
+        expr = self._parse_logical_and()
+
+        while self._check(TokenType.OR):
+            operator = self._advance().value
+            right = self._parse_logical_and()
+            binop = BinaryOp(expr, operator, right)
+            binop.line = expr.line
+            binop.column = expr.column
+            expr = binop
+
+        return expr
+
+    def _parse_logical_and(self) -> Expression:
+        """Parse logical AND expression."""
+        expr = self._parse_bitwise_or()
+
+        while self._check(TokenType.AND):
+            operator = self._advance().value
+            right = self._parse_bitwise_or()
+            binop = BinaryOp(expr, operator, right)
+            binop.line = expr.line
+            binop.column = expr.column
+            expr = binop
+
+        return expr
+
+    def _parse_bitwise_or(self) -> Expression:
+        """Parse bitwise OR expression."""
+        expr = self._parse_bitwise_xor()
+
+        while self._check(TokenType.BIT_OR):
+            operator = self._advance().value
+            right = self._parse_bitwise_xor()
+            binop = BinaryOp(expr, operator, right)
+            binop.line = expr.line
+            binop.column = expr.column
+            expr = binop
+
+        return expr
+
+    def _parse_bitwise_xor(self) -> Expression:
+        """Parse bitwise XOR expression."""
+        expr = self._parse_bitwise_and()
+
+        while self._check(TokenType.BIT_XOR):
+            operator = self._advance().value
+            right = self._parse_bitwise_and()
+            binop = BinaryOp(expr, operator, right)
+            binop.line = expr.line
+            binop.column = expr.column
+            expr = binop
+
+        return expr
+
+    def _parse_bitwise_and(self) -> Expression:
+        """Parse bitwise AND expression."""
+        expr = self._parse_equality()
+
+        while self._check(TokenType.BIT_AND):
+            operator = self._advance().value
+            right = self._parse_equality()
+            binop = BinaryOp(expr, operator, right)
+            binop.line = expr.line
+            binop.column = expr.column
+            expr = binop
+
+        return expr
+
+    def _parse_equality(self) -> Expression:
+        """Parse equality expression."""
+        expr = self._parse_comparison()
+
+        while self._check(TokenType.EQUAL, TokenType.NOT_EQUAL):
+            operator = self._advance().value
+            right = self._parse_comparison()
+            binop = BinaryOp(expr, operator, right)
+            binop.line = expr.line
+            binop.column = expr.column
+            expr = binop
+
+        return expr
+
+    def _parse_comparison(self) -> Expression:
+        """Parse comparison expression."""
+        expr = self._parse_term()
+
+        while self._check(TokenType.LESS, TokenType.LESS_EQUAL,
+                         TokenType.GREATER, TokenType.GREATER_EQUAL):
+            operator = self._advance().value
+            right = self._parse_term()
+            binop = BinaryOp(expr, operator, right)
+            binop.line = expr.line
+            binop.column = expr.column
+            expr = binop
+
+        return expr
+
+    def _parse_term(self) -> Expression:
+        """Parse term expression (addition/subtraction)."""
+        expr = self._parse_factor()
+
+        while self._check(TokenType.PLUS, TokenType.MINUS):
+            operator = self._advance().value
+            right = self._parse_factor()
+            binop = BinaryOp(expr, operator, right)
+            binop.line = expr.line
+            binop.column = expr.column
+            expr = binop
+
+        return expr
+
+    def _parse_factor(self) -> Expression:
+        """Parse factor expression (multiplication/division)."""
+        expr = self._parse_unary()
+
+        while self._check(TokenType.MULTIPLY, TokenType.DIVIDE, TokenType.MODULO):
+            operator = self._advance().value
+            right = self._parse_unary()
+            binop = BinaryOp(expr, operator, right)
+            binop.line = expr.line
+            binop.column = expr.column
+            expr = binop
+
+        return expr
+
+    def _parse_unary(self) -> Expression:
+        """Parse unary expression."""
+        if self._check(TokenType.MINUS, TokenType.NOT, TokenType.BIT_NOT):
+            operator = self._advance().value
+            operand = self._parse_unary()
+            unop = UnaryOp(operator, operand)
+            unop.line = operand.line
+            unop.column = operand.column
+            return unop
+        elif self._check(TokenType.INCREMENT):
+            # Pre-increment: ++x
+            op_token = self._advance()
+            operand = self._parse_unary()
+            unop = UnaryOp("++", operand)
+            unop.line = op_token.line
+            unop.column = op_token.column
+            return unop
+        elif self._check(TokenType.DECREMENT):
+            # Pre-decrement: --x
+            op_token = self._advance()
+            operand = self._parse_unary()
+            unop = UnaryOp("--", operand)
+            unop.line = op_token.line
+            unop.column = op_token.column
+            return unop
+
+        return self._parse_postfix()
+
+    def _parse_postfix(self) -> Expression:
+        """Parse postfix expression (member access, array access, increment/decrement)."""
+        expr = self._parse_primary()
+
+        while True:
+            if self._check(TokenType.DOT):
+                self._advance()  # Consume .
+                member_token = self._consume_identifier_or_type("Expected member name")
+                member_access = MemberAccess(expr, member_token.value)
+                member_access.line = expr.line
+                member_access.column = expr.column
+                expr = member_access
+            elif self._check(TokenType.LBRACKET):
+                self._advance()  # Consume [
+                index = self._parse_expression()
+                self._consume(TokenType.RBRACKET, "Expected ']' after array index")
+                array_access = ArrayAccess(expr, index)
+                array_access.line = expr.line
+                array_access.column = expr.column
+                expr = array_access
+            elif self._check(TokenType.INCREMENT):
+                # Post-increment: x++
+                self._advance()  # Consume ++
+                post_inc = UnaryOp("++", expr)
+                post_inc.line = expr.line
+                post_inc.column = expr.column
+                expr = post_inc
+            elif self._check(TokenType.DECREMENT):
+                # Post-decrement: x--
+                self._advance()  # Consume --
+                post_dec = UnaryOp("--", expr)
+                post_dec.line = expr.line
+                post_dec.column = expr.column
+                expr = post_dec
+            else:
+                break
+
+        return expr
+
+    def _parse_primary(self) -> Expression:
+        """Parse primary expression."""
+        token = self._peek()
+
+        if token.type == TokenType.INTEGER_LITERAL:
+            self._advance()
+            value = int(token.value)
+            # Don't infer type here - let semantic analysis handle it
+            literal = Literal(value, None)
+            literal.line = token.line
+            literal.column = token.column
+            return literal
+        elif token.type == TokenType.STRING_LITERAL:
+            self._advance()
+            literal = Literal(token.value, Type.STRING)  # Proper string type
+            literal.line = token.line
+            literal.column = token.column
+            return literal
+        elif token.type == TokenType.CHAR_LITERAL:
+            self._advance()
+            # Convert char literal to its ASCII value
+            char_value = ord(token.value[0]) if token.value else 0
+            literal = Literal(char_value, Type.CHAR)
+            literal.line = token.line
+            literal.column = token.column
+            return literal
+        elif token.type == TokenType.TRUE:
+            self._advance()
+            literal = Literal(True, Type.INT8)
+            literal.line = token.line
+            literal.column = token.column
+            return literal
+        elif token.type == TokenType.FALSE:
+            self._advance()
+            literal = Literal(False, Type.INT8)
+            literal.line = token.line
+            literal.column = token.column
+            return literal
+        elif token.type == TokenType.NULL:
+            self._advance()
+            literal = Literal(0, Type.INT16)
+            literal.line = token.line
+            literal.column = token.column
+            return literal
+        elif token.type == TokenType.IDENTIFIER:
+            return self._parse_identifier_expression()
+        elif token.type in (TokenType.LAYER, TokenType.SPRITE, TokenType.SOUND, 
+                           TokenType.COLOR, TokenType.PIXEL, TokenType.INT8, TokenType.INT16,
+                           TokenType.INTERRUPT, TokenType.INTERRUPT_VECTOR, TokenType.MEMORY_REGION):
+            # Handle built-in type keywords used as identifiers in expressions
+            return self._parse_identifier_expression()
+        elif token.type == TokenType.LPAREN:
+            self._advance()  # Consume (
+            expr = self._parse_expression()
+            self._consume(TokenType.RPAREN, "Expected ')'")
+            return expr
+        else:
+            raise ParserError(
+                f"Expected expression, found {token.type.name}",
+                self.filename, token.line, token.column
+            )
+
+    def _parse_identifier_expression(self) -> Expression:
+        """Parse an identifier-based expression."""
+        token = self._peek()
+        
+        # Handle built-in type keywords used as identifiers/variable names
+        if token.type in (TokenType.LAYER, TokenType.SPRITE, TokenType.SOUND, 
+                         TokenType.COLOR, TokenType.PIXEL, TokenType.INT8, TokenType.INT16,
+                         TokenType.INTERRUPT, TokenType.INTERRUPT_VECTOR, TokenType.MEMORY_REGION):
+            name_token = self._advance()
+            name = token.value  # Use the token value, not type name
+        else:
+            name_token = self._consume(TokenType.IDENTIFIER, "Expected identifier")
+            name = name_token.value
+
+        # Check for function call
+        if self._check(TokenType.LPAREN):
+            self._advance()  # Consume (
+            arguments = []
+
+            if not self._check(TokenType.RPAREN):
+                arguments = self._parse_argument_list()
+
+            self._consume(TokenType.RPAREN, "Expected ')' after arguments")
+            func_call = FunctionCall(name, arguments)
+            func_call.line = name_token.line
+            func_call.column = name_token.column
+            return func_call
+
+        # Check for hardware access ONLY for hardware/memory identifiers
+        elif self._check(TokenType.DOT) and name in ("hardware", "memory"):
+            self._advance()  # Consume .
+            member_token = self._consume(TokenType.IDENTIFIER, f"Expected member name after {name}")
+            
+            # Check if this is a function call like memory.region()
+            if self._check(TokenType.LPAREN):
+                self._advance()  # Consume (
+                arguments = []
+                if not self._check(TokenType.RPAREN):
+                    arguments = self._parse_argument_list()
+                self._consume(TokenType.RPAREN, "Expected ')' after arguments")
+                
+                # Create a special function call for hardware/memory access
+                func_name = f"{name}.{member_token.value}"
+                func_call = FunctionCall(func_name, arguments)
+                func_call.line = name_token.line
+                func_call.column = name_token.column
+                return func_call
+            else:
+                # Regular hardware access
+                hw_access = HardwareAccess(f"{name}.{member_token.value}")
+                hw_access.line = name_token.line
+                hw_access.column = name_token.column
+                return hw_access
+
+        # Regular variable - let postfix parsing handle member access
+        else:
+            var = Variable(name)
+            var.line = name_token.line
+            var.column = name_token.column
+            return var
+
+    def _parse_argument_list(self) -> List[Expression]:
+        """Parse a function call argument list."""
+        arguments = []
+
+        while True:
+            arguments.append(self._parse_expression())
+
+            if not self._check(TokenType.COMMA):
+                break
+            self._advance()  # Consume comma
+
+        return arguments
+
+    def _consume(self, token_type: TokenType, message: str) -> Token:
+        """Consume a token of the expected type."""
+        if self._check(token_type):
+            return self._advance()
+        else:
+            token = self._peek()
+            raise ParserError(
+                message,
+                self.filename, token.line, token.column
+            )
+
+    def _consume_identifier_or_type(self, message: str) -> Token:
+        """Consume a token that can be an identifier or a type keyword used as an identifier."""
+        token = self._peek()
+        # Allow type tokens to be used as identifiers (for parameter names, etc.)
+        type_tokens = {
+            TokenType.INT8, TokenType.INT16, TokenType.UINT8, TokenType.UINT16,
+            TokenType.CHAR, TokenType.STRING, TokenType.PIXEL, TokenType.COLOR,
+            TokenType.SOUND, TokenType.LAYER, TokenType.SPRITE, TokenType.INTERRUPT,
+            TokenType.INTERRUPT_VECTOR, TokenType.MEMORY_REGION
+        }
+        
+        if self._check(TokenType.IDENTIFIER) or token.type in type_tokens:
+            return self._advance()
+        else:
+            raise ParserError(
+                message,
+                self.filename, token.line, token.column
+            )
+
+    def _check(self, *token_types: TokenType) -> bool:
+        """Check if the current token is one of the given types."""
+        if self._is_at_end():
+            return False
+        return self._peek().type in token_types
+
+    def _advance(self) -> Token:
+        """Advance to the next token and return the current one."""
+        if not self._is_at_end():
+            self.current += 1
+        return self._previous()
+
+    def _peek(self) -> Token:
+        """Peek at the current token."""
+        return self.tokens[self.current]
+
+    def _previous(self) -> Token:
+        """Get the previous token."""
+        return self.tokens[self.current - 1]
+
+    def _peek_next(self) -> Optional[Token]:
+        """Peek at the next token without advancing."""
+        if self.current + 1 >= len(self.tokens):
+            return None
+        return self.tokens[self.current + 1]
+
+    def _is_at_end(self) -> bool:
+        """Check if we've reached the end of tokens."""
+        return self._peek().type == TokenType.EOF

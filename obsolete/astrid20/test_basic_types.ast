@@ -1,0 +1,9 @@
+// Test basic new types compilation
+interrupt_vector timer_vec;
+memory_region zero_page;
+
+void main() {
+    int16 x = 10;
+    x = x + 5;
+    halt();
+}

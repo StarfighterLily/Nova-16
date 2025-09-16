@@ -1,0 +1,22 @@
+// Test stack-centric parameter access improvements
+int add_three(int a, int b, int c) {
+    int temp = a + b;
+    return temp + c;
+}
+
+int multiply_and_add(int x, int y, int z) {
+    int product = x * y;
+    int result = product + z;
+    return result;
+}
+
+void main() {
+    // Test basic function calls with parameters
+    int result1 = add_three(5, 10, 15);  // Should be 30
+    int result2 = multiply_and_add(3, 4, 5);  // Should be 17
+    
+    // Test nested calls  
+    int result3 = add_three(result1, result2, 10);  // Should be 57
+    
+    halt();
+}

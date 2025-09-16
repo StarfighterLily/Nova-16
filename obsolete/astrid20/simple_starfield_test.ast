@@ -1,0 +1,18 @@
+// Simple Starfield Test
+// Just draw some stars without function calls
+
+void main(){
+    int16 j = 0;
+
+    set_layer(1);
+    
+    // Draw a few stars directly
+    for(j = 0; j < 5; j++){
+        int8 x = random_range(0, 255);
+        int8 y = random_range(0, 255);
+        int8 color = random_range(1, 31);
+        set_pixel(x, y, color);
+    }
+    
+    halt();
+}

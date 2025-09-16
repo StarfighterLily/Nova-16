@@ -1,0 +1,9 @@
+// Minimal parameter test - exact copy of working syntax
+void main(){
+    test_func(10, 20, 30);
+    halt();
+}
+
+void test_func(int8 x, int8 y, int8 col){
+    set_pixel(x, y, col);
+}

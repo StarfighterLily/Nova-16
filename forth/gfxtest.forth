@@ -1,0 +1,35 @@
+VARIABLE P0
+VARIABLE P1
+VARIABLE R0
+
+: GFXTEST
+1 VMODE
+0 VX !
+0 VY !
+0 P0 !
+1000 P1 !
+0 R0 !
+1 LAYER
+
+BEGIN
+  P0 @ DUP
+  256 / VX !
+  255 AND VY !
+  R0 @ SWRITE
+  P0 @ 1 + P0 !
+  R0 @ 1 + 255 AND R0 !
+  P0 @ P1 @ =
+UNTIL
+
+0 VMODE
+108 VX !
+118 VY !
+95 R0 !
+5 LAYER
+." De Nova Stella"
+1 LAYER
+
+." FORTH GFX Test Complete"
+;
+
+GFXTEST

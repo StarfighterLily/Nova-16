@@ -1,0 +1,15 @@
+// Test Boundary Values
+// Test the specific case that might be causing issues
+
+void main() {
+    // This should work (both values <= 255)
+    int16 safe = random_range(254, 255);
+    
+    // This might cause the issue (max value > 255)
+    int16 boundary = random_range(254, 256);
+    
+    // Visual indication
+    set_pixel(0, 0, 1); // Green if we reach here
+    
+    halt();
+}

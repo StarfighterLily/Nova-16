@@ -1,0 +1,9 @@
+// Test with user function with one parameter
+void main(){
+    set_layer_num(1);
+    halt();
+}
+
+void set_layer_num(int8 layer){
+    set_layer(layer);
+}

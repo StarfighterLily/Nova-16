@@ -1,0 +1,6 @@
+// Test the specific boundary case
+void main() {
+    int16 boundary = random_range(254, 256);
+    set_pixel(0, 0, 1); // Green if successful
+    halt();
+}

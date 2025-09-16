@@ -1,0 +1,43 @@
+// Astrid 2.0 Random Function Test
+// This program tests the new random number generation functions
+
+void main() {
+    // Test basic random() function
+    int16 rand1 = random();
+    int16 rand2 = random();
+    int16 rand3 = random();
+    
+    // Test random_range() function with constants (using int16 to avoid type issues)
+    int16 dice = random_range(1, 6);        // Dice roll 1-6
+    int16 x_coord = random_range(0, 255);   // Random X coordinate
+    int16 y_coord = random_range(0, 255);   // Random Y coordinate
+    int16 color_val = random_range(0, 31);  // Random color
+    
+    // Convert to proper types for graphics
+    int8 x = x_coord;
+    int8 y = y_coord;
+    int8 random_color = color_val;
+    
+    // Test random_range() with variables
+    int16 min_val = 10;
+    int16 max_val = 50;
+    int16 range_test = random_range(min_val, max_val);
+    
+    // Create some visual output using random values
+    set_layer(1);
+    
+    // Draw 10 random pixels
+    for (int8 i = 0; i < 10; i = i + 1) {
+        int16 rand_x_16 = random_range(0, 255);
+        int16 rand_y_16 = random_range(0, 255);
+        int16 rand_color_16 = random_range(1, 31);
+        
+        int8 rand_x = rand_x_16;
+        int8 rand_y = rand_y_16;
+        int8 rand_color = rand_color_16;
+        
+        set_pixel(rand_x, rand_y, rand_color);
+    }
+    
+    halt();
+}

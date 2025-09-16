@@ -1,0 +1,15 @@
+void main() {
+    // Test 1: Variable assignment and access
+    int16 x = 25;
+    int16 y = 50;
+    
+    // Test 2: For loop with graphics
+    for (int16 i = 0; i < 3; i++) {
+        set_layer(1);
+        set_pixel(x + i * 10, y, 0x1F);
+    }
+    
+    // Test 3: Variable arithmetic
+    int16 z = x + y;
+    set_pixel(z, 100, 0x0F);
+}

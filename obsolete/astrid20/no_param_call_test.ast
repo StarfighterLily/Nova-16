@@ -1,0 +1,9 @@
+// Test with user function with no parameters
+void main(){
+    simple_function();
+    halt();
+}
+
+void simple_function(){
+    set_layer(1);
+}

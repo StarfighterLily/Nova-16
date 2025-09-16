@@ -1,0 +1,9 @@
+// Simple function call test
+void main(){
+    test_function();
+    halt();
+}
+
+void test_function(){
+    // Simple function that does nothing
+}
