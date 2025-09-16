@@ -108,43 +108,73 @@ The Nova-16 supports 8 interrupt levels with hardware prioritization:
 ## Instruction Set Architecture
 
 ### Instruction Format and Encoding
-- **Variable-length instructions**: 1-4 avg bytes per instruction
-- **Opcode**: 1 byte (defines operation and addressing mode)
-- **Operands**: 0-3 bytes (registers, immediate values, addresses)
+- **Prefixed operand instructions**: All instructions use a consistent format
+- **Opcode**: 1 byte (defines core operation)
+- **Mode byte**: 1 byte (defines operand addressing modes)
+- **Operands**: Variable length based on mode byte (0-6 bytes)
 - **Big-endian encoding**: Multi-byte values stored MSB first
 
-### Addressing Modes
+#### New Instruction Format
+```
+Instruction: [Opcode] [Mode Byte] [Operand Data...]
 
-| Mode | Syntax | Description | Example |
-|------|--------|-------------|---------|
-| Immediate | `value` | Value is part of instruction | `MOV R0, 42` |
-| Register | `reg` | Value is in register | `MOV R0, R1` |
-| Direct | `addr` | Value is at memory address | `LOAD R0, 0x1000` |
-| Indirect | `[reg]` | Value is at address in register | `LOAD R0, [SP]` |
-| Indexed | `[reg+offset]` | Value is at register + offset | `LOAD R0, [SP+5]` |
-| High-byte | `reg:` | High 8 bits of 16-bit register | `MOV R0, SP:` |
-| Low-byte | `:reg` | Low 8 bits of 16-bit register | `MOV R0, :SP` |
+Mode Byte Format:
+Bits 0-1: Operand 1 addressing mode
+Bits 2-3: Operand 2 addressing mode  
+Bits 4-5: Operand 3 addressing mode
+Bit 6: Indexed addressing flag
+Bit 7: Direct addressing flag
+
+Addressing Modes:
+00: Register direct
+01: Immediate 8-bit
+10: Immediate 16-bit
+11: Memory reference (direct/indirect/indexed)
+```
+
+#### Example Instructions
+```
+MOV R0, 0x1234
+06 08 A9 12 34
+ |  |  |  |  |
+ |  |  |  |  +- 0x34 (low byte of 0x1234)
+ |  |  |  +---- 0x12 (high byte of 0x1234)  
+ |  |  +------- 0xA9 (R0 register encoding)
+ |  +---------- 0x08 (mode: op1=reg, op2=imm16)
+ +------------- 0x06 (MOV opcode)
+
+PUSH P0
+2E 00 B3
+ |  |  |
+ |  |  +- 0xB3 (P0 register encoding)
+ |  +---- 0x00 (mode: op1=reg)
+ +------- 0x2E (PUSH opcode)
+```
 
 ### Register Encoding
-The CPU uses specific byte codes to identify registers in instructions:
+The CPU uses specific byte codes to identify registers in the new prefixed operand format:
 
-| Register Type | Range | Encoding | Example |
-|---------------|--------|----------|---------|
-| R0-R9 | 0xA9-0xB2 | Direct 8-bit | R0 = 0xA9 |
-| P0-P9 | 0xB3-0xBC | Direct 16-bit | P0 = 0xB3 |
-| SP (P8) | 0xBB | Stack pointer | SP = 0xBB |
-| FP (P9) | 0xBC | Frame pointer | FP = 0xBC |
-| VX, VY | 0xBD-0xBE | Graphics registers | VX = 0xBD |
-| [R0]-[R9] | 0xBF-0xC8 | R indirect | [R0] = 0xBF |
-| [P0]-[P9] | 0xC9-0xD2 | P indirect | [P0] = 0xC9 |
-| [SP]-[FP] | 0xD1-0xD2 | SP/FP indirect | [SP] = 0xD1 |
-| P0:-P9: | 0xD5-0xDE | High byte | P0: = 0xD5 |
-| SP:, FP: | 0xDD-0xDE | High byte | SP: = 0xDD |
-| :P0-:P9 | 0xDF-0xE8 | Low byte | :P0 = 0xDF |
-| :SP, :FP | 0xE7-0xE8 | Low byte | :SP = 0xE7 |
-| R0-R9 | 0xE9-0xF2 | indexed | R0 + 2 = 0xE9 |
-| P0-P9 | 0xF3-0xFC | indexed | P0 + 2 = 0xF3 |
-| SP, FP | 0xFB-0xFC | indexed | SP + 2 = 0xFB |
+| Register | Encoding | Type | Description |
+|----------|----------|------|-------------|
+| R0-R9 | 0xA9-0xB2 | 8-bit | General purpose registers |
+| P0-P9 | 0xB3-0xBC | 16-bit | General purpose registers |
+| VX | 0xBD | 8-bit | Graphics X coordinate |
+| VY | 0xBE | 8-bit | Graphics Y coordinate |
+| VM | 0x5F | 8-bit | Video mode register |
+| VL | 0x60 | 8-bit | Video layer register |
+| TT | 0x61 | 16-bit | Timer counter |
+| TM | 0x62 | 16-bit | Timer match value |
+| TC | 0x63 | 8-bit | Timer control |
+| TS | 0x64 | 8-bit | Timer speed |
+| SP | 0xBB | 16-bit | Stack pointer (P8) |
+| FP | 0xBC | 16-bit | Frame pointer (P9) |
+
+#### Memory Addressing Encodings
+| Addressing Mode | Encoding Format | Example |
+|----------------|-----------------|---------|
+| Direct | [0xHHHH] | [0x1000] = 0x10 0x00 |
+| Register Indirect | [reg] | [P0] = 0xB3 |
+| Register Indexed | [reg+offset] | [P0+4] = 0xB3 0x04 |
 
 
 ## Instruction Set Reference

@@ -18,41 +18,14 @@ def create_reverse_maps():
     for mnemonic, opcode_str, size in opcodes:
         opcode_val = int( opcode_str, 16 )
 
-        # Handle all register types (direct, indirect, indexed, high/low byte)
+        # For new prefixed operand system, all instructions have size 1 (just opcode)
+        # The actual size is calculated dynamically based on mode byte
         if mnemonic in reg_mnemonics or mnemonic.endswith( ':' ) or mnemonic.startswith( ':' ) or mnemonic in ['SP', 'FP']:
-            # Determine register type based on opcode range
-            if 0xBF <= opcode_val <= 0xC8:  # R indirect
-                reg_name = f"R{opcode_val - 0xBF}"
-                register_map[ opcode_val ] = f"[{reg_name}]"
-            elif 0xC9 <= opcode_val <= 0xD2:  # P indirect
-                reg_name = f"P{opcode_val - 0xC9}"
-                register_map[ opcode_val ] = f"[{reg_name}]"
-            elif 0xD3 <= opcode_val <= 0xD4:  # V indirect
-                reg_name = "VX" if opcode_val == 0xD3 else "VY"
-                register_map[ opcode_val ] = f"[{reg_name}]"
-            elif 0xE9 <= opcode_val <= 0xF2:  # R indexed
-                reg_name = f"R{opcode_val - 0xE9}"
-                register_map[ opcode_val ] = f"R{opcode_val - 0xE9}_indexed"
-            elif 0xF3 <= opcode_val <= 0xFB:  # P indexed (P0-P8)
-                reg_name = f"P{opcode_val - 0xF3}"
-                register_map[ opcode_val ] = f"P{opcode_val - 0xF3}_indexed"
-            elif opcode_val == 0xFC:  # FP indexed (P9)
-                register_map[ opcode_val ] = "FP_indexed"
-            elif 0xFD <= opcode_val <= 0xFE:  # V indexed
-                reg_name = "VX" if opcode_val == 0xFD else "VY"
-                register_map[ opcode_val ] = f"{reg_name}_indexed"
-            elif 0xD5 <= opcode_val <= 0xDE:  # P high byte
-                reg_name = f"P{opcode_val - 0xD5}"
-                register_map[ opcode_val ] = f"{reg_name}:"
-            elif 0xDF <= opcode_val <= 0xE8:  # P low byte
-                reg_name = f"P{opcode_val - 0xDF}"
-                register_map[ opcode_val ] = f":{reg_name}"
-            else:
-                # Direct register - use the actual mnemonic from opcodes list
-                register_map[ opcode_val ] = mnemonic
+            # Direct register - use the actual mnemonic from opcodes list
+            register_map[ opcode_val ] = mnemonic
         else:
-            # It's a standard instruction
-            opcode_map[ opcode_val ] = ( mnemonic, size )
+            # It's a standard instruction - for new system, size is operand count
+            opcode_map[ opcode_val ] = ( mnemonic, size )  # Size is now operand count
             
     return opcode_map, register_map
 
@@ -148,6 +121,200 @@ def format_string_data(bytecode, start_pos, length):
         hex_bytes = ' '.join(f'{b:02X}' for b in bytecode[start_pos:start_pos + length])
         return f'DB {hex_bytes}'
 
+def disassemble_instruction_new(bytecode, pc, opcode_map, register_map):
+    """
+    Disassemble a single instruction in the new prefixed operand format.
+    Returns (mnemonic, operands_list, instruction_size)
+    """
+    if pc >= len(bytecode):
+        return "???", [], 1
+    
+    opcode = bytecode[pc]
+    if opcode not in opcode_map:
+        return f"0x{opcode:02X}", [], 1
+    
+    mnemonic, operand_count = opcode_map[opcode]
+    
+    # For new format, read mode byte
+    if pc + 1 >= len(bytecode):
+        return mnemonic, [], 1  # Incomplete instruction
+    
+    mode_byte = bytecode[pc + 1]
+    
+    # Parse mode byte
+    op1_mode = mode_byte & 0x03
+    op2_mode = (mode_byte >> 2) & 0x03
+    op3_mode = (mode_byte >> 4) & 0x03
+    indexed = (mode_byte & (1 << 6)) != 0
+    direct = (mode_byte & (1 << 7)) != 0
+    
+    operands = []
+    current_pc = pc + 2  # Start after opcode and mode byte
+    size = 2  # opcode + mode byte
+    
+    # Helper function to get register name from number
+    def reg_num_to_name(reg_num):
+        if 0xA9 <= reg_num <= 0xB2:
+            return f"R{reg_num - 0xA9}"
+        elif 0xB3 <= reg_num <= 0xBC:
+            return f"P{reg_num - 0xB3}"
+        elif reg_num == 0xBD:
+            return "VX"
+        elif reg_num == 0xBE:
+            return "VY"
+        elif reg_num == 0x5F:
+            return "VM"
+        elif reg_num == 0x60:
+            return "VL"
+        elif reg_num == 0x61:
+            return "TT"
+        elif reg_num == 0x62:
+            return "TM"
+        elif reg_num == 0x63:
+            return "TC"
+        elif reg_num == 0x64:
+            return "TS"
+        else:
+            return f"0x{reg_num:02X}"
+    
+    # Parse operand 1
+    if operand_count >= 1:
+        if op1_mode == 0:  # Register direct
+            if current_pc < len(bytecode):
+                reg_num = bytecode[current_pc]
+                operands.append(reg_num_to_name(reg_num))
+                current_pc += 1
+                size += 1
+        elif op1_mode == 1:  # Immediate 8-bit
+            if current_pc < len(bytecode):
+                imm8 = bytecode[current_pc]
+                operands.append(f"0x{imm8:02X}")
+                current_pc += 1
+                size += 1
+        elif op1_mode == 2:  # Immediate 16-bit
+            if current_pc + 1 < len(bytecode):
+                high = bytecode[current_pc]
+                low = bytecode[current_pc + 1]
+                imm16 = (high << 8) | low
+                operands.append(f"0x{imm16:04X}")
+                current_pc += 2
+                size += 2
+        elif op1_mode == 3:  # Memory reference
+            if direct and not indexed:
+                # Direct memory address
+                if current_pc + 1 < len(bytecode):
+                    high = bytecode[current_pc]
+                    low = bytecode[current_pc + 1]
+                    addr = (high << 8) | low
+                    operands.append(f"[0x{addr:04X}]")
+                    current_pc += 2
+                    size += 2
+            elif not direct and not indexed:
+                # Register indirect
+                if current_pc < len(bytecode):
+                    reg_num = bytecode[current_pc]
+                    reg_name = reg_num_to_name(reg_num)
+                    operands.append(f"[{reg_name}]")
+                    current_pc += 1
+                    size += 1
+            elif not direct and indexed:
+                # Register indexed
+                if current_pc + 1 < len(bytecode):
+                    reg_num = bytecode[current_pc]
+                    offset = bytecode[current_pc + 1]
+                    reg_name = reg_num_to_name(reg_num)
+                    if offset > 127:
+                        offset = offset - 256
+                        operands.append(f"[{reg_name}{offset}]")
+                    else:
+                        operands.append(f"[{reg_name}+{offset}]")
+                    current_pc += 2
+                    size += 2
+            elif direct and indexed:
+                # Direct indexed
+                if current_pc + 2 < len(bytecode):
+                    high = bytecode[current_pc]
+                    low = bytecode[current_pc + 1]
+                    addr = (high << 8) | low
+                    offset = bytecode[current_pc + 2]
+                    if offset > 127:
+                        offset = offset - 256
+                        operands.append(f"[0x{addr:04X}{offset}]")
+                    else:
+                        operands.append(f"[0x{addr:04X}+{offset}]")
+                    current_pc += 3
+                    size += 3
+    
+    # Parse operand 2 (same logic as operand 1)
+    if operand_count >= 2:
+        if op2_mode == 0:  # Register direct
+            if current_pc < len(bytecode):
+                reg_num = bytecode[current_pc]
+                operands.append(reg_num_to_name(reg_num))
+                current_pc += 1
+                size += 1
+        elif op2_mode == 1:  # Immediate 8-bit
+            if current_pc < len(bytecode):
+                imm8 = bytecode[current_pc]
+                operands.append(f"0x{imm8:02X}")
+                current_pc += 1
+                size += 1
+        elif op2_mode == 2:  # Immediate 16-bit
+            if current_pc + 1 < len(bytecode):
+                high = bytecode[current_pc]
+                low = bytecode[current_pc + 1]
+                imm16 = (high << 8) | low
+                operands.append(f"0x{imm16:04X}")
+                current_pc += 2
+                size += 2
+        elif op2_mode == 3:  # Memory reference
+            if direct and not indexed:
+                # Direct memory address
+                if current_pc + 1 < len(bytecode):
+                    high = bytecode[current_pc]
+                    low = bytecode[current_pc + 1]
+                    addr = (high << 8) | low
+                    operands.append(f"[0x{addr:04X}]")
+                    current_pc += 2
+                    size += 2
+            elif not direct and not indexed:
+                # Register indirect
+                if current_pc < len(bytecode):
+                    reg_num = bytecode[current_pc]
+                    reg_name = reg_num_to_name(reg_num)
+                    operands.append(f"[{reg_name}]")
+                    current_pc += 1
+                    size += 1
+            elif not direct and indexed:
+                # Register indexed
+                if current_pc + 1 < len(bytecode):
+                    reg_num = bytecode[current_pc]
+                    offset = bytecode[current_pc + 1]
+                    reg_name = reg_num_to_name(reg_num)
+                    if offset > 127:
+                        offset = offset - 256
+                        operands.append(f"[{reg_name}{offset}]")
+                    else:
+                        operands.append(f"[{reg_name}+{offset}]")
+                    current_pc += 2
+                    size += 2
+            elif direct and indexed:
+                # Direct indexed
+                if current_pc + 2 < len(bytecode):
+                    high = bytecode[current_pc]
+                    low = bytecode[current_pc + 1]
+                    addr = (high << 8) | low
+                    offset = bytecode[current_pc + 2]
+                    if offset > 127:
+                        offset = offset - 256
+                        operands.append(f"[0x{addr:04X}{offset}]")
+                    else:
+                        operands.append(f"[0x{addr:04X}+{offset}]")
+                    current_pc += 3
+                    size += 3
+    
+    return mnemonic, operands, size
+
 def disassemble( file_path, org_base=0x0000 ):
     """
     Reads a binary file and disassembles it into Nova-16 assembly code.
@@ -190,7 +357,8 @@ def disassemble( file_path, org_base=0x0000 ):
             continue
         
         if opcode in opcode_map:
-            mnemonic, size = opcode_map[ opcode ]
+            # Use new prefixed operand disassembly
+            mnemonic, operands, size = disassemble_instruction_new(bytecode, pc, opcode_map, register_map)
             
             # Bounds check to prevent reading past the end of the file
             if pc + size > len( bytecode ):
@@ -201,182 +369,10 @@ def disassemble( file_path, org_base=0x0000 ):
             instruction_bytes = bytecode[ pc : pc + size ]
             hex_dump = ' '.join( f'{b:02X}' for b in instruction_bytes )
             
-            operands = []
-            op_pc = 1 
-
-            # Parse operands based on mnemonic pattern
-            if mnemonic == "MOV reg direct":
-                # opcode + reg + addr16
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                    op_pc += 1
-                if op_pc + 1 < len( instruction_bytes ):
-                    high_byte = instruction_bytes[ op_pc ]
-                    low_byte = instruction_bytes[ op_pc + 1 ]
-                    addr = ( high_byte << 8 ) | low_byte
-                    operands.append( f"[0x{addr:04X}]" )
-                    op_pc += 2
-            elif mnemonic == "MOV direct reg":
-                # opcode + addr16 + reg
-                if op_pc + 1 < len( instruction_bytes ):
-                    high_byte = instruction_bytes[ op_pc ]
-                    low_byte = instruction_bytes[ op_pc + 1 ]
-                    addr = ( high_byte << 8 ) | low_byte
-                    operands.append( f"[0x{addr:04X}]" )
-                    op_pc += 2
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                    op_pc += 1
-            elif mnemonic == "MOV reg regIndir":
-                # opcode + dest_reg + src_reg (indirect)
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                    op_pc += 1
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    # The indirect register is already encoded in the register code
-                    operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                    op_pc += 1
-            elif mnemonic == "MOV regIndir reg":
-                # opcode + dest_reg (indirect) + src_reg
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    # The indirect register is already encoded in the register code
-                    operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                    op_pc += 1
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                    op_pc += 1
-            elif mnemonic == "MOV reg regIndex":
-                # opcode + dest_reg + src_reg (indexed) + offset
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                    op_pc += 1
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    op_pc += 1
-                    # Check if there's an offset byte
-                    if op_pc < len( instruction_bytes ):
-                        offset_byte = instruction_bytes[ op_pc ]
-                        formatted_reg = format_indexed_register(reg_code, offset_byte)
-                        operands.append( formatted_reg )
-                        op_pc += 1
-                    else:
-                        # Fallback for instructions without offset
-                        operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-            elif mnemonic == "MOV regIndex reg":
-                # opcode + dest_reg (indexed) + offset + src_reg
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    op_pc += 1
-                    # Get the offset byte
-                    if op_pc < len( instruction_bytes ):
-                        offset_byte = instruction_bytes[ op_pc ]
-                        formatted_reg = format_indexed_register(reg_code, offset_byte)
-                        operands.append( formatted_reg )
-                        op_pc += 1
-                    else:
-                        # Fallback for instructions without offset
-                        operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                    op_pc += 1
-            elif mnemonic == "MOV regIndir imm8":
-                # opcode + dest_reg (indirect) + imm8
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    # The indirect register is already encoded in the register code
-                    operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                    op_pc += 1
-                if op_pc < len( instruction_bytes ):
-                    imm8 = instruction_bytes[ op_pc ]
-                    operands.append( f"0x{imm8:02X}" )
-                    op_pc += 1
-            elif mnemonic == "MOV regIndex imm8":
-                # opcode + dest_reg (indexed) + offset + imm8
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    op_pc += 1
-                    # Check if there's an offset byte
-                    if op_pc < len( instruction_bytes ):
-                        offset_byte = instruction_bytes[ op_pc ]
-                        formatted_reg = format_indexed_register(reg_code, offset_byte)
-                        operands.append( formatted_reg )
-                        op_pc += 1
-                    else:
-                        # Fallback for instructions without offset
-                        operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                if op_pc < len( instruction_bytes ):
-                    imm8 = instruction_bytes[ op_pc ]
-                    operands.append( f"0x{imm8:02X}" )
-                    op_pc += 1
-            elif mnemonic == "MOV regIndir imm16":
-                # opcode + dest_reg (indirect) + imm16
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    # The indirect register is already encoded in the register code
-                    operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                    op_pc += 1
-                if op_pc + 1 < len( instruction_bytes ):
-                    high_byte = instruction_bytes[ op_pc ]
-                    low_byte = instruction_bytes[ op_pc + 1 ]
-                    imm16 = ( high_byte << 8 ) | low_byte
-                    operands.append( f"0x{imm16:04X}" )
-                    op_pc += 2
-            elif mnemonic == "MOV regIndex imm16":
-                # opcode + dest_reg (indexed) + offset + imm16
-                if op_pc < len( instruction_bytes ):
-                    reg_code = instruction_bytes[ op_pc ]
-                    op_pc += 1
-                    # Check if there's an offset byte
-                    if op_pc < len( instruction_bytes ):
-                        offset_byte = instruction_bytes[ op_pc ]
-                        formatted_reg = format_indexed_register(reg_code, offset_byte)
-                        operands.append( formatted_reg )
-                        op_pc += 1
-                    else:
-                        # Fallback for instructions without offset
-                        operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                if op_pc + 1 < len( instruction_bytes ):
-                    high_byte = instruction_bytes[ op_pc ]
-                    low_byte = instruction_bytes[ op_pc + 1 ]
-                    imm16 = ( high_byte << 8 ) | low_byte
-                    operands.append( f"0x{imm16:04X}" )
-                    op_pc += 2
-            else:
-                # Default parsing for other instructions
-                # Parse based on the mnemonic structure
-                parts = mnemonic.split()
-                
-                # Skip the instruction name (first part)
-                for part in parts[1:]:
-                    if part == 'reg':
-                        if op_pc < len( instruction_bytes ):
-                            reg_code = instruction_bytes[ op_pc ]
-                            operands.append( register_map.get( reg_code, f"0x{reg_code:02X}" ) )
-                            op_pc += 1
-                    elif part == 'imm8':
-                        if op_pc < len( instruction_bytes ):
-                            imm8 = instruction_bytes[ op_pc ]
-                            operands.append( f"0x{imm8:02X}" )
-                            op_pc += 1
-                    elif part == 'imm16':
-                        if op_pc + 1 < len( instruction_bytes ):
-                            high_byte = instruction_bytes[ op_pc ]
-                            low_byte = instruction_bytes[ op_pc + 1 ]
-                            imm16 = ( high_byte << 8 ) | low_byte
-                            operands.append( f"0x{imm16:04X}" )
-                            op_pc += 2
-
-            instruction_str = mnemonic.split( ' ' )[ 0 ]
-            operands_str = ", ".join( operands )
-            print( f"{address_str:<6} {hex_dump:<12} {instruction_str:<8} {operands_str}" )
+            # Format operands
+            operand_str = ', '.join(operands) if operands else ""
+            instruction_str = mnemonic
+            print( f"{address_str:<6} {hex_dump:<12} {instruction_str:<8} {operand_str}" )
 
             pc += size
         else:

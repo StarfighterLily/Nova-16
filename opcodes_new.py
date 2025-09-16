@@ -9,44 +9,44 @@
 
 opcodes = [
     # No-operand instructions
-    ("HLT",                "0x00", 0), # Halt execution
-    ("NOP",                "0xFF", 0), # No operation
-    ("RET",                "0x01", 0), # Return from subroutine
-    ("IRET",               "0x02", 0), # Return from interrupt
-    ("CLI",                "0x03", 0), # Clear interrupt flag
-    ("STI",                "0x04", 0), # Set interrupt flag
+    ("HLT",                "0x00", 1), # Halt execution
+    ("NOP",                "0x01", 1), # No operation
+    ("RET",                "0x02", 1), # Return from subroutine
+    ("IRET",               "0x03", 1), # Return from interrupt
+    ("CLI",                "0x04", 1), # Clear interrupt flag
+    ("STI",                "0x05", 1), # Set interrupt flag
 
     # Data movement
-    ("MOV",                "0x06", 2), # Move data between operands (variable size)
+    ("MOV",                "0x06", 1), # Move data between operands
 
     # Arithmetic operations
-    ("ADD",                "0x07", 2), # Addition
-    ("SUB",                "0x08", 2), # Subtraction
-    ("MUL",                "0x09", 2), # Multiplication
-    ("DIV",                "0x0A", 2), # Division
+    ("ADD",                "0x07", 1), # Addition
+    ("SUB",                "0x08", 1), # Subtraction
+    ("MUL",                "0x09", 1), # Multiplication
+    ("DIV",                "0x0A", 1), # Division
     ("INC",                "0x0B", 1), # Increment
     ("DEC",                "0x0C", 1), # Decrement
-    ("MOD",                "0x0D", 2), # Modulo
+    ("MOD",                "0x0D", 1), # Modulo
     ("NEG",                "0x0E", 1), # Negation
     ("ABS",                "0x0F", 1), # Absolute value
 
     # Bitwise operations
-    ("AND",                "0x10", 2), # Bitwise AND
-    ("OR",                 "0x11", 2), # Bitwise OR
-    ("XOR",                "0x12", 2), # Bitwise XOR
+    ("AND",                "0x10", 1), # Bitwise AND
+    ("OR",                 "0x11", 1), # Bitwise OR
+    ("XOR",                "0x12", 1), # Bitwise XOR
     ("NOT",                "0x13", 1), # Bitwise NOT
-    ("SHL",                "0x14", 2), # Shift left
-    ("SHR",                "0x15", 2), # Shift right
-    ("ROL",                "0x16", 2), # Rotate left
-    ("ROR",                "0x17", 2), # Rotate right
+    ("SHL",                "0x14", 1), # Shift left
+    ("SHR",                "0x15", 1), # Shift right
+    ("ROL",                "0x16", 1), # Rotate left
+    ("ROR",                "0x17", 1), # Rotate right
 
     # Stack operations
     ("PUSH",               "0x18", 1), # Push to stack
     ("POP",                "0x19", 1), # Pop from stack
     ("PUSHF",              "0x1A", 1), # Push flags
     ("POPF",               "0x1B", 1), # Pop flags
-    ("PUSHA",              "0x1C", 0), # Push all registers
-    ("POPA",               "0x1D", 0), # Pop all registers
+    ("PUSHA",              "0x1C", 1), # Push all registers
+    ("POPA",               "0x1D", 1), # Pop all registers
 
     # Control flow - jumps
     ("JMP",                "0x1E", 1), # Unconditional jump
@@ -69,7 +69,7 @@ opcodes = [
     ("BRNZ",               "0x2D", 1), # Branch if not zero
 
     # Comparison
-    ("CMP",                "0x2E", 2), # Compare operands
+    ("CMP",                "0x2E", 1), # Compare operands
 
     # Call
     ("CALL",               "0x2F", 1), # Call subroutine
@@ -98,8 +98,8 @@ opcodes = [
     ("VBLIT",              "0x40", 1), # Blit VRAM
 
     # Text operations
-    ("CHAR",               "0x41", 2), # Draw character
-    ("TEXT",               "0x42", 2), # Draw text
+    ("CHAR",               "0x41", 1), # Draw character
+    ("TEXT",               "0x42", 1), # Draw text
 
     # Keyboard operations
     ("KEYIN",              "0x43", 1), # Read key
@@ -140,38 +140,38 @@ opcodes = [
     ("LOOP",               "0x5A", 1), # Loop instruction
 
     # Register/special references (for direct access)
-    ("SA",                 "0xDD", 1), # Sound Address
-    ("SF",                 "0xDE", 1), # Sound Frequency
-    ("SV",                 "0xDF", 1), # Sound Volume
-    ("SW",                 "0xE0", 1), # Sound Waveform
-    ("VM",                 "0xE1", 1), # Video Mode
-    ("VL",                 "0xE2", 1), # Video Layer
-    ("TT",                 "0xE3", 1), # Timer
-    ("TM",                 "0xE4", 1), # Timer Match
-    ("TC",                 "0xE5", 1), # Timer Control
-    ("TS",                 "0xE6", 1), # Timer Speed
-    ("R0",                 "0xE7", 1),
-    ("R1",                 "0xE8", 1),
-    ("R2",                 "0xE9", 1),
-    ("R3",                 "0xEA", 1),
-    ("R4",                 "0xEB", 1),
-    ("R5",                 "0xEC", 1),
-    ("R6",                 "0xED", 1),
-    ("R7",                 "0xEE", 1),
-    ("R8",                 "0xEF", 1),
-    ("R9",                 "0xF0", 1),
-    ("P0",                 "0xF1", 1),
-    ("P1",                 "0xF2", 1),
-    ("P2",                 "0xF3", 1),
-    ("P3",                 "0xF4", 1),
-    ("P4",                 "0xF5", 1),
-    ("P5",                 "0xF6", 1),
-    ("P6",                 "0xF7", 1),
-    ("P7",                 "0xF8", 1),
-    ("P8",                 "0xF9", 1),
-    ("P9",                 "0xFA", 1),
-    ("SP",                 "0xFB", 1),  # SP is P8
-    ("FP",                 "0xFC", 1),  # FP is P9
-    ("VX",                 "0xFD", 1),
-    ("VY",                 "0xFE", 1),
+    ("SA",                 "0x5B", 1), # Sound Address
+    ("SF",                 "0x5C", 1), # Sound Frequency
+    ("SV",                 "0x5D", 1), # Sound Volume
+    ("SW",                 "0x5E", 1), # Sound Waveform
+    ("VM",                 "0x5F", 1), # Video Mode
+    ("VL",                 "0x60", 1), # Video Layer
+    ("TT",                 "0x61", 1), # Timer
+    ("TM",                 "0x62", 1), # Timer Match
+    ("TC",                 "0x63", 1), # Timer Control
+    ("TS",                 "0x64", 1), # Timer Speed
+    ("R0",                 "0x65", 1),
+    ("R1",                 "0x66", 1),
+    ("R2",                 "0x67", 1),
+    ("R3",                 "0x68", 1),
+    ("R4",                 "0x69", 1),
+    ("R5",                 "0x6A", 1),
+    ("R6",                 "0x6B", 1),
+    ("R7",                 "0x6C", 1),
+    ("R8",                 "0x6D", 1),
+    ("R9",                 "0x6E", 1),
+    ("P0",                 "0x6F", 1),
+    ("P1",                 "0x70", 1),
+    ("P2",                 "0x71", 1),
+    ("P3",                 "0x72", 1),
+    ("P4",                 "0x73", 1),
+    ("P5",                 "0x74", 1),
+    ("P6",                 "0x75", 1),
+    ("P7",                 "0x76", 1),
+    ("P8",                 "0x77", 1),
+    ("P9",                 "0x78", 1),
+    ("SP",                 "0x77", 1),  # SP is P8
+    ("FP",                 "0x78", 1),  # FP is P9
+    ("VX",                 "0x79", 1),
+    ("VY",                 "0x7A", 1),
 ]

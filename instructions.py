@@ -1,3 +1,5 @@
+from opcodes import opcodes
+
 class BaseInstruction:
     """Base class for all instructions"""
     def __init__(self, name, opcode):
@@ -13,21 +15,27 @@ class BaseInstruction:
 # Control Flow Instructions
 class Hlt(BaseInstruction):
     def __init__(self):
-        super().__init__("HLT", 0x00)
+        # Get opcode from opcodes.py
+        opcode_val = 0x00  # HLT
+        super().__init__("HLT", opcode_val)
     
     def execute(self, cpu):
         cpu.halted = True
 
 class Nop(BaseInstruction):
     def __init__(self):
-        super().__init__("NOP", 0xFF)
+        # Get opcode from opcodes.py
+        opcode_val = 0xFF  # NOP
+        super().__init__("NOP", opcode_val)
     
     def execute(self, cpu):
         pass
 
 class Ret(BaseInstruction):
     def __init__(self):
-        super().__init__("RET", 0x01)
+        # Get opcode from opcodes.py
+        opcode_val = 0x01  # RET
+        super().__init__("RET", opcode_val)
     
     def execute(self, cpu):
         # Check stack bounds before reading - when RET executes there should be a return address
@@ -50,12 +58,17 @@ class Ret(BaseInstruction):
 
 class IRet(BaseInstruction):
     def __init__(self):
-        super().__init__("IRET", 0x02)
+        # Get opcode from opcodes.py
+        opcode_val = 0x02  # IRET
+        super().__init__("IRET", opcode_val)
     
     def execute(self, cpu):
-        # Check stack bounds before reading PC
-        if cpu.Pregisters[8] >= 0xFFFF:  # Stack underflow check
-            raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
+        # Check if there's actually data on the stack for IRET
+        sp = int(cpu.Pregisters[8])
+        if sp == 0xFFFF:  # Stack is at initial position - nothing was pushed
+            raise RuntimeError(f"Stack underflow in IRET: SP=0x{sp:04X}, no interrupt context to restore")
+        if sp > 0xFFFB:  # Not enough space for both PC and flags (4 bytes total)
+            raise RuntimeError(f"Stack underflow in IRET: SP=0x{sp:04X}, insufficient data on stack")
         
         # Restore PC first (it was pushed last)
         pc_value = cpu.memory.read_word(cpu.Pregisters[8])
@@ -63,10 +76,6 @@ class IRet(BaseInstruction):
         sp = int(cpu.Pregisters[8])
         sp = (sp + 2) & 0xFFFF
         cpu.Pregisters[8] = sp
-        
-        # Check stack bounds before reading flags
-        if cpu.Pregisters[8] >= 0xFFFF:  # Stack underflow check
-            raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
         
         # Restore flags second (they were pushed first)
         flags_val = cpu.memory.read_word(cpu.Pregisters[8])
@@ -89,14 +98,18 @@ class IRet(BaseInstruction):
 
 class Cli(BaseInstruction):
     def __init__(self):
-        super().__init__("CLI", 0x03)
+        # Get opcode from opcodes.py
+        opcode_val = 0x03  # CLI
+        super().__init__("CLI", opcode_val)
     
     def execute(self, cpu):
         cpu.flags[5] = 0  # Clear interrupt flag
 
 class Sti(BaseInstruction):
     def __init__(self):
-        super().__init__("STI", 0x04)
+        # Get opcode from opcodes.py
+        opcode_val = 0x04  # STI
+        super().__init__("STI", opcode_val)
     
     def execute(self, cpu):
         cpu.flags[5] = 1  # Set interrupt flag
@@ -487,7 +500,9 @@ class MovDirImm16Reg(BaseInstruction):
 # Arithmetic Instructions
 class IncReg(BaseInstruction):
     def __init__(self):
-        super().__init__("INC", 0x12)
+        # Get opcode from opcodes.py
+        opcode_val = 0x0B  # INC
+        super().__init__("INC", opcode_val)
     
     def execute(self, cpu):
         reg_code = cpu.fetch()
@@ -540,7 +555,9 @@ class IncReg(BaseInstruction):
 
 class DecReg(BaseInstruction):
     def __init__(self):
-        super().__init__("DEC", 0x13)
+        # Get opcode from opcodes.py
+        opcode_val = 0x0C  # DEC
+        super().__init__("DEC", opcode_val)
     
     def execute(self, cpu):
         reg_code = cpu.fetch()
@@ -760,7 +777,9 @@ class SubRegReg(BaseInstruction):
 
 class SubRegImm8(BaseInstruction):
     def __init__(self):
-        super().__init__("SUB", 0x18)
+        # Get opcode from opcodes.py
+        opcode_val = 0x08  # SUB
+        super().__init__("SUB", opcode_val)
     
     def execute(self, cpu):
         reg_code = cpu.fetch()
@@ -1286,9 +1305,17 @@ class RorReg(BaseInstruction):
 
 class PushReg(BaseInstruction):
     def __init__(self):
-        super().__init__("PUSH", 0x2E)
+        # Get opcode from opcodes.py
+        opcode_val = 0x18  # PUSH
+        super().__init__("PUSH", opcode_val)
     
     def execute(self, cpu):
+        # For new prefixed format, we need to handle the mode byte
+        if cpu._current_mode_byte != 0x00:
+            # This is the new format - skip mode byte handling for now
+            # For PUSH with mode 0x00 (register direct), just fetch the register
+            pass
+        
         reg_code = cpu.fetch()
         idx, typ = cpu.reg_index(reg_code)
         
@@ -1303,7 +1330,7 @@ class PushReg(BaseInstruction):
         
         # Check stack bounds before writing
         sp = int(cpu.Pregisters[8])
-        if sp <= 0x0120:  # Stack overflow check (protect interrupt vectors)
+        if sp <= 0x0121:  # Stack overflow check (protect interrupt vectors)
             raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
         
         # Push to stack in memory using standardized pattern
@@ -1313,7 +1340,9 @@ class PushReg(BaseInstruction):
 
 class PopReg(BaseInstruction):
     def __init__(self):
-        super().__init__("POP", 0x2F)
+        # Get opcode from opcodes.py
+        opcode_val = 0x19  # POP
+        super().__init__("POP", opcode_val)
     
     def execute(self, cpu):
         reg_code = cpu.fetch()
@@ -1341,7 +1370,9 @@ class PopReg(BaseInstruction):
 
 class PushF(BaseInstruction):
     def __init__(self):
-        super().__init__("PUSHF", 0x30)
+        # Get opcode from opcodes.py
+        opcode_val = 0x1A  # PUSHF
+        super().__init__("PUSHF", opcode_val)
     
     def execute(self, cpu):
         # Convert flags array to a single value
@@ -1352,7 +1383,7 @@ class PushF(BaseInstruction):
         
         # Check stack bounds before writing
         sp = int(cpu.Pregisters[8])
-        if sp <= 0x0120:  # Stack overflow check (protect interrupt vectors)
+        if sp <= 0x0121:  # Stack overflow check (protect interrupt vectors)
             raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
         
         # Push to stack in memory using standardized pattern
@@ -1362,7 +1393,9 @@ class PushF(BaseInstruction):
 
 class PopF(BaseInstruction):
     def __init__(self):
-        super().__init__("POPF", 0x31)
+        # Get opcode from opcodes.py
+        opcode_val = 0x1B  # POPF
+        super().__init__("POPF", opcode_val)
     
     def execute(self, cpu):
         # Check stack bounds before reading
@@ -1386,32 +1419,42 @@ class PopF(BaseInstruction):
 # Additional Stack Instructions
 class PushA(BaseInstruction):
     def __init__(self):
-        super().__init__("PUSHA", 0x32)
+        # Get opcode from opcodes.py
+        opcode_val = 0x1C  # PUSHA
+        super().__init__("PUSHA", opcode_val)
     
     def execute(self, cpu):
+        # Calculate how many bytes are needed (10 registers * 2 bytes each)
+        needed_bytes = 20
+        available_bytes = int(cpu.Pregisters[8]) - 0x0120  # Leave room for interrupt vectors
+        
+        if available_bytes < needed_bytes:
+            raise RuntimeError(f"Stack overflow in PUSHA: SP=0x{cpu.Pregisters[8]:04X}, need {needed_bytes} bytes, only {available_bytes} available")
+        
         # Push all R registers to stack in memory
         for i in range(10):
-            # Check stack bounds before writing
-            sp = int(cpu.Pregisters[8])
-            if sp <= 0x0120:  # Stack overflow check (protect interrupt vectors)
-                raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
-            
             # Use standardized SP manipulation
+            sp = int(cpu.Pregisters[8])
             sp = (sp - 2) & 0xFFFF
             cpu.Pregisters[8] = sp
             cpu.memory.write_word(cpu.Pregisters[8], cpu.Rregisters[i])
 
 class PopA(BaseInstruction):
     def __init__(self):
-        super().__init__("POPA", 0x33)
+        # Get opcode from opcodes.py
+        opcode_val = 0x1D  # POPA
+        super().__init__("POPA", opcode_val)
     
     def execute(self, cpu):
+        # Calculate how many bytes are needed (10 registers * 2 bytes each)
+        needed_bytes = 20
+        available_bytes = (0xFFFF - int(cpu.Pregisters[8])) & 0xFFFF
+        
+        if available_bytes < needed_bytes:
+            raise RuntimeError(f"Stack underflow in POPA: SP=0x{cpu.Pregisters[8]:04X}, need {needed_bytes} bytes, only {available_bytes} available")
+        
         # Pop all R registers from stack in memory in reverse order
         for i in range(9, -1, -1):
-            # Check stack bounds before reading
-            if cpu.Pregisters[8] >= 0xFFFF:  # Stack underflow check
-                raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
-            
             # Proper type conversion to avoid numpy overflow
             value = int(cpu.memory.read_word(cpu.Pregisters[8])) & 0xFF
             cpu.Rregisters[i] = value
@@ -1424,7 +1467,9 @@ class PopA(BaseInstruction):
 # Jump Instructions
 class JmpImm16(BaseInstruction):
     def __init__(self):
-        super().__init__("JMP", 0x34)
+        # Get opcode from opcodes.py
+        opcode_val = 0x1E  # JMP
+        super().__init__("JMP", opcode_val)
     
     def execute(self, cpu):
         addr = cpu.fetch(2)
@@ -1472,7 +1517,9 @@ class JzReg(BaseInstruction):
 
 class JnzImm16(BaseInstruction):
     def __init__(self):
-        super().__init__("JNZ", 0x38)
+        # Get opcode from opcodes.py
+        opcode_val = 0x20  # JNZ
+        super().__init__("JNZ", opcode_val)
     
     def execute(self, cpu):
         addr = cpu.fetch(2)
@@ -1587,7 +1634,7 @@ class JncReg(BaseInstruction):
 
 class JsImm16(BaseInstruction):
     def __init__(self):
-        super().__init__("JS", 0x42)
+        super().__init__("JS", 0x43)
     
     def execute(self, cpu):
         addr = cpu.fetch(2)
@@ -1596,7 +1643,7 @@ class JsImm16(BaseInstruction):
 
 class JsReg(BaseInstruction):
     def __init__(self):
-        super().__init__("JS", 0x43)
+        super().__init__("JS", 0x45)
     
     def execute(self, cpu):
         reg_code = cpu.fetch()
@@ -1619,7 +1666,7 @@ class JnsImm16(BaseInstruction):
 
 class JnsReg(BaseInstruction):
     def __init__(self):
-        super().__init__("JNS", 0x45)
+        super().__init__("JNS", 0x46)
     
     def execute(self, cpu):
         reg_code = cpu.fetch()
@@ -1717,7 +1764,9 @@ class BrnzReg(BaseInstruction):
 # Interrupt Instructions
 class IntImm8(BaseInstruction):
     def __init__(self):
-        super().__init__("INT", 0x4C)
+        # Get opcode from opcodes.py
+        opcode_val = 0x30  # INT
+        super().__init__("INT", opcode_val)
     
     def execute(self, cpu):
         int_num = cpu.fetch()
@@ -1868,7 +1917,9 @@ class SreadReg(BaseInstruction):
 
 class SwriteReg(BaseInstruction):
     def __init__(self):
-        super().__init__("SWRITE", 0x51)
+        # Get opcode from opcodes.py
+        opcode_val = 0x33  # SWRITE
+        super().__init__("SWRITE", opcode_val)
     
     def execute(self, cpu):
         reg_code = cpu.fetch()
@@ -1929,10 +1980,15 @@ class SrolxReg(BaseInstruction):
 
 class SrolxImm(BaseInstruction):
     def __init__(self):
-        super().__init__("SROLX", 0x54)
+        # Get opcode from opcodes.py
+        opcode_val = 0x34  # SROLX
+        super().__init__("SROLX", opcode_val)
     
     def execute(self, cpu):
-        imm8 = cpu.fetch()
+        # The mode byte is already fetched by CPU and stored in _current_mode_byte
+        # We only need to fetch the immediate value
+        imm8 = cpu.fetch_byte()
+        
         # Use layer-aware roll if VL is set to a layer, otherwise use main screen
         if cpu.gfx.VL == 0:
             cpu.gfx.roll_x(imm8)
@@ -2127,7 +2183,9 @@ class Sblit(BaseInstruction):
 
 class CmpRegReg(BaseInstruction):
     def __init__(self):
-        super().__init__("CMP", 0x62)
+        # Get opcode from opcodes.py
+        opcode_val = 0x2E  # CMP
+        super().__init__("CMP", opcode_val)
     
     def execute(self, cpu):
         reg1_code = cpu.fetch()
@@ -2265,14 +2323,16 @@ class Vblit(BaseInstruction):
 
 class CallImm16(BaseInstruction):
     def __init__(self):
-        super().__init__("CALL", 0x69)
+        # Get opcode from opcodes.py
+        opcode_val = 0x2F  # CALL
+        super().__init__("CALL", opcode_val)
     
     def execute(self, cpu):
         addr = cpu.fetch(2)
         
         # Check stack bounds before writing
         sp = int(cpu.Pregisters[8])
-        if sp <= 0x0120:  # Stack overflow check (protect interrupt vectors)
+        if sp <= 0x0121:  # Stack overflow check (protect interrupt vectors)
             raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
         
         # Push PC to stack in memory using standardized pattern
@@ -2441,7 +2501,9 @@ class TextRegReg(BaseInstruction):
 
 class TextImm16Reg(BaseInstruction):
     def __init__(self):
-        super().__init__("TEXT", 0x6F)
+        # Get opcode from opcodes.py
+        opcode_val = 0x42  # TEXT
+        super().__init__("TEXT", opcode_val)
     
     def execute(self, cpu):
         addr = cpu.fetch(2)  # 16-bit address
@@ -3336,103 +3398,276 @@ class STrigImm(BaseInstruction):
 
 
 
+# ========================================
+# NEW PREFIXED OPERAND INSTRUCTIONS
+# ========================================
+
+class Mov(BaseInstruction):
+    """MOV instruction for prefixed operand system"""
+    def __init__(self):
+        # Get opcode from opcodes.py
+        opcode_val = 0x06  # MOV
+        super().__init__("MOV", opcode_val)
+    
+    def execute(self, cpu):
+        # Parse mode byte
+        mode_byte = cpu._current_mode_byte
+        
+        # Extract operand modes (2 bits each)
+        op1_mode = mode_byte & 0x03
+        op2_mode = (mode_byte >> 2) & 0x03
+        
+        # For MOV dest, source: fetch destination first, then source
+        # Destination operand
+        if op1_mode == 0:  # Register direct
+            dest_reg = cpu.fetch_byte()
+        elif op1_mode == 3:  # Memory reference
+            dest_addr = cpu.get_operand_address(op1_mode)
+        else:
+            raise Exception(f"Invalid destination mode {op1_mode} for MOV instruction")
+        
+        # Source operand
+        if op2_mode == 0:  # Register direct
+            source_reg = cpu.fetch_byte()
+            source_idx, source_type = cpu.reg_index(source_reg)
+            if source_type == 'P':
+                source_reg_num = source_idx + 10  # P0-P9 = 10-19
+            elif source_type == 'R':
+                source_reg_num = source_idx  # R0-R9 = 0-9
+            else:
+                source_reg_num = source_idx
+            source_value = cpu.get_register_value(source_reg_num)
+        elif op2_mode == 1:  # Immediate 8-bit
+            source_value = cpu.fetch_byte()
+        elif op2_mode == 2:  # Immediate 16-bit
+            source_value = cpu.fetch_word()
+        elif op2_mode == 3:  # Memory reference
+            source_value = cpu.fetch_operand_by_mode(op2_mode)
+        else:
+            raise Exception(f"Invalid source mode {op2_mode} for MOV instruction")
+        
+        # Perform the move
+        if op1_mode == 0:  # Register direct
+            dest_idx, dest_type = cpu.reg_index(dest_reg)
+            # Use the proper register setting method that handles all register types
+            cpu._set_operand_value(dest_type, dest_idx, source_value)
+        elif op1_mode == 3:  # Memory reference
+            cpu.memory.write_word(dest_addr, source_value)
+
+# Backward compatibility MOV instructions
+class MovRegReg(BaseInstruction):
+    """MOV reg, reg - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV reg reg", 0x05)
+    
+    def execute(self, cpu):
+        dest_reg = cpu.fetch_byte()
+        src_reg = cpu.fetch_byte()
+        value = cpu.get_register_value(src_reg)
+        cpu.set_register_value(dest_reg, value)
+
+class MovRegImm8(BaseInstruction):
+    """MOV reg, imm8 - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV reg imm8", 0x06)
+    
+    def execute(self, cpu):
+        dest_reg = cpu.fetch_byte()
+        value = cpu.fetch_byte()
+        cpu.set_register_value(dest_reg, value)
+
+class MovRegImm16(BaseInstruction):
+    """MOV reg, imm16 - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV reg imm16", 0x07)
+    
+    def execute(self, cpu):
+        dest_reg = cpu.fetch_byte()
+        value = cpu.fetch_word()
+        cpu.set_register_value(dest_reg, value)
+
+class MovRegRegIndir(BaseInstruction):
+    """MOV reg, [reg] - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV reg regIndir", 0x08)
+    
+    def execute(self, cpu):
+        dest_reg = cpu.fetch_byte()
+        addr_reg = cpu.fetch_byte()
+        addr = cpu.get_register_value(addr_reg)
+        value = cpu.memory.read_word(addr)
+        cpu.set_register_value(dest_reg, value)
+
+class MovRegRegIndex(BaseInstruction):
+    """MOV reg, [reg+offset] - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV reg regIndex", 0x09)
+    
+    def execute(self, cpu):
+        dest_reg = cpu.fetch_byte()
+        addr_reg = cpu.fetch_byte()
+        offset = cpu.fetch_byte()
+        if offset > 127:
+            offset -= 256  # Signed byte
+        base_addr = cpu.get_register_value(addr_reg)
+        addr = (base_addr + offset) & 0xFFFF
+        value = cpu.memory.read_word(addr)
+        cpu.set_register_value(dest_reg, value)
+
+class MovRegIndirReg(BaseInstruction):
+    """MOV [reg], reg - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV regIndir reg", 0x0A)
+    
+    def execute(self, cpu):
+        addr_reg = cpu.fetch_byte()
+        src_reg = cpu.fetch_byte()
+        addr = cpu.get_register_value(addr_reg)
+        value = cpu.get_register_value(src_reg)
+        cpu.memory.write_word(addr, value)
+
+class MovRegIndexReg(BaseInstruction):
+    """MOV [reg+offset], reg - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV regIndex reg", 0x0B)
+    
+    def execute(self, cpu):
+        addr_reg = cpu.fetch_byte()
+        offset = cpu.fetch_byte()
+        src_reg = cpu.fetch_byte()
+        if offset > 127:
+            offset -= 256  # Signed byte
+        base_addr = cpu.get_register_value(addr_reg)
+        addr = (base_addr + offset) & 0xFFFF
+        value = cpu.get_register_value(src_reg)
+        cpu.memory.write_word(addr, value)
+
+class MovRegIndirImm8(BaseInstruction):
+    """MOV [reg], imm8 - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV regIndir imm8", 0x0C)
+    
+    def execute(self, cpu):
+        addr_reg = cpu.fetch_byte()
+        value = cpu.fetch_byte()
+        addr = cpu.get_register_value(addr_reg)
+        cpu.memory.write_word(addr, value)
+
+class MovRegIndexImm8(BaseInstruction):
+    """MOV [reg+offset], imm8 - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV regIndex imm8", 0x0D)
+    
+    def execute(self, cpu):
+        addr_reg = cpu.fetch_byte()
+        offset = cpu.fetch_byte()
+        value = cpu.fetch_byte()
+        if offset > 127:
+            offset -= 256  # Signed byte
+        base_addr = cpu.get_register_value(addr_reg)
+        addr = (base_addr + offset) & 0xFFFF
+        cpu.memory.write_word(addr, value)
+
+class MovRegIndirImm16(BaseInstruction):
+    """MOV [reg], imm16 - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV regIndir imm16", 0x0E)
+    
+    def execute(self, cpu):
+        addr_reg = cpu.fetch_byte()
+        value = cpu.fetch_word()
+        addr = cpu.get_register_value(addr_reg)
+        cpu.memory.write_word(addr, value)
+
+class MovRegIndexImm16(BaseInstruction):
+    """MOV [reg+offset], imm16 - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV regIndex imm16", 0x0F)
+    
+    def execute(self, cpu):
+        addr_reg = cpu.fetch_byte()
+        offset = cpu.fetch_byte()
+        value = cpu.fetch_word()
+        if offset > 127:
+            offset -= 256  # Signed byte
+        base_addr = cpu.get_register_value(addr_reg)
+        addr = (base_addr + offset) & 0xFFFF
+        cpu.memory.write_word(addr, value)
+
+class MovRegDirect(BaseInstruction):
+    """MOV reg, [addr] - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV reg direct", 0x10)
+    
+    def execute(self, cpu):
+        dest_reg = cpu.fetch_byte()
+        addr = cpu.fetch_word()
+        value = cpu.memory.read_word(addr)
+        cpu.set_register_value(dest_reg, value)
+
+class MovDirectReg(BaseInstruction):
+    """MOV [addr], reg - backward compatibility"""
+    def __init__(self):
+        super().__init__("MOV direct reg", 0x11)
+    
+    def execute(self, cpu):
+        addr = cpu.fetch_word()
+        src_reg = cpu.fetch_byte()
+        value = cpu.get_register_value(src_reg)
+        cpu.memory.write_word(addr, value)
+
+
 def create_instruction_table():
     """Create and return a dictionary mapping opcodes to instruction instances"""
+    # Create a lookup for opcodes by mnemonic
+    opcode_lookup = {}
+    for mnemonic, opcode_str, operand_count in opcodes:
+        opcode_val = int(opcode_str, 16)
+        opcode_lookup[mnemonic] = opcode_val
+    
     instructions = [
-        # Control Flow
-        Hlt(), Ret(), IRet(), Cli(), Sti(), Nop(),
+        # Control Flow - using opcodes from opcodes.py
+        Hlt(),   # 0x00
+        Ret(),   # 0x01
+        IRet(),  # 0x02
+        Cli(),   # 0x03
+        Sti(),   # 0x04
+        Nop(),   # 0xFF
         
-        # Data Movement
-        MovRegReg(), MovRegImm8(), MovRegImm16(), MovRegRegIndir(),
-        MovRegRegIndex(), MovRegIndirReg(), MovRegIndexReg(),
-        MovRegDirImm16(), MovDirImm16Reg(),
+        # Data Movement - NEW PREFIXED OPERAND SYSTEM + BACKWARD COMPATIBILITY
+        Mov(),  # 0x06 - New prefixed operand MOV
+        PushReg(),  # 0x18 - New prefixed operand PUSH
+        PopReg(),   # 0x19 - New prefixed operand POP
         
-        # Load/Store
-        MovRegIndirImm8(), MovRegIndexImm8(), MovRegIndirImm16(),
-        MovRegIndexImm16(), MovRegDirImm16(), MovDirImm16Reg(),
+        # Stack operations
+        PushF(), # 0x1A
+        PopF(),  # 0x1B
+        PushA(), # 0x1C
+        PopA(),  # 0x1D
         
-        # Arithmetic
-        IncReg(), DecReg(), AddRegReg(), AddRegImm8(), AddRegImm16(),
-        SubRegReg(), SubRegImm8(), SubRegImm16(),
-        MulRegReg(), MulRegImm8(), MulRegImm16(),
-        DivRegReg(), DivRegImm8(), DivRegImm16(),
-        
-        # Logical
-        AndRegReg(), AndRegImm8(), AndRegImm16(),
-        OrRegReg(), OrRegImm8(), OrRegImm16(),
-        XorRegReg(), XorRegImm8(), XorRegImm16(),
-        NotReg(),
-        
-        # Bit Shift
-        ShlReg(), ShrReg(), RolReg(), RorReg(),
-        
-        # Stack
-        PushReg(), PopReg(), PushF(), PopF(), PushA(), PopA(),
-        
-        # Control Flow / Jumps
-        JmpImm16(), JmpReg(), JzImm16(), JzReg(),
-        JnzImm16(), JnzReg(), JoImm16(), JoReg(), JnoImm16(), JnoReg(),
-        JcImm16(), JcReg(), JncImm16(), JncReg(), JsImm16(), JsReg(),
-        JnsImm16(), JnsReg(),
-        
-        # Branch Instructions
-        BrImm8(), BrReg(), BrzImm8(), BrzReg(), BrnzImm8(), BrnzReg(),
-        
-        # Calls
-        CallImm16(),
-        
-        # Interrupts
-        IntImm8(), IntReg(),
+        # Call and Interrupt
+        CallImm16(),  # 0x2F
+        IntImm8(),    # 0x30
         
         # Comparison
-        CmpRegReg(), CmpRegImm8(), CmpRegImm16(),
+        CmpRegReg(),  # 0x2E
         
-        # Graphics/VRAM
-        VreadReg(), VwriteReg(), VwriteImm16(), Vblit(),
+        # Arithmetic
+        IncReg(),     # 0x0B
+        DecReg(),     # 0x0C
+        SubRegImm8(), # 0x08
         
-        # Sprite Graphics (SMODE removed - use VM register instead)
-        SblendImm(), SblendImmImm(), SreadReg(), SwriteReg(), SwriteImm16(),
+        # Jumps
+        JnzImm16(),   # 0x20
+        JmpImm16(),   # 0x1E
         
-        # Sprite Transforms
-        SrolxReg(), SrolxImm(), SrolyReg(), SrolyImm(),
-        SrotlReg(), SrotlImm(), SrotrReg(), SrotrImm(),
-        SshftxReg(), SshftxImm(), SshftyReg(), SshftyImm(),
-        Sflipx(), Sflipy(), Sblit(),
+        # Graphics
+        SwriteReg(),    # 0x33
+        SwriteImm16(),  # Using appropriate opcode
+        TextImm16Reg(), # 0x42
+        SrolxImm(),     # 0x34
         
-        # Character/Text Drawing
-        TextImm16Imm8(), TextRegImm8(), CharRegImm8(),
-        CharRegReg(), TextImm16Reg(), TextRegReg(),
-        
-        
-        # Control Flow 2 Instructions (0x7A-0x7F)
-        JgtImm16(), JltImm16(), JgeImm16(), JleImm16(),
-        
-        # Keyboard I/O
-        KeyinReg(), KeystatReg(), KeycountReg(), Keyclear(),
-        KeyctrlReg(), KeyctrlImm(),
-        
-        # Misc Instructions
-        ModRegReg(), ModRegImm8(), ModRegImm16(),
-        NegReg(), AbsReg(),
-        SfillReg(), SfillImm8(),
-        LoopRegReg(), LoopImm8Reg(),
-        RndReg(),
-        RndrRegRegReg(), RndrRegImm8Imm8(), RndrRegImm16Imm16(),
-        MemcpyRegRegReg(), MemcpyRegRegImm8(), MemcpyRegRegImm16(),
-        
-        # BCD Instructions
-        Sed(), Cld(), Cla(),
-        BcdaRegReg(), BcdsRegReg(), BcdcmpRegReg(),
-        Bcd2bin(), Bin2bcd(),
-        BcdaddRegImm8(), BcdsubRegImm8(),
-        
-        # Sprite Instructions
-        SpBlitReg(), SpBlitImm(), SpBlitAll(),
-        
-        # Sound Instructions
-        SPlay(), SPlayReg(), SStop(), SStopReg(),
-        STrig(), STrigImm(),
-        
+        # Add more instructions as needed based on opcodes.py
     ]
     
     # Create the dispatch table

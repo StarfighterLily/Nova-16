@@ -17,8 +17,8 @@ class CPU:
         else:
             self.sound = sound_system
 
-        self.Rregisters = np.zeros( 10, dtype=np.uint8 )
-        self.Pregisters = np.zeros( 10, dtype=np.uint16 )
+        self.Rregisters = [0] * 10  # R registers (8-bit)
+        self.Pregisters = [0] * 10  # P registers (16-bit)
 
         # Initialize stack pointer and frame pointer
         self.Pregisters[8] = 0xFFFF  # SP (Stack Pointer)
@@ -27,7 +27,7 @@ class CPU:
         self.pc = 0x0000
 
         # Internal flag array for bulk operations and compatibility
-        self._flags = np.zeros( 12, dtype=np.uint8 )
+        self._flags = [0] * 12  # CPU flags
         self._flags[ 11 ] = 0 # Hacker flag (E), set to 1 if the user is a hacker (not touched by the CPU)
         self._flags[ 10 ] = 0 # BCD Carry flag (A), set to 1 if the result of an operation is greater than 9
         self._flags[ 9 ] = 0 # Direction flag (H), set to 1 if the CPU runs High to Low
@@ -50,14 +50,14 @@ class CPU:
         self.stack_size = stack_size
         self.stack = []
         
-        self.interrupts = np.zeros( 8, dtype=np.uint8 )
+        self.interrupts = [0] * 8  # Interrupt enable flags
         self.interrupts[ 0 ] = 0 # Timer interrupt (T) set to 1 if the Timer interrupt is enabled
         self.interrupts[ 1 ] = 0 # Serial interrupt (S) set to 1 if the Serial interrupt is enabled
         self.interrupts[ 2 ] = 0 # Keyboard interrupt (K) set to 1 if the Keyboard interrupt is enabled
         self.interrupts[ 3 ] = 0 # User interrupt (U1) set to 1 if the User interrupt 1 is enabled
         self.interrupts[ 4 ] = 0 # User interrupt (U2) set to 1 if the User interrupt 2 is enabled
 
-        self.timer = np.zeros( 4, dtype=np.uint8 ) # Timers for the timer interrupt
+        self.timer = [0] * 4  # Timer registers # Timers for the timer interrupt
         self.timer[ 0 ] = 0 # Timer counter (T)
         self.timer[ 1 ] = 0 # Timer modulo (M)
         self.timer[ 2 ] = 0 # Timer control (C)
@@ -67,11 +67,11 @@ class CPU:
         self.timer_cycles = 0  # Cycle counter for timer
         self.timer_enabled = False  # Timer enable state
         
-        self.serial = np.zeros( 2, dtype=np.uint8 ) # Serial data for the serial interrupt
+        self.serial = [0] * 2  # Serial data for the serial interrupt
         self.serial[ 0 ] = 0 # Serial data register (S)
         self.serial[ 1 ] = 0 # Serial control register (C)
 
-        self.keyboard = np.zeros( 4, dtype=np.uint8 ) # Keyboard data for the keyboard interrupt
+        self.keyboard = [0] * 4  # Keyboard data for the keyboard interrupt
         self.keyboard[ 0 ] = 0 # Keyboard data register (D) - current key code
         self.keyboard[ 1 ] = 0 # Keyboard status register (S) - status flags
         self.keyboard[ 2 ] = 0 # Keyboard control register (C) - control flags  
@@ -845,6 +845,10 @@ class CPU:
             if sp < 0x0124:  # Stack overflow check (protect interrupt vectors)
                 raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
             
+            # Calculate interrupt handler address
+            vector_address = 0x0100 + (interrupt_vector * 4)
+            handler_address = self.memory.read_word(vector_address)
+            
             # Push current PC and flags onto stack in memory
             flags_val = 0
             for i in range(12):
@@ -861,8 +865,8 @@ class CPU:
             self._flags[5] = 0
             
             # Jump to interrupt handler
-            # Using simplified vector table: 0x0100 + (vector * 4)
-            self.pc = 0x0100 + (interrupt_vector * 4)
+            self.pc = handler_address
+            
             # Invalidate prefetch buffer after jump
             self.invalidate_prefetch()
     
@@ -1010,24 +1014,22 @@ class CPU:
         lookup = {}
         
         # Timer registers
-        lookup[0xA5] = (0, 'TT')  # Timer Time/Counter
-        lookup[0xA6] = (1, 'TM')  # Timer Modulo
-        lookup[0xA7] = (2, 'TC')  # Timer Control
-        lookup[0xA8] = (3, 'TS')  # Timer Speed
+        lookup[0x61] = (0, 'TT')  # Timer Time/Counter
+        lookup[0x62] = (1, 'TM')  # Timer Modulo
+        lookup[0x63] = (2, 'TC')  # Timer Control
+        lookup[0x64] = (3, 'TS')  # Timer Speed
         
-        # Sound registers
-        lookup[0x9D] = (0, 'SA')  # Sound Address
-        lookup[0x9E] = (0, 'SF')  # Sound Frequency
-        lookup[0x9F] = (0, 'SV')  # Sound Volume
-        lookup[0xA0] = (0, 'SW')  # Sound Waveform/Control
-        lookup[0xA1] = (0, 'SA:') # Sound Address high byte
-        lookup[0xA2] = (0, ':SA') # Sound Address low byte
+        # Video Mode register
+        lookup[0x5F] = (2, 'V')   # VM register - Vregisters[2]
         
         # Video Layer register
-        lookup[0xA4] = (0, 'VL')  # Video Layer register
-
-        # Video Mode register
-        lookup[0xA3] = (2, 'V')   # VM register - Vregisters[2]
+        lookup[0x60] = (0, 'VL')  # Video Layer register
+        
+        # Sound registers
+        lookup[0x5B] = (0, 'SA')  # Sound Address
+        lookup[0x5C] = (0, 'SF')  # Sound Frequency
+        lookup[0x5D] = (0, 'SV')  # Sound Volume
+        lookup[0x5E] = (0, 'SW')  # Sound Waveform/Control
         
         # Regular R registers (0xA9-0xB2)
         for i in range(10):
@@ -1081,6 +1083,8 @@ class CPU:
         try:
             return self._register_lookup[reg_code]
         except KeyError:
+            if reg_code == 0x00:
+                return 0, 'R'  # Treat 0x00 as R0
             raise Exception(f"Unknown register code: {reg_code:02X}")
 
     def fetch( self, bytes=1 ):
@@ -1147,54 +1151,158 @@ class CPU:
     
     def fetch_word(self):
         """Optimized 16-bit fetch with prefetching (big-endian for Nova-16)"""
+        # Temporarily disable prefetch for debugging
         # Check if we can fetch both bytes from prefetch buffer
-        if (self.prefetch_valid and 
-            self.pc >= self.prefetch_pc and 
-            self.pc + 1 < self.prefetch_pc + 16):
-            offset = self.pc - self.prefetch_pc
-            high = self.prefetch_buffer[offset]
-            low = self.prefetch_buffer[offset + 1]
-            self.pc += 2
-            return (int(high) << 8) | int(low)
+        # if (self.prefetch_valid and 
+        #     self.pc >= self.prefetch_pc and 
+        #     self.pc + 1 < self.prefetch_pc + 16):
+        #     offset = self.pc - self.prefetch_pc
+        #     high = self.prefetch_buffer[offset]
+        #     low = self.prefetch_buffer[offset + 1]
+        #     self.pc += 2
+        #     return (int(high) << 8) | int(low)
         
         # Use individual byte fetches with prefetching
         high = self.fetch_byte()
         low = self.fetch_byte()
         return (int(high) << 8) | int(low)
     
-    def fetch_word_le(self):
-        """Optimized 16-bit fetch little-endian (deprecated - Nova-16 is big-endian)"""
-        low = self.memory.memory[self.pc]
-        high = self.memory.memory[self.pc + 1]
-        self.pc += 2
-        return (int(high) << 8) | int(low)
-    
+
     def fetch_bytes(self, count):
         """Optimized multi-byte fetch returning list of ints"""
         result = [int(self.memory.memory[self.pc + i]) for i in range(count)]
         self.pc += count
         return result
 
+    # ========================================
+    # NEW PREFIXED OPERAND METHODS
+    # ========================================
+    
+    def fetch_operand_by_mode(self, mode_bits):
+        """Fetch operand based on 2-bit mode encoding"""
+        if mode_bits == 0:  # Register direct
+            reg_num = self.fetch_byte()
+            return self.get_register_value(reg_num)
+        elif mode_bits == 1:  # Immediate 8-bit
+            return self.fetch_byte()
+        elif mode_bits == 2:  # Immediate 16-bit
+            return self.fetch_word()
+        elif mode_bits == 3:  # Memory reference
+            # Check flags for interpretation
+            indexed = (self._current_mode_byte & (1 << 6)) != 0
+            direct = (self._current_mode_byte & (1 << 7)) != 0
+            
+            if direct and not indexed:
+                # Direct memory address
+                addr = self.fetch_word()
+                return self.memory.read_word(addr)
+            elif not direct and not indexed:
+                # Register indirect
+                reg_num = self.fetch_byte()
+                addr = self.get_register_value(reg_num)
+                return self.memory.read_word(addr & 0xFFFF)
+            elif not direct and indexed:
+                # Register indexed
+                reg_num = self.fetch_byte()
+                index = self.fetch_byte()
+                base_addr = self.get_register_value(reg_num)
+                addr = (base_addr + index) & 0xFFFF
+                return self.memory.read_word(addr)
+            elif direct and indexed:
+                # Direct indexed
+                addr = self.fetch_word()
+                index = self.fetch_byte()
+                final_addr = (addr + index) & 0xFFFF
+                return self.memory.read_word(final_addr)
+        else:
+            raise Exception(f"Invalid mode bits: {mode_bits}")
+    
+    def get_register_value(self, reg_num):
+        """Get register value by number (0-19)"""
+        if 0 <= reg_num <= 9:  # R0-R9
+            return self.Rregisters[reg_num]
+        elif 10 <= reg_num <= 19:  # P0-P9
+            return self.Pregisters[reg_num - 10]
+        elif reg_num == 20:  # VX
+            return self.gfx.Vregisters[0]
+        elif reg_num == 21:  # VY
+            return self.gfx.Vregisters[1]
+        else:
+            raise Exception(f"Invalid register number: {reg_num}")
+    
+    def set_register_value(self, reg_num, value):
+        """Set register value by number (0-21)"""
+        if 0 <= reg_num <= 9:  # R0-R9
+            self.Rregisters[reg_num] = value & 0xFF
+        elif 10 <= reg_num <= 19:  # P0-P9
+            self.Pregisters[reg_num - 10] = value & 0xFFFF
+        elif reg_num == 20:  # VX
+            self.gfx.Vregisters[0] = value & 0xFFFF
+        elif reg_num == 21:  # VY
+            self.gfx.Vregisters[1] = value & 0xFFFF
+        else:
+            raise Exception(f"Invalid register number: {reg_num}")
+    
+    def get_operand_address(self, mode_bits):
+        """Get address for memory write operations"""
+        if mode_bits == 0:  # Register direct - not an address
+            raise Exception("Cannot get address for register direct mode")
+        elif mode_bits == 1:  # Immediate 8-bit - not an address
+            raise Exception("Cannot get address for immediate 8-bit mode")
+        elif mode_bits == 2:  # Immediate 16-bit - not an address
+            raise Exception("Cannot get address for immediate 16-bit mode")
+        elif mode_bits == 3:  # Memory reference
+            indexed = (self._current_mode_byte & (1 << 6)) != 0
+            direct = (self._current_mode_byte & (1 << 7)) != 0
+            
+            if direct and not indexed:
+                # Direct memory address
+                return self.fetch_word()
+            elif not direct and not indexed:
+                # Register indirect
+                reg_num = self.fetch_byte()
+                return self.get_register_value(reg_num) & 0xFFFF
+            elif not direct and indexed:
+                # Register indexed
+                reg_num = self.fetch_byte()
+                index = self.fetch_byte()
+                base_addr = self.get_register_value(reg_num)
+                return (base_addr + index) & 0xFFFF
+            elif direct and indexed:
+                # Direct indexed
+                addr = self.fetch_word()
+                index = self.fetch_byte()
+                return (addr + index) & 0xFFFF
+        else:
+            raise Exception(f"Invalid mode bits: {mode_bits}")
+
     def step( self ):
         if self.halted:
             return
         
-        # Update the new timer system (includes interrupt checking)
+        # Update timer first (so timer interrupt can happen before instruction execution)
         self.update_timer()
         
-        # Check for other pending interrupts (keyboard, serial, etc.)
-        self._check_pending_interrupts()
-
         #prefetchpc = self.pc
         opcode = self.fetch_byte()  # Use optimized fetch for single byte opcodes
         #print( f"pre-fetch pc: {prefetchpc:04x} opcode: {opcode:04x}" )
         self.execute( opcode )
+        
+        # Check for other pending interrupts (keyboard, serial, etc.)
+        self._check_pending_interrupts()
 
     def execute(self, opcode):
         """Execute instruction using dispatch table"""
         instruction = self.instruction_table.get(opcode)
         if instruction:
-            instruction.execute(self)
+            # Check if this is a no-operand instruction
+            if opcode in [0x00, 0x01, 0x02, 0x03, 0x04, 0xFF]:  # HLT, RET, IRET, CLI, STI, NOP
+                # No-operand instructions don't have mode byte
+                instruction.execute(self)
+            else:
+                # All other instructions use prefixed operand format
+                self._current_mode_byte = self.fetch_byte()
+                instruction.execute(self)
         else:
             raise Exception(f"Unknown opcode: {opcode:02X}")
 

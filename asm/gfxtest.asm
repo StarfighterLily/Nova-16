@@ -12,8 +12,8 @@ SETUP:
     MOV P1, FINISH   ; P1 = end address (0xFFFF)
     MOV R0, 0        ; R0 = color counter
     MOV TT, 0        ; Set timer to 0
-    MOV TM, 255      ; Trigger at 255
-    MOV TS, 32       ; Set speed
+    MOV TM, 50       ; Trigger at 50 (slower)
+    MOV TS, 4        ; Set speed to 4 (slower)
     MOV TC, 3        ; Enable timer and interrupt
     MOV VL, 1        ; Switch to Layer 1
 
@@ -38,6 +38,9 @@ LOOP2:
 
 TXT: DEFSTR "De Nova Stella"
 
-ORG 0x0100           ; Timer vector
-    SROLX 1          ; Roll screen 1
+TIMER_HANDLER:       ; Timer interrupt handler
+    SROLX 1          ; Roll screen 1 pixel
     IRET             ; Return from interrupt
+
+ORG 0x0100          ; Timer interrupt vector  
+    DW TIMER_HANDLER ; Address of timer interrupt handler

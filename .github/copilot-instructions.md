@@ -1,33 +1,4 @@
 # NOVA-16 Development Guidelines
-Follow the nova16.chatmode.md for response style and convention. Utilize the debugging tools available in the astrid directory:
-```nova.py --headless program.bin [--cycles N]```: runs the program for N cycles without GUI, useful for automated testing.
-
-```nova_debugger.py [<program>.bin]```: launches an interactive debugger for step-by-step execution and inspection.
-```
-Commands:
-  step, s           Step one instruction
-  step <n>, s <n>   Step <n> instructions
-  regs, r           Show CPU registers
-  mem <addr>        Show memory at <addr>
-  stack             Show stack contents
-  load <file>       Load a binary file into memory
-  quit, q, exit     Exit debugger
-  help, h, ?        Show this help
-```
-
-```nova_assembler.py program.asm```: assembles assembly code into binary format.
-
-```nova_disassembler.py program.bin```: disassembles binary back into assembly code.
-
-```nova_graphics_monitor.py program.bin```: visualizes graphics output of a binary program. Produces a lot of output, so pipe to a file and use search patterns to find relevant sections and data patterns. Use options to filter output. Consult the GRAPHICS_MONITOR_USAGE.md for details.
-```
-usage: nova_graphics_monitor.py [-h] [--regions REGIONS [REGIONS ...]] [--layers LAYERS [LAYERS ...]] [--cycles CYCLES] [--interval INTERVAL] [--quiet][--export EXPORT] [--config CONFIG] program
-```
-
-```astrid2.0/run_astrid.py program.ast```: compiles high-level Astrid code into assembly.
-
-```astrid_debug_tool.py program.ast [--cycles N]```: automates compilation, assembly, execution, and graphics analysis of Astrid programs.
-
 
 ## Core Architecture
 NOVA-16 is a custom 16-bit CPU emulator with Princeton architecture featuring 64KB unified memory. All components (CPU, graphics, sound, keyboard) share a single memory reference for tight integration.
@@ -53,22 +24,23 @@ python .\nova.py --headless program.bin --cycles 10000
 python .\nova.py program.bin
 ```
 
-### Astrid 2.0 High-Level Development
+### FORTH Development
 ```powershell
-# Compile .ast to .asm
-cd astrid2.0
-python run_astrid.py program.ast
-
-# Then assemble to .bin
-python ..\nova_assembler.py program.asm
+# Interactive FORTH interpreter
+cd forth
+python forth_interpreter.py
 ```
 
 ### Debugging
 ```powershell
 # Interactive debugger
-python nova_debugger.py
+python nova_debugger.py program.bin
 
-# Common commands: s/step, r/regs, mem <addr>, stack
+# Graphics analysis (produces detailed output)
+python nova_graphics_monitor.py program.bin --cycles 1000 --export debug_output
+
+# Disassemble binary back to assembly
+python nova_disassembler.py program.bin
 ```
 
 ## Critical Patterns
@@ -79,7 +51,14 @@ python nova_debugger.py
 - **Special**: VX/VY (graphics coords), VM (video mode), VL (video layer)
 - **Sound**: SA (address), SF (frequency), SV (volume), SW (waveform)
 - **Timer**: TT (timer), TM (match), TC (control), TS (speed)
-- **Byte Access**: P registers can have individual bytes accessed through the use of the ```:``` operator. 0xBEEF in P0, ```:P0``` would access the low byte (0xEF) and ```P0:``` would access the high byte (0xBE).
+- **Stack**: SP (P8), FP (P9) - stack grows downward from 0xFFFF
+- **Byte Access**: P registers accessible as high/low bytes with `P0:` and `:P0` syntax
+
+### Memory Layout
+- **0x0000-0x00FF**: Zero page (fast access)
+- **0x0100-0x011F**: Interrupt vectors (8 vectors × 4 bytes)
+- **0x0120-0xFFFF**: General memory (64KB total)
+- **0xF000-0xF0FF**: Sprite control blocks (16 sprites × 16 bytes)
 
 ### Hardware Access Patterns
 ```asm
@@ -99,14 +78,14 @@ SPLAY               ; Start playback
 
 ; Keyboard input
 KEYIN R0            ; Read key into R0
-KEYSTAT R0          ; Check if key available
+KEYSTAT R0          ; Check if key available (0=no key, 1=key ready)
 ```
 
-### Memory Layout
-- **0x0000-0x00FF**: Zero page (fast access)
-- **0x0100-0x011F**: Interrupt vectors (8 vectors × 4 bytes)
-- **0x0120-0xFFFF**: General memory (64KB total)
-- **0xF000-0xF0FF**: Sprite control blocks (16 sprites × 16 bytes)
+### Stack Operations
+- **Grows downward** from 0xFFFF (SP decreases on push)
+- **PUSH/POP** instructions auto-manage SP (P8)
+- **CALL/RET** use stack for return addresses
+- **Interrupts** save PC + flags to stack
 
 ## Component Integration
 
@@ -117,25 +96,24 @@ cpu = CPU(memory, gfx, keyboard, sound)
 memory.load(program_path)  # Programs loaded into shared memory
 ```
 
-### Graphics Layer System
-- **Layer 0**: Main screen buffer
-- **Layers 1-4**: Background layers
-- **Layers 5-8**: Sprite layers
-- **Video Modes**: VM=0 (coordinate), VM=1 (memory addressing)
+### Interrupt System
+- **8 vectors** at 0x0100-0x011F (4 bytes each)
+- **Priorities**: Timer (highest) → Keyboard → User interrupts
+- **Automatic context save**: PC + flags pushed on interrupt
+- **IRET** restores context and re-enables interrupts
 
 ## Project Conventions
 
 ### File Organization
 - `*.asm` - Assembly source files
-- `*.ast` - Astrid 2.0 high-level source
 - `*.bin` - Compiled binary programs
-- `asm\` - Assembly examples and tests
-- `astrid2.0\` - High-level compiler and tools
+- `forth/` - FORTH interpreter and examples
+- `asm/` - Assembly examples and tests
+- `docs/` - Specifications and documentation
 
 ### Code Generation Pipeline
-1. **Astrid** (.ast) → **Assembly** (.asm) via `astrid_compiler.py`
-2. **Assembly** (.asm) → **Binary** (.bin) via `nova_assembler.py`
-3. **Binary** (.bin) → **Execution** via `nova.py`
+1. **Assembly** (.asm) → **Binary** (.bin) via `nova_assembler.py`
+2. **FORTH** (interactive) → **Execution** via `forth_interpreter.py`
 
 ### Error Handling
 ```python
@@ -163,8 +141,6 @@ print(f"Graphics pixels: {non_zero_pixels}")
 ### Register State Validation
 ```python
 # Check final register states after execution
-print(f"R0-R9: {[f'0x{r:04X}' for r in proc.Rregisters[:10]]}")
+print(f"R0-R9: {[f'0x{r:02X}' for r in proc.Rregisters[:10]]}")
 print(f"P0-P9: {[f'0x{r:04X}' for r in proc.Pregisters[:10]]}")
 ```
-
-<parameter name="filePath">e:\Storage\Scripts\Nova\.github\copilot-instructions.md

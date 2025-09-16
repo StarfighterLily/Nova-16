@@ -285,10 +285,17 @@ class OperandClassifier:
         """Classify an operand and return its type"""
         operand = operand.strip()
         
-        # Check for register (including high/low byte)
-        if (operand in self.instruction_set.registers or 
-            operand in self.instruction_set.high_byte_registers or 
-            operand in self.instruction_set.low_byte_registers):
+        # Check for register (hardcoded list for new prefixed format)
+        valid_registers = {
+            # 8-bit registers
+            'R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9',
+            # 16-bit registers  
+            'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9',
+            # Special registers
+            'VX', 'VY', 'VM', 'VL', 'TT', 'TM', 'TC', 'TS', 'SP', 'FP'
+        }
+        
+        if operand in valid_registers:
             return OperandType.REGISTER
         
         # Check for direct memory addressing
@@ -490,46 +497,198 @@ class CodeGenerator:
         self.instruction_set = instruction_set
         self.classifier = OperandClassifier(instruction_set)
     
+    def calculate_mode_byte(self, operand_types: List[str]) -> int:
+        """Calculate mode byte for prefixed operand encoding"""
+        mode_byte = 0
+        
+        # Mode encoding: bits 0-1: op1, bits 2-3: op2, bits 4-5: op3
+        # 00: register, 01: imm8, 10: imm16, 11: memory
+        
+        for i, op_type in enumerate(operand_types[:3]):  # Max 3 operands
+            shift = i * 2
+            if op_type == OperandType.REGISTER:
+                mode_val = 0  # 00
+            elif op_type == OperandType.IMMEDIATE8:
+                mode_val = 1  # 01
+            elif op_type == OperandType.IMMEDIATE16:
+                mode_val = 2  # 10
+            elif op_type in [OperandType.REGISTER_INDIRECT, OperandType.REGISTER_INDEXED, OperandType.DIRECT]:
+                mode_val = 3  # 11
+            else:
+                mode_val = 0  # Default to register
+            
+            mode_byte |= (mode_val << shift)
+        
+        # Bit 6: Indexed flag (set if any operand is REGISTER_INDEXED)
+        if OperandType.REGISTER_INDEXED in operand_types:
+            mode_byte |= (1 << 6)
+        
+        # Bit 7: Direct flag (set if any operand is DIRECT)
+        if OperandType.DIRECT in operand_types:
+            mode_byte |= (1 << 7)
+        
+        return mode_byte
+    
     def build_instruction_mnemonic(self, instruction: str, operands: List[str], symbol_table: Dict[str, str]) -> str:
-        """Build full instruction mnemonic with operand types"""
-        if not operands:
-            return instruction
+        """Build core instruction mnemonic (no variants for new prefixed system)"""
+        return instruction
+    
+    def encode_operand_new(self, operand: str, operand_type: str, symbol_table: Dict[str, str]) -> List[int]:
+        """Encode operand for new prefixed system"""
+        operand = operand.strip()
         
-        # Special handling for STOR instruction
-        if instruction.upper() == 'STOR' and len(operands) == 2:
-            first_operand = operands[0].strip()
-            second_operand = operands[1].strip()
-            
-            # If first operand is a pointer register (P0-P9), treat as indirect
-            if first_operand.startswith('P') and len(first_operand) <= 3:
-                try:
-                    p_num = int(first_operand[1:])
-                    if 0 <= p_num <= 9:
-                        second_type = self.classifier.classify_operand(second_operand, symbol_table)
-                        return f"STOR regIndir {second_type}"
-                except ValueError:
-                    pass
-            
-            # Check if it's an immediate address (16-bit value or symbol)
-            first_type = self.classifier.classify_operand(first_operand, symbol_table)
-            if first_type in [OperandType.IMMEDIATE16, OperandType.IMMEDIATE8]:
-                second_type = self.classifier.classify_operand(second_operand, symbol_table)
-                return f"STOR imm16 {second_type}"
+        if operand_type == OperandType.REGISTER:
+            # Registers encoded using CPU lookup table codes
+            if operand.startswith('R') and len(operand) <= 3:
+                reg_num = int(operand[1:])
+                return [0xA9 + reg_num]  # R0-R9 = 0xA9-0xB2
+            elif operand.startswith('P') and len(operand) <= 3:
+                reg_num = int(operand[1:])
+                return [0xB3 + reg_num]  # P0-P9 = 0xB3-0xBC
+            elif operand == 'VX':
+                return [0xBD]  # VX
+            elif operand == 'VY':
+                return [0xBE]  # VY
+            elif operand == 'VM':
+                return [0x5F]  # VM
+            elif operand == 'VL':
+                return [0x60]  # VL
+            elif operand == 'TT':
+                return [0x61]  # TT
+            elif operand == 'TM':
+                return [0x62]  # TM
+            elif operand == 'TC':
+                return [0x63]  # TC
+            elif operand == 'TS':
+                return [0x64]  # TS
+            elif operand == 'SP':
+                return [18]  # SP = P8
+            elif operand == 'FP':
+                return [19]  # FP = P9
+            else:
+                raise Exception(f"Unknown register: {operand}")
         
-        # Default behavior for other instructions
+        elif operand_type == OperandType.IMMEDIATE8:
+            if operand.startswith('0x'):
+                val = int(operand, 16)
+            elif operand.isdigit():
+                val = int(operand)
+            elif symbol_table and operand in symbol_table:
+                symbol_val = symbol_table[operand].strip()
+                val = int(symbol_val, 16) if symbol_val.startswith('0x') else int(symbol_val)
+            else:
+                val = 0  # Unknown symbol defaults to 0
+            return [val & 0xFF]
+        
+        elif operand_type == OperandType.IMMEDIATE16:
+            if operand.startswith('0x'):
+                val = int(operand, 16)
+            elif operand.isdigit():
+                val = int(operand)
+            elif symbol_table and operand in symbol_table:
+                symbol_val = symbol_table[operand].strip()
+                val = int(symbol_val, 16) if symbol_val.startswith('0x') else int(symbol_val)
+            else:
+                val = 0  # Unknown symbol defaults to 0
+            return [(val >> 8) & 0xFF, val & 0xFF]
+        
+        elif operand_type == OperandType.REGISTER_INDIRECT:
+            indirect_match = re.match(r'^\[([A-Za-z0-9]+)\]$', operand)
+            if indirect_match:
+                reg_name = indirect_match.group(1)
+                if reg_name.startswith('R'):
+                    reg_num = 0xA9 + int(reg_name[1:])  # R0-R9 = 0xA9-0xB2
+                elif reg_name.startswith('P'):
+                    reg_num = 0xB3 + int(reg_name[1:])  # P0-P9 = 0xB3-0xBC
+                elif reg_name == 'SP':
+                    reg_num = 0xB3 + 8  # SP = P8 = 0xBB
+                elif reg_name == 'FP':
+                    reg_num = 0xB3 + 9  # FP = P9 = 0xBC
+                else:
+                    raise Exception(f"Unknown register for indirect: {reg_name}")
+                return [reg_num]
+            else:
+                raise Exception(f"Invalid indirect operand: {operand}")
+        
+        elif operand_type == OperandType.REGISTER_INDEXED:
+            indexed_match = re.match(r'^\[([A-Za-z0-9]+)\s*\+\s*([A-Za-z0-9]+)\]$', operand)
+            if indexed_match:
+                reg_name = indexed_match.group(1)
+                index_name = indexed_match.group(2)
+                
+                # Base register
+                if reg_name.startswith('R'):
+                    reg_num = 0xA9 + int(reg_name[1:])  # R0-R9 = 0xA9-0xB2
+                elif reg_name.startswith('P'):
+                    reg_num = 0xB3 + int(reg_name[1:])  # P0-P9 = 0xB3-0xBC
+                elif reg_name == 'SP':
+                    reg_num = 0xB3 + 8  # SP = P8 = 0xBB
+                elif reg_name == 'FP':
+                    reg_num = 0xB3 + 9  # FP = P9 = 0xBC
+                else:
+                    raise Exception(f"Unknown base register for indexed: {reg_name}")
+                
+                # Index register/value
+                if index_name.startswith('R'):
+                    index_num = int(index_name[1:])
+                elif index_name.startswith('P'):
+                    index_num = int(index_name[1:]) + 10
+                elif index_name.isdigit():
+                    index_num = int(index_name)
+                elif index_name.startswith('0x'):
+                    index_num = int(index_name, 16)
+                else:
+                    index_num = 0  # Default
+                
+                return [reg_num, index_num & 0xFF]
+            else:
+                raise Exception(f"Invalid indexed operand: {operand}")
+        
+        elif operand_type == OperandType.DIRECT:
+            direct_match = re.match(r'^\[0x([0-9A-Fa-f]{1,4})\]$', operand)
+            if direct_match:
+                addr = int(direct_match.group(1), 16)
+                return [(addr >> 8) & 0xFF, addr & 0xFF]
+            else:
+                raise Exception(f"Invalid direct operand: {operand}")
+        
+        else:
+            raise Exception(f"Unsupported operand type: {operand_type}")
+    
+    def generate_instruction(self, asm_line: AssemblyLine, symbol_table: Dict[str, str]) -> List[int]:
+        """Generate machine code for new prefixed operand instruction"""
+        if not asm_line.instruction:
+            return []
+        
+        # Get core instruction opcode
+        instr_info = self.instruction_set.get_instruction_info(asm_line.instruction)
+        if not instr_info:
+            raise Exception(f"Unknown instruction: {asm_line.instruction} (line {asm_line.line_num})")
+        
+        opcode_str, operand_count = instr_info
+        result = [int(opcode_str, 16)]
+        
+        # For no-operand instructions, don't add mode byte
+        if operand_count == 0:
+            return result
+        
+        # Classify operands
         operand_types = []
-        for operand in operands:
-            operand_type = self.classifier.classify_operand(operand, symbol_table)
-            operand_types.append(operand_type)
+        for operand in asm_line.operands:
+            op_type = self.classifier.classify_operand(operand, symbol_table)
+            operand_types.append(op_type)
         
-        # Special handling for RNDR: if we have mixed imm8/imm16, promote to imm16
-        if instruction.upper() == 'RNDR' and len(operand_types) == 3:
-            # Check if we have mixed immediate types (imm8 and imm16)
-            if (OperandType.IMMEDIATE8 in operand_types and OperandType.IMMEDIATE16 in operand_types):
-                # Promote all immediates to 16-bit
-                operand_types = [OperandType.IMMEDIATE16 if t in [OperandType.IMMEDIATE8, OperandType.IMMEDIATE16] else t for t in operand_types]
+        # Calculate mode byte
+        mode_byte = self.calculate_mode_byte(operand_types)
+        result.append(mode_byte)
         
-        return f"{instruction} {' '.join(operand_types)}"
+        # Encode operands
+        for i, operand in enumerate(asm_line.operands):
+            if i < len(operand_types):
+                operand_bytes = self.encode_operand_new(operand, operand_types[i], symbol_table)
+                result.extend(operand_bytes)
+        
+        return result
     
     def encode_operand(self, operand: str, symbol_table: Dict[str, str], expected_type: str = None) -> List[int]:
         """Encode a sinVLe operand into bytes"""
@@ -678,53 +837,37 @@ class CodeGenerator:
                 return [(val >> 8) & 0xFF, val & 0xFF]
     
     def generate_instruction(self, asm_line: AssemblyLine, symbol_table: Dict[str, str]) -> List[int]:
-        """Generate machine code for a sinVLe instruction"""
+        """Generate machine code for new prefixed operand instruction"""
         if not asm_line.instruction:
             return []
         
-        # Build full mnemonic
-        full_mnemonic = self.build_instruction_mnemonic(
-            asm_line.instruction, asm_line.operands, symbol_table
-        )
-        
-        # Get instruction opcode
-        instr_info = self.instruction_set.get_instruction_info(full_mnemonic)
-        if not instr_info:
-            # Try without operand types
-            instr_info = self.instruction_set.get_instruction_info(asm_line.instruction)
-        
+        # Get core instruction opcode
+        instr_info = self.instruction_set.get_instruction_info(asm_line.instruction)
         if not instr_info:
             raise Exception(f"Unknown instruction: {asm_line.instruction} (line {asm_line.line_num})")
         
-        opcode_str, size = instr_info
+        opcode_str, operand_count = instr_info
         result = [int(opcode_str, 16)]
         
-        # Get expected operand types from the full mnemonic
-        operand_types = []
-        if ' ' in full_mnemonic:
-            parts = full_mnemonic.split(' ', 1)[1].split(' ')
-            operand_types = parts
+        # For no-operand instructions, don't add mode byte
+        if operand_count == 0:
+            return result
         
-        # Encode operands with expected types
+        # Classify operands
+        operand_types = []
+        for operand in asm_line.operands:
+            op_type = self.classifier.classify_operand(operand, symbol_table)
+            operand_types.append(op_type)
+        
+        # Calculate mode byte
+        mode_byte = self.calculate_mode_byte(operand_types)
+        result.append(mode_byte)
+        
+        # Encode operands
         for i, operand in enumerate(asm_line.operands):
-            expected_type = operand_types[i] if i < len(operand_types) else None
-            
-            # Special handling for STOR regIndir: use indirect register codes
-            if (asm_line.instruction.upper() == 'STOR' and 
-                expected_type == 'regIndir' and 
-                operand.strip() in self.instruction_set.registers):
-                
-                # Convert direct register to indirect register code
-                operand_name = operand.strip()
-                if operand_name in self.instruction_set.indirect_registers:
-                    indirect_opcode = self.instruction_set.indirect_registers[operand_name]
-                    operand_bytes = [int(indirect_opcode, 16)]
-                else:
-                    raise Exception(f"No indirect register mapping for {operand_name}")
-            else:
-                operand_bytes = self.encode_operand(operand, symbol_table, expected_type)
-            
-            result.extend(operand_bytes)
+            if i < len(operand_types):
+                operand_bytes = self.encode_operand_new(operand, operand_types[i], symbol_table)
+                result.extend(operand_bytes)
         
         return result
 
@@ -802,20 +945,27 @@ class Assembler:
                     print(f"Warning: Standalone register '{line.instruction}' on line {line.line_num}, skipping")
                     continue
                 
-                # Build mnemonic and get size
-                full_mnemonic = self.code_generator.build_instruction_mnemonic(
-                    line.instruction, line.operands, symbol_table
-                )
+                # For new prefixed operand system, calculate size dynamically
+                # Size = 1 (opcode) + 1 (mode) + operand bytes
+                size = 2  # opcode + mode byte
                 
-                instr_info = self.instruction_set.get_instruction_info(full_mnemonic)
-                if not instr_info:
-                    instr_info = self.instruction_set.get_instruction_info(line.instruction)
+                # Add operand sizes
+                for operand in line.operands:
+                    op_type = self.code_generator.classifier.classify_operand(operand, symbol_table)
+                    if op_type == OperandType.REGISTER:
+                        size += 1  # 1 byte for register number
+                    elif op_type == OperandType.IMMEDIATE8:
+                        size += 1  # 1 byte
+                    elif op_type == OperandType.IMMEDIATE16:
+                        size += 2  # 2 bytes
+                    elif op_type == OperandType.REGISTER_INDIRECT:
+                        size += 1  # 1 byte for register number
+                    elif op_type == OperandType.REGISTER_INDEXED:
+                        size += 2  # base register + index (1 byte each)
+                    elif op_type == OperandType.DIRECT:
+                        size += 2  # 16-bit address
                 
-                if instr_info:
-                    _, size = instr_info
-                    location_counter += size
-                else:
-                    print(f"Warning: Unknown instruction '{line.instruction}' on line {line.line_num}")
+                location_counter += size
         
         return symbol_table
     
