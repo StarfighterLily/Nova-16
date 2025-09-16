@@ -43,8 +43,8 @@ opcodes = [
     # Stack operations
     ("PUSH",               "0x18", 1), # Push to stack
     ("POP",                "0x19", 1), # Pop from stack
-    ("PUSHF",              "0x1A", 1), # Push flags
-    ("POPF",               "0x1B", 1), # Pop flags
+    ("PUSHF",              "0x1A", 0), # Push flags
+    ("POPF",               "0x1B", 0), # Pop flags
     ("PUSHA",              "0x1C", 0), # Push all registers
     ("POPA",               "0x1D", 0), # Pop all registers
 

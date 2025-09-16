@@ -337,17 +337,17 @@ class GFX:
             if 0 <= addr < self.width * self.height:
                 x = addr % self.width
                 y = addr // self.width
-                return self.screen[ y, x ]
+                return self.vram[ y, x ]
             else:
-                raise IndexError( f"Screen address out of range: {addr}" )
+                raise IndexError( f"VRAM address out of range: {addr}" )
         elif self.vmode == 0:
             # Coordinate mode: Vregisters[0] = x, Vregisters[1] = y
             x = int( self.Vregisters[ 0 ] )
             y = int( self.Vregisters[ 1 ] )
             if 0 <= x < self.width and 0 <= y < self.height:
-                return self.screen[ y, x ]
+                return self.vram[ y, x ]
             else:
-                raise IndexError( f"Screen coordinates out of range: x={x}, y={y}" )
+                raise IndexError( f"VRAM coordinates out of range: x={x}, y={y}" )
         else:
             raise ValueError( f"Unknown vmode: {self.vmode}" )
 

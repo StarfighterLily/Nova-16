@@ -1013,67 +1013,37 @@ class CPU:
         """Build optimized lookup table for register access - O(1) performance"""
         lookup = {}
         
-        # Timer registers
-        lookup[0x61] = (0, 'TT')  # Timer Time/Counter
-        lookup[0x62] = (1, 'TM')  # Timer Modulo
-        lookup[0x63] = (2, 'TC')  # Timer Control
-        lookup[0x64] = (3, 'TS')  # Timer Speed
-        
-        # Video Mode register
-        lookup[0x5F] = (2, 'V')   # VM register - Vregisters[2]
-        
-        # Video Layer register
-        lookup[0x60] = (0, 'VL')  # Video Layer register
-        
         # Sound registers
-        lookup[0x5B] = (0, 'SA')  # Sound Address
-        lookup[0x5C] = (0, 'SF')  # Sound Frequency
-        lookup[0x5D] = (0, 'SV')  # Sound Volume
-        lookup[0x5E] = (0, 'SW')  # Sound Waveform/Control
+        lookup[0xDD] = (0, 'SA')  # Sound Address
+        lookup[0xDE] = (0, 'SF')  # Sound Frequency
+        lookup[0xDF] = (0, 'SV')  # Sound Volume
+        lookup[0xE0] = (0, 'SW')  # Sound Waveform/Control
         
-        # Regular R registers (0xA9-0xB2)
-        for i in range(10):
-            lookup[0xA9 + i] = (i, 'R')
-            
-        # P registers (0xB3-0xBC) - all 10 P registers including P7
-        for i in range(10):
-            lookup[0xB3 + i] = (i, 'P')
-            
-        # V registers (0xBD-0xBE) - VX, VY (2 V registers)
-        for i in range(2):
-            lookup[0xBD + i] = (i, 'V')
-            
-        # Rind registers (0xBF-0xC8)
-        for i in range(10):
-            lookup[0xBF + i] = (i, 'Rind')
-            
-        # Pind registers (0xC9-0xD2)
-        for i in range(10):
-            lookup[0xC9 + i] = (i, 'Pind')
-            
-        # Vind registers (0xD3-0xD4) - VX, VY indirect
-        for i in range(2):
-            lookup[0xD3 + i] = (i, 'Vind')
-            
-        # P: registers (0xD5-0xDE)
-        for i in range(10):
-            lookup[0xD5 + i] = (i, 'P:')
-            
-        # :P registers (0xDF-0xE8)
-        for i in range(10):
-            lookup[0xDF + i] = (i, ':P')
-            
-        # Ridx registers (0xE9-0xF2)
-        for i in range(10):
-            lookup[0xE9 + i] = (i, 'Ridx')
-            
-        # Pidx registers (0xF3-0xFC) - includes P0-P7, SP(P8), FP(P9)
-        for i in range(10):
-            lookup[0xF3 + i] = (i, 'Pidx')
+        # Video registers
+        lookup[0xE1] = (2, 'V')   # VM register - Vregisters[2]
+        lookup[0xE2] = (0, 'VL')  # Video Layer register
         
-        # Vidx registers (0xFD-0xFE) - VX, VY indexed
-        for i in range(2):
-            lookup[0xFD + i] = (i, 'Vidx')
+        # Timer registers
+        lookup[0xE3] = (0, 'TT')  # Timer Time/Counter
+        lookup[0xE4] = (1, 'TM')  # Timer Modulo
+        lookup[0xE5] = (2, 'TC')  # Timer Control
+        lookup[0xE6] = (3, 'TS')  # Timer Speed
+        
+        # R registers (0xE7-0xF0)
+        for i in range(10):
+            lookup[0xE7 + i] = (i, 'R')
+            
+        # P registers (0xF1-0xFA)
+        for i in range(10):
+            lookup[0xF1 + i] = (i, 'P')
+            
+        # SP and FP (same as P8, P9)
+        lookup[0xFB] = (8, 'P')  # SP = P8
+        lookup[0xFC] = (9, 'P')  # FP = P9
+            
+        # V registers (0xFD-0xFE) - VX, VY
+        lookup[0xFD] = (0, 'V')  # VX
+        lookup[0xFE] = (1, 'V')  # VY
         
         return lookup
 
@@ -1181,8 +1151,9 @@ class CPU:
     def fetch_operand_by_mode(self, mode_bits):
         """Fetch operand based on 2-bit mode encoding"""
         if mode_bits == 0:  # Register direct
-            reg_num = self.fetch_byte()
-            return self.get_register_value(reg_num)
+            reg_code = self.fetch_byte()
+            idx, typ = self.reg_index(reg_code)
+            return self._get_operand_value(typ, idx)
         elif mode_bits == 1:  # Immediate 8-bit
             return self.fetch_byte()
         elif mode_bits == 2:  # Immediate 16-bit
@@ -1198,14 +1169,26 @@ class CPU:
                 return self.memory.read_word(addr)
             elif not direct and not indexed:
                 # Register indirect
-                reg_num = self.fetch_byte()
-                addr = self.get_register_value(reg_num)
+                reg_code = self.fetch_byte()
+                idx, typ = self.reg_index(reg_code)
+                if typ == 'P':
+                    addr = self.Pregisters[idx]
+                elif typ == 'R':
+                    addr = self.Rregisters[idx]
+                else:
+                    raise Exception(f"Invalid register type {typ} for indirect addressing")
                 return self.memory.read_word(addr & 0xFFFF)
             elif not direct and indexed:
                 # Register indexed
-                reg_num = self.fetch_byte()
+                reg_code = self.fetch_byte()
                 index = self.fetch_byte()
-                base_addr = self.get_register_value(reg_num)
+                idx, typ = self.reg_index(reg_code)
+                if typ == 'P':
+                    base_addr = self.Pregisters[idx]
+                elif typ == 'R':
+                    base_addr = self.Rregisters[idx]
+                else:
+                    raise Exception(f"Invalid register type {typ} for indexed addressing")
                 addr = (base_addr + index) & 0xFFFF
                 return self.memory.read_word(addr)
             elif direct and indexed:
@@ -1260,13 +1243,25 @@ class CPU:
                 return self.fetch_word()
             elif not direct and not indexed:
                 # Register indirect
-                reg_num = self.fetch_byte()
-                return self.get_register_value(reg_num) & 0xFFFF
+                reg_code = self.fetch_byte()
+                idx, typ = self.reg_index(reg_code)
+                if typ == 'P':
+                    return self.Pregisters[idx] & 0xFFFF
+                elif typ == 'R':
+                    return self.Rregisters[idx] & 0xFFFF
+                else:
+                    raise Exception(f"Invalid register type {typ} for indirect addressing")
             elif not direct and indexed:
                 # Register indexed
-                reg_num = self.fetch_byte()
+                reg_code = self.fetch_byte()
                 index = self.fetch_byte()
-                base_addr = self.get_register_value(reg_num)
+                idx, typ = self.reg_index(reg_code)
+                if typ == 'P':
+                    base_addr = self.Pregisters[idx]
+                elif typ == 'R':
+                    base_addr = self.Rregisters[idx]
+                else:
+                    raise Exception(f"Invalid register type {typ} for indexed addressing")
                 return (base_addr + index) & 0xFFFF
             elif direct and indexed:
                 # Direct indexed
@@ -1296,7 +1291,7 @@ class CPU:
         instruction = self.instruction_table.get(opcode)
         if instruction:
             # Check if this is a no-operand instruction
-            if opcode in [0x00, 0x01, 0x02, 0x03, 0x04, 0xFF]:  # HLT, RET, IRET, CLI, STI, NOP
+            if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D]:  # HLT, NOP, RET, IRET, CLI, STI, PUSHF, POPF, PUSHA, POPA
                 # No-operand instructions don't have mode byte
                 instruction.execute(self)
             else:

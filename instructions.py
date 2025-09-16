@@ -1310,33 +1310,34 @@ class PushReg(BaseInstruction):
         super().__init__("PUSH", opcode_val)
     
     def execute(self, cpu):
-        # For new prefixed format, we need to handle the mode byte
-        if cpu._current_mode_byte != 0x00:
-            # This is the new format - skip mode byte handling for now
-            # For PUSH with mode 0x00 (register direct), just fetch the register
-            pass
+        # Parse mode byte for prefixed operand format
+        mode_byte = cpu._current_mode_byte
         
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            val = cpu.Rregisters[idx]
-        elif typ == 'P':
-            val = cpu.Pregisters[idx]
-        elif typ == 'V':
-            val = cpu.gfx.Vregisters[idx]
+        # For now, assume mode 0x00 = register direct
+        if mode_byte == 0x00:
+            reg_code = cpu.fetch()
+            idx, typ = cpu.reg_index(reg_code)
+            
+            if typ == 'R':
+                val = cpu.Rregisters[idx]
+            elif typ == 'P':
+                val = cpu.Pregisters[idx]
+            elif typ == 'V':
+                val = cpu.gfx.Vregisters[idx]
+            else:
+                val = 0
+            
+            # Check stack bounds before writing
+            sp = int(cpu.Pregisters[8])
+            if sp <= 0x0121:  # Stack overflow check (protect interrupt vectors)
+                raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
+            
+            # Push to stack in memory using standardized pattern
+            sp = (sp - 2) & 0xFFFF
+            cpu.Pregisters[8] = sp
+            cpu.memory.write_word(cpu.Pregisters[8], val)
         else:
-            val = 0
-        
-        # Check stack bounds before writing
-        sp = int(cpu.Pregisters[8])
-        if sp <= 0x0121:  # Stack overflow check (protect interrupt vectors)
-            raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
-        
-        # Push to stack in memory using standardized pattern
-        sp = (sp - 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        cpu.memory.write_word(cpu.Pregisters[8], val)
+            raise Exception(f"Unsupported PUSH mode: {mode_byte}")
 
 class PopReg(BaseInstruction):
     def __init__(self):
@@ -1345,28 +1346,35 @@ class PopReg(BaseInstruction):
         super().__init__("POP", opcode_val)
     
     def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
+        # Parse mode byte for prefixed operand format
+        mode_byte = cpu._current_mode_byte
         
-        # Check stack bounds before reading
-        if cpu.Pregisters[8] >= 0xFFFF:  # Stack underflow check
-            raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
-        
-        # Pop from stack in memory
-        val = cpu.memory.read_word(cpu.Pregisters[8])
-        
-        # Use standardized SP manipulation
-        sp = int(cpu.Pregisters[8])
-        sp = (sp + 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        
-        # Proper type conversion for register assignment
-        if typ == 'R':
-            cpu.Rregisters[idx] = int(val) & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = int(val) & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = int(val) & 0xFF
+        # For now, assume mode 0x00 = register direct
+        if mode_byte == 0x00:
+            reg_code = cpu.fetch()
+            idx, typ = cpu.reg_index(reg_code)
+            
+            # Check stack bounds before reading
+            if cpu.Pregisters[8] >= 0xFFFF:  # Stack underflow check
+                raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
+            
+            # Pop from stack in memory
+            val = cpu.memory.read_word(cpu.Pregisters[8])
+            
+            # Use standardized SP manipulation
+            sp = int(cpu.Pregisters[8])
+            sp = (sp + 2) & 0xFFFF
+            cpu.Pregisters[8] = sp
+            
+            # Proper type conversion for register assignment
+            if typ == 'R':
+                cpu.Rregisters[idx] = int(val) & 0xFF
+            elif typ == 'P':
+                cpu.Pregisters[idx] = int(val) & 0xFFFF
+            elif typ == 'V':
+                cpu.gfx.Vregisters[idx] = int(val) & 0xFF
+        else:
+            raise Exception(f"Unsupported POP mode: {mode_byte}")
 
 class PushF(BaseInstruction):
     def __init__(self):
@@ -3454,168 +3462,302 @@ class Mov(BaseInstruction):
         elif op1_mode == 3:  # Memory reference
             cpu.memory.write_word(dest_addr, source_value)
 
-# Backward compatibility MOV instructions
-class MovRegReg(BaseInstruction):
-    """MOV reg, reg - backward compatibility"""
+class Add(BaseInstruction):
+    """ADD instruction for prefixed operand system"""
     def __init__(self):
-        super().__init__("MOV reg reg", 0x05)
+        # Get opcode from opcodes.py
+        opcode_val = 0x07  # ADD
+        super().__init__("ADD", opcode_val)
     
     def execute(self, cpu):
-        dest_reg = cpu.fetch_byte()
-        src_reg = cpu.fetch_byte()
-        value = cpu.get_register_value(src_reg)
-        cpu.set_register_value(dest_reg, value)
+        # Parse mode byte
+        mode_byte = cpu._current_mode_byte
+        
+        # Extract operand modes (2 bits each)
+        op1_mode = mode_byte & 0x03
+        op2_mode = (mode_byte >> 2) & 0x03
+        
+        # For ADD dest, source: dest must be register or memory, source can be anything
+        if op1_mode == 0:  # Register direct destination
+            dest_reg = cpu.fetch_byte()
+        elif op1_mode == 3:  # Memory reference destination
+            dest_addr = cpu.get_operand_address(op1_mode)
+        else:
+            raise Exception(f"Invalid destination mode {op1_mode} for ADD instruction")
+        
+        # Source operand
+        source_value = cpu.fetch_operand_by_mode(op2_mode)
+        
+        # Get current destination value
+        if op1_mode == 0:  # Register direct
+            dest_idx, dest_type = cpu.reg_index(dest_reg)
+            dest_value = cpu._get_operand_value(dest_type, dest_idx)
+        elif op1_mode == 3:  # Memory reference
+            dest_value = cpu.memory.read_word(dest_addr)
+        
+        # Check if BCD mode is enabled
+        if cpu.decimal_flag:
+            # BCD arithmetic
+            bcd_result, bcd_carry = cpu._bcd_add(dest_value, source_value)
+            result = bcd_result
+        else:
+            # Normal binary arithmetic
+            result = dest_value + source_value
+        
+        # Store result
+        if op1_mode == 0:  # Register direct
+            if dest_type == 'R':
+                cpu.Rregisters[dest_idx] = result & 0xFF
+                if cpu.decimal_flag:
+                    cpu._set_flags_8bit_bcd(result, bcd_carry)
+                else:
+                    cpu._set_flags_8bit(int(result) & 0xFF, result)
+            elif dest_type == 'P':
+                cpu.Pregisters[dest_idx] = result & 0xFFFF
+                if cpu.decimal_flag:
+                    cpu._set_flags_8bit_bcd(result & 0xFF, bcd_carry)
+                else:
+                    cpu._set_flags_16bit(int(result) & 0xFFFF, result)
+            elif dest_type == 'V':
+                cpu.gfx.Vregisters[dest_idx] = result & 0xFF
+                if cpu.decimal_flag:
+                    cpu._set_flags_8bit_bcd(result, bcd_carry)
+                else:
+                    cpu._set_flags_8bit(int(result) & 0xFF, result)
+            elif dest_type in ['TT', 'TM', 'TC', 'TS']:
+                cpu._set_operand_value(dest_type, dest_idx, result & 0xFF)
+                if cpu.decimal_flag:
+                    cpu._set_flags_8bit_bcd(result, bcd_carry)
+                else:
+                    cpu._set_flags_8bit(int(result) & 0xFF, result)
+        elif op1_mode == 3:  # Memory reference
+            cpu.memory.write_word(dest_addr, result & 0xFFFF)
 
-class MovRegImm8(BaseInstruction):
-    """MOV reg, imm8 - backward compatibility"""
+class Inc(BaseInstruction):
+    """INC instruction for prefixed operand system"""
     def __init__(self):
-        super().__init__("MOV reg imm8", 0x06)
+        opcode_val = 0x0B  # INC
+        super().__init__("INC", opcode_val)
     
     def execute(self, cpu):
-        dest_reg = cpu.fetch_byte()
-        value = cpu.fetch_byte()
-        cpu.set_register_value(dest_reg, value)
+        mode_byte = cpu._current_mode_byte
+        op1_mode = mode_byte & 0x03
+        
+        if op1_mode == 0:  # Register direct
+            reg_code = cpu.fetch_byte()
+            idx, typ = cpu.reg_index(reg_code)
+            
+            if typ == 'R':
+                original = int(cpu.Rregisters[idx])
+                result = original + 1
+                cpu.Rregisters[idx] = result & 0xFF
+                cpu._set_flags_8bit(result & 0xFF, result)
+            elif typ == 'P':
+                original = int(cpu.Pregisters[idx])
+                result = original + 1
+                cpu.Pregisters[idx] = result & 0xFFFF
+                cpu._set_flags_16bit(result & 0xFFFF, result)
+            elif typ == 'V':
+                original = int(cpu.gfx.Vregisters[idx])
+                result = original + 1
+                cpu.gfx.Vregisters[idx] = result & 0xFF
+                cpu._set_flags_8bit(result & 0xFF, result)
+            elif typ in ['TT', 'TM', 'TC', 'TS']:
+                original = cpu._get_operand_value(typ, idx)
+                result = int(original) + 1
+                cpu._set_operand_value(typ, idx, result & 0xFF)
+                cpu._set_flags_8bit(result & 0xFF, result)
+        elif op1_mode == 3:  # Memory reference
+            addr = cpu.get_operand_address(op1_mode)
+            original = cpu.memory.read_word(addr)
+            result = original + 1
+            cpu.memory.write_word(addr, result & 0xFFFF)
 
-class MovRegImm16(BaseInstruction):
-    """MOV reg, imm16 - backward compatibility"""
+class Dec(BaseInstruction):
+    """DEC instruction for prefixed operand system"""
     def __init__(self):
-        super().__init__("MOV reg imm16", 0x07)
+        opcode_val = 0x0C  # DEC
+        super().__init__("DEC", opcode_val)
     
     def execute(self, cpu):
-        dest_reg = cpu.fetch_byte()
-        value = cpu.fetch_word()
-        cpu.set_register_value(dest_reg, value)
+        mode_byte = cpu._current_mode_byte
+        op1_mode = mode_byte & 0x03
+        
+        if op1_mode == 0:  # Register direct
+            reg_code = cpu.fetch_byte()
+            idx, typ = cpu.reg_index(reg_code)
+            
+            if typ == 'R':
+                original = int(cpu.Rregisters[idx])
+                result = original - 1
+                cpu.Rregisters[idx] = result & 0xFF
+                cpu._set_flags_8bit(result & 0xFF, result)
+            elif typ == 'P':
+                original = int(cpu.Pregisters[idx])
+                result = original - 1
+                cpu.Pregisters[idx] = result & 0xFFFF
+                cpu._set_flags_16bit(result & 0xFFFF, result)
+            elif typ == 'V':
+                original = int(cpu.gfx.Vregisters[idx])
+                result = original - 1
+                cpu.gfx.Vregisters[idx] = result & 0xFF
+                cpu._set_flags_8bit(result & 0xFF, result)
+            elif typ in ['TT', 'TM', 'TC', 'TS']:
+                original = cpu._get_operand_value(typ, idx)
+                result = int(original) - 1
+                cpu._set_operand_value(typ, idx, result & 0xFF)
+                cpu._set_flags_8bit(result & 0xFF, result)
+        elif op1_mode == 3:  # Memory reference
+            addr = cpu.get_operand_address(op1_mode)
+            original = cpu.memory.read_word(addr)
+            result = original - 1
+            cpu.memory.write_word(addr, result & 0xFFFF)
 
-class MovRegRegIndir(BaseInstruction):
-    """MOV reg, [reg] - backward compatibility"""
+class Sub(BaseInstruction):
+    """SUB instruction for prefixed operand system"""
     def __init__(self):
-        super().__init__("MOV reg regIndir", 0x08)
+        opcode_val = 0x08  # SUB
+        super().__init__("SUB", opcode_val)
     
     def execute(self, cpu):
-        dest_reg = cpu.fetch_byte()
-        addr_reg = cpu.fetch_byte()
-        addr = cpu.get_register_value(addr_reg)
-        value = cpu.memory.read_word(addr)
-        cpu.set_register_value(dest_reg, value)
+        mode_byte = cpu._current_mode_byte
+        op1_mode = mode_byte & 0x03
+        op2_mode = (mode_byte >> 2) & 0x03
+        
+        if op1_mode == 0:  # Register direct destination
+            dest_reg = cpu.fetch_byte()
+        elif op1_mode == 3:  # Memory reference destination
+            dest_addr = cpu.get_operand_address(op1_mode)
+        else:
+            raise Exception(f"Invalid destination mode {op1_mode} for SUB instruction")
+        
+        source_value = cpu.fetch_operand_by_mode(op2_mode)
+        
+        if op1_mode == 0:
+            dest_idx, dest_type = cpu.reg_index(dest_reg)
+            dest_value = cpu._get_operand_value(dest_type, dest_idx)
+        elif op1_mode == 3:
+            dest_value = cpu.memory.read_word(dest_addr)
+        
+        result = dest_value - source_value
+        
+        if op1_mode == 0:
+            if dest_type == 'R':
+                cpu.Rregisters[dest_idx] = result & 0xFF
+                cpu._set_flags_8bit(int(result) & 0xFF, result)
+            elif dest_type == 'P':
+                cpu.Pregisters[dest_idx] = result & 0xFFFF
+                cpu._set_flags_16bit(int(result) & 0xFFFF, result)
+            elif dest_type == 'V':
+                cpu.gfx.Vregisters[dest_idx] = result & 0xFF
+                cpu._set_flags_8bit(int(result) & 0xFF, result)
+            elif dest_type in ['TT', 'TM', 'TC', 'TS']:
+                cpu._set_operand_value(dest_type, dest_idx, result & 0xFF)
+                cpu._set_flags_8bit(int(result) & 0xFF, result)
+        elif op1_mode == 3:
+            cpu.memory.write_word(dest_addr, result & 0xFFFF)
 
-class MovRegRegIndex(BaseInstruction):
-    """MOV reg, [reg+offset] - backward compatibility"""
+class Cmp(BaseInstruction):
+    """CMP instruction for prefixed operand system"""
     def __init__(self):
-        super().__init__("MOV reg regIndex", 0x09)
+        opcode_val = 0x2E  # CMP
+        super().__init__("CMP", opcode_val)
     
     def execute(self, cpu):
-        dest_reg = cpu.fetch_byte()
-        addr_reg = cpu.fetch_byte()
-        offset = cpu.fetch_byte()
-        if offset > 127:
-            offset -= 256  # Signed byte
-        base_addr = cpu.get_register_value(addr_reg)
-        addr = (base_addr + offset) & 0xFFFF
-        value = cpu.memory.read_word(addr)
-        cpu.set_register_value(dest_reg, value)
+        mode_byte = cpu._current_mode_byte
+        op1_mode = mode_byte & 0x03
+        op2_mode = (mode_byte >> 2) & 0x03
+        
+        # Get first operand (left side of comparison)
+        op1_value = cpu.fetch_operand_by_mode(op1_mode)
+        
+        # Get second operand (right side of comparison)
+        op2_value = cpu.fetch_operand_by_mode(op2_mode)
+        
+        # Perform comparison
+        result = op1_value - op2_value
+        
+        # Set flags based on comparison
+        if op1_value < op2_value:
+            cpu.flags[0] = 1  # Carry flag (borrow)
+            cpu.flags[7] = 1  # Sign flag
+        elif op1_value > op2_value:
+            cpu.flags[0] = 0  # No carry
+            cpu.flags[7] = 0  # No sign
+        else:
+            cpu.flags[0] = 0  # No carry
+            cpu.flags[7] = 0  # No sign
+        
+        cpu.flags[6] = 1 if result == 0 else 0  # Zero flag
 
-class MovRegIndirReg(BaseInstruction):
-    """MOV [reg], reg - backward compatibility"""
+class Call(BaseInstruction):
+    """CALL instruction for prefixed operand system"""
     def __init__(self):
-        super().__init__("MOV regIndir reg", 0x0A)
+        opcode_val = 0x2F  # CALL
+        super().__init__("CALL", opcode_val)
     
     def execute(self, cpu):
-        addr_reg = cpu.fetch_byte()
-        src_reg = cpu.fetch_byte()
-        addr = cpu.get_register_value(addr_reg)
-        value = cpu.get_register_value(src_reg)
-        cpu.memory.write_word(addr, value)
+        mode_byte = cpu._current_mode_byte
+        op1_mode = mode_byte & 0x03
+        
+        # Get the target address
+        if op1_mode == 0:  # Register direct
+            reg_code = cpu.fetch_byte()
+            idx, typ = cpu.reg_index(reg_code)
+            if typ == 'P':
+                target_addr = cpu.Pregisters[idx]
+            else:
+                raise Exception("CALL requires 16-bit register or immediate address")
+        elif op1_mode == 2:  # Immediate 16-bit
+            target_addr = cpu.fetch_word()
+        elif op1_mode == 3:  # Memory reference
+            target_addr = cpu.fetch_operand_by_mode(op1_mode)
+        else:
+            raise Exception(f"Invalid operand mode {op1_mode} for CALL")
+        
+        # Push return address to stack
+        sp = int(cpu.Pregisters[8])
+        if sp <= 0x0121:  # Stack overflow check
+            raise RuntimeError(f"Stack overflow in CALL: SP=0x{sp:04X}")
+        
+        sp = (sp - 2) & 0xFFFF
+        cpu.Pregisters[8] = sp
+        cpu.memory.write_word(cpu.Pregisters[8], cpu.pc)
+        
+        # Jump to target
+        cpu.pc = target_addr & 0xFFFF
+        cpu.invalidate_prefetch()
 
-class MovRegIndexReg(BaseInstruction):
-    """MOV [reg+offset], reg - backward compatibility"""
+class Jmp(BaseInstruction):
+    """JMP instruction for prefixed operand system"""
     def __init__(self):
-        super().__init__("MOV regIndex reg", 0x0B)
+        opcode_val = 0x1E  # JMP
+        super().__init__("JMP", opcode_val)
     
     def execute(self, cpu):
-        addr_reg = cpu.fetch_byte()
-        offset = cpu.fetch_byte()
-        src_reg = cpu.fetch_byte()
-        if offset > 127:
-            offset -= 256  # Signed byte
-        base_addr = cpu.get_register_value(addr_reg)
-        addr = (base_addr + offset) & 0xFFFF
-        value = cpu.get_register_value(src_reg)
-        cpu.memory.write_word(addr, value)
+        mode_byte = cpu._current_mode_byte
+        op1_mode = mode_byte & 0x03
+        
+        # Get target address
+        if op1_mode == 0:  # Register direct
+            reg_code = cpu.fetch_byte()
+            idx, typ = cpu.reg_index(reg_code)
+            if typ == 'P':
+                target_addr = cpu.Pregisters[idx]
+            else:
+                raise Exception("JMP requires 16-bit register")
+        elif op1_mode == 2:  # Immediate 16-bit
+            target_addr = cpu.fetch_word()
+        elif op1_mode == 3:  # Memory reference
+            target_addr = cpu.fetch_operand_by_mode(op1_mode)
+        else:
+            raise Exception(f"Invalid operand mode {op1_mode} for JMP")
+        
+        # Jump to target
+        cpu.pc = target_addr & 0xFFFF
+        cpu.invalidate_prefetch()
 
-class MovRegIndirImm8(BaseInstruction):
-    """MOV [reg], imm8 - backward compatibility"""
-    def __init__(self):
-        super().__init__("MOV regIndir imm8", 0x0C)
-    
-    def execute(self, cpu):
-        addr_reg = cpu.fetch_byte()
-        value = cpu.fetch_byte()
-        addr = cpu.get_register_value(addr_reg)
-        cpu.memory.write_word(addr, value)
-
-class MovRegIndexImm8(BaseInstruction):
-    """MOV [reg+offset], imm8 - backward compatibility"""
-    def __init__(self):
-        super().__init__("MOV regIndex imm8", 0x0D)
-    
-    def execute(self, cpu):
-        addr_reg = cpu.fetch_byte()
-        offset = cpu.fetch_byte()
-        value = cpu.fetch_byte()
-        if offset > 127:
-            offset -= 256  # Signed byte
-        base_addr = cpu.get_register_value(addr_reg)
-        addr = (base_addr + offset) & 0xFFFF
-        cpu.memory.write_word(addr, value)
-
-class MovRegIndirImm16(BaseInstruction):
-    """MOV [reg], imm16 - backward compatibility"""
-    def __init__(self):
-        super().__init__("MOV regIndir imm16", 0x0E)
-    
-    def execute(self, cpu):
-        addr_reg = cpu.fetch_byte()
-        value = cpu.fetch_word()
-        addr = cpu.get_register_value(addr_reg)
-        cpu.memory.write_word(addr, value)
-
-class MovRegIndexImm16(BaseInstruction):
-    """MOV [reg+offset], imm16 - backward compatibility"""
-    def __init__(self):
-        super().__init__("MOV regIndex imm16", 0x0F)
-    
-    def execute(self, cpu):
-        addr_reg = cpu.fetch_byte()
-        offset = cpu.fetch_byte()
-        value = cpu.fetch_word()
-        if offset > 127:
-            offset -= 256  # Signed byte
-        base_addr = cpu.get_register_value(addr_reg)
-        addr = (base_addr + offset) & 0xFFFF
-        cpu.memory.write_word(addr, value)
-
-class MovRegDirect(BaseInstruction):
-    """MOV reg, [addr] - backward compatibility"""
-    def __init__(self):
-        super().__init__("MOV reg direct", 0x10)
-    
-    def execute(self, cpu):
-        dest_reg = cpu.fetch_byte()
-        addr = cpu.fetch_word()
-        value = cpu.memory.read_word(addr)
-        cpu.set_register_value(dest_reg, value)
-
-class MovDirectReg(BaseInstruction):
-    """MOV [addr], reg - backward compatibility"""
-    def __init__(self):
-        super().__init__("MOV direct reg", 0x11)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch_word()
-        src_reg = cpu.fetch_byte()
-        value = cpu.get_register_value(src_reg)
-        cpu.memory.write_word(addr, value)
-
+# Instruction table creation
 
 def create_instruction_table():
     """Create and return a dictionary mapping opcodes to instruction instances"""
@@ -3634,7 +3776,7 @@ def create_instruction_table():
         Sti(),   # 0x04
         Nop(),   # 0xFF
         
-        # Data Movement - NEW PREFIXED OPERAND SYSTEM + BACKWARD COMPATIBILITY
+        # Data Movement - NEW PREFIXED OPERAND SYSTEM
         Mov(),  # 0x06 - New prefixed operand MOV
         PushReg(),  # 0x18 - New prefixed operand PUSH
         PopReg(),   # 0x19 - New prefixed operand POP
@@ -3645,27 +3787,160 @@ def create_instruction_table():
         PushA(), # 0x1C
         PopA(),  # 0x1D
         
-        # Call and Interrupt
-        CallImm16(),  # 0x2F
-        IntImm8(),    # 0x30
+        # Arithmetic - NEW PREFIXED OPERAND SYSTEM
+        Inc(),     # 0x0B
+        Dec(),     # 0x0C
+        Add(),     # 0x07
+        Sub(),     # 0x08
+        MulRegReg(),  # 0x1A
+        MulRegImm8(), # 0x1B
+        MulRegImm16(),# 0x1C
+        DivRegReg(),  # 0x1D
+        DivRegImm8(), # 0x1E
+        DivRegImm16(),# 0x1F
+        ModRegReg(),  # 0x7A
+        ModRegImm8(), # 0x7B
+        ModRegImm16(),# 0x7C
+        NegReg(),     # 0x7D
+        AbsReg(),     # 0x7E
         
-        # Comparison
-        CmpRegReg(),  # 0x2E
+        # Bitwise operations
+        AndRegReg(),  # 0x20
+        AndRegImm8(), # 0x21
+        AndRegImm16(),# 0x22
+        OrRegReg(),   # 0x23
+        OrRegImm8(),  # 0x24
+        OrRegImm16(), # 0x25
+        XorRegReg(),  # 0x26
+        XorRegImm8(), # 0x27
+        XorRegImm16(),# 0x28
+        NotReg(),     # 0x29
+        ShlReg(),     # 0x2A
+        ShrReg(),     # 0x2B
+        RolReg(),     # 0x2C
+        RorReg(),     # 0x2D
         
-        # Arithmetic
-        IncReg(),     # 0x0B
-        DecReg(),     # 0x0C
-        SubRegImm8(), # 0x08
-        
-        # Jumps
+        # Control flow - jumps - NEW PREFIXED OPERAND SYSTEM
+        Jmp(),        # 0x1E
+        JzImm16(),    # 0x36
+        JzReg(),      # 0x37
         JnzImm16(),   # 0x20
-        JmpImm16(),   # 0x1E
+        JnzReg(),     # 0x39
+        JoImm16(),    # 0x3A
+        JoReg(),      # 0x3B
+        JnoImm16(),   # 0x3C
+        JnoReg(),     # 0x3D
+        JcImm16(),    # 0x3E
+        JcReg(),      # 0x3F
+        JncImm16(),   # 0x40
+        JncReg(),     # 0x41
+        JsImm16(),    # 0x43
+        JsReg(),      # 0x45
+        JnsImm16(),   # 0x44
+        JnsReg(),     # 0x46
+        JgtImm16(),   # 0x70
+        JltImm16(),   # 0x71
+        JgeImm16(),   # 0x72
+        JleImm16(),   # 0x73
         
-        # Graphics
+        # Control flow - branches (relative)
+        BrImm8(),     # 0x46
+        BrReg(),      # 0x47
+        BrzImm8(),    # 0x48
+        BrzReg(),     # 0x49
+        BrnzImm8(),   # 0x4A
+        BrnzReg(),    # 0x4B
+        
+        # Comparison - NEW PREFIXED OPERAND SYSTEM
+        Cmp(),  # 0x2E
+        
+        # Call and Interrupt - NEW PREFIXED OPERAND SYSTEM
+        Call(),  # 0x2F
+        
+        # Graphics operations
+        SblendImm(),    # 0x4E
+        SblendImmImm(), # 0x4F
+        SreadReg(),     # 0x50
         SwriteReg(),    # 0x33
-        SwriteImm16(),  # Using appropriate opcode
-        TextImm16Reg(), # 0x42
+        SwriteImm16(),  # 0x52
         SrolxImm(),     # 0x34
+        SrolxReg(),     # 0x53
+        SrolyImm(),     # 0x56
+        SrolyReg(),     # 0x55
+        SrotlImm(),     # 0x58
+        SrotlReg(),     # 0x57
+        SrotrImm(),     # 0x5A
+        SrotrReg(),     # 0x59
+        SshftxImm(),    # 0x5C
+        SshftxReg(),    # 0x5B
+        SshftyImm(),    # 0x5E
+        SshftyReg(),    # 0x5D
+        Sflipx(),       # 0x5F
+        Sflipy(),       # 0x60
+        Sblit(),        # 0x61
+        SfillImm8(),    # 0x80
+        SfillReg(),     # 0x7F
+        
+        # VRAM operations
+        VreadReg(),     # 0x65
+        VwriteReg(),    # 0x66
+        VwriteImm16(),  # 0x67
+        Vblit(),        # 0x68
+        
+        # Text operations
+        CharRegImm8(),  # 0x6A
+        TextRegImm8(),  # 0x6B
+        TextImm16Imm8(),# 0x6C
+        CharRegReg(),   # 0x6D
+        TextRegReg(),   # 0x6E
+        
+        # Keyboard operations
+        KeyinReg(),     # 0x74
+        KeystatReg(),   # 0x75
+        KeycountReg(),  # 0x76
+        Keyclear(),     # 0x77
+        KeyctrlReg(),   # 0x78
+        KeyctrlImm(),   # 0x79
+        
+        # Random operations
+        RndReg(),       # 0x83
+        RndrRegImm8Imm8(), # 0x85
+        RndrRegImm16Imm16(), # 0x86
+        RndrRegRegReg(), # 0x84
+        
+        # Memory operations
+        MemcpyRegRegReg(), # 0x87
+        MemcpyRegRegImm8(), # 0x88
+        MemcpyRegRegImm16(), # 0x89
+        
+        # BCD operations
+        Sed(),          # 0x8A
+        Cld(),          # 0x8B
+        Cla(),          # 0x8C
+        BcdaRegReg(),   # 0x8D
+        BcdsRegReg(),   # 0x8E
+        BcdcmpRegReg(), # 0x8F
+        Bcd2bin(),      # 0x90
+        Bin2bcd(),      # 0x91
+        BcdaddRegImm8(),# 0x92
+        BcdsubRegImm8(),# 0x93
+        
+        # Sprite operations
+        SpBlitReg(),    # 0x94
+        SpBlitImm(),    # 0x95
+        SpBlitAll(),    # 0x96
+        
+        # Sound operations
+        SPlay(),        # 0x97
+        SPlayReg(),     # 0x98
+        SStop(),        # 0x99
+        SStopReg(),     # 0x9A
+        STrig(),        # 0x9B
+        STrigImm(),     # 0x9C
+        
+        # Loop operation
+        LoopRegReg(),   # 0x81
+        LoopImm8Reg(),  # 0x82
         
         # Add more instructions as needed based on opcodes.py
     ]

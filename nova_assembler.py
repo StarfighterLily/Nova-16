@@ -31,14 +31,9 @@ class InstructionSet:
         for mnemonic, opcode_str, size in opcodes:
             opcode_val = int(opcode_str, 16)
             
-            # Handle register opcodes
+            # Handle register opcodes - all register entries in opcodes.py are direct registers
             if mnemonic in reg_names:
-                if (0x9D <= opcode_val <= 0xA2) or (0xA3 <= opcode_val <= 0xA4) or (0xA5 <= opcode_val <= 0xBE):  # Direct registers (sound + VM + VL + timer + standard)
-                    self.registers[mnemonic] = opcode_str
-                elif 0xBF <= opcode_val <= 0xD4:  # Indirect registers
-                    self.indirect_registers[mnemonic] = opcode_str
-                elif 0xE9 <= opcode_val <= 0xFE:  # Indexed registers
-                    self.indexed_registers[mnemonic] = opcode_str
+                self.registers[mnemonic] = opcode_str
             
             # Handle high/low byte register accessors
             elif mnemonic.endswith(':'):  # High byte (P0:, P1:, etc.)
@@ -538,33 +533,10 @@ class CodeGenerator:
         operand = operand.strip()
         
         if operand_type == OperandType.REGISTER:
-            # Registers encoded using CPU lookup table codes
-            if operand.startswith('R') and len(operand) <= 3:
-                reg_num = int(operand[1:])
-                return [0xA9 + reg_num]  # R0-R9 = 0xA9-0xB2
-            elif operand.startswith('P') and len(operand) <= 3:
-                reg_num = int(operand[1:])
-                return [0xB3 + reg_num]  # P0-P9 = 0xB3-0xBC
-            elif operand == 'VX':
-                return [0xBD]  # VX
-            elif operand == 'VY':
-                return [0xBE]  # VY
-            elif operand == 'VM':
-                return [0x5F]  # VM
-            elif operand == 'VL':
-                return [0x60]  # VL
-            elif operand == 'TT':
-                return [0x61]  # TT
-            elif operand == 'TM':
-                return [0x62]  # TM
-            elif operand == 'TC':
-                return [0x63]  # TC
-            elif operand == 'TS':
-                return [0x64]  # TS
-            elif operand == 'SP':
-                return [18]  # SP = P8
-            elif operand == 'FP':
-                return [19]  # FP = P9
+            # Use the register lookup table from opcodes.py
+            if operand in self.instruction_set.registers:
+                opcode = self.instruction_set.registers[operand]
+                return [int(opcode, 16)]
             else:
                 raise Exception(f"Unknown register: {operand}")
         
