@@ -59,8 +59,18 @@ Drawing from languages like Haskell, Lisp, and ML for metaprogramming and expres
 
 ### Compilation and Execution
 - **Pipeline**: Astrid source (.ast) → Assembly (.asm) via `astrid_compiler.py` → Binary (.bin) via `nova_assembler.py`.
-- **Optimizations**: Tail recursion, constant folding, register allocation aware of Nova-16's R/P registers.
+- **Optimizations**: Tail recursion, constant folding, and intelligent register allocation.
 - **Debugging**: Source-level debugging with mapping back to assembly.
+
+#### Register Allocation
+
+Astrid employs a prioritized intelligent register allocation system to optimize performance on the Nova-16 architecture:
+
+- **Prioritized Allocation**: Speed-critical operations (graphics rendering, tight loops, real-time audio processing) are allocated the fastest available resources first. This includes preferring R registers (8-bit) for byte operations and P registers (16-bit) for address calculations, with hardware registers (VM, VL, VX, VY, etc.) reserved for their specific purposes. Non-critical operations receive remaining resources, ensuring optimal performance where it matters most.
+
+- **Variable Lifetime Tracking**: The compiler performs static analysis to track the lifetime of each variable throughout its scope. Registers, stack frames, or memory locations are marked as occupied during the variable's active period. Upon reaching the end of the variable's lifetime (when it goes out of scope or is no longer referenced), the allocated resource is immediately freed for reuse. This minimizes resource contention, reduces memory pressure, and enables more efficient code generation by allowing overlapping allocations.
+
+This allocation strategy ensures that performance-critical code paths receive optimal resource assignment while maintaining efficient memory usage for less critical operations, directly contributing to the high performance expected from Nova-16 applications.
 
 ### Example Code Snippets
 
