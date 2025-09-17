@@ -1,4 +1,6 @@
 import sys
+import warnings
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
 import argparse
 import nova_cpu as cpu
 import nova_memory as ram

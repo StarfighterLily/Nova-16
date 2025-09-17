@@ -12,10 +12,9 @@ class BaseInstruction:
     def execute(self, cpu):
         raise NotImplementedError("Subclasses must implement execute method")
 
-# Control Flow Instructions
+# No-operand instructions
 class Hlt(BaseInstruction):
     def __init__(self):
-        # Get opcode from opcodes.py
         opcode_val = 0x00  # HLT
         super().__init__("HLT", opcode_val)
     
@@ -24,7 +23,6 @@ class Hlt(BaseInstruction):
 
 class Nop(BaseInstruction):
     def __init__(self):
-        # Get opcode from opcodes.py
         opcode_val = 0xFF  # NOP
         super().__init__("NOP", opcode_val)
     
@@ -33,7 +31,6 @@ class Nop(BaseInstruction):
 
 class Ret(BaseInstruction):
     def __init__(self):
-        # Get opcode from opcodes.py
         opcode_val = 0x01  # RET
         super().__init__("RET", opcode_val)
     
@@ -58,7 +55,6 @@ class Ret(BaseInstruction):
 
 class IRet(BaseInstruction):
     def __init__(self):
-        # Get opcode from opcodes.py
         opcode_val = 0x02  # IRET
         super().__init__("IRET", opcode_val)
     
@@ -98,7 +94,6 @@ class IRet(BaseInstruction):
 
 class Cli(BaseInstruction):
     def __init__(self):
-        # Get opcode from opcodes.py
         opcode_val = 0x03  # CLI
         super().__init__("CLI", opcode_val)
     
@@ -107,3511 +102,42 @@ class Cli(BaseInstruction):
 
 class Sti(BaseInstruction):
     def __init__(self):
-        # Get opcode from opcodes.py
         opcode_val = 0x04  # STI
         super().__init__("STI", opcode_val)
     
     def execute(self, cpu):
         cpu.flags[5] = 1  # Set interrupt flag
 
-# Data Movement Instructions
-class MovRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x05)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Get value from source register
-        source_value = cpu._get_operand_value(type2, idx2)
-        
-        # Handle special cases for register type combinations
-        if type1 == 'R':
-            if type2 == ':P':
-                cpu.Rregisters[idx1] = int(cpu.Pregisters[idx2]) & 0xFF
-            elif type2 == 'P:':
-                cpu.Rregisters[idx1] = int(cpu.Pregisters[idx2]) >> 8 & 0xFF
-            else:
-                cpu.Rregisters[idx1] = int(source_value) & 0xFF
-        elif type1 == 'P':
-            if type2 == 'R':
-                cpu.Pregisters[idx1] = int(source_value) & 0xFFFF
-            else:
-                cpu.Pregisters[idx1] = int(source_value) & 0xFFFF
-        elif type1 == 'V':
-            if type2 == ':P':
-                cpu.gfx.Vregisters[idx1] = int(cpu.Pregisters[idx2]) & 0xFF
-            elif type2 == 'P:':
-                cpu.gfx.Vregisters[idx1] = int(cpu.Pregisters[idx2]) >> 8 & 0xFF
-            else:
-                cpu.gfx.Vregisters[idx1] = int(source_value) & 0xFF
-        elif type1 in ['TT', 'TM', 'TC', 'TS', 'VL']:
-            # Timer and graphics layer registers can receive from any source
-            cpu._set_operand_value(type1, idx1, source_value)
-
-class MovRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x06)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        if typ == 'R':
-            cpu.Rregisters[idx] = int(imm8) & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = int(imm8) & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = int(imm8) & 0xFF
-        elif typ in ['TT', 'TM', 'TC', 'TS', 'VL']:
-            cpu._set_operand_value(typ, idx, imm8)
-
-class MovRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x07)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        if typ == 'P':
-            cpu.Pregisters[idx] = int(imm16) & 0xFFFF
-        elif typ in ['TT', 'TM', 'TC', 'TS', 'VL']:
-            cpu._set_operand_value(typ, idx, imm16)
-
-class MovRegRegIndir(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x08)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Always read a word (2 bytes) from memory when dereferencing a pointer
-        # The target register type determines how much of the value to use
-        bytes_to_read = 2
-        
-        if type2 == 'Rind':
-            data = cpu.memory.read(cpu.Rregisters[idx2], bytes_to_read)
-        elif type2 == 'Pind':
-            data = cpu.memory.read(cpu.Pregisters[idx2], bytes_to_read)
-        elif type2 == 'Vind':
-            data = cpu.memory.read(cpu.gfx.Vregisters[idx2], bytes_to_read)
-        else:
-            data = [0, 0]  # Default to 2 bytes of zeros
-
-        # Always construct the full 16-bit value from memory
-        val = (int(data[0]) << 8) | int(data[1])
-            
-        if type1 == 'R':
-            cpu.Rregisters[idx1] = val & 0xFF  # Truncate to 8 bits for R registers
-        elif type1 == 'P':
-            cpu.Pregisters[idx1] = val & 0xFFFF  # Full 16 bits for P registers
-
-class MovRegRegIndex(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x09)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        offset = cpu.fetch()  # Fetch the offset byte
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Convert offset to signed 8-bit value - ensure int conversion
-        offset = int(offset)  # Convert from numpy type to Python int
-        signed_offset = offset if offset < 128 else offset - 256
-        
-        if type2 == 'Ridx':
-            addr = (int(cpu.Rregisters[idx2]) + signed_offset) & 0xFFFF
-            # For big-endian architecture, determine byte to read based on target register type
-            if type1 == 'R':  # 8-bit target register
-                # Read the low byte (addr+1) for 8-bit registers in big-endian
-                val = cpu.memory.read(int(addr + 1), 1)[0]
-            else:  # 16-bit target register
-                # Read full 16-bit value for P registers
-                val = cpu.memory.read(int(addr), 2)
-                val = (val[0] << 8) | val[1]  # Combine bytes in big-endian order
-        elif type2 == 'Pidx':
-            addr = (int(cpu.Pregisters[idx2]) + signed_offset) & 0xFFFF
-            # For big-endian architecture, determine byte to read based on target register type
-            if type1 == 'R':  # 8-bit target register
-                # Read the low byte (addr+1) for 8-bit registers in big-endian
-                val = cpu.memory.read(int(addr + 1), 1)[0]
-            else:  # 16-bit target register
-                # Read full 16-bit value for P registers
-                val = cpu.memory.read(int(addr), 2)
-                val = (val[0] << 8) | val[1]  # Combine bytes in big-endian order
-        elif type2 == 'SPidx':
-            addr = (int(cpu.SP) + signed_offset) & 0xFFFF
-            # For big-endian architecture, determine byte to read based on target register type
-            if type1 == 'R':  # 8-bit target register
-                # Read the low byte (addr+1) for 8-bit registers in big-endian
-                val = cpu.memory.read(int(addr + 1), 1)[0]
-            else:  # 16-bit target register
-                # Read full 16-bit value for P registers
-                val = cpu.memory.read(int(addr), 2)
-                val = (val[0] << 8) | val[1]  # Combine bytes in big-endian order
-        elif type2 == 'FPidx':
-            addr = (int(cpu.FP) + signed_offset) & 0xFFFF
-            # For big-endian architecture, determine byte to read based on target register type
-            if type1 == 'R':  # 8-bit target register
-                # Read the low byte (addr+1) for 8-bit registers in big-endian
-                val = cpu.memory.read(int(addr + 1), 1)[0]
-            else:  # 16-bit target register
-                # Read full 16-bit value for P registers
-                val = cpu.memory.read(int(addr), 2)
-                val = (val[0] << 8) | val[1]  # Combine bytes in big-endian order
-        elif type2 == 'Vidx':
-            addr = (int(cpu.gfx.Vregisters[idx2]) + signed_offset) & 0xFFFF
-            # For big-endian architecture, determine byte to read based on target register type
-            if type1 == 'R':  # 8-bit target register
-                # Read the low byte (addr+1) for 8-bit registers in big-endian
-                val = cpu.memory.read(int(addr + 1), 1)[0]
-            else:  # 16-bit target register
-                # Read full 16-bit value for P registers
-                val = cpu.memory.read(int(addr), 2)
-                val = (val[0] << 8) | val[1]  # Combine bytes in big-endian order
-        else:
-            val = 0
-            
-        if type1 == 'R':
-            cpu.Rregisters[idx1] = int(val) & 0xFF
-        elif type1 == 'P':
-            cpu.Pregisters[idx1] = int(val) & 0xFFFF
-
-class MovRegIndirReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x0A)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        if type2 == 'R':
-            val = cpu.Rregisters[idx2]
-        elif type2 == 'P':
-            val = cpu.Pregisters[idx2]
-        elif type2 == 'V':
-            val = cpu.gfx.Vregisters[idx2]
-        else:
-            val = 0
-
-        val = int(val)
-
-        if type1 == 'Rind':
-            cpu.write_memory(cpu.Rregisters[idx1], val & 0xFF, 1)
-        elif type1 == 'Pind':
-            cpu.write_memory(cpu.Pregisters[idx1], val & 0xFFFF, 2)
-
-class MovRegIndexReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x0B)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        index = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Convert offset to signed 8-bit value - ensure int conversion
-        index = int(index)  # Convert from numpy type to Python int
-        signed_offset = index if index < 128 else index - 256
-        
-        if type2 == 'R':
-            val = cpu.Rregisters[idx2]
-        elif type2 == 'P':
-            val = cpu.Pregisters[idx2]
-        elif type2 == 'V':
-            val = cpu.gfx.Vregisters[idx2]
-        else:
-            val = 0
-        
-        val = int(val)
-
-        if type1 == 'Ridx':
-            addr = (int(cpu.Rregisters[idx1]) + signed_offset) & 0xFFFF
-            cpu.write_memory(int(addr), int(val) & 0xFF, 1)
-        elif type1 == 'Pidx':
-            addr = (int(cpu.Pregisters[idx1]) + signed_offset) & 0xFFFF
-            # For P registers, we need to determine if we're writing 8-bit or 16-bit based on source
-            if type2 == 'P' or type2 == 'V':
-                cpu.write_memory(int(addr), int(val) & 0xFFFF, 2)  # Write 16-bit for P/V sources
-            else:
-                cpu.write_memory(int(addr), int(val) & 0xFF, 1)    # Write 8-bit for R sources
-        elif type1 == 'SPidx':
-            addr = (int(cpu.SP) + signed_offset) & 0xFFFF
-            # Determine write size based on source register type
-            if type2 == 'P' or type2 == 'V':
-                cpu.write_memory(int(addr), int(val) & 0xFFFF, 2)  # Write 16-bit for P/V sources
-            else:
-                cpu.write_memory(int(addr), int(val) & 0xFF, 1)    # Write 8-bit for R sources
-        elif type1 == 'FPidx':
-            addr = (int(cpu.FP) + signed_offset) & 0xFFFF
-            # Determine write size based on source register type
-            if type2 == 'P' or type2 == 'V':
-                cpu.write_memory(int(addr), int(val) & 0xFFFF, 2)  # Write 16-bit for P/V sources
-            else:
-                cpu.write_memory(int(addr), int(val) & 0xFF, 1)    # Write 8-bit for R sources
-        elif type1 == 'Vidx':
-            addr = (int(cpu.gfx.Vregisters[idx1]) + signed_offset) & 0xFFFF
-            # Determine write size based on source register type
-            if type2 == 'P' or type2 == 'V':
-                cpu.write_memory(int(addr), int(val) & 0xFFFF, 2)  # Write 16-bit for P/V sources
-            else:
-                cpu.write_memory(int(addr), int(val) & 0xFF, 1)    # Write 8-bit for R sources
-
-class MovRegIndirImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x0C)
-
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-
-        if typ == 'Rind':
-            cpu.write_memory(cpu.Rregisters[idx], imm8 & 0xFF, 1)
-        elif typ == 'Pind':
-            cpu.write_memory(cpu.Pregisters[idx], imm8 & 0xFF, 1)
-
-class MovRegIndexImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x0D)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        index = cpu.fetch()
-        data = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Convert offset to signed 8-bit value - ensure int conversion
-        index = int(index)  # Convert from numpy type to Python int
-        signed_offset = index if index < 128 else index - 256
-        
-        if typ == 'Ridx':
-            addr = (int(cpu.Rregisters[idx]) + signed_offset) & 0xFFFF
-            cpu.write_memory(addr, data & 0xFF, 1)
-        elif typ == 'Pidx':
-            addr = (int(cpu.Pregisters[idx]) + signed_offset) & 0xFFFF
-            cpu.write_memory(addr, data & 0xFF, 1)
-        elif typ == 'SPidx':
-            addr = (int(cpu.SP) + signed_offset) & 0xFFFF
-            cpu.write_memory(addr, data & 0xFF, 1)
-        elif typ == 'FPidx':
-            addr = (int(cpu.FP) + signed_offset) & 0xFFFF
-            cpu.write_memory(addr, data & 0xFF, 1)
-
-class MovRegIndirImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x0E)
-
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        data = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-
-        if typ == 'Rind':
-            cpu.write_memory(cpu.Rregisters[idx], data & 0xFF, 1)
-        elif typ == 'Pind':
-            cpu.write_memory(cpu.Pregisters[idx], int(data) & 0xFFFF, 2)
-
-class MovRegIndexImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x0F)
-
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        index = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Convert offset to signed 8-bit value - ensure int conversion
-        index = int(index)  # Convert from numpy type to Python int
-        signed_offset = index if index < 128 else index - 256
-        
-        if typ == 'Ridx':
-            addr = (int(cpu.Rregisters[idx]) + signed_offset) & 0xFFFF
-            cpu.write_memory(addr, imm16 & 0xFF, 1)
-        elif typ == 'Pidx':
-            addr = (int(cpu.Pregisters[idx]) + signed_offset) & 0xFFFF
-            cpu.write_memory(addr, imm16 & 0xFFFF, 2)
-        elif typ == 'SPidx':
-            addr = (int(cpu.SP) + signed_offset) & 0xFFFF
-            cpu.write_memory(addr, imm16 & 0xFFFF, 2)
-        elif typ == 'FPidx':
-            addr = (int(cpu.FP) + signed_offset) & 0xFFFF
-            cpu.write_memory(addr, imm16 & 0xFFFF, 2)
-
-class MovRegDirImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x10)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        addr = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Determine bytes to read based on target register type
-        bytes_to_read = 2 if typ == 'P' else 1
-        
-        data = cpu.memory.read(addr, bytes_to_read)
-        
-        if bytes_to_read == 1:
-            val = int(data[0])
-        else:
-            val = (int(data[0]) << 8) | int(data[1])
-            
-        if typ == 'R':
-            cpu.Rregisters[idx] = val & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = val & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = val & 0xFF
-
-class MovDirImm16Reg(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOV", 0x11)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            val = cpu.Rregisters[idx]
-            cpu.write_memory(addr, val & 0xFF, 1)
-        elif typ == 'P':
-            val = cpu.Pregisters[idx]
-            cpu.write_memory(addr, val & 0xFFFF, 2)
-        elif typ == 'V':
-            val = cpu.gfx.Vregisters[idx]
-            cpu.write_memory(addr, val & 0xFF, 1)
-
-# Arithmetic Instructions
-class IncReg(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x0B  # INC
-        super().__init__("INC", opcode_val)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Check if BCD mode is enabled
-        if cpu.decimal_flag:
-            # BCD increment
-            original = cpu._get_operand_value(typ, idx)
-            bcd_result, bcd_carry = cpu._bcd_add(original, 1)
-            
-            if typ == 'R':
-                cpu.Rregisters[idx] = bcd_result & 0xFF
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_carry)
-            elif typ == 'P':
-                cpu.Pregisters[idx] = bcd_result & 0xFFFF
-                cpu._set_flags_8bit_bcd(bcd_result & 0xFF, bcd_carry)
-            elif typ == 'V':
-                cpu.gfx.Vregisters[idx] = bcd_result & 0xFF
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_carry)
-            elif typ in ['TT', 'TM', 'TC', 'TS']:
-                cpu._set_operand_value(typ, idx, bcd_result & 0xFF)
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_carry)
-        else:
-            # Normal binary increment
-            if typ == 'R':
-                original = cpu.Rregisters[idx]
-                raw_result = int(original) + 1
-                result = raw_result & 0xFF
-                cpu.Rregisters[idx] = result
-                cpu._set_flags_8bit(result, raw_result)
-            elif typ == 'P':
-                original = cpu.Pregisters[idx]
-                raw_result = int(original) + 1
-                result = raw_result & 0xFFFF
-                cpu.Pregisters[idx] = result
-                cpu._set_flags_16bit(result, raw_result)
-            elif typ == 'V':
-                original = cpu.gfx.Vregisters[idx]
-                raw_result = int(original) + 1
-                result = raw_result & 0xFF
-                cpu.gfx.Vregisters[idx] = result
-                cpu._set_flags_8bit(result, raw_result)
-            elif typ in ['TT', 'TM', 'TC', 'TS']:
-                original = cpu._get_operand_value(typ, idx)
-                raw_result = int(original) + 1
-                result = raw_result & 0xFF
-                cpu._set_operand_value(typ, idx, result)
-                cpu._set_flags_8bit(result, raw_result)
-
-class DecReg(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x0C  # DEC
-        super().__init__("DEC", opcode_val)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Check if BCD mode is enabled
-        if cpu.decimal_flag:
-            # BCD decrement
-            original = cpu._get_operand_value(typ, idx)
-            bcd_result, bcd_borrow = cpu._bcd_sub(original, 1)
-            
-            if typ == 'R':
-                cpu.Rregisters[idx] = bcd_result & 0xFF
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_borrow)
-            elif typ == 'P':
-                cpu.Pregisters[idx] = bcd_result & 0xFFFF
-                cpu._set_flags_8bit_bcd(bcd_result & 0xFF, bcd_borrow)
-            elif typ == 'V':
-                cpu.gfx.Vregisters[idx] = bcd_result & 0xFF
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_borrow)
-            elif typ in ['TT', 'TM', 'TC', 'TS']:
-                cpu._set_operand_value(typ, idx, bcd_result & 0xFF)
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_borrow)
-        else:
-            # Normal binary decrement
-            if typ == 'R':
-                original = cpu.Rregisters[idx]
-                raw_result = int(original) - 1
-                result = raw_result & 0xFF
-                cpu.Rregisters[idx] = result
-                cpu._set_flags_8bit(result, raw_result)
-            elif typ == 'P':
-                original = cpu.Pregisters[idx]
-                raw_result = int(original) - 1
-                result = raw_result & 0xFFFF
-                cpu.Pregisters[idx] = result
-                cpu._set_flags_16bit(result, raw_result)
-            elif typ == 'V':
-                original = cpu.gfx.Vregisters[idx]
-                raw_result = int(original) - 1
-                result = raw_result & 0xFF
-                cpu.gfx.Vregisters[idx] = result
-                cpu._set_flags_8bit(result, raw_result)
-            elif typ in ['TT', 'TM', 'TC', 'TS']:
-                original = cpu._get_operand_value(typ, idx)
-                raw_result = int(original) - 1
-                result = raw_result & 0xFF
-                cpu._set_operand_value(typ, idx, result)
-                cpu._set_flags_8bit(result, raw_result)
-
-class AddRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("ADD", 0x14)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Get operand values
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        # Check if BCD mode is enabled
-        if cpu.decimal_flag:
-            # BCD arithmetic
-            bcd_result, bcd_carry = cpu._bcd_add(val1, val2)
-            result = bcd_result
-            
-            if type1 == 'R':
-                cpu.Rregisters[idx1] = result & 0xFF
-                cpu._set_flags_8bit_bcd(result, bcd_carry)
-            elif type1 == 'P':
-                # For 16-bit BCD, treat as two 8-bit BCD values
-                cpu.Pregisters[idx1] = result & 0xFFFF
-                cpu._set_flags_8bit_bcd(result & 0xFF, bcd_carry)  # Set flags based on low byte
-            elif type1 == 'V':
-                cpu.gfx.Vregisters[idx1] = result & 0xFF
-                cpu._set_flags_8bit_bcd(result, bcd_carry)
-            elif type1 in ['TT', 'TM', 'TC', 'TS']:
-                cpu._set_operand_value(type1, idx1, result & 0xFF)
-                cpu._set_flags_8bit_bcd(result, bcd_carry)
-        else:
-            # Normal binary arithmetic
-            result = val1 + val2
-            
-            if type1 == 'R':
-                cpu.Rregisters[idx1] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif type1 == 'P':
-                cpu.Pregisters[idx1] = result & 0xFFFF
-                cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-            elif type1 == 'V':
-                cpu.gfx.Vregisters[idx1] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif type1 in ['TT', 'TM', 'TC', 'TS']:
-                cpu._set_operand_value(type1, idx1, result & 0xFF)
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-class AddRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("ADD", 0x15)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Check if BCD mode is enabled
-        if cpu.decimal_flag:
-            # BCD arithmetic
-            original = cpu._get_operand_value(typ, idx)
-            bcd_result, bcd_carry = cpu._bcd_add(original, imm8)
-            
-            if typ == 'R':
-                cpu.Rregisters[idx] = bcd_result & 0xFF
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_carry)
-            elif typ == 'P':
-                cpu.Pregisters[idx] = bcd_result & 0xFFFF
-                cpu._set_flags_8bit_bcd(bcd_result & 0xFF, bcd_carry)
-            elif typ == 'V':
-                cpu.gfx.Vregisters[idx] = bcd_result & 0xFF
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_carry)
-            elif typ in ['TT', 'TM', 'TC', 'TS']:
-                cpu._set_operand_value(typ, idx, bcd_result & 0xFF)
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_carry)
-        else:
-            # Normal binary arithmetic
-            if typ == 'R':
-                original = int(cpu.Rregisters[idx])
-                imm8_val = int(imm8)
-                result = original + imm8_val
-                cpu.Rregisters[idx] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif typ == 'P':
-                original = int(cpu.Pregisters[idx])
-                imm8_val = int(imm8)
-                result = original + imm8_val
-                cpu.Pregisters[idx] = result & 0xFFFF
-                cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-            elif typ == 'V':
-                original = int(cpu.gfx.Vregisters[idx])
-                imm8_val = int(imm8)
-                result = original + imm8_val
-                cpu.gfx.Vregisters[idx] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif typ in ['TT', 'TM', 'TC', 'TS']:
-                original = cpu._get_operand_value(typ, idx)
-                result = int(original + imm8)
-                cpu._set_operand_value(typ, idx, result & 0xFF)
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-class AddRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("ADD", 0x16)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'P':
-            original = int(cpu.Pregisters[idx])
-            result = original + imm16
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class SubRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SUB", 0x17)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Get operand values
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        # Check if BCD mode is enabled
-        if cpu.decimal_flag:
-            # BCD arithmetic
-            bcd_result, bcd_borrow = cpu._bcd_sub(val1, val2)
-            result = bcd_result
-            
-            if type1 == 'R':
-                cpu.Rregisters[idx1] = result & 0xFF
-                cpu._set_flags_8bit_bcd(result, bcd_borrow)
-            elif type1 == 'P':
-                cpu.Pregisters[idx1] = result & 0xFFFF
-                cpu._set_flags_8bit_bcd(result & 0xFF, bcd_borrow)
-            elif type1 == 'V':
-                cpu.gfx.Vregisters[idx1] = result & 0xFF
-                cpu._set_flags_8bit_bcd(result, bcd_borrow)
-            elif type1 in ['TT', 'TM', 'TC', 'TS']:
-                cpu._set_operand_value(type1, idx1, result & 0xFF)
-                cpu._set_flags_8bit_bcd(result, bcd_borrow)
-        else:
-            # Normal binary arithmetic
-            result = val1 - val2
-            
-            if type1 == 'R':
-                cpu.Rregisters[idx1] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif type1 == 'P':
-                cpu.Pregisters[idx1] = result & 0xFFFF
-                cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-            elif type1 == 'V':
-                cpu.gfx.Vregisters[idx1] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif type1 in ['TT', 'TM', 'TC', 'TS']:
-                cpu._set_operand_value(type1, idx1, result & 0xFF)
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-class SubRegImm8(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x08  # SUB
-        super().__init__("SUB", opcode_val)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Check if BCD mode is enabled
-        if cpu.decimal_flag:
-            # BCD arithmetic
-            original = cpu._get_operand_value(typ, idx)
-            bcd_result, bcd_borrow = cpu._bcd_sub(original, imm8)
-            
-            if typ == 'R':
-                cpu.Rregisters[idx] = bcd_result & 0xFF
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_borrow)
-            elif typ == 'P':
-                cpu.Pregisters[idx] = bcd_result & 0xFFFF
-                cpu._set_flags_8bit_bcd(bcd_result & 0xFF, bcd_borrow)
-            elif typ == 'V':
-                cpu.gfx.Vregisters[idx] = bcd_result & 0xFF
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_borrow)
-            elif typ in ['TT', 'TM', 'TC', 'TS']:
-                cpu._set_operand_value(typ, idx, bcd_result & 0xFF)
-                cpu._set_flags_8bit_bcd(bcd_result, bcd_borrow)
-        else:
-            # Normal binary arithmetic
-            if typ == 'R':
-                original = int(cpu.Rregisters[idx])
-                result = original - imm8
-                cpu.Rregisters[idx] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif typ == 'P':
-                original = int(cpu.Pregisters[idx])
-                imm8_val = int(imm8)
-                result = original - imm8_val
-                cpu.Pregisters[idx] = result & 0xFFFF
-                cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-            elif typ == 'V':
-                original = int(cpu.gfx.Vregisters[idx])
-                result = original - imm8
-                cpu.gfx.Vregisters[idx] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif typ in ['TT', 'TM', 'TC', 'TS']:
-                original = cpu._get_operand_value(typ, idx)
-                result = original - imm8
-                cpu._set_operand_value(typ, idx, result & 0xFF)
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-class SubRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("SUB", 0x19)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'P':
-            original = int(cpu.Pregisters[idx])
-            result = original - imm16
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class MulRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("MUL", 0x1A)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Get operand values
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        result = val1 * val2
-        
-        if type1 == 'R':
-            cpu.Rregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif type1 == 'P':
-            cpu.Pregisters[idx1] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-        elif type1 == 'V':
-            cpu.gfx.Vregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-class MulRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("MUL", 0x1B)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = int(cpu.Rregisters[idx])
-            result = original * imm8
-            cpu.Rregisters[idx] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif typ == 'P':
-            original = int(cpu.Pregisters[idx])
-            result = original * imm8
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class MulRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("MUL", 0x1C)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'P':
-            original = int(cpu.Pregisters[idx])
-            result = original * imm16
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class DivRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("DIV", 0x1D)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Get operand values
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        if val2 == 0:
-            # Division by zero - set error flags
-            cpu.flags[2] = 1  # Overflow flag
-            return
-        
-        result = val1 // val2
-        remainder = val1 % val2
-        
-        # Set quotient in first register
-        if type1 == 'R':
-            cpu.Rregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif type1 == 'P':
-            cpu.Pregisters[idx1] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-        elif type1 == 'V':
-            cpu.gfx.Vregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        
-        # Set remainder in second register
-        if type2 == 'R':
-            cpu.Rregisters[idx2] = remainder & 0xFF
-        elif type2 == 'P':
-            cpu.Pregisters[idx2] = remainder & 0xFFFF
-        elif type2 == 'V':
-            cpu.gfx.Vregisters[idx2] = remainder & 0xFF
-
-class DivRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("DIV", 0x1E)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if imm8 == 0:
-            cpu.flags[2] = 1  # Overflow flag for division by zero
-            return
-        
-        if typ == 'R':
-            original = int(cpu.Rregisters[idx])
-            result = original // imm8
-            remainder = original % imm8
-            cpu.Rregisters[idx] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif typ == 'P':
-            original = int(cpu.Pregisters[idx])
-            result = original // imm8
-            remainder = original % imm8
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-        
-        # Set remainder in P3
-        cpu.Pregisters[3] = remainder & 0xFFFF
-
-class DivRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("DIV", 0x1F)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if imm16 == 0:
-            cpu.flags[2] = 1  # Overflow flag for division by zero
-            return
-        
-        if typ == 'P':
-            original = int(cpu.Pregisters[idx])
-            result = original // imm16
-            remainder = original % imm16
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-        
-        # Set remainder in P3
-        cpu.Pregisters[3] = remainder & 0xFFFF
-
-# Logical Instructions
-class AndRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("AND", 0x20)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        result = val1 & val2
-        
-        if type1 == 'R':
-            cpu.Rregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif type1 == 'P':
-            cpu.Pregisters[idx1] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-        elif type1 == 'V':
-            cpu.gfx.Vregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-class AndRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("AND", 0x21)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = cpu.Rregisters[idx]
-            result = original & imm8
-            cpu.Rregisters[idx] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = original & imm8
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class AndRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("AND", 0x22)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = original & imm16
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class OrRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("OR", 0x23)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        result = val1 | val2
-        
-        if type1 == 'R':
-            cpu.Rregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif type1 == 'P':
-            cpu.Pregisters[idx1] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-        elif type1 == 'V':
-            cpu.gfx.Vregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-class OrRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("OR", 0x24)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = cpu.Rregisters[idx]
-            result = original | imm8
-            cpu.Rregisters[idx] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = original | imm8
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class OrRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("OR", 0x25)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = original | imm16
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class XorRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("XOR", 0x26)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        result = val1 ^ val2
-        
-        if type1 == 'R':
-            cpu.Rregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif type1 == 'P':
-            cpu.Pregisters[idx1] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-        elif type1 == 'V':
-            cpu.gfx.Vregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-class XorRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("XOR", 0x27)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = cpu.Rregisters[idx]
-            result = original ^ imm8
-            cpu.Rregisters[idx] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = original ^ imm8
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class XorRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("XOR", 0x28)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = original ^ imm16
-            cpu.Pregisters[idx] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class NotReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("NOT", 0x29)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = cpu.Rregisters[idx]
-            result = (~original) & 0xFF
-            cpu.Rregisters[idx] = result
-            cpu._set_flags_8bit(result, result)
-        elif typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = (~original) & 0xFFFF
-            cpu.Pregisters[idx] = result
-            cpu._set_flags_16bit(result, result)
-        elif typ == 'V':
-            original = cpu.gfx.Vregisters[idx]
-            result = (~original) & 0xFF
-            cpu.gfx.Vregisters[idx] = result
-            cpu._set_flags_8bit(result, result)
-
-# Bit Shift Instructions
-class ShlReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SHL", 0x2A)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = cpu.Rregisters[idx]
-            result = (original << 1) & 0xFF
-            cpu.Rregisters[idx] = result
-            # Set carry flag if bit was shifted out
-            cpu.flags[6] = (original & 0x80) >> 7
-            cpu._set_flags_8bit(result, result)
-        elif typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = (original << 1) & 0xFFFF
-            cpu.Pregisters[idx] = result
-            # Set carry flag if bit was shifted out
-            cpu.flags[6] = (original & 0x8000) >> 15
-            cpu._set_flags_16bit(result, result)
-        elif typ == 'V':
-            original = cpu.gfx.Vregisters[idx]
-            result = (original << 1) & 0xFF
-            cpu.gfx.Vregisters[idx] = result
-            cpu.flags[6] = (original & 0x80) >> 7
-            cpu._set_flags_8bit(result, result)
-
-class ShrReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SHR", 0x2B)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = cpu.Rregisters[idx]
-            result = original >> 1
-            cpu.Rregisters[idx] = result
-            # Set carry flag if bit was shifted out
-            cpu.flags[6] = original & 0x01
-            cpu._set_flags_8bit(result, result)
-        elif typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = original >> 1
-            cpu.Pregisters[idx] = result
-            # Set carry flag if bit was shifted out
-            cpu.flags[6] = original & 0x01
-            cpu._set_flags_16bit(result, result)
-        elif typ == 'V':
-            original = cpu.gfx.Vregisters[idx]
-            result = original >> 1
-            cpu.gfx.Vregisters[idx] = result
-            cpu.flags[6] = original & 0x01
-            cpu._set_flags_8bit(result, result)
-
-class RolReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("ROL", 0x2C)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = cpu.Rregisters[idx]
-            result = ((original << 1) | (original >> 7)) & 0xFF
-            cpu.Rregisters[idx] = result
-            cpu.flags[6] = (original & 0x80) >> 7
-            cpu._set_flags_8bit(result, result)
-        elif typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = ((original << 1) | (original >> 15)) & 0xFFFF
-            cpu.Pregisters[idx] = result
-            cpu.flags[6] = (original & 0x8000) >> 15
-            cpu._set_flags_16bit(result, result)
-
-class RorReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("ROR", 0x2D)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = cpu.Rregisters[idx]
-            result = ((original >> 1) | (original << 7)) & 0xFF
-            cpu.Rregisters[idx] = result
-            cpu.flags[6] = original & 0x01
-            cpu._set_flags_8bit(result, result)
-        elif typ == 'P':
-            original = cpu.Pregisters[idx]
-            result = ((original >> 1) | (original << 15)) & 0xFFFF
-            cpu.Pregisters[idx] = result
-            cpu.flags[6] = original & 0x01
-            cpu._set_flags_16bit(result, result)
-
-class PushReg(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x18  # PUSH
-        super().__init__("PUSH", opcode_val)
-    
-    def execute(self, cpu):
-        # Parse mode byte for prefixed operand format
-        mode_byte = cpu._current_mode_byte
-        
-        # For now, assume mode 0x00 = register direct
-        if mode_byte == 0x00:
-            reg_code = cpu.fetch()
-            idx, typ = cpu.reg_index(reg_code)
-            
-            if typ == 'R':
-                val = cpu.Rregisters[idx]
-            elif typ == 'P':
-                val = cpu.Pregisters[idx]
-            elif typ == 'V':
-                val = cpu.gfx.Vregisters[idx]
-            else:
-                val = 0
-            
-            # Check stack bounds before writing
-            sp = int(cpu.Pregisters[8])
-            if sp <= 0x0121:  # Stack overflow check (protect interrupt vectors)
-                raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
-            
-            # Push to stack in memory using standardized pattern
-            sp = (sp - 2) & 0xFFFF
-            cpu.Pregisters[8] = sp
-            cpu.memory.write_word(cpu.Pregisters[8], val)
-        else:
-            raise Exception(f"Unsupported PUSH mode: {mode_byte}")
-
-class PopReg(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x19  # POP
-        super().__init__("POP", opcode_val)
-    
-    def execute(self, cpu):
-        # Parse mode byte for prefixed operand format
-        mode_byte = cpu._current_mode_byte
-        
-        # For now, assume mode 0x00 = register direct
-        if mode_byte == 0x00:
-            reg_code = cpu.fetch()
-            idx, typ = cpu.reg_index(reg_code)
-            
-            # Check stack bounds before reading
-            if cpu.Pregisters[8] >= 0xFFFF:  # Stack underflow check
-                raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
-            
-            # Pop from stack in memory
-            val = cpu.memory.read_word(cpu.Pregisters[8])
-            
-            # Use standardized SP manipulation
-            sp = int(cpu.Pregisters[8])
-            sp = (sp + 2) & 0xFFFF
-            cpu.Pregisters[8] = sp
-            
-            # Proper type conversion for register assignment
-            if typ == 'R':
-                cpu.Rregisters[idx] = int(val) & 0xFF
-            elif typ == 'P':
-                cpu.Pregisters[idx] = int(val) & 0xFFFF
-            elif typ == 'V':
-                cpu.gfx.Vregisters[idx] = int(val) & 0xFF
-        else:
-            raise Exception(f"Unsupported POP mode: {mode_byte}")
-
-class PushF(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x1A  # PUSHF
-        super().__init__("PUSHF", opcode_val)
-    
-    def execute(self, cpu):
-        # Convert flags array to a single value
-        flags_val = 0
-        for i in range(12):
-            if int(cpu._flags[i]) != 0:
-                flags_val |= (1 << i)
-        
-        # Check stack bounds before writing
-        sp = int(cpu.Pregisters[8])
-        if sp <= 0x0121:  # Stack overflow check (protect interrupt vectors)
-            raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
-        
-        # Push to stack in memory using standardized pattern
-        sp = (sp - 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        cpu.memory.write_word(cpu.Pregisters[8], flags_val)
-
-class PopF(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x1B  # POPF
-        super().__init__("POPF", opcode_val)
-    
-    def execute(self, cpu):
-        # Check stack bounds before reading
-        if cpu.Pregisters[8] >= 0xFFFF:  # Stack underflow check
-            raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
-        
-        # Pop flags from stack in memory
-        flags_val = cpu.memory.read_word(cpu.Pregisters[8])
-        
-        # Use standardized SP manipulation
-        sp = int(cpu.Pregisters[8])
-        sp = (sp + 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        
-        # Convert single value back to flags array with proper type conversion
-        for i in range(12):
-            bit_set = (flags_val >> i) & 1
-            flag_value = 1 if bit_set else 0
-            cpu._flags[i] = int(flag_value) & 0xFF
-
-# Additional Stack Instructions
-class PushA(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x1C  # PUSHA
-        super().__init__("PUSHA", opcode_val)
-    
-    def execute(self, cpu):
-        # Calculate how many bytes are needed (10 registers * 2 bytes each)
-        needed_bytes = 20
-        available_bytes = int(cpu.Pregisters[8]) - 0x0120  # Leave room for interrupt vectors
-        
-        if available_bytes < needed_bytes:
-            raise RuntimeError(f"Stack overflow in PUSHA: SP=0x{cpu.Pregisters[8]:04X}, need {needed_bytes} bytes, only {available_bytes} available")
-        
-        # Push all R registers to stack in memory
-        for i in range(10):
-            # Use standardized SP manipulation
-            sp = int(cpu.Pregisters[8])
-            sp = (sp - 2) & 0xFFFF
-            cpu.Pregisters[8] = sp
-            cpu.memory.write_word(cpu.Pregisters[8], cpu.Rregisters[i])
-
-class PopA(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x1D  # POPA
-        super().__init__("POPA", opcode_val)
-    
-    def execute(self, cpu):
-        # Calculate how many bytes are needed (10 registers * 2 bytes each)
-        needed_bytes = 20
-        available_bytes = (0xFFFF - int(cpu.Pregisters[8])) & 0xFFFF
-        
-        if available_bytes < needed_bytes:
-            raise RuntimeError(f"Stack underflow in POPA: SP=0x{cpu.Pregisters[8]:04X}, need {needed_bytes} bytes, only {available_bytes} available")
-        
-        # Pop all R registers from stack in memory in reverse order
-        for i in range(9, -1, -1):
-            # Proper type conversion to avoid numpy overflow
-            value = int(cpu.memory.read_word(cpu.Pregisters[8])) & 0xFF
-            cpu.Rregisters[i] = value
-            
-            # Use standardized SP manipulation
-            sp = int(cpu.Pregisters[8])
-            sp = (sp + 2) & 0xFFFF
-            cpu.Pregisters[8] = sp
-
-# Jump Instructions
-class JmpImm16(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x1E  # JMP
-        super().__init__("JMP", opcode_val)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        cpu.pc = addr
-        # Invalidate prefetch buffer after jump
-        cpu.invalidate_prefetch()
-
-class JmpReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("JMP", 0x35)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'P':
-            cpu.pc = cpu.Pregisters[idx]
-        elif typ == 'R':
-            cpu.pc = cpu.Rregisters[idx]
-        # Invalidate prefetch buffer after jump
-        cpu.invalidate_prefetch()
-
-class JzImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JZ", 0x36)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        if cpu.flags[7]:  # Zero flag
-            cpu.pc = addr
-
-class JzReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("JZ", 0x37)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if cpu.flags[7]:  # Zero flag
-            if typ == 'P':
-                cpu.pc = cpu.Pregisters[idx]
-            elif typ == 'R':
-                cpu.pc = cpu.Rregisters[idx]
-
-class JnzImm16(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x20  # JNZ
-        super().__init__("JNZ", opcode_val)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        if not cpu.flags[7]:  # Zero flag not set
-            cpu.pc = addr
-
-class JnzReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("JNZ", 0x39)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if not cpu.flags[7]:  # Zero flag not set
-            if typ == 'P':
-                cpu.pc = cpu.Pregisters[idx]
-            elif typ == 'R':
-                cpu.pc = cpu.Rregisters[idx]
-
-class JoImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JO", 0x3A)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        if cpu.flags[2]:  # Overflow flag set
-            cpu.pc = addr
-
-class JoReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("JO", 0x3B)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if cpu.flags[2]:  # Overflow flag set
-            if typ == 'P':
-                cpu.pc = cpu.Pregisters[idx]
-            elif typ == 'R':
-                cpu.pc = cpu.Rregisters[idx]
-
-class JnoImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JNO", 0x3C)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        if not cpu.flags[2]:  # Overflow flag not set
-            cpu.pc = addr
-
-class JnoReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("JNO", 0x3D)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if not cpu.flags[2]:  # Overflow flag not set
-            if typ == 'P':
-                cpu.pc = cpu.Pregisters[idx]
-            elif typ == 'R':
-                cpu.pc = cpu.Rregisters[idx]
-
-class JcImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JC", 0x3E)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        if cpu.flags[6]:  # Carry flag set
-            cpu.pc = addr
-
-class JcReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("JC", 0x3F)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if cpu.flags[6]:  # Carry flag set
-            if typ == 'P':
-                cpu.pc = cpu.Pregisters[idx]
-            elif typ == 'R':
-                cpu.pc = cpu.Rregisters[idx]
-
-class JncImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JNC", 0x40)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        if not cpu.flags[6]:  # Carry flag not set
-            cpu.pc = addr
-
-class JncReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("JNC", 0x41)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if not cpu.flags[6]:  # Carry flag not set
-            if typ == 'P':
-                cpu.pc = cpu.Pregisters[idx]
-            elif typ == 'R':
-                cpu.pc = cpu.Rregisters[idx]
-
-class JsImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JS", 0x43)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        if cpu.flags[1]:  # Sign flag set
-            cpu.pc = addr
-
-class JsReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("JS", 0x45)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if cpu.flags[1]:  # Sign flag set
-            if typ == 'P':
-                cpu.pc = cpu.Pregisters[idx]
-            elif typ == 'R':
-                cpu.pc = cpu.Rregisters[idx]
-
-class JnsImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JNS", 0x44)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        if not cpu.flags[1]:  # Sign flag not set
-            cpu.pc = addr
-
-class JnsReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("JNS", 0x46)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if not cpu.flags[1]:  # Sign flag not set
-            if typ == 'P':
-                cpu.pc = cpu.Pregisters[idx]
-            elif typ == 'R':
-                cpu.pc = cpu.Rregisters[idx]
-
-# Branch Instructions (relative jumps)
-class BrImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("BR", 0x46)
-    
-    def execute(self, cpu):
-        offset = cpu.fetch()
-        # Convert to signed 8-bit integer
-        if offset > 127:
-            offset -= 256
-        cpu.pc = (cpu.pc + offset) & 0xFF
-
-class BrReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("BR", 0x47)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            offset = cpu.Rregisters[idx]
-            # Convert to signed offset
-            if offset > 127:
-                offset -= 256
-            cpu.pc = (cpu.pc + offset) & 0xFF
-
-class BrzImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("BRZ", 0x48)
-    
-    def execute(self, cpu):
-        offset = cpu.fetch()
-        if cpu.flags[7]:  # Zero flag set
-            # Convert to signed offset
-            if offset > 127:
-                offset -= 256
-            cpu.pc = (cpu.pc + offset) & 0xFF
-
-class BrzReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("BRZ", 0x49)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if cpu.flags[7]:  # Zero flag set
-            if typ == 'R':
-                offset = cpu.Rregisters[idx]
-                # Convert to signed offset
-                if offset > 127:
-                    offset -= 256
-                cpu.pc = (cpu.pc + offset) & 0xFF
-
-class BrnzImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("BRNZ", 0x4A)
-    
-    def execute(self, cpu):
-        offset = cpu.fetch()
-        if not cpu.flags[7]:  # Zero flag not set
-            # Convert to signed offset
-            if offset > 127:
-                offset -= 256
-            cpu.pc = (cpu.pc + offset) & 0xFF
-
-class BrnzReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("BRNZ", 0x4B)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if not cpu.flags[7]:  # Zero flag not set
-            if typ == 'R':
-                offset = cpu.Rregisters[idx]
-                # Convert to signed offset
-                if offset > 127:
-                    offset -= 256
-                cpu.pc = (cpu.pc + offset) & 0xFF
-
-# Interrupt Instructions
-class IntImm8(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x30  # INT
-        super().__init__("INT", opcode_val)
-    
-    def execute(self, cpu):
-        int_num = cpu.fetch()
-        # Ensure int_num is a Python int, not numpy.uint8
-        int_num = int(int_num)
-        print(f"INT: Interrupt number {int_num}")
-        
-        # Check stack bounds before writing (need to push 2 words)
-        sp = int(cpu.Pregisters[8])
-        if sp <= 0x0124:  # Stack overflow check (protect interrupt vectors + need 4 bytes)
-            raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
-        
-        # Push current PC and flags onto stack in memory
-        flags_val = 0
-        for i in range(12):
-            # Ensure flag values are properly bounded
-            flag_value = int(cpu._flags[i]) & 0xFF
-            print(f"INT: Flag {i} = {flag_value}")
-            if flag_value != 0:
-                flags_val |= (1 << i)
-        
-        print(f"INT: Computed flags_val = 0x{flags_val:04X}")
-        
-        # Push flags first (using standardized pattern)
-        sp = (sp - 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        print(f"INT: Pushing flags 0x{flags_val:04X} to address 0x{cpu.Pregisters[8]:04X}")
-        cpu.memory.write_word(cpu.Pregisters[8], flags_val)
-        
-        # Push PC second (using standardized pattern)
-        sp = (sp - 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        print(f"INT: Pushing PC 0x{cpu.pc:04X} to address 0x{cpu.Pregisters[8]:04X}")
-        try:
-            cpu.memory.write_word(cpu.Pregisters[8], cpu.pc)
-            print(f"INT: Successfully wrote PC to memory")
-        except Exception as e:
-            print(f"INT: Error writing PC to memory: {e}")
-            raise
-        
-        # Jump to interrupt handler (simplified)
-        print(f"INT: About to compute new_pc with int_num={int_num}")
-        try:
-            new_pc = 0x0100 + (int_num * 4)
-            print(f"INT: Computed new_pc = 0x{new_pc:04X}")
-        except Exception as e:
-            print(f"INT: ERROR in new_pc computation: {e}")
-            print(f"INT: int_num = {int_num}, type = {type(int_num)}")
-            raise
-        
-        print(f"INT: About to set PC from 0x{cpu.pc:04X} to 0x{new_pc:04X}")
-        try:
-            cpu.pc = new_pc  # Simple interrupt vector table
-            print(f"INT: PC set to 0x{cpu.pc:04X}")
-        except Exception as e:
-            print(f"INT: ERROR in PC assignment: {e}")
-            print(f"INT: new_pc = {new_pc}, type = {type(new_pc)}")
-            raise
-        
-        # Invalidate prefetch buffer after jump
-        print(f"INT: About to invalidate prefetch")
-        cpu.invalidate_prefetch()
-        print(f"INT: Prefetch invalidated, INT complete")
-
-class IntReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("INT", 0x4D)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            int_num = cpu.Rregisters[idx]
-        elif typ == 'P':
-            int_num = cpu.Pregisters[idx] & 0xFF
-        else:
-            int_num = 0
-        
-        # Check stack bounds before writing (need to push 2 words)
-        sp = int(cpu.Pregisters[8])
-        if sp <= 0x0124:  # Stack overflow check (protect interrupt vectors + need 4 bytes)
-            raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
-            
-        # Push current PC and flags onto stack in memory
-        flags_val = 0
-        for i in range(12):
-            # Ensure flag values are properly bounded
-            flag_value = int(cpu.flags[i]) & 0xFF
-            if flag_value != 0:
-                flags_val |= (1 << i)
-        
-        # Push flags first (using standardized pattern)
-        sp = (sp - 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        cpu.memory.write_word(cpu.Pregisters[8], flags_val)
-        
-        # Push PC second (using standardized pattern)
-        sp = (sp - 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        cpu.memory.write_word(cpu.Pregisters[8], cpu.pc)
-        
-        # Jump to interrupt handler (simplified)
-        cpu.pc = 0x0100 + (int_num * 4)
-
-# Graphics Mode and Sprite Instructions
-# Note: SMODE instruction removed - use VM register (V2) instead
-
-class SblendImm(BaseInstruction):
-    def __init__(self):
-        super().__init__("SBLEND", 0x4E)
-    
-    def execute(self, cpu):
-        mode = cpu.fetch()
-        cpu.gfx.blend_mode = mode & 0x0F  # Limit to 0-15
-        cpu.gfx.blend_alpha = 255  # Default full intensity
-
-class SblendImmImm(BaseInstruction):
-    def __init__(self):
-        super().__init__("SBLEND", 0x4F)
-    
-    def execute(self, cpu):
-        mode = cpu.fetch()
-        alpha = cpu.fetch()
-        cpu.gfx.blend_mode = mode & 0x0F  # Limit to 0-15
-        cpu.gfx.blend_alpha = alpha & 0xFF
-
-class SreadReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SREAD", 0x50)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Read sprite data using graphics system's method
-        val = cpu.gfx.get_screen_val()
-        
-        if typ == 'R':
-            cpu.Rregisters[idx] = val & 0xFF
-            cpu.flags[7] = int(val == 0)
-        elif typ == 'P':
-            cpu.Pregisters[idx] = val & 0xFFFF
-            cpu.flags[7] = int(val == 0)
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = val & 0xFF
-            cpu.flags[7] = int(val == 0)
-
-class SwriteReg(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x33  # SWRITE
-        super().__init__("SWRITE", opcode_val)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get value to write - optimized version
-        if typ == 'R':
-            val = cpu.Rregisters[idx]
-        elif typ == 'P':
-            val = cpu.Pregisters[idx] & 0xFF
-        elif typ == 'V':
-            val = cpu.gfx.Vregisters[idx]
-        else:
-            val = 0
-        
-        # Use fast screen writing method when possible
-        if hasattr(cpu.gfx, 'set_screen_val_fast'):
-            cpu.gfx.set_screen_val_fast(val)
-        else:
-            cpu.gfx.set_screen_val(val)
-        cpu.flags[7] = int(val == 0)
-
-class SwriteImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("SWRITE", 0x52)
-    
-    def execute(self, cpu):
-        imm16 = cpu.fetch(2)
-        
-        # Write immediate value to sprite buffer using graphics system's method
-        cpu.gfx.set_screen_val(imm16 & 0xFF)
-        cpu.flags[7] = int((imm16 & 0xFF) == 0)
-
-# Screen Transform Instructions
-class SrolxReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SROLX", 0x53)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            amount = cpu.Rregisters[idx]
-        elif typ == 'P':
-            amount = cpu.Pregisters[idx] & 0xFF
-        elif typ == 'V':
-            amount = cpu.gfx.Vregisters[idx] & 0xFF
-        else:
-            amount = 0
-            
-        # Use layer-aware roll if VL is set to a layer, otherwise use main screen
-        if cpu.gfx.VL == 0:
-            cpu.gfx.roll_x(amount)
-        else:
-            cpu.gfx.roll_x_layer(amount, cpu.gfx.VL)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SrolxImm(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x34  # SROLX
-        super().__init__("SROLX", opcode_val)
-    
-    def execute(self, cpu):
-        # The mode byte is already fetched by CPU and stored in _current_mode_byte
-        # We only need to fetch the immediate value
-        imm8 = cpu.fetch_byte()
-        
-        # Use layer-aware roll if VL is set to a layer, otherwise use main screen
-        if cpu.gfx.VL == 0:
-            cpu.gfx.roll_x(imm8)
-        else:
-            cpu.gfx.roll_x_layer(imm8, cpu.gfx.VL)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SrolyReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SROLY", 0x55)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            amount = cpu.Rregisters[idx]
-        elif typ == 'P':
-            amount = cpu.Pregisters[idx] & 0xFF
-        elif typ == 'V':
-            amount = cpu.gfx.Vregisters[idx] & 0xFF
-        else:
-            amount = 0
-            
-        # Use layer-aware roll if VL is set to a layer, otherwise use main screen
-        if cpu.gfx.VL == 0:
-            cpu.gfx.roll_y(amount)
-        else:
-            cpu.gfx.roll_y_layer(amount, cpu.gfx.VL)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SrolyImm(BaseInstruction):
-    def __init__(self):
-        super().__init__("SROLY", 0x56)
-    
-    def execute(self, cpu):
-        imm8 = cpu.fetch()
-        # Use layer-aware roll if VL is set to a layer, otherwise use main screen
-        if cpu.gfx.VL == 0:
-            cpu.gfx.roll_y(imm8)
-        else:
-            cpu.gfx.roll_y_layer(imm8, cpu.gfx.VL)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SrotlReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SROTL", 0x57)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            amount = cpu.Rregisters[idx]
-        elif typ == 'P':
-            amount = cpu.Pregisters[idx] & 0xFF
-        elif typ == 'V':
-            amount = cpu.gfx.Vregisters[idx] & 0xFF
-        else:
-            amount = 0
-            
-        cpu.gfx.rotate_l(amount)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SrotlImm(BaseInstruction):
-    def __init__(self):
-        super().__init__("SROTL", 0x58)
-    
-    def execute(self, cpu):
-        val = cpu.fetch()
-        cpu.gfx.rotate_l(val)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SrotrReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SROTR", 0x59)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            amount = cpu.Rregisters[idx]
-        elif typ == 'P':
-            amount = cpu.Pregisters[idx] & 0xFF
-        elif typ == 'V':
-            amount = cpu.gfx.Vregisters[idx] & 0xFF
-        else:
-            amount = 0
-            
-        cpu.gfx.rotate_r(amount)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SrotrImm(BaseInstruction):
-    def __init__(self):
-        super().__init__("SROTR", 0x5A)
-    
-    def execute(self, cpu):
-        val = cpu.fetch()
-        cpu.gfx.rotate_r(val)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SshftxReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SSHFTX", 0x5B)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            amount = cpu.Rregisters[idx]
-        elif typ == 'P':
-            amount = cpu.Pregisters[idx] & 0xFF
-        elif typ == 'V':
-            amount = cpu.gfx.Vregisters[idx] & 0xFF
-        else:
-            amount = 0
-            
-        cpu.gfx.shift_x(amount)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SshftxImm(BaseInstruction):
-    def __init__(self):
-        super().__init__("SSHFTX", 0x5C)
-    
-    def execute(self, cpu):
-        val = cpu.fetch()
-        cpu.gfx.shift_x(val)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SshftyReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SSHFTY", 0x5D)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            amount = cpu.Rregisters[idx]
-        elif typ == 'P':
-            amount = cpu.Pregisters[idx] & 0xFF
-        elif typ == 'V':
-            amount = cpu.gfx.Vregisters[idx] & 0xFF
-        else:
-            amount = 0
-            
-        cpu.gfx.shift_y(amount)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class SshftyImm(BaseInstruction):
-    def __init__(self):
-        super().__init__("SSHFTY", 0x5E)
-    
-    def execute(self, cpu):
-        val = cpu.fetch()
-        cpu.gfx.shift_y(val)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class Sflipx(BaseInstruction):
-    def __init__(self):
-        super().__init__("SFLIPX", 0x5F)
-    
-    def execute(self, cpu):
-        # Use layer-aware flip if VL is set to a layer, otherwise use main screen
-        if cpu.gfx.VL == 0:
-            cpu.gfx.flip_x()
-        else:
-            cpu.gfx.flip_x_layer(cpu.gfx.VL)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class Sflipy(BaseInstruction):
-    def __init__(self):
-        super().__init__("SFLIPY", 0x60)
-    
-    def execute(self, cpu):
-        # Use layer-aware flip if VL is set to a layer, otherwise use main screen
-        if cpu.gfx.VL == 0:
-            cpu.gfx.flip_y()
-        else:
-            cpu.gfx.flip_y_layer(cpu.gfx.VL)
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class Sblit(BaseInstruction):
-    def __init__(self):
-        super().__init__("SBLIT", 0x61)
-    
-    def execute(self, cpu):
-        cpu.gfx.ScreenToVRAM()
-        cpu.flags[7] = int((cpu.gfx.screen == 0).all())
-
-class CmpRegReg(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x2E  # CMP
-        super().__init__("CMP", opcode_val)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Get operand values
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        # Perform comparison (subtraction without storing result)
-        result = val1 - val2
-        
-        # Mark this as a CMP operation for correct carry flag handling
-        cpu._last_operation_was_cmp = True
-        
-        # Set flags based on comparison
-        if type1 == 'R' or type1 == 'V':
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif type1 == 'P':
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class CmpRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("CMP", 0x63)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Mark this as a CMP operation for correct carry flag handling
-        cpu._last_operation_was_cmp = True
-        
-        if typ == 'R':
-            val = int(cpu.Rregisters[idx])
-            imm8_val = int(imm8)
-            result = val - imm8_val
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif typ == 'P':
-            val = int(cpu.Pregisters[idx])
-            imm8_val = int(imm8)
-            result = val - imm8_val
-            masked_result = int(result) & 0xFFFF
-            cpu._set_flags_16bit(masked_result, result)
-        elif typ == 'V':
-            val = int(cpu.gfx.Vregisters[idx])
-            imm8_val = int(imm8)
-            result = val - imm8_val
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-class CmpRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("CMP", 0x64)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Mark this as a CMP operation for correct carry flag handling
-        cpu._last_operation_was_cmp = True
-        
-        if typ == 'R':
-            val = int(cpu.Rregisters[idx])
-            result = val - int(imm16)
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif typ == 'P':
-            val = int(cpu.Pregisters[idx])  # Convert to int to prevent overflow
-            result = val - int(imm16)       # Ensure both are int
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-        elif typ == 'V':
-            val = int(cpu.gfx.Vregisters[idx])
-            result = val - int(imm16)
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-# Graphics/VRAM Instructions
-class VreadReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("VREAD", 0x65)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Read from VRAM using graphics system method
-        pixel = cpu.gfx.get_vram_val()
-        
-        if typ == 'R':
-            cpu.Rregisters[idx] = pixel & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = pixel & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = pixel & 0xFF
-
-class VwriteReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("VWRITE", 0x66)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get value to write
-        if typ == 'R':
-            val = cpu.Rregisters[idx]
-        elif typ == 'P':
-            val = cpu.Pregisters[idx]
-        elif typ == 'V':
-            val = cpu.gfx.Vregisters[idx]
-        else:
-            val = 0
-        
-        # Write to VRAM using graphics system method
-        cpu.gfx.set_vram_val(val & 0xFF)
-
-class VwriteImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("VWRITE", 0x67)
-    
-    def execute(self, cpu):
-        imm16 = cpu.fetch(2)
-        
-        # Write immediate value to VRAM using graphics system method
-        cpu.gfx.set_vram_val(imm16 & 0xFF)
-
-class Vblit(BaseInstruction):
-    def __init__(self):
-        super().__init__("VBLIT", 0x68)
-    
-    def execute(self, cpu):
-        # Copy VRAM to screen buffer (blit operation)
-        cpu.gfx.VRAMtoScreen()
-
-class CallImm16(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x2F  # CALL
-        super().__init__("CALL", opcode_val)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        
-        # Check stack bounds before writing
-        sp = int(cpu.Pregisters[8])
-        if sp <= 0x0121:  # Stack overflow check (protect interrupt vectors)
-            raise RuntimeError(f"Stack overflow: SP=0x{sp:04X}")
-        
-        # Push PC to stack in memory using standardized pattern
-        sp = (sp - 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        cpu.memory.write_word(cpu.Pregisters[8], cpu.pc)
-        cpu.pc = addr
-        # Invalidate prefetch buffer after jump
-        cpu.invalidate_prefetch()
-
-# Character Drawing Instructions
-class CharRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("CHAR", 0x6A)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        color = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get character code from register
-        if typ == 'R':
-            char_code = cpu.Rregisters[idx] & 0xFF
-        elif typ == 'P':
-            char_code = cpu.Pregisters[idx] & 0xFF
-        elif typ == 'V':
-            char_code = cpu.gfx.Vregisters[idx] & 0xFF
-        else:
-            char_code = 0
-        
-        # Draw sinVLe character at VX, VY position
-        x = cpu.gfx.Vregisters[0]  # VX
-        y = cpu.gfx.Vregisters[1]  # VY
-        cpu.gfx.draw_char_to_screen(chr(char_code), x, y, color)
-
-class TextRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("TEXT", 0x6B)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        color = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            addr = cpu.Rregisters[idx]
-        elif typ == 'P':
-            addr = cpu.Pregisters[idx]
-        elif typ == 'V':
-            addr = cpu.gfx.Vregisters[idx]
-        else:
-            addr = 0
-        
-        # Read null-terminated string from memory
-        text = ""
-        while True:
-            char_code = cpu.memory.read_byte(addr)
-            if char_code == 0:
-                break
-            text += chr(char_code & 0xFF)
-            addr += 1
-        
-        x = cpu.gfx.Vregisters[0]  # VX
-        y = cpu.gfx.Vregisters[1]  # VY
-        cpu.gfx.draw_string_to_screen(text, x, y, color)
-
-class TextImm16Imm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("TEXT", 0x6C)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)  # 16-bit address
-        color = cpu.fetch()  # 8-bit color
-        
-        # Read null-terminated string from memory
-        text = ""
-        while True:
-            char_code = cpu.memory.read_byte(addr)
-            if char_code == 0:
-                break
-            text += chr(char_code & 0xFF)
-            addr += 1
-        
-        x = cpu.gfx.Vregisters[0]  # VX
-        y = cpu.gfx.Vregisters[1]  # VY
-        cpu.gfx.draw_string_to_screen(text, x, y, color)
-
-class CharRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("CHAR", 0x6D)
-    
-    def execute(self, cpu):
-        char_reg_code = cpu.fetch()
-        color_reg_code = cpu.fetch()
-        
-        # Get character code from first register
-        idx1, typ1 = cpu.reg_index(char_reg_code)
-        if typ1 == 'R':
-            char_code = cpu.Rregisters[idx1] & 0xFF
-        elif typ1 == 'P':
-            char_code = cpu.Pregisters[idx1] & 0xFF
-        elif typ1 == 'V':
-            char_code = cpu.gfx.Vregisters[idx1] & 0xFF
-        else:
-            char_code = 0
-        
-        # Get color from second register
-        idx2, typ2 = cpu.reg_index(color_reg_code)
-        if typ2 == 'R':
-            color = cpu.Rregisters[idx2] & 0xFF
-        elif typ2 == 'P':
-            color = cpu.Pregisters[idx2] & 0xFF
-        elif typ2 == 'V':
-            color = cpu.gfx.Vregisters[idx2] & 0xFF
-        else:
-            color = 0xFF
-        
-        # Draw sinVLe character at VX, VY position
-        x = cpu.gfx.Vregisters[0]  # VX
-        y = cpu.gfx.Vregisters[1]  # VY
-        cpu.gfx.draw_char_to_screen(chr(char_code), x, y, color)
-
-class TextRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("TEXT", 0x6E)
-    
-    def execute(self, cpu):
-        addr_reg_code = cpu.fetch()
-        color_reg_code = cpu.fetch()
-        
-        # Get address from first register
-        idx1, typ1 = cpu.reg_index(addr_reg_code)
-        if typ1 == 'R':
-            addr = cpu.Rregisters[idx1]
-        elif typ1 == 'P':
-            addr = cpu.Pregisters[idx1]
-        elif typ1 == 'V':
-            addr = cpu.gfx.Vregisters[idx1]
-        else:
-            addr = 0
-        
-        # Get color from second register
-        idx2, typ2 = cpu.reg_index(color_reg_code)
-        if typ2 == 'R':
-            color = cpu.Rregisters[idx2] & 0xFF
-        elif typ2 == 'P':
-            color = cpu.Pregisters[idx2] & 0xFF
-        elif typ2 == 'V':
-            color = cpu.gfx.Vregisters[idx2] & 0xFF
-        else:
-            color = 0xFF
-        
-        # Read null-terminated string from memory
-        text = ""
-        while True:
-            char_code = cpu.memory.read_byte(addr)
-            if char_code == 0:
-                break
-            text += chr(char_code & 0xFF)
-            addr += 1
-        
-        # Draw text at VX, VY position
-        x = cpu.gfx.Vregisters[0]  # VX
-        y = cpu.gfx.Vregisters[1]  # VY
-        cpu.gfx.draw_string_to_screen(text, x, y, color)
-
-class TextImm16Reg(BaseInstruction):
-    def __init__(self):
-        # Get opcode from opcodes.py
-        opcode_val = 0x42  # TEXT
-        super().__init__("TEXT", opcode_val)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)  # 16-bit address
-        reg_code = cpu.fetch()  # Color register
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get color from register
-        if typ == 'R':
-            color = cpu.Rregisters[idx] & 0xFF
-        elif typ == 'P':
-            color = cpu.Pregisters[idx] & 0xFF
-        elif typ == 'V':
-            color = cpu.gfx.Vregisters[idx] & 0xFF
-        else:
-            color = 0
-        
-        # Read null-terminated string from memory
-        text = ""
-        while True:
-            char_code = cpu.memory.read_byte(addr)
-            if char_code == 0:
-                break
-            text += chr(char_code & 0xFF)
-            addr += 1
-        
-        x = cpu.gfx.Vregisters[0]  # VX
-        y = cpu.gfx.Vregisters[1]  # VY
-        cpu.gfx.draw_string_to_screen(text, x, y, color)
-
-# Control Flow 2 Instructions
-class JgtImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JGT", 0x70)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        # Jump if greater than (carry clear AND zero clear)
-        if not cpu.flags[6] and not cpu.flags[7]:  # Not carry and not zero
-            cpu.pc = addr
-
-class JltImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JLT", 0x71)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        # Jump if less than (carry flag set)
-        if cpu.flags[6]:  # Carry flag
-            cpu.pc = addr
-
-class JgeImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JGE", 0x72)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        # Jump if greater than or equal (carry clear)
-        if not cpu.flags[6]:  # Not carry
-            cpu.pc = addr
-
-class JleImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("JLE", 0x73)
-    
-    def execute(self, cpu):
-        addr = cpu.fetch(2)
-        # Jump if less than or equal (carry set OR zero set)
-        if cpu.flags[6] or cpu.flags[7]:  # Carry or zero
-            cpu.pc = addr
-
-# Keyboard I/O Instructions
-class KeyinReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("KEYIN", 0x74)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        key_code = cpu.read_key_from_buffer()
-        
-        if typ == 'R':
-            cpu.Rregisters[idx] = key_code & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = key_code & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = key_code & 0xFF
-        
-        # Set zero flag if no key available
-        cpu.flags[7] = int(key_code == 0)
-
-class KeystatReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("KEYSTAT", 0x75)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        status = cpu.keyboard[1]  # Status register
-        
-        if typ == 'R':
-            cpu.Rregisters[idx] = status & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = status & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = status & 0xFF
-
-class KeycountReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("KEYCOUNT", 0x76)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        count = cpu.keyboard[3]  # Buffer count
-        
-        if typ == 'R':
-            cpu.Rregisters[idx] = count & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = count & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = count & 0xFF
-
-class Keyclear(BaseInstruction):
-    def __init__(self):
-        super().__init__("KEYCLEAR", 0x77)
-    
-    def execute(self, cpu):
-        cpu.clear_keyboard_buffer()
-
-class KeyctrlReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("KEYCTRL", 0x78)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            cpu.keyboard[2] = cpu.Rregisters[idx] & 0xFF
-        elif typ == 'P':
-            cpu.keyboard[2] = cpu.Pregisters[idx] & 0xFF
-        elif typ == 'V':
-            cpu.keyboard[2] = cpu.gfx.Vregisters[idx] & 0xFF
-        
-        # Enable/disable keyboard interrupt based on control register
-        cpu.interrupts[2] = (cpu.keyboard[2] & 0x01)
-
-class KeyctrlImm(BaseInstruction):
-    def __init__(self):
-        super().__init__("KEYCTRL", 0x79)
-    
-    def execute(self, cpu):
-        imm8 = cpu.fetch()
-        cpu.keyboard[2] = imm8 & 0xFF
-        # Enable/disable keyboard interrupt based on control register
-        cpu.interrupts[2] = (cpu.keyboard[2] & 0x01)
-
-# Misc Instructions
-class ModRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOD", 0x7A)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Get operand values
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        if val2 == 0:
-            # Division by zero - set result to 0 and set overflow flag
-            result = 0
-            cpu.overflow_flag = True
-        else:
-            result = val1 % val2
-        
-        if type1 == 'R':
-            cpu.Rregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif type1 == 'P':
-            cpu.Pregisters[idx1] = result & 0xFFFF
-            cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-        elif type1 == 'V':
-            cpu.gfx.Vregisters[idx1] = result & 0xFF
-            cpu._set_flags_8bit(int(result) & 0xFF, result)
-
-class ModRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOD", 0x7B)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if imm8 == 0:
-            # Division by zero - set result to 0 and set overflow flag
-            result = 0
-            cpu.overflow_flag = True
-        else:
-            if typ == 'R':
-                original = int(cpu.Rregisters[idx])
-                result = original % imm8
-                cpu.Rregisters[idx] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif typ == 'P':
-                original = int(cpu.Pregisters[idx])
-                result = original % imm8
-                cpu.Pregisters[idx] = result & 0xFFFF
-                cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class ModRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("MOD", 0x7C)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm16 = cpu.fetch(2)
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if imm16 == 0:
-            # Division by zero - set result to 0 and set overflow flag
-            result = 0
-            cpu.overflow_flag = True
-        else:
-            if typ == 'P':
-                original = int(cpu.Pregisters[idx])
-                result = original % imm16
-                cpu.Pregisters[idx] = result & 0xFFFF
-                cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-
-class NegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("NEG", 0x7D)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = cpu.Rregisters[idx]
-            # Two's complement negation
-            result = (~original + 1) & 0xFF
-            cpu.Rregisters[idx] = result
-            cpu._set_flags_8bit(result, result)
-        elif typ == 'P':
-            original = cpu.Pregisters[idx]
-            # Two's complement negation
-            result = (~original + 1) & 0xFFFF
-            cpu.Pregisters[idx] = result
-            cpu._set_flags_16bit(result, result)
-        elif typ == 'V':
-            original = cpu.gfx.Vregisters[idx]
-            # Two's complement negation
-            result = (~original + 1) & 0xFF
-            cpu.gfx.Vregisters[idx] = result
-            cpu._set_flags_8bit(result, result)
-
-class AbsReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("ABS", 0x7E)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        if typ == 'R':
-            original = cpu.Rregisters[idx]
-            # Check if negative (bit 7 set)
-            if original & 0x80:
-                result = (~original + 1) & 0xFF
-            else:
-                result = original
-            cpu.Rregisters[idx] = result
-            cpu._set_flags_8bit(result, result)
-        elif typ == 'P':
-            original = cpu.Pregisters[idx]
-            # Check if negative (bit 15 set)
-            if original & 0x8000:
-                result = (~original + 1) & 0xFFFF
-            else:
-                result = original
-            cpu.Pregisters[idx] = result
-            cpu._set_flags_16bit(result, result)
-        elif typ == 'V':
-            original = cpu.gfx.Vregisters[idx]
-            # Check if negative (bit 7 set)
-            if original & 0x80:
-                result = (~original + 1) & 0xFF
-            else:
-                result = original
-            cpu.gfx.Vregisters[idx] = result
-            cpu._set_flags_8bit(result, result)
-
-class SfillReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("SFILL", 0x7F)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get fill value
-        fill_value = cpu._get_operand_value(typ, idx) & 0xFF
-        
-        # Fill current layer with value
-        cpu.gfx.fill_layer(fill_value)
-
-class SfillImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("SFILL", 0x80)
-    
-    def execute(self, cpu):
-        fill_value = cpu.fetch()
-        
-        # Fill current layer with value
-        cpu.gfx.fill_layer(fill_value)
-
-class LoopRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("LOOP", 0x81)
-    
-    def execute(self, cpu):
-        counter_reg_code = cpu.fetch()
-        target_reg_code = cpu.fetch()
-        counter_idx, counter_typ = cpu.reg_index(counter_reg_code)
-        target_idx, target_typ = cpu.reg_index(target_reg_code)
-        
-        # Get current counter value
-        counter_value = cpu._get_operand_value(counter_typ, counter_idx)
-        
-        if counter_value > 0:
-            # Decrement counter
-            new_counter = counter_value - 1
-            cpu._set_operand_value(counter_typ, counter_idx, new_counter)
-            
-            # If counter is not zero, jump to target
-            if new_counter > 0:
-                target_address = cpu._get_operand_value(target_typ, target_idx)
-                cpu.pc = target_address & 0xFFFF
-
-class LoopImm8Reg(BaseInstruction):
-    def __init__(self):
-        super().__init__("LOOP", 0x82)
-    
-    def execute(self, cpu):
-        counter_value = cpu.fetch()
-        target_reg_code = cpu.fetch()
-        target_idx, target_typ = cpu.reg_index(target_reg_code)
-        
-        if counter_value > 0:
-            # Decrement counter (stored nowhere, just immediate check)
-            new_counter = counter_value - 1
-            
-            # If counter is not zero, jump to target
-            if new_counter > 0:
-                target_address = cpu._get_operand_value(target_typ, target_idx)
-                cpu.pc = target_address & 0xFFFF
-
-class RndReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("RND", 0x83)
-    
-    def execute(self, cpu):
-        import random
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Generate random number 0-65535
-        random_value = random.randint(0, 65535)
-        
-        if typ == 'R':
-            # Store low byte only
-            cpu.Rregisters[idx] = random_value & 0xFF
-        elif typ == 'P':
-            # Store full 16-bit value
-            cpu.Pregisters[idx] = random_value & 0xFFFF
-        elif typ == 'V':
-            # Store low byte only
-            cpu.gfx.Vregisters[idx] = random_value & 0xFF
-
-class RndrRegRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("RNDR", 0x84)
-    
-    def execute(self, cpu):
-        import random
-        dest_reg_code = cpu.fetch()
-        lower_reg_code = cpu.fetch()
-        upper_reg_code = cpu.fetch()
-        dest_idx, dest_typ = cpu.reg_index(dest_reg_code)
-        lower_idx, lower_typ = cpu.reg_index(lower_reg_code)
-        upper_idx, upper_typ = cpu.reg_index(upper_reg_code)
-        
-        # Get lower and upper bound values
-        lower_value = cpu._get_operand_value(lower_typ, lower_idx)
-        upper_value = cpu._get_operand_value(upper_typ, upper_idx)
-        
-        # Ensure valid range and handle edge cases
-        # Handle potential signed/unsigned issues
-        lower_value = int(lower_value) & 0xFFFF  # Ensure unsigned
-        upper_value = int(upper_value) & 0xFFFF  # Ensure unsigned
-        
-        if lower_value > upper_value:
-            lower_value, upper_value = upper_value, lower_value
-        
-        # Always check for equal values or invalid ranges
-        if lower_value == upper_value or upper_value < lower_value:
-            random_value = lower_value
-        else:
-            random_value = random.randint(lower_value, upper_value)
-        
-        if dest_typ == 'R':
-            cpu.Rregisters[dest_idx] = random_value & 0xFF
-        elif dest_typ == 'P':
-            cpu.Pregisters[dest_idx] = random_value & 0xFFFF
-        elif dest_typ == 'V':
-            cpu.gfx.Vregisters[dest_idx] = random_value & 0xFF
-
-class RndrRegImm8Imm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("RNDR", 0x85)
-    
-    def execute(self, cpu):
-        import random
-        dest_reg_code = cpu.fetch()
-        lower_value = cpu.fetch()
-        upper_value = cpu.fetch()
-        dest_idx, dest_typ = cpu.reg_index(dest_reg_code)
-        
-        # Ensure valid range and handle edge cases
-        # Handle potential signed/unsigned issues
-        lower_value = int(lower_value) & 0xFF  # Ensure 8-bit unsigned
-        upper_value = int(upper_value) & 0xFF  # Ensure 8-bit unsigned
-        
-        if lower_value > upper_value:
-            lower_value, upper_value = upper_value, lower_value
-        
-        # Always check for equal values or invalid ranges
-        if lower_value == upper_value or upper_value < lower_value:
-            random_value = lower_value
-        else:
-            random_value = random.randint(lower_value, upper_value)
-        
-        if dest_typ == 'R':
-            cpu.Rregisters[dest_idx] = random_value & 0xFF
-        elif dest_typ == 'P':
-            cpu.Pregisters[dest_idx] = random_value & 0xFFFF
-        elif dest_typ == 'V':
-            cpu.gfx.Vregisters[dest_idx] = random_value & 0xFF
-
-class RndrRegImm16Imm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("RNDR", 0x86)
-    
-    def execute(self, cpu):
-        import random
-        dest_reg_code = cpu.fetch()
-        lower_value = cpu.fetch(2)
-        upper_value = cpu.fetch(2)
-        dest_idx, dest_typ = cpu.reg_index(dest_reg_code)
-        
-        # Ensure valid range and handle edge cases
-        # Handle potential signed/unsigned issues and overflow
-        lower_value = int(lower_value) & 0xFFFF  # Ensure 16-bit unsigned
-        upper_value = int(upper_value) & 0xFFFF  # Ensure 16-bit unsigned
-        
-        if lower_value > upper_value:
-            lower_value, upper_value = upper_value, lower_value
-        
-        # Always check for equal values or invalid ranges
-        if lower_value == upper_value or upper_value < lower_value:
-            random_value = lower_value
-        else:
-            random_value = random.randint(lower_value, upper_value)
-        
-        if dest_typ == 'R':
-            cpu.Rregisters[dest_idx] = random_value & 0xFF
-        elif dest_typ == 'P':
-            cpu.Pregisters[dest_idx] = random_value & 0xFFFF
-        elif dest_typ == 'V':
-            cpu.gfx.Vregisters[dest_idx] = random_value & 0xFF
-
-class MemcpyRegRegReg(BaseInstruction):
-    def __init__(self):
-        super().__init__("MEMCPY", 0x87)
-    
-    def execute(self, cpu):
-        dest_reg_code = cpu.fetch()
-        src_reg_code = cpu.fetch()
-        count_reg_code = cpu.fetch()
-        dest_idx, dest_typ = cpu.reg_index(dest_reg_code)
-        src_idx, src_typ = cpu.reg_index(src_reg_code)
-        count_idx, count_typ = cpu.reg_index(count_reg_code)
-        
-        # Get addresses and count
-        dest_addr = cpu._get_operand_value(dest_typ, dest_idx)
-        src_addr = cpu._get_operand_value(src_typ, src_idx)
-        count = cpu._get_operand_value(count_typ, count_idx)
-        
-        # Copy memory
-        for i in range(count):
-            if src_addr + i < cpu.memory.size and dest_addr + i < cpu.memory.size:
-                value = cpu.memory.read_byte(src_addr + i)
-                cpu.write_memory(dest_addr + i, value)
-
-class MemcpyRegRegImm8(BaseInstruction):
-    def __init__(self):
-        super().__init__("MEMCPY", 0x88)
-    
-    def execute(self, cpu):
-        dest_reg_code = cpu.fetch()
-        src_reg_code = cpu.fetch()
-        count = cpu.fetch()
-        dest_idx, dest_typ = cpu.reg_index(dest_reg_code)
-        src_idx, src_typ = cpu.reg_index(src_reg_code)
-        
-        # Get addresses
-        dest_addr = cpu._get_operand_value(dest_typ, dest_idx)
-        src_addr = cpu._get_operand_value(src_typ, src_idx)
-        
-        # Copy memory
-        for i in range(count):
-            if src_addr + i < cpu.memory.size and dest_addr + i < cpu.memory.size:
-                value = cpu.memory.read_byte(src_addr + i)
-                cpu.write_memory(dest_addr + i, value)
-
-class MemcpyRegRegImm16(BaseInstruction):
-    def __init__(self):
-        super().__init__("MEMCPY", 0x89)
-    
-    def execute(self, cpu):
-        dest_reg_code = cpu.fetch()
-        src_reg_code = cpu.fetch()
-        count = cpu.fetch(2)
-        dest_idx, dest_typ = cpu.reg_index(dest_reg_code)
-        src_idx, src_typ = cpu.reg_index(src_reg_code)
-        
-        # Get addresses
-        dest_addr = cpu._get_operand_value(dest_typ, dest_idx)
-        src_addr = cpu._get_operand_value(src_typ, src_idx)
-        
-        # Copy memory
-        for i in range(count):
-            if src_addr + i < cpu.memory.size and dest_addr + i < cpu.memory.size:
-                value = cpu.memory.read_byte(src_addr + i)
-                cpu.write_memory(dest_addr + i, value)
-
-class Sed(BaseInstruction):
-    """Set Decimal flag - enable BCD mode"""
-    def __init__(self):
-        super().__init__("SED", 0x8A)
-    
-    def execute(self, cpu):
-        cpu.decimal_flag = True
-
-class Cld(BaseInstruction):
-    """Clear Decimal flag - disable BCD mode"""
-    def __init__(self):
-        super().__init__("CLD", 0x8B)
-    
-    def execute(self, cpu):
-        cpu.decimal_flag = False
-
-class Cla(BaseInstruction):
-    """Clear BCD auxiliary carry flag"""
-    def __init__(self):
-        super().__init__("CLA", 0x8C)
-    
-    def execute(self, cpu):
-        cpu.bcd_carry_flag = False
-
-class BcdaRegReg(BaseInstruction):
-    """BCD Add with auxiliary carry"""
-    def __init__(self):
-        super().__init__("BCDA", 0x8D)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Get operand values
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        # Always perform BCD arithmetic regardless of decimal flag
-        bcd_result, bcd_carry = cpu._bcd_add(val1, val2)
-        
-        # Store result
-        if type1 == 'R':
-            cpu.Rregisters[idx1] = bcd_result & 0xFF
-        elif type1 == 'P':
-            cpu.Pregisters[idx1] = bcd_result & 0xFFFF
-        elif type1 == 'V':
-            cpu.gfx.Vregisters[idx1] = bcd_result & 0xFF
-        elif type1 in ['TT', 'TM', 'TC', 'TS']:
-            cpu._set_operand_value(type1, idx1, bcd_result & 0xFF)
-        
-        cpu._set_flags_8bit_bcd(bcd_result, bcd_carry)
-
-class BcdsRegReg(BaseInstruction):
-    """BCD Subtract with auxiliary carry"""
-    def __init__(self):
-        super().__init__("BCDS", 0x8E)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Get operand values
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        # Always perform BCD arithmetic regardless of decimal flag
-        bcd_result, bcd_borrow = cpu._bcd_sub(val1, val2)
-        
-        # Store result
-        if type1 == 'R':
-            cpu.Rregisters[idx1] = bcd_result & 0xFF
-        elif type1 == 'P':
-            cpu.Pregisters[idx1] = bcd_result & 0xFFFF
-        elif type1 == 'V':
-            cpu.gfx.Vregisters[idx1] = bcd_result & 0xFF
-        elif type1 in ['TT', 'TM', 'TC', 'TS']:
-            cpu._set_operand_value(type1, idx1, bcd_result & 0xFF)
-        
-        cpu._set_flags_8bit_bcd(bcd_result, bcd_borrow)
-
-class BcdcmpRegReg(BaseInstruction):
-    """BCD Compare - sets flags without storing result"""
-    def __init__(self):
-        super().__init__("BCDCMP", 0x8F)
-    
-    def execute(self, cpu):
-        reg1_code = cpu.fetch()
-        reg2_code = cpu.fetch()
-        idx1, type1 = cpu.reg_index(reg1_code)
-        idx2, type2 = cpu.reg_index(reg2_code)
-        
-        # Get operand values
-        val1 = cpu._get_operand_value(type1, idx1)
-        val2 = cpu._get_operand_value(type2, idx2)
-        
-        # Perform BCD subtraction but don't store result
-        bcd_result, bcd_borrow = cpu._bcd_sub(val1, val2)
-        
-        # Only set flags
-        cpu._set_flags_8bit_bcd(bcd_result, bcd_borrow)
-
-class Bcd2bin(BaseInstruction):
-    """Convert BCD to binary in register"""
-    def __init__(self):
-        super().__init__("BCD2BIN", 0x90)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get BCD value
-        bcd_value = cpu._get_operand_value(typ, idx)
-        
-        # Convert to binary
-        binary_value = cpu._bcd_to_binary(bcd_value)
-        
-        # Store result
-        if typ == 'R':
-            cpu.Rregisters[idx] = binary_value & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = binary_value & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = binary_value & 0xFF
-        elif typ in ['TT', 'TM', 'TC', 'TS']:
-            cpu._set_operand_value(typ, idx, binary_value & 0xFF)
-        
-        # Set flags based on binary result
-        cpu._set_flags_8bit(binary_value & 0xFF, binary_value)
-
-class Bin2bcd(BaseInstruction):
-    """Convert binary to BCD in register"""
-    def __init__(self):
-        super().__init__("BIN2BCD", 0x91)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get binary value
-        binary_value = cpu._get_operand_value(typ, idx)
-        
-        # Convert to BCD
-        bcd_value = cpu._binary_to_bcd(binary_value)
-        
-        # Store result
-        if typ == 'R':
-            cpu.Rregisters[idx] = bcd_value & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = bcd_value & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = bcd_value & 0xFF
-        elif typ in ['TT', 'TM', 'TC', 'TS']:
-            cpu._set_operand_value(typ, idx, bcd_value & 0xFF)
-        
-        # Set flags based on BCD result
-        cpu._set_flags_8bit_bcd(bcd_value, False)
-
-class BcdaddRegImm8(BaseInstruction):
-    """BCD Add immediate"""
-    def __init__(self):
-        super().__init__("BCDADD", 0x92)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get register value
-        reg_value = cpu._get_operand_value(typ, idx)
-        
-        # Always perform BCD arithmetic
-        bcd_result, bcd_carry = cpu._bcd_add(reg_value, imm8)
-        
-        # Store result
-        if typ == 'R':
-            cpu.Rregisters[idx] = bcd_result & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = bcd_result & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = bcd_result & 0xFF
-        elif typ in ['TT', 'TM', 'TC', 'TS']:
-            cpu._set_operand_value(typ, idx, bcd_result & 0xFF)
-        
-        cpu._set_flags_8bit_bcd(bcd_result, bcd_carry)
-
-class BcdsubRegImm8(BaseInstruction):
-    """BCD Subtract immediate"""
-    def __init__(self):
-        super().__init__("BCDSUB", 0x93)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        imm8 = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get register value
-        reg_value = cpu._get_operand_value(typ, idx)
-        
-        # Always perform BCD arithmetic
-        bcd_result, bcd_borrow = cpu._bcd_sub(reg_value, imm8)
-        
-        # Store result
-        if typ == 'R':
-            cpu.Rregisters[idx] = bcd_result & 0xFF
-        elif typ == 'P':
-            cpu.Pregisters[idx] = bcd_result & 0xFFFF
-        elif typ == 'V':
-            cpu.gfx.Vregisters[idx] = bcd_result & 0xFF
-        elif typ in ['TT', 'TM', 'TC', 'TS']:
-            cpu._set_operand_value(typ, idx, bcd_result & 0xFF)
-        
-        cpu._set_flags_8bit_bcd(bcd_result, bcd_borrow)
-
-# Sprite Instructions
-class SpBlitReg(BaseInstruction):
-    """Blit specific sprite by ID from register"""
-    def __init__(self):
-        super().__init__("SPBLIT", 0x94)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get sprite ID from register
-        sprite_id = cpu._get_operand_value(typ, idx) & 0xFF
-        
-        # Clip sprite ID to valid range (0-15)
-        sprite_id = sprite_id % 16
-        
-        # Blit the sprite
-        cpu.gfx.blit_sprite(sprite_id, cpu.memory)
-
-class SpBlitImm(BaseInstruction):
-    """Blit specific sprite by immediate ID"""
-    def __init__(self):
-        super().__init__("SPBLIT", 0x95)
-    
-    def execute(self, cpu):
-        sprite_id = cpu.fetch() & 0xFF
-        
-        # Clip sprite ID to valid range (0-15)
-        sprite_id = sprite_id % 16
-        
-        # Blit the sprite
-        cpu.gfx.blit_sprite(sprite_id, cpu.memory)
-
-class SpBlitAll(BaseInstruction):
-    """Blit all active sprites"""
-    def __init__(self):
-        super().__init__("SPBLITALL", 0x96)
-    
-    def execute(self, cpu):
-        # Blit all sprites
-        cpu.gfx.blit_all_sprites(cpu.memory)
-
-
-# Sound Instructions
-class SPlay(BaseInstruction):
-    """Start playing sound using current sound registers"""
-    def __init__(self):
-        super().__init__("SPLAY", 0x97)
-    
-    def execute(self, cpu):
-        # Play sound using current sound register values
-        cpu.sound.splay()
-
-class SPlayReg(BaseInstruction):
-    """Start playing sound on specific channel from register"""
-    def __init__(self):
-        super().__init__("SPLAY", 0x98)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get channel number from register
-        channel = cpu._get_operand_value(typ, idx) & 0xFF
-        
-        # Clip channel to valid range (0-7)
-        channel = channel % 8
-        
-        # Play sound on specified channel
-        cpu.sound.splay(channel)
-
-class SStop(BaseInstruction):
-    """Stop all sound channels"""
-    def __init__(self):
-        super().__init__("SSTOP", 0x99)
-    
-    def execute(self, cpu):
-        # Stop all sound channels
-        cpu.sound.sstop()
-
-class SStopReg(BaseInstruction):
-    """Stop specific sound channel from register"""
-    def __init__(self):
-        super().__init__("SSTOP", 0x9A)
-    
-    def execute(self, cpu):
-        reg_code = cpu.fetch()
-        idx, typ = cpu.reg_index(reg_code)
-        
-        # Get channel number from register
-        channel = cpu._get_operand_value(typ, idx) & 0xFF
-        
-        # Clip channel to valid range (0-7)
-        channel = channel % 8
-        
-        # Stop sound on specified channel
-        cpu.sound.sstop(channel)
-
-class STrig(BaseInstruction):
-    """Trigger sound effect (type from SW register)"""
-    def __init__(self):
-        super().__init__("STRIG", 0x9B)
-    
-    def execute(self, cpu):
-        # Get effect type from SW register (lower 3 bits)
-        effect_type = cpu.sound.get_register('SW') & 0x07
-        
-        # Trigger the sound effect
-        cpu.sound.strig(effect_type)
-
-class STrigImm(BaseInstruction):
-    """Trigger specific sound effect type"""
-    def __init__(self):
-        super().__init__("STRIG", 0x9C)
-    
-    def execute(self, cpu):
-        effect_type = cpu.fetch() & 0xFF
-        
-        # Clip effect type to valid range (0-7)
-        effect_type = effect_type % 8
-        
-        # Trigger the sound effect
-        cpu.sound.strig(effect_type)
-
-
-
-# ========================================
-# NEW PREFIXED OPERAND INSTRUCTIONS
-# ========================================
-
+# Data movement
 class Mov(BaseInstruction):
     """MOV instruction for prefixed operand system"""
     def __init__(self):
-        # Get opcode from opcodes.py
         opcode_val = 0x06  # MOV
         super().__init__("MOV", opcode_val)
     
     def execute(self, cpu):
-        # Parse mode byte
-        mode_byte = cpu._current_mode_byte
-        
-        # Extract operand modes (2 bits each)
-        op1_mode = mode_byte & 0x03
-        op2_mode = (mode_byte >> 2) & 0x03
-        
-        # For MOV dest, source: fetch destination first, then source
-        # Destination operand
-        if op1_mode == 0:  # Register direct
-            dest_reg = cpu.fetch_byte()
-        elif op1_mode == 3:  # Memory reference
-            dest_addr = cpu.get_operand_address(op1_mode)
-        else:
-            raise Exception(f"Invalid destination mode {op1_mode} for MOV instruction")
-        
-        # Source operand
-        if op2_mode == 0:  # Register direct
-            source_reg = cpu.fetch_byte()
-            source_idx, source_type = cpu.reg_index(source_reg)
-            if source_type == 'P':
-                source_reg_num = source_idx + 10  # P0-P9 = 10-19
-            elif source_type == 'R':
-                source_reg_num = source_idx  # R0-R9 = 0-9
-            else:
-                source_reg_num = source_idx
-            source_value = cpu.get_register_value(source_reg_num)
-        elif op2_mode == 1:  # Immediate 8-bit
-            source_value = cpu.fetch_byte()
-        elif op2_mode == 2:  # Immediate 16-bit
-            source_value = cpu.fetch_word()
-        elif op2_mode == 3:  # Memory reference
-            source_value = cpu.fetch_operand_by_mode(op2_mode)
-        else:
-            raise Exception(f"Invalid source mode {op2_mode} for MOV instruction")
-        
-        # Perform the move
-        if op1_mode == 0:  # Register direct
-            dest_idx, dest_type = cpu.reg_index(dest_reg)
-            # Use the proper register setting method that handles all register types
-            cpu._set_operand_value(dest_type, dest_idx, source_value)
-        elif op1_mode == 3:  # Memory reference
-            cpu.memory.write_word(dest_addr, source_value)
+        operands = cpu.parse_operands(2)
+        source_value = cpu.get_operand_value(operands[1])
+        cpu.set_operand_value(operands[0], source_value)
 
+# Arithmetic operations
 class Add(BaseInstruction):
     """ADD instruction for prefixed operand system"""
     def __init__(self):
-        # Get opcode from opcodes.py
         opcode_val = 0x07  # ADD
         super().__init__("ADD", opcode_val)
     
     def execute(self, cpu):
-        # Parse mode byte
-        mode_byte = cpu._current_mode_byte
-        
-        # Extract operand modes (2 bits each)
-        op1_mode = mode_byte & 0x03
-        op2_mode = (mode_byte >> 2) & 0x03
-        
-        # For ADD dest, source: dest must be register or memory, source can be anything
-        if op1_mode == 0:  # Register direct destination
-            dest_reg = cpu.fetch_byte()
-        elif op1_mode == 3:  # Memory reference destination
-            dest_addr = cpu.get_operand_address(op1_mode)
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        result = dest_value + source_value
+        cpu.set_operand_value(operands[0], result)
+        # Set flags based on destination operand type
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
+            cpu._set_flags_8bit(result, result)
         else:
-            raise Exception(f"Invalid destination mode {op1_mode} for ADD instruction")
-        
-        # Source operand
-        source_value = cpu.fetch_operand_by_mode(op2_mode)
-        
-        # Get current destination value
-        if op1_mode == 0:  # Register direct
-            dest_idx, dest_type = cpu.reg_index(dest_reg)
-            dest_value = cpu._get_operand_value(dest_type, dest_idx)
-        elif op1_mode == 3:  # Memory reference
-            dest_value = cpu.memory.read_word(dest_addr)
-        
-        # Check if BCD mode is enabled
-        if cpu.decimal_flag:
-            # BCD arithmetic
-            bcd_result, bcd_carry = cpu._bcd_add(dest_value, source_value)
-            result = bcd_result
-        else:
-            # Normal binary arithmetic
-            result = dest_value + source_value
-        
-        # Store result
-        if op1_mode == 0:  # Register direct
-            if dest_type == 'R':
-                cpu.Rregisters[dest_idx] = result & 0xFF
-                if cpu.decimal_flag:
-                    cpu._set_flags_8bit_bcd(result, bcd_carry)
-                else:
-                    cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif dest_type == 'P':
-                cpu.Pregisters[dest_idx] = result & 0xFFFF
-                if cpu.decimal_flag:
-                    cpu._set_flags_8bit_bcd(result & 0xFF, bcd_carry)
-                else:
-                    cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-            elif dest_type == 'V':
-                cpu.gfx.Vregisters[dest_idx] = result & 0xFF
-                if cpu.decimal_flag:
-                    cpu._set_flags_8bit_bcd(result, bcd_carry)
-                else:
-                    cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif dest_type in ['TT', 'TM', 'TC', 'TS']:
-                cpu._set_operand_value(dest_type, dest_idx, result & 0xFF)
-                if cpu.decimal_flag:
-                    cpu._set_flags_8bit_bcd(result, bcd_carry)
-                else:
-                    cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif op1_mode == 3:  # Memory reference
-            cpu.memory.write_word(dest_addr, result & 0xFFFF)
-
-class Inc(BaseInstruction):
-    """INC instruction for prefixed operand system"""
-    def __init__(self):
-        opcode_val = 0x0B  # INC
-        super().__init__("INC", opcode_val)
-    
-    def execute(self, cpu):
-        mode_byte = cpu._current_mode_byte
-        op1_mode = mode_byte & 0x03
-        
-        if op1_mode == 0:  # Register direct
-            reg_code = cpu.fetch_byte()
-            idx, typ = cpu.reg_index(reg_code)
-            
-            if typ == 'R':
-                original = int(cpu.Rregisters[idx])
-                result = original + 1
-                cpu.Rregisters[idx] = result & 0xFF
-                cpu._set_flags_8bit(result & 0xFF, result)
-            elif typ == 'P':
-                original = int(cpu.Pregisters[idx])
-                result = original + 1
-                cpu.Pregisters[idx] = result & 0xFFFF
-                cpu._set_flags_16bit(result & 0xFFFF, result)
-            elif typ == 'V':
-                original = int(cpu.gfx.Vregisters[idx])
-                result = original + 1
-                cpu.gfx.Vregisters[idx] = result & 0xFF
-                cpu._set_flags_8bit(result & 0xFF, result)
-            elif typ in ['TT', 'TM', 'TC', 'TS']:
-                original = cpu._get_operand_value(typ, idx)
-                result = int(original) + 1
-                cpu._set_operand_value(typ, idx, result & 0xFF)
-                cpu._set_flags_8bit(result & 0xFF, result)
-        elif op1_mode == 3:  # Memory reference
-            addr = cpu.get_operand_address(op1_mode)
-            original = cpu.memory.read_word(addr)
-            result = original + 1
-            cpu.memory.write_word(addr, result & 0xFFFF)
-
-class Dec(BaseInstruction):
-    """DEC instruction for prefixed operand system"""
-    def __init__(self):
-        opcode_val = 0x0C  # DEC
-        super().__init__("DEC", opcode_val)
-    
-    def execute(self, cpu):
-        mode_byte = cpu._current_mode_byte
-        op1_mode = mode_byte & 0x03
-        
-        if op1_mode == 0:  # Register direct
-            reg_code = cpu.fetch_byte()
-            idx, typ = cpu.reg_index(reg_code)
-            
-            if typ == 'R':
-                original = int(cpu.Rregisters[idx])
-                result = original - 1
-                cpu.Rregisters[idx] = result & 0xFF
-                cpu._set_flags_8bit(result & 0xFF, result)
-            elif typ == 'P':
-                original = int(cpu.Pregisters[idx])
-                result = original - 1
-                cpu.Pregisters[idx] = result & 0xFFFF
-                cpu._set_flags_16bit(result & 0xFFFF, result)
-            elif typ == 'V':
-                original = int(cpu.gfx.Vregisters[idx])
-                result = original - 1
-                cpu.gfx.Vregisters[idx] = result & 0xFF
-                cpu._set_flags_8bit(result & 0xFF, result)
-            elif typ in ['TT', 'TM', 'TC', 'TS']:
-                original = cpu._get_operand_value(typ, idx)
-                result = int(original) - 1
-                cpu._set_operand_value(typ, idx, result & 0xFF)
-                cpu._set_flags_8bit(result & 0xFF, result)
-        elif op1_mode == 3:  # Memory reference
-            addr = cpu.get_operand_address(op1_mode)
-            original = cpu.memory.read_word(addr)
-            result = original - 1
-            cpu.memory.write_word(addr, result & 0xFFFF)
+            cpu._set_flags_16bit(result, result)
 
 class Sub(BaseInstruction):
     """SUB instruction for prefixed operand system"""
@@ -3620,114 +146,353 @@ class Sub(BaseInstruction):
         super().__init__("SUB", opcode_val)
     
     def execute(self, cpu):
-        mode_byte = cpu._current_mode_byte
-        op1_mode = mode_byte & 0x03
-        op2_mode = (mode_byte >> 2) & 0x03
-        
-        if op1_mode == 0:  # Register direct destination
-            dest_reg = cpu.fetch_byte()
-        elif op1_mode == 3:  # Memory reference destination
-            dest_addr = cpu.get_operand_address(op1_mode)
-        else:
-            raise Exception(f"Invalid destination mode {op1_mode} for SUB instruction")
-        
-        source_value = cpu.fetch_operand_by_mode(op2_mode)
-        
-        if op1_mode == 0:
-            dest_idx, dest_type = cpu.reg_index(dest_reg)
-            dest_value = cpu._get_operand_value(dest_type, dest_idx)
-        elif op1_mode == 3:
-            dest_value = cpu.memory.read_word(dest_addr)
-        
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
         result = dest_value - source_value
-        
-        if op1_mode == 0:
-            if dest_type == 'R':
-                cpu.Rregisters[dest_idx] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif dest_type == 'P':
-                cpu.Pregisters[dest_idx] = result & 0xFFFF
-                cpu._set_flags_16bit(int(result) & 0xFFFF, result)
-            elif dest_type == 'V':
-                cpu.gfx.Vregisters[dest_idx] = result & 0xFF
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-            elif dest_type in ['TT', 'TM', 'TC', 'TS']:
-                cpu._set_operand_value(dest_type, dest_idx, result & 0xFF)
-                cpu._set_flags_8bit(int(result) & 0xFF, result)
-        elif op1_mode == 3:
-            cpu.memory.write_word(dest_addr, result & 0xFFFF)
+        cpu.set_operand_value(operands[0], result)
+        # Set flags based on destination operand type
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
+            cpu._set_flags_8bit(result, result)
+        else:
+            cpu._set_flags_16bit(result, result)
 
-class Cmp(BaseInstruction):
-    """CMP instruction for prefixed operand system"""
+class Mul(BaseInstruction):
+    """MUL instruction for prefixed operand system"""
     def __init__(self):
-        opcode_val = 0x2E  # CMP
-        super().__init__("CMP", opcode_val)
+        opcode_val = 0x09  # MUL
+        super().__init__("MUL", opcode_val)
     
     def execute(self, cpu):
-        mode_byte = cpu._current_mode_byte
-        op1_mode = mode_byte & 0x03
-        op2_mode = (mode_byte >> 2) & 0x03
-        
-        # Get first operand (left side of comparison)
-        op1_value = cpu.fetch_operand_by_mode(op1_mode)
-        
-        # Get second operand (right side of comparison)
-        op2_value = cpu.fetch_operand_by_mode(op2_mode)
-        
-        # Perform comparison
-        result = op1_value - op2_value
-        
-        # Set flags based on comparison
-        if op1_value < op2_value:
-            cpu.flags[0] = 1  # Carry flag (borrow)
-            cpu.flags[7] = 1  # Sign flag
-        elif op1_value > op2_value:
-            cpu.flags[0] = 0  # No carry
-            cpu.flags[7] = 0  # No sign
-        else:
-            cpu.flags[0] = 0  # No carry
-            cpu.flags[7] = 0  # No sign
-        
-        cpu.flags[6] = 1 if result == 0 else 0  # Zero flag
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        result = dest_value * source_value
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
 
-class Call(BaseInstruction):
-    """CALL instruction for prefixed operand system"""
+class Div(BaseInstruction):
+    """DIV instruction for prefixed operand system"""
     def __init__(self):
-        opcode_val = 0x2F  # CALL
-        super().__init__("CALL", opcode_val)
+        opcode_val = 0x0A  # DIV
+        super().__init__("DIV", opcode_val)
     
     def execute(self, cpu):
-        mode_byte = cpu._current_mode_byte
-        op1_mode = mode_byte & 0x03
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
         
-        # Get the target address
-        if op1_mode == 0:  # Register direct
-            reg_code = cpu.fetch_byte()
-            idx, typ = cpu.reg_index(reg_code)
-            if typ == 'P':
-                target_addr = cpu.Pregisters[idx]
-            else:
-                raise Exception("CALL requires 16-bit register or immediate address")
-        elif op1_mode == 2:  # Immediate 16-bit
-            target_addr = cpu.fetch_word()
-        elif op1_mode == 3:  # Memory reference
-            target_addr = cpu.fetch_operand_by_mode(op1_mode)
-        else:
-            raise Exception(f"Invalid operand mode {op1_mode} for CALL")
+        if source_value == 0:
+            raise RuntimeError("Division by zero")
         
-        # Push return address to stack
+        quotient = dest_value // source_value
+        remainder = dest_value % source_value
+        
+        cpu.set_operand_value(operands[0], quotient)
+        # Store remainder in P3
+        cpu.Pregisters[3] = remainder & 0xFFFF
+
+class Inc(BaseInstruction):
+    """INC instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x0B  # INC
+        super().__init__("INC", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        result = value + 1
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Dec(BaseInstruction):
+    """DEC instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x0C  # DEC
+        super().__init__("DEC", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        result = value - 1
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Mod(BaseInstruction):
+    """MOD instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x0D  # MOD
+        super().__init__("MOD", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        
+        if source_value == 0:
+            raise RuntimeError("Modulo by zero")
+        
+        result = dest_value % source_value
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Neg(BaseInstruction):
+    """NEG instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x0E  # NEG
+        super().__init__("NEG", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        result = -value
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Abs(BaseInstruction):
+    """ABS instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x0F  # ABS
+        super().__init__("ABS", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        result = abs(value)
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+# Bitwise operations
+class And(BaseInstruction):
+    """AND instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x10  # AND
+        super().__init__("AND", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        result = dest_value & source_value
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Or(BaseInstruction):
+    """OR instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x11  # OR
+        super().__init__("OR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        result = dest_value | source_value
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Xor(BaseInstruction):
+    """XOR instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x12  # XOR
+        super().__init__("XOR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        result = dest_value ^ source_value
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Not(BaseInstruction):
+    """NOT instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x13  # NOT
+        super().__init__("NOT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        result = ~value
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Shl(BaseInstruction):
+    """SHL instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x14  # SHL
+        super().__init__("SHL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        shift_amount = cpu.get_operand_value(operands[1])
+        result = dest_value << shift_amount
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Shr(BaseInstruction):
+    """SHR instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x15  # SHR
+        super().__init__("SHR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        shift_amount = cpu.get_operand_value(operands[1])
+        result = dest_value >> shift_amount
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Rol(BaseInstruction):
+    """ROL instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x16  # ROL
+        super().__init__("ROL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        rotate_amount = cpu.get_operand_value(operands[1])
+        result = ((dest_value << rotate_amount) | (dest_value >> (16 - rotate_amount))) & 0xFFFF
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Ror(BaseInstruction):
+    """ROR instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x17  # ROR
+        super().__init__("ROR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        rotate_amount = cpu.get_operand_value(operands[1])
+        result = ((dest_value >> rotate_amount) | (dest_value << (16 - rotate_amount))) & 0xFFFF
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+# Stack operations
+class Push(BaseInstruction):
+    """PUSH instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x18  # PUSH
+        super().__init__("PUSH", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        
+        # Push to stack (stack grows downward)
         sp = int(cpu.Pregisters[8])
-        if sp <= 0x0121:  # Stack overflow check
-            raise RuntimeError(f"Stack overflow in CALL: SP=0x{sp:04X}")
+        cpu.memory.write_byte(sp, value & 0xFF)
+        sp = (sp - 1) & 0xFFFF
+        cpu.Pregisters[8] = sp
+
+class Pop(BaseInstruction):
+    """POP instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x19  # POP
+        super().__init__("POP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
         
+        # Check stack bounds
+        sp = int(cpu.Pregisters[8])
+        if sp >= 0xFFFF:
+            raise RuntimeError(f"Stack underflow: SP=0x{sp:04X}")
+        
+        sp = (sp + 1) & 0xFFFF
+        value = cpu.memory.read_byte(sp)
+        cpu.Pregisters[8] = sp
+        
+        cpu.set_operand_value(operands[0], value)
+
+class Pushf(BaseInstruction):
+    """PUSHF instruction - push flags"""
+    def __init__(self):
+        opcode_val = 0x1A  # PUSHF
+        super().__init__("PUSHF", opcode_val)
+    
+    def execute(self, cpu):
+        # Convert flags array to 16-bit value
+        flags_value = 0
+        for i in range(12):
+            if cpu.flags[i]:
+                flags_value |= (1 << i)
+        
+        # Push flags to stack
+        sp = int(cpu.Pregisters[8])
         sp = (sp - 2) & 0xFFFF
         cpu.Pregisters[8] = sp
-        cpu.memory.write_word(cpu.Pregisters[8], cpu.pc)
-        
-        # Jump to target
-        cpu.pc = target_addr & 0xFFFF
-        cpu.invalidate_prefetch()
+        cpu.memory.write_word(sp, flags_value)
 
+class Popf(BaseInstruction):
+    """POPF instruction - pop flags"""
+    def __init__(self):
+        opcode_val = 0x1B  # POPF
+        super().__init__("POPF", opcode_val)
+    
+    def execute(self, cpu):
+        # Check stack bounds
+        sp = int(cpu.Pregisters[8])
+        if sp >= 0xFFFF:
+            raise RuntimeError(f"Stack underflow: SP=0x{sp:04X}")
+        
+        # Pop flags from stack
+        flags_value = cpu.memory.read_word(sp)
+        sp = (sp + 2) & 0xFFFF
+        cpu.Pregisters[8] = sp
+        
+        # Convert flags value back to array
+        for i in range(12):
+            bit_set = (flags_value & (1 << i)) != 0
+            cpu.flags[i] = 1 if bit_set else 0
+
+class Pusha(BaseInstruction):
+    """PUSHA instruction - push all registers"""
+    def __init__(self):
+        opcode_val = 0x1C  # PUSHA
+        super().__init__("PUSHA", opcode_val)
+    
+    def execute(self, cpu):
+        # Push all registers (R0-R9, P0-P9, VX, VY) to stack
+        registers = []
+        registers.extend(cpu.Rregisters)  # R0-R9
+        registers.extend(cpu.Pregisters)  # P0-P9
+        registers.extend(cpu.gfx.Vregisters[:2])  # VX, VY
+        
+        for reg_value in reversed(registers):  # Push in reverse order
+            sp = int(cpu.Pregisters[8])
+            sp = (sp - 2) & 0xFFFF
+            cpu.Pregisters[8] = sp
+            cpu.memory.write_word(sp, reg_value)
+
+class Popa(BaseInstruction):
+    """POPA instruction - pop all registers"""
+    def __init__(self):
+        opcode_val = 0x1D  # POPA
+        super().__init__("POPA", opcode_val)
+    
+    def execute(self, cpu):
+        # Pop all registers from stack (R0-R9, P0-P9, VX, VY)
+        registers_order = list(range(21))  # 0-20 (R0-R9, P0-P9, VX, VY)
+        
+        for reg_num in registers_order:
+            sp = int(cpu.Pregisters[8])
+            if sp >= 0xFFFF:
+                raise RuntimeError(f"Stack underflow during POPA: SP=0x{sp:04X}")
+            
+            value = cpu.memory.read_word(sp)
+            sp = (sp + 2) & 0xFFFF
+            cpu.Pregisters[8] = sp
+            
+            cpu.set_register_value(reg_num, value)
+
+# Control flow - jumps
 class Jmp(BaseInstruction):
     """JMP instruction for prefixed operand system"""
     def __init__(self):
@@ -3735,214 +500,961 @@ class Jmp(BaseInstruction):
         super().__init__("JMP", opcode_val)
     
     def execute(self, cpu):
-        mode_byte = cpu._current_mode_byte
-        op1_mode = mode_byte & 0x03
+        operands = cpu.parse_operands(1)
+        target_address = cpu.get_operand_value(operands[0])
+        cpu.pc = target_address
+        cpu.invalidate_prefetch()
+
+class Jz(BaseInstruction):
+    """JZ instruction - jump if zero"""
+    def __init__(self):
+        opcode_val = 0x1F  # JZ
+        super().__init__("JZ", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        if cpu.flags[7]:  # Zero flag
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Jnz(BaseInstruction):
+    """JNZ instruction - jump if not zero"""
+    def __init__(self):
+        opcode_val = 0x20  # JNZ
+        super().__init__("JNZ", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        if not cpu.flags[7]:  # Not zero flag
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Jo(BaseInstruction):
+    """JO instruction - jump if overflow"""
+    def __init__(self):
+        opcode_val = 0x21  # JO
+        super().__init__("JO", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        if cpu.flags[2]:  # Overflow flag
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Jno(BaseInstruction):
+    """JNO instruction - jump if no overflow"""
+    def __init__(self):
+        opcode_val = 0x22  # JNO
+        super().__init__("JNO", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        if not cpu.flags[2]:  # No overflow flag
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Jc(BaseInstruction):
+    """JC instruction - jump if carry"""
+    def __init__(self):
+        opcode_val = 0x23  # JC
+        super().__init__("JC", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        if cpu.flags[6]:  # Carry flag
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Jnc(BaseInstruction):
+    """JNC instruction - jump if no carry"""
+    def __init__(self):
+        opcode_val = 0x24  # JNC
+        super().__init__("JNC", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        if not cpu.flags[6]:  # No carry flag
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Js(BaseInstruction):
+    """JS instruction - jump if sign"""
+    def __init__(self):
+        opcode_val = 0x25  # JS
+        super().__init__("JS", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        if cpu.flags[1]:  # Sign flag
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Jns(BaseInstruction):
+    """JNS instruction - jump if no sign"""
+    def __init__(self):
+        opcode_val = 0x26  # JNS
+        super().__init__("JNS", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        if not cpu.flags[1]:  # No sign flag
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Jgt(BaseInstruction):
+    """JGT instruction - jump if greater than"""
+    def __init__(self):
+        opcode_val = 0x27  # JGT
+        super().__init__("JGT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        # Greater than: not zero and not overflow xor sign
+        gt = not cpu.flags[7] and (cpu.flags[2] == cpu.flags[1])
+        if gt:
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Jlt(BaseInstruction):
+    """JLT instruction - jump if less than"""
+    def __init__(self):
+        opcode_val = 0x28  # JLT
+        super().__init__("JLT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        # Less than: overflow xor sign
+        lt = cpu.flags[2] != cpu.flags[1]
+        if lt:
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Jge(BaseInstruction):
+    """JGE instruction - jump if greater or equal"""
+    def __init__(self):
+        opcode_val = 0x29  # JGE
+        super().__init__("JGE", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        # Greater or equal: not (less than)
+        lt = cpu.flags[2] != cpu.flags[1]
+        if not lt:
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+class Jle(BaseInstruction):
+    """JLE instruction - jump if less or equal"""
+    def __init__(self):
+        opcode_val = 0x2A  # JLE
+        super().__init__("JLE", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        # Less or equal: zero or less than
+        lt = cpu.flags[2] != cpu.flags[1]
+        if cpu.flags[7] or lt:
+            target_address = cpu.get_operand_value(operands[0])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
+# Control flow - branches (relative)
+class Br(BaseInstruction):
+    """BR instruction - branch (relative jump)"""
+    def __init__(self):
+        opcode_val = 0x2B  # BR
+        super().__init__("BR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        offset = cpu.get_operand_value(operands[0])
+        # Sign extend 16-bit offset
+        if offset & 0x8000:
+            offset -= 0x10000
+        cpu.pc = (cpu.pc + offset) & 0xFFFF
+        cpu.invalidate_prefetch()
+
+class Brz(BaseInstruction):
+    """BRZ instruction - branch if zero"""
+    def __init__(self):
+        opcode_val = 0x2C  # BRZ
+        super().__init__("BRZ", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        if cpu.flags[0]:  # Zero flag
+            offset = cpu.get_operand_value(operands[0])
+            # Sign extend 16-bit offset
+            if offset & 0x8000:
+                offset -= 0x10000
+            cpu.pc = (cpu.pc + offset) & 0xFFFF
+            cpu.invalidate_prefetch()
+
+class Brnz(BaseInstruction):
+    """BRNZ instruction - branch if not zero"""
+    def __init__(self):
+        opcode_val = 0x2D  # BRNZ
+        super().__init__("BRNZ", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        if not cpu.flags[0]:  # Not zero flag
+            offset = cpu.get_operand_value(operands[0])
+            # Sign extend 16-bit offset
+            if offset & 0x8000:
+                offset -= 0x10000
+            cpu.pc = (cpu.pc + offset) & 0xFFFF
+            cpu.invalidate_prefetch()
+
+# Comparison
+class Cmp(BaseInstruction):
+    """CMP instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x2E  # CMP
+        super().__init__("CMP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        result = dest_value - source_value
+        cpu._set_flags_16bit(result, result)
+
+# Call
+class Call(BaseInstruction):
+    """CALL instruction for prefixed operand system"""
+    def __init__(self):
+        opcode_val = 0x2F  # CALL
+        super().__init__("CALL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        target_address = cpu.get_operand_value(operands[0])
         
-        # Get target address
-        if op1_mode == 0:  # Register direct
-            reg_code = cpu.fetch_byte()
-            idx, typ = cpu.reg_index(reg_code)
-            if typ == 'P':
-                target_addr = cpu.Pregisters[idx]
-            else:
-                raise Exception("JMP requires 16-bit register")
-        elif op1_mode == 2:  # Immediate 16-bit
-            target_addr = cpu.fetch_word()
-        elif op1_mode == 3:  # Memory reference
-            target_addr = cpu.fetch_operand_by_mode(op1_mode)
-        else:
-            raise Exception(f"Invalid operand mode {op1_mode} for JMP")
+        # Push return address to stack
+        sp = int(cpu.Pregisters[8])
+        sp = (sp - 2) & 0xFFFF
+        cpu.Pregisters[8] = sp
+        cpu.memory.write_word(sp, cpu.pc)
         
         # Jump to target
-        cpu.pc = target_addr & 0xFFFF
+        cpu.pc = target_address
         cpu.invalidate_prefetch()
+
+# Interrupt
+class Int(BaseInstruction):
+    """INT instruction - software interrupt"""
+    def __init__(self):
+        opcode_val = 0x30  # INT
+        super().__init__("INT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        interrupt_number = cpu.get_operand_value(operands[0])
+        
+        # Push PC and flags to stack
+        flags_value = 0
+        for i in range(12):
+            if cpu.flags[i]:
+                flags_value |= (1 << i)
+        
+        sp = int(cpu.Pregisters[8])
+        sp = (sp - 2) & 0xFFFF
+        cpu.Pregisters[8] = sp
+        cpu.memory.write_word(sp, cpu.pc)
+        
+        sp = (sp - 2) & 0xFFFF
+        cpu.Pregisters[8] = sp
+        cpu.memory.write_word(sp, flags_value)
+        
+        # Clear interrupt flag
+        cpu.flags[5] = 0
+        
+        # Jump to interrupt vector
+        vector_addr = 0x0100 + (interrupt_number * 4)
+        cpu.pc = cpu.memory.read_word(vector_addr)
+        cpu.invalidate_prefetch()
+
+# Graphics operations
+class Sblend(BaseInstruction):
+    """SBLEND instruction - set blend mode"""
+    def __init__(self):
+        opcode_val = 0x31  # SBLEND
+        super().__init__("SBLEND", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        blend_mode = cpu.get_operand_value(operands[0])
+        cpu.gfx.set_blend_mode(blend_mode)
+
+class Sread(BaseInstruction):
+    """SREAD instruction - read screen pixel"""
+    def __init__(self):
+        opcode_val = 0x32  # SREAD
+        super().__init__("SREAD", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        # Read pixel at VX,VY coordinates
+        x = cpu.gfx.Vregisters[0]
+        y = cpu.gfx.Vregisters[1]
+        color = cpu.gfx.read_pixel(x, y)
+        cpu.set_operand_value(operands[0], color)
+
+class Swrite(BaseInstruction):
+    """SWRITE instruction - write screen pixel"""
+    def __init__(self):
+        opcode_val = 0x33  # SWRITE
+        super().__init__("SWRITE", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        color = cpu.get_operand_value(operands[0])
+        # Write pixel at VX,VY coordinates
+        x = cpu.gfx.Vregisters[0]
+        y = cpu.gfx.Vregisters[1]
+        cpu.gfx.set_screen_val(color)
+
+class Srolx(BaseInstruction):
+    """SROLX instruction - rotate screen X"""
+    def __init__(self):
+        opcode_val = 0x34  # SROLX
+        super().__init__("SROLX", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        amount = cpu.get_operand_value(operands[0])
+        cpu.gfx.rotate_x(amount)
+
+class Sroly(BaseInstruction):
+    """SROLY instruction - rotate screen Y"""
+    def __init__(self):
+        opcode_val = 0x35  # SROLY
+        super().__init__("SROLY", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        amount = cpu.get_operand_value(operands[0])
+        cpu.gfx.rotate_y(amount)
+
+class Srotl(BaseInstruction):
+    """SROTL instruction - rotate screen left"""
+    def __init__(self):
+        opcode_val = 0x36  # SROTL
+        super().__init__("SROTL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        amount = cpu.get_operand_value(operands[0])
+        cpu.gfx.rotate_left(amount)
+
+class Srotr(BaseInstruction):
+    """SROTR instruction - rotate screen right"""
+    def __init__(self):
+        opcode_val = 0x37  # SROTR
+        super().__init__("SROTR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        amount = cpu.get_operand_value(operands[0])
+        cpu.gfx.rotate_right(amount)
+
+class Sshftx(BaseInstruction):
+    """SSHFTX instruction - shift screen X"""
+    def __init__(self):
+        opcode_val = 0x38  # SSHFTX
+        super().__init__("SSHFTX", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        amount = cpu.get_operand_value(operands[0])
+        cpu.gfx.shift_x(amount)
+
+class Sshfty(BaseInstruction):
+    """SSHFTY instruction - shift screen Y"""
+    def __init__(self):
+        opcode_val = 0x39  # SSHFTY
+        super().__init__("SSHFTY", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        amount = cpu.get_operand_value(operands[0])
+        cpu.gfx.shift_y(amount)
+
+class Sflipx(BaseInstruction):
+    """SFLIPX instruction - flip screen X"""
+    def __init__(self):
+        opcode_val = 0x3A  # SFLIPX
+        super().__init__("SFLIPX", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.gfx.flip_x()
+
+class Sflipy(BaseInstruction):
+    """SFLIPY instruction - flip screen Y"""
+    def __init__(self):
+        opcode_val = 0x3B  # SFLIPY
+        super().__init__("SFLIPY", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.gfx.flip_y()
+
+class Sblit(BaseInstruction):
+    """SBLIT instruction - blit screen"""
+    def __init__(self):
+        opcode_val = 0x3C  # SBLIT
+        super().__init__("SBLIT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        source_addr = cpu.get_operand_value(operands[0])
+        cpu.gfx.blit(source_addr)
+
+class Sfill(BaseInstruction):
+    """SFILL instruction - fill screen"""
+    def __init__(self):
+        opcode_val = 0x3D  # SFILL
+        super().__init__("SFILL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        color = cpu.get_operand_value(operands[0])
+        cpu.gfx.fill(color)
+
+# VRAM operations
+class Vread(BaseInstruction):
+    """VREAD instruction - read VRAM"""
+    def __init__(self):
+        opcode_val = 0x3E  # VREAD
+        super().__init__("VREAD", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        addr = cpu.get_operand_value(operands[0])
+        value = cpu.gfx.read_vram(addr)
+        cpu.set_operand_value(operands[0], value)
+
+class Vwrite(BaseInstruction):
+    """VWRITE instruction - write VRAM"""
+    def __init__(self):
+        opcode_val = 0x3F  # VWRITE
+        super().__init__("VWRITE", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        addr = cpu.get_operand_value(operands[0])
+        value = cpu.get_operand_value(operands[1])
+        cpu.gfx.write_vram(addr, value)
+
+class Vblit(BaseInstruction):
+    """VBLIT instruction - blit VRAM"""
+    def __init__(self):
+        opcode_val = 0x40  # VBLIT
+        super().__init__("VBLIT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        source_addr = cpu.get_operand_value(operands[0])
+        cpu.gfx.blit_vram(source_addr)
+
+# Text operations
+class Char(BaseInstruction):
+    """CHAR instruction - draw character"""
+    def __init__(self):
+        opcode_val = 0x41  # CHAR
+        super().__init__("CHAR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        char_code = cpu.get_operand_value(operands[0])
+        color = cpu.get_operand_value(operands[1])
+        x = cpu.gfx.Vregisters[0]
+        y = cpu.gfx.Vregisters[1]
+        cpu.gfx.draw_char(x, y, char_code, color)
+
+class Text(BaseInstruction):
+    """TEXT instruction - draw text"""
+    def __init__(self):
+        opcode_val = 0x42  # TEXT
+        super().__init__("TEXT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        text_addr = cpu.get_operand_value(operands[0])
+        color = cpu.get_operand_value(operands[1])
+        x = cpu.gfx.Vregisters[0]
+        y = cpu.gfx.Vregisters[1]
+        cpu.gfx.draw_text(x, y, text_addr, color)
+
+# Keyboard operations
+class Keyin(BaseInstruction):
+    """KEYIN instruction - read key"""
+    def __init__(self):
+        opcode_val = 0x43  # KEYIN
+        super().__init__("KEYIN", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        key = cpu.keyboard.read_key()
+        cpu.set_operand_value(operands[0], key)
+
+class Keystat(BaseInstruction):
+    """KEYSTAT instruction - check key status"""
+    def __init__(self):
+        opcode_val = 0x44  # KEYSTAT
+        super().__init__("KEYSTAT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        status = 1 if cpu.keyboard.key_available() else 0
+        cpu.set_operand_value(operands[0], status)
+
+class Keycount(BaseInstruction):
+    """KEYCOUNT instruction - get key count"""
+    def __init__(self):
+        opcode_val = 0x45  # KEYCOUNT
+        super().__init__("KEYCOUNT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        count = cpu.keyboard.get_key_count()
+        cpu.set_operand_value(operands[0], count)
+
+class Keyclear(BaseInstruction):
+    """KEYCLEAR instruction - clear keyboard buffer"""
+    def __init__(self):
+        opcode_val = 0x46  # KEYCLEAR
+        super().__init__("KEYCLEAR", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.keyboard.clear_buffer()
+
+class Keyctrl(BaseInstruction):
+    """KEYCTRL instruction - keyboard control"""
+    def __init__(self):
+        opcode_val = 0x47  # KEYCTRL
+        super().__init__("KEYCTRL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        control = cpu.get_operand_value(operands[0])
+        cpu.keyboard.control(control)
+
+# Random operations
+class Rnd(BaseInstruction):
+    """RND instruction - random number"""
+    def __init__(self):
+        opcode_val = 0x48  # RND
+        super().__init__("RND", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        # Simple linear congruential generator
+        cpu.rng_seed = (cpu.rng_seed * 1103515245 + 12345) & 0xFFFF
+        random_value = cpu.rng_seed
+        cpu.set_operand_value(operands[0], random_value)
+
+class Rndr(BaseInstruction):
+    """RNDR instruction - random number in range"""
+    def __init__(self):
+        opcode_val = 0x49  # RNDR
+        super().__init__("RNDR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        max_value = cpu.get_operand_value(operands[0])
+        if max_value == 0:
+            random_value = 0
+        else:
+            # Simple linear congruential generator
+            cpu.rng_seed = (cpu.rng_seed * 1103515245 + 12345) & 0xFFFF
+            random_value = cpu.rng_seed % (max_value + 1)
+        cpu.set_operand_value(operands[0], random_value)
+
+# Memory operations
+class Memcpy(BaseInstruction):
+    """MEMCPY instruction - memory copy"""
+    def __init__(self):
+        opcode_val = 0x4A  # MEMCPY
+        super().__init__("MEMCPY", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(3)
+        dest_addr = cpu.get_operand_value(operands[0])
+        source_addr = cpu.get_operand_value(operands[1])
+        length = cpu.get_operand_value(operands[2])
+        
+        for i in range(length):
+            data = cpu.memory.read((source_addr + i) & 0xFFFF, 1)[0]
+            cpu.memory.write((dest_addr + i) & 0xFFFF, data, 1)
+
+# BCD operations
+class Sed(BaseInstruction):
+    """SED instruction - set decimal flag"""
+    def __init__(self):
+        opcode_val = 0x4B  # SED
+        super().__init__("SED", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.decimal_mode = True
+
+class Cld(BaseInstruction):
+    """CLD instruction - clear decimal flag"""
+    def __init__(self):
+        opcode_val = 0x4C  # CLD
+        super().__init__("CLD", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.decimal_mode = False
+
+class Cla(BaseInstruction):
+    """CLA instruction - clear auxiliary carry"""
+    def __init__(self):
+        opcode_val = 0x4D  # CLA
+        super().__init__("CLA", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.aux_carry = False
+
+class Bcda(BaseInstruction):
+    """BCDA instruction - BCD add with carry"""
+    def __init__(self):
+        opcode_val = 0x4E  # BCDA
+        super().__init__("BCDA", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        
+        if cpu.decimal_mode:
+            result = cpu.bcd_add(dest_value, source_value)
+        else:
+            result = dest_value + source_value + (1 if cpu.aux_carry else 0)
+        
+        cpu.set_operand_value(operands[0], result)
+
+class Bcds(BaseInstruction):
+    """BCDS instruction - BCD subtract with carry"""
+    def __init__(self):
+        opcode_val = 0x4F  # BCDS
+        super().__init__("BCDS", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        
+        if cpu.decimal_mode:
+            result = cpu.bcd_subtract(dest_value, source_value)
+        else:
+            result = dest_value - source_value - (1 if cpu.aux_carry else 0)
+        
+        cpu.set_operand_value(operands[0], result)
+
+class Bcdcmp(BaseInstruction):
+    """BCDCMP instruction - BCD compare"""
+    def __init__(self):
+        opcode_val = 0x50  # BCDCMP
+        super().__init__("BCDCMP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        
+        if cpu.decimal_mode:
+            result = cpu.bcd_compare(dest_value, source_value)
+        else:
+            result = dest_value - source_value
+        
+        cpu._set_flags_16bit(result, result)
+
+class Bcd2bin(BaseInstruction):
+    """BCD2BIN instruction - BCD to binary"""
+    def __init__(self):
+        opcode_val = 0x51  # BCD2BIN
+        super().__init__("BCD2BIN", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        bcd_value = cpu.get_operand_value(operands[0])
+        binary_value = cpu.bcd_to_binary(bcd_value)
+        cpu.set_operand_value(operands[0], binary_value)
+
+class Bin2bcd(BaseInstruction):
+    """BIN2BCD instruction - binary to BCD"""
+    def __init__(self):
+        opcode_val = 0x52  # BIN2BCD
+        super().__init__("BIN2BCD", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        binary_value = cpu.get_operand_value(operands[0])
+        bcd_value = cpu.binary_to_bcd(binary_value)
+        cpu.set_operand_value(operands[0], bcd_value)
+
+class Bcdadd(BaseInstruction):
+    """BCDADD instruction - BCD add immediate"""
+    def __init__(self):
+        opcode_val = 0x53  # BCDADD
+        super().__init__("BCDADD", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        imm_value = cpu.get_operand_value(operands[1])
+        
+        if cpu.decimal_mode:
+            result = cpu.bcd_add(dest_value, imm_value)
+        else:
+            result = dest_value + imm_value
+        
+        cpu.set_operand_value(operands[0], result)
+
+class Bcdsub(BaseInstruction):
+    """BCDSUB instruction - BCD subtract immediate"""
+    def __init__(self):
+        opcode_val = 0x54  # BCDSUB
+        super().__init__("BCDSUB", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        imm_value = cpu.get_operand_value(operands[1])
+        
+        if cpu.decimal_mode:
+            result = cpu.bcd_subtract(dest_value, imm_value)
+        else:
+            result = dest_value - imm_value
+        
+        cpu.set_operand_value(operands[0], result)
+
+# Sprite operations
+class Spblit(BaseInstruction):
+    """SPBLIT instruction - blit sprite"""
+    def __init__(self):
+        opcode_val = 0x55  # SPBLIT
+        super().__init__("SPBLIT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        sprite_id = cpu.get_operand_value(operands[0])
+        cpu.gfx.blit_sprite(sprite_id)
+
+class Spblitall(BaseInstruction):
+    """SPBLITALL instruction - blit all sprites"""
+    def __init__(self):
+        opcode_val = 0x56  # SPBLITALL
+        super().__init__("SPBLITALL", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.gfx.blit_all_sprites()
+
+# Sound operations
+class Splay(BaseInstruction):
+    """SPLAY instruction - play sound"""
+    def __init__(self):
+        opcode_val = 0x57  # SPLAY
+        super().__init__("SPLAY", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        sound_id = cpu.get_operand_value(operands[0])
+        cpu.sound.play(sound_id)
+
+class Sstop(BaseInstruction):
+    """SSTOP instruction - stop sound"""
+    def __init__(self):
+        opcode_val = 0x58  # SSTOP
+        super().__init__("SSTOP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        sound_id = cpu.get_operand_value(operands[0])
+        cpu.sound.stop(sound_id)
+
+class Strig(BaseInstruction):
+    """STRIG instruction - trigger sound effect"""
+    def __init__(self):
+        opcode_val = 0x59  # STRIG
+        super().__init__("STRIG", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        effect_id = cpu.get_operand_value(operands[0])
+        cpu.sound.trigger_effect(effect_id)
+
+# Loop operation
+class Loop(BaseInstruction):
+    """LOOP instruction"""
+    def __init__(self):
+        opcode_val = 0x5A  # LOOP
+        super().__init__("LOOP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        # Decrement counter register
+        counter_value = cpu.get_operand_value(operands[0]) - 1
+        cpu.set_operand_value(operands[0], counter_value)
+        
+        # If counter != 0, branch back
+        if counter_value != 0:
+            offset = cpu.get_operand_value(operands[1])
+            if offset & 0x8000:  # Sign extend
+                offset -= 0x10000
+            cpu.pc = (cpu.pc + offset) & 0xFFFF
+            cpu.invalidate_prefetch()
+
+# Register/special references (for direct access)
+# These are handled by the assembler, not individual instructions
 
 # Instruction table creation
 
 def create_instruction_table():
     """Create and return a dictionary mapping opcodes to instruction instances"""
-    # Create a lookup for opcodes by mnemonic
-    opcode_lookup = {}
-    for mnemonic, opcode_str, operand_count in opcodes:
-        opcode_val = int(opcode_str, 16)
-        opcode_lookup[mnemonic] = opcode_val
-    
     instructions = [
-        # Control Flow - using opcodes from opcodes.py
+        # No-operand instructions
         Hlt(),   # 0x00
         Ret(),   # 0x01
         IRet(),  # 0x02
         Cli(),   # 0x03
         Sti(),   # 0x04
         Nop(),   # 0xFF
-        
-        # Data Movement - NEW PREFIXED OPERAND SYSTEM
-        Mov(),  # 0x06 - New prefixed operand MOV
-        PushReg(),  # 0x18 - New prefixed operand PUSH
-        PopReg(),   # 0x19 - New prefixed operand POP
-        
-        # Stack operations
-        PushF(), # 0x1A
-        PopF(),  # 0x1B
-        PushA(), # 0x1C
-        PopA(),  # 0x1D
-        
-        # Arithmetic - NEW PREFIXED OPERAND SYSTEM
-        Inc(),     # 0x0B
-        Dec(),     # 0x0C
+
+        # Data movement
+        Mov(),  # 0x06
+
+        # Arithmetic operations
         Add(),     # 0x07
         Sub(),     # 0x08
-        MulRegReg(),  # 0x1A
-        MulRegImm8(), # 0x1B
-        MulRegImm16(),# 0x1C
-        DivRegReg(),  # 0x1D
-        DivRegImm8(), # 0x1E
-        DivRegImm16(),# 0x1F
-        ModRegReg(),  # 0x7A
-        ModRegImm8(), # 0x7B
-        ModRegImm16(),# 0x7C
-        NegReg(),     # 0x7D
-        AbsReg(),     # 0x7E
-        
+        Mul(),     # 0x09
+        Div(),     # 0x0A
+        Inc(),     # 0x0B
+        Dec(),     # 0x0C
+        Mod(),     # 0x0D
+        Neg(),     # 0x0E
+        Abs(),     # 0x0F
+
         # Bitwise operations
-        AndRegReg(),  # 0x20
-        AndRegImm8(), # 0x21
-        AndRegImm16(),# 0x22
-        OrRegReg(),   # 0x23
-        OrRegImm8(),  # 0x24
-        OrRegImm16(), # 0x25
-        XorRegReg(),  # 0x26
-        XorRegImm8(), # 0x27
-        XorRegImm16(),# 0x28
-        NotReg(),     # 0x29
-        ShlReg(),     # 0x2A
-        ShrReg(),     # 0x2B
-        RolReg(),     # 0x2C
-        RorReg(),     # 0x2D
-        
-        # Control flow - jumps - NEW PREFIXED OPERAND SYSTEM
-        Jmp(),        # 0x1E
-        JzImm16(),    # 0x36
-        JzReg(),      # 0x37
-        JnzImm16(),   # 0x20
-        JnzReg(),     # 0x39
-        JoImm16(),    # 0x3A
-        JoReg(),      # 0x3B
-        JnoImm16(),   # 0x3C
-        JnoReg(),     # 0x3D
-        JcImm16(),    # 0x3E
-        JcReg(),      # 0x3F
-        JncImm16(),   # 0x40
-        JncReg(),     # 0x41
-        JsImm16(),    # 0x43
-        JsReg(),      # 0x45
-        JnsImm16(),   # 0x44
-        JnsReg(),     # 0x46
-        JgtImm16(),   # 0x70
-        JltImm16(),   # 0x71
-        JgeImm16(),   # 0x72
-        JleImm16(),   # 0x73
-        
+        And(),      # 0x10
+        Or(),       # 0x11
+        Xor(),      # 0x12
+        Not(),      # 0x13
+        Shl(),      # 0x14
+        Shr(),      # 0x15
+        Rol(),      # 0x16
+        Ror(),      # 0x17
+
+        # Stack operations
+        Push(),     # 0x18
+        Pop(),      # 0x19
+        Pushf(),    # 0x1A
+        Popf(),     # 0x1B
+        Pusha(),    # 0x1C
+        Popa(),     # 0x1D
+
+        # Control flow - jumps
+        Jmp(),      # 0x1E
+        Jz(),       # 0x1F
+        Jnz(),      # 0x20
+        Jo(),       # 0x21
+        Jno(),      # 0x22
+        Jc(),       # 0x23
+        Jnc(),      # 0x24
+        Js(),       # 0x25
+        Jns(),      # 0x26
+        Jgt(),      # 0x27
+        Jlt(),      # 0x28
+        Jge(),      # 0x29
+        Jle(),      # 0x2A
+
         # Control flow - branches (relative)
-        BrImm8(),     # 0x46
-        BrReg(),      # 0x47
-        BrzImm8(),    # 0x48
-        BrzReg(),     # 0x49
-        BrnzImm8(),   # 0x4A
-        BrnzReg(),    # 0x4B
-        
-        # Comparison - NEW PREFIXED OPERAND SYSTEM
-        Cmp(),  # 0x2E
-        
-        # Call and Interrupt - NEW PREFIXED OPERAND SYSTEM
-        Call(),  # 0x2F
-        
+        Br(),       # 0x2B
+        Brz(),      # 0x2C
+        Brnz(),     # 0x2D
+
+        # Comparison
+        Cmp(),      # 0x2E
+
+        # Call
+        Call(),     # 0x2F
+
+        # Interrupt
+        Int(),      # 0x30
+
         # Graphics operations
-        SblendImm(),    # 0x4E
-        SblendImmImm(), # 0x4F
-        SreadReg(),     # 0x50
-        SwriteReg(),    # 0x33
-        SwriteImm16(),  # 0x52
-        SrolxImm(),     # 0x34
-        SrolxReg(),     # 0x53
-        SrolyImm(),     # 0x56
-        SrolyReg(),     # 0x55
-        SrotlImm(),     # 0x58
-        SrotlReg(),     # 0x57
-        SrotrImm(),     # 0x5A
-        SrotrReg(),     # 0x59
-        SshftxImm(),    # 0x5C
-        SshftxReg(),    # 0x5B
-        SshftyImm(),    # 0x5E
-        SshftyReg(),    # 0x5D
-        Sflipx(),       # 0x5F
-        Sflipy(),       # 0x60
-        Sblit(),        # 0x61
-        SfillImm8(),    # 0x80
-        SfillReg(),     # 0x7F
-        
+        Sblend(),   # 0x31
+        Sread(),    # 0x32
+        Swrite(),   # 0x33
+        Srolx(),    # 0x34
+        Sroly(),    # 0x35
+        Srotl(),    # 0x36
+        Srotr(),    # 0x37
+        Sshftx(),   # 0x38
+        Sshfty(),   # 0x39
+        Sflipx(),   # 0x3A
+        Sflipy(),   # 0x3B
+        Sblit(),    # 0x3C
+        Sfill(),    # 0x3D
+
         # VRAM operations
-        VreadReg(),     # 0x65
-        VwriteReg(),    # 0x66
-        VwriteImm16(),  # 0x67
-        Vblit(),        # 0x68
-        
+        Vread(),    # 0x3E
+        Vwrite(),   # 0x3F
+        Vblit(),    # 0x40
+
         # Text operations
-        CharRegImm8(),  # 0x6A
-        TextRegImm8(),  # 0x6B
-        TextImm16Imm8(),# 0x6C
-        CharRegReg(),   # 0x6D
-        TextRegReg(),   # 0x6E
-        
+        Char(),     # 0x41
+        Text(),     # 0x42
+
         # Keyboard operations
-        KeyinReg(),     # 0x74
-        KeystatReg(),   # 0x75
-        KeycountReg(),  # 0x76
-        Keyclear(),     # 0x77
-        KeyctrlReg(),   # 0x78
-        KeyctrlImm(),   # 0x79
-        
+        Keyin(),    # 0x43
+        Keystat(),  # 0x44
+        Keycount(), # 0x45
+        Keyclear(), # 0x46
+        Keyctrl(),  # 0x47
+
         # Random operations
-        RndReg(),       # 0x83
-        RndrRegImm8Imm8(), # 0x85
-        RndrRegImm16Imm16(), # 0x86
-        RndrRegRegReg(), # 0x84
-        
+        Rnd(),      # 0x48
+        Rndr(),     # 0x49
+
         # Memory operations
-        MemcpyRegRegReg(), # 0x87
-        MemcpyRegRegImm8(), # 0x88
-        MemcpyRegRegImm16(), # 0x89
-        
+        Memcpy(),   # 0x4A
+
         # BCD operations
-        Sed(),          # 0x8A
-        Cld(),          # 0x8B
-        Cla(),          # 0x8C
-        BcdaRegReg(),   # 0x8D
-        BcdsRegReg(),   # 0x8E
-        BcdcmpRegReg(), # 0x8F
-        Bcd2bin(),      # 0x90
-        Bin2bcd(),      # 0x91
-        BcdaddRegImm8(),# 0x92
-        BcdsubRegImm8(),# 0x93
-        
+        Sed(),      # 0x4B
+        Cld(),      # 0x4C
+        Cla(),      # 0x4D
+        Bcda(),     # 0x4E
+        Bcds(),     # 0x4F
+        Bcdcmp(),   # 0x50
+        Bcd2bin(),  # 0x51
+        Bin2bcd(),  # 0x52
+        Bcdadd(),   # 0x53
+        Bcdsub(),   # 0x54
+
         # Sprite operations
-        SpBlitReg(),    # 0x94
-        SpBlitImm(),    # 0x95
-        SpBlitAll(),    # 0x96
-        
+        Spblit(),   # 0x55
+        Spblitall(),# 0x56
+
         # Sound operations
-        SPlay(),        # 0x97
-        SPlayReg(),     # 0x98
-        SStop(),        # 0x99
-        SStopReg(),     # 0x9A
-        STrig(),        # 0x9B
-        STrigImm(),     # 0x9C
-        
+        Splay(),    # 0x57
+        Sstop(),    # 0x58
+        Strig(),    # 0x59
+
         # Loop operation
-        LoopRegReg(),   # 0x81
-        LoopImm8Reg(),  # 0x82
-        
-        # Add more instructions as needed based on opcodes.py
+        Loop(),     # 0x5A
     ]
     
     # Create the dispatch table

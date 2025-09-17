@@ -94,7 +94,7 @@ opcodes = [
 
     # VRAM operations
     ("VREAD",              "0x3E", 1), # Read VRAM
-    ("VWRITE",             "0x3F", 1), # Write VRAM
+    ("VWRITE",             "0x3F", 2), # Write VRAM
     ("VBLIT",              "0x40", 1), # Blit VRAM
 
     # Text operations
@@ -113,7 +113,7 @@ opcodes = [
     ("RNDR",               "0x49", 1), # Random number in range
 
     # Memory operations
-    ("MEMCPY",             "0x4A", 1), # Memory copy
+    ("MEMCPY",             "0x4A", 3), # Memory copy
 
     # BCD operations
     ("SED",                "0x4B", 1), # Set decimal flag
@@ -137,7 +137,7 @@ opcodes = [
     ("STRIG",              "0x59", 1), # Trigger sound effect
 
     # Loop operation
-    ("LOOP",               "0x5A", 1), # Loop instruction
+    ("LOOP",               "0x5A", 2), # Loop instruction
 
     # Register/special references (for direct access)
     ("SA",                 "0xDD", 1), # Sound Address

@@ -837,6 +837,12 @@ class CPU:
         self.keyboard[1] = 0  # Clear status flags
         self.keyboard[3] = 0  # Clear buffer count
 
+    def interrupt(self, interrupt_vector):
+        """Public method to trigger an interrupt"""
+        if 0 <= interrupt_vector < 8:
+            self._trigger_interrupt(interrupt_vector)
+        # Invalid vectors are ignored
+
     def _trigger_interrupt(self, interrupt_vector):
         """Trigger an interrupt if global interrupts are enabled"""
         if int(self._flags[5]) == 1:  # Check if interrupts are globally enabled
@@ -1060,15 +1066,15 @@ class CPU:
     def fetch( self, bytes=1 ):
         if bytes == 1:
             data = self.memory.read( self.pc, 1 )
-            self.pc += 1
+            self.pc = (self.pc + 1) & 0xFFFF
             return data[0]
         elif bytes == 2:
             data = self.memory.read( self.pc, 2 )
-            self.pc += 2
+            self.pc = (self.pc + 2) & 0xFFFF
             return (int(data[0]) << 8) | int(data[1])  # Convert to int first for proper bit operations
         else:
             data = self.memory.read( self.pc, bytes )
-            self.pc += bytes
+            self.pc = (self.pc + bytes) & 0xFFFF
             return [ int( b ) for b in data ]
     
     # ========================================
@@ -1079,7 +1085,7 @@ class CPU:
         """Optimized single byte fetch with prefetching"""
         # Disable prefetch optimization temporarily for debugging
         value = self.memory.read_byte(self.pc)
-        self.pc += 1
+        self.pc = (self.pc + 1) & 0xFFFF
         return int(value)
     
     def _fill_prefetch_buffer(self):
@@ -1200,6 +1206,88 @@ class CPU:
         else:
             raise Exception(f"Invalid mode bits: {mode_bits}")
     
+    def parse_operands(self, num_operands):
+        """Parse operands based on current mode byte for prefixed operand instructions"""
+        operands = []
+        for i in range(num_operands):
+            mode_bits = (self._current_mode_byte >> (i * 2)) & 0x3
+            operand = {'mode': mode_bits}
+            
+            if mode_bits == 0:  # Register direct
+                reg_code = self.fetch_byte()
+                idx, typ = self.reg_index(reg_code)
+                operand['type'] = 'register'
+                operand['reg_type'] = typ
+                operand['reg_idx'] = idx
+            elif mode_bits == 1:  # Immediate 8-bit
+                operand['type'] = 'immediate'
+                operand['value'] = self.fetch_byte()
+            elif mode_bits == 2:  # Immediate 16-bit
+                operand['type'] = 'immediate'
+                operand['value'] = self.fetch_word()
+            elif mode_bits == 3:  # Memory reference
+                indexed = (self._current_mode_byte & (1 << 6)) != 0
+                direct = (self._current_mode_byte & (1 << 7)) != 0
+                operand['type'] = 'memory'
+                operand['indexed'] = indexed
+                operand['direct'] = direct
+                if direct and not indexed:
+                    # Direct memory address
+                    operand['address'] = self.fetch_word()
+                elif not direct and not indexed:
+                    # Register indirect
+                    reg_code = self.fetch_byte()
+                    idx, typ = self.reg_index(reg_code)
+                    if typ not in ['P', 'R']:
+                        raise Exception(f"Invalid register type {typ} for indirect addressing")
+                    operand['address'] = self.Pregisters[idx] if typ == 'P' else self.Rregisters[idx]
+                    operand['reg_type'] = typ
+                    operand['reg_idx'] = idx
+                elif not direct and indexed:
+                    # Register indexed
+                    reg_code = self.fetch_byte()
+                    index = self.fetch_byte()
+                    idx, typ = self.reg_index(reg_code)
+                    if typ not in ['P', 'R']:
+                        raise Exception(f"Invalid register type {typ} for indexed addressing")
+                    base_addr = self.Pregisters[idx] if typ == 'P' else self.Rregisters[idx]
+                    operand['address'] = (base_addr + index) & 0xFFFF
+                    operand['reg_type'] = typ
+                    operand['reg_idx'] = idx
+                    operand['index'] = index
+                elif direct and indexed:
+                    # Direct indexed
+                    addr = self.fetch_word()
+                    index = self.fetch_byte()
+                    operand['address'] = (addr + index) & 0xFFFF
+                    operand['index'] = index
+            operands.append(operand)
+        return operands
+
+    def get_operand_value(self, operand):
+        """Get value from operand"""
+        if operand['type'] == 'register':
+            return self._get_operand_value(operand['reg_type'], operand['reg_idx'])
+        elif operand['type'] == 'immediate':
+            return operand['value']
+        elif operand['type'] == 'memory':
+            # For memory operands, read appropriate size based on context
+            # For now, assume word (16-bit) for most operations
+            return self.memory.read_word(operand['address'])
+        else:
+            raise Exception(f"Unknown operand type: {operand['type']}")
+
+    def set_operand_value(self, operand, value):
+        """Set value to operand"""
+        if operand['type'] == 'register':
+            self._set_operand_value(operand['reg_type'], operand['reg_idx'], value)
+        elif operand['type'] == 'memory':
+            # For memory operands, write appropriate size
+            # For now, assume word (16-bit) for most operations
+            self.memory.write_word(operand['address'], value)
+        else:
+            raise Exception(f"Cannot set value for operand type: {operand['type']}")
+
     def get_register_value(self, reg_num):
         """Get register value by number (0-19)"""
         if 0 <= reg_num <= 9:  # R0-R9

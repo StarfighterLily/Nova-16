@@ -287,7 +287,9 @@ class OperandClassifier:
             # 16-bit registers  
             'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9',
             # Special registers
-            'VX', 'VY', 'VM', 'VL', 'TT', 'TM', 'TC', 'TS', 'SP', 'FP'
+            'VX', 'VY', 'VM', 'VL', 'TT', 'TM', 'TC', 'TS', 'SP', 'FP',
+            # Sound registers
+            'SA', 'SF', 'SV', 'SW'
         }
         
         if operand in valid_registers:
@@ -807,41 +809,6 @@ class CodeGenerator:
                 return [val]
             else:
                 return [(val >> 8) & 0xFF, val & 0xFF]
-    
-    def generate_instruction(self, asm_line: AssemblyLine, symbol_table: Dict[str, str]) -> List[int]:
-        """Generate machine code for new prefixed operand instruction"""
-        if not asm_line.instruction:
-            return []
-        
-        # Get core instruction opcode
-        instr_info = self.instruction_set.get_instruction_info(asm_line.instruction)
-        if not instr_info:
-            raise Exception(f"Unknown instruction: {asm_line.instruction} (line {asm_line.line_num})")
-        
-        opcode_str, operand_count = instr_info
-        result = [int(opcode_str, 16)]
-        
-        # For no-operand instructions, don't add mode byte
-        if operand_count == 0:
-            return result
-        
-        # Classify operands
-        operand_types = []
-        for operand in asm_line.operands:
-            op_type = self.classifier.classify_operand(operand, symbol_table)
-            operand_types.append(op_type)
-        
-        # Calculate mode byte
-        mode_byte = self.calculate_mode_byte(operand_types)
-        result.append(mode_byte)
-        
-        # Encode operands
-        for i, operand in enumerate(asm_line.operands):
-            if i < len(operand_types):
-                operand_bytes = self.encode_operand_new(operand, operand_types[i], symbol_table)
-                result.extend(operand_bytes)
-        
-        return result
 
 
 class Assembler:
@@ -1038,6 +1005,15 @@ class Assembler:
                     for start_addr, length, bin_offset in self.segments:
                         f.write(f"0x{start_addr:04X} {length} {bin_offset}\n")
                 print(f"ORG information written to {org_file}")
+            
+            # Write symbol table
+            sym_file = f"{base_name}.sym"
+            with open(sym_file, 'w') as f:
+                f.write("# Symbol table\n")
+                f.write("# Format: <symbol> <value>\n")
+                for symbol, value in symbol_table.items():
+                    f.write(f"{symbol} {value}\n")
+            print(f"Symbol table written to {sym_file}")
             
             print(f"Assembly complete: {len(machine_code)} bytes written to {output_file}")
             return True

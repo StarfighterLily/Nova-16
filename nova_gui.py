@@ -1,4 +1,6 @@
 import threading
+import warnings
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
 import pygame
 from collections import deque
 import tkinter as tk

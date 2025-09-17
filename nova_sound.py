@@ -33,6 +33,8 @@ Channel Control (SW register bits):
 """
 
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
 import pygame
 import pygame.mixer
 import threading
