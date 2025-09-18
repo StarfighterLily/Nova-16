@@ -174,4 +174,25 @@ opcodes = [
     ("FP",                 "0xFC", 1),  # FP is P9
     ("VX",                 "0xFD", 1),
     ("VY",                 "0xFE", 1),
+    # P register byte access
+    ("P0:",                "0xA0", 1), # P0 high byte
+    ("P1:",                "0xA1", 1), # P1 high byte
+    ("P2:",                "0xA2", 1), # P2 high byte
+    ("P3:",                "0xA3", 1), # P3 high byte
+    ("P4:",                "0xA4", 1), # P4 high byte
+    ("P5:",                "0xA5", 1), # P5 high byte
+    ("P6:",                "0xA6", 1), # P6 high byte
+    ("P7:",                "0xA7", 1), # P7 high byte
+    ("P8:",                "0xA8", 1), # P8 high byte
+    ("P9:",                "0xA9", 1), # P9 high byte
+    (":P0",                "0xB0", 1), # P0 low byte
+    (":P1",                "0xB1", 1), # P1 low byte
+    (":P2",                "0xB2", 1), # P2 low byte
+    (":P3",                "0xB3", 1), # P3 low byte
+    (":P4",                "0xB4", 1), # P4 low byte
+    (":P5",                "0xB5", 1), # P5 low byte
+    (":P6",                "0xB6", 1), # P6 low byte
+    (":P7",                "0xB7", 1), # P7 low byte
+    (":P8",                "0xB8", 1), # P8 low byte
+    (":P9",                "0xB9", 1), # P9 low byte
 ]

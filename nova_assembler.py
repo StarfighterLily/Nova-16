@@ -286,6 +286,9 @@ class OperandClassifier:
             'R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9',
             # 16-bit registers  
             'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9',
+            # P register byte access
+            'P0:', 'P1:', 'P2:', 'P3:', 'P4:', 'P5:', 'P6:', 'P7:', 'P8:', 'P9:',
+            ':P0', ':P1', ':P2', ':P3', ':P4', ':P5', ':P6', ':P7', ':P8', ':P9',
             # Special registers
             'VX', 'VY', 'VM', 'VL', 'TT', 'TM', 'TC', 'TS', 'SP', 'FP',
             # Sound registers
@@ -538,6 +541,12 @@ class CodeGenerator:
             # Use the register lookup table from opcodes.py
             if operand in self.instruction_set.registers:
                 opcode = self.instruction_set.registers[operand]
+                return [int(opcode, 16)]
+            elif operand in self.instruction_set.high_byte_registers:
+                opcode = self.instruction_set.high_byte_registers[operand]
+                return [int(opcode, 16)]
+            elif operand in self.instruction_set.low_byte_registers:
+                opcode = self.instruction_set.low_byte_registers[operand]
                 return [int(opcode, 16)]
             else:
                 raise Exception(f"Unknown register: {operand}")

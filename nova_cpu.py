@@ -534,6 +534,8 @@ class CPU:
     def _get_operand_value( self, type, idx ):
         if type == 'R': return int( self.Rregisters[ idx ] )
         if type == 'P': return int( self.Pregisters[ idx ] )
+        if type == 'P_high': return int( (self.Pregisters[ idx ] >> 8) & 0xFF )  # High byte of P register
+        if type == 'P_low': return int( self.Pregisters[ idx ] & 0xFF )  # Low byte of P register
         if type == 'V': return int( self.gfx.Vregisters[ idx ] )
         if type == 'SP': return int( self.SP )
         if type == 'FP': return int( self.FP )
@@ -573,6 +575,14 @@ class CPU:
             self.Rregisters[ idx ] = int(value) & 0xFF
         elif type == 'P': 
             self.Pregisters[ idx ] = int(value) & 0xFFFF
+        elif type == 'P_high':  # Set high byte of P register
+            current_val = self.Pregisters[ idx ]
+            new_val = (current_val & 0x00FF) | ((int(value) & 0xFF) << 8)
+            self.Pregisters[ idx ] = new_val & 0xFFFF
+        elif type == 'P_low':  # Set low byte of P register
+            current_val = self.Pregisters[ idx ]
+            new_val = (current_val & 0xFF00) | (int(value) & 0xFF)
+            self.Pregisters[ idx ] = new_val & 0xFFFF
         elif type == 'SP':
             self.SP = int(value) & 0xFFFF
         elif type == 'FP':
@@ -1050,6 +1060,11 @@ class CPU:
         # V registers (0xFD-0xFE) - VX, VY
         lookup[0xFD] = (0, 'V')  # VX
         lookup[0xFE] = (1, 'V')  # VY
+        
+        # P register byte access (0xA0-0xA9 for high bytes, 0xB0-0xB9 for low bytes)
+        for i in range(10):
+            lookup[0xA0 + i] = (i, 'P_high')  # P0: to P9: (high bytes)
+            lookup[0xB0 + i] = (i, 'P_low')   # :P0 to :P9 (low bytes)
         
         return lookup
 
