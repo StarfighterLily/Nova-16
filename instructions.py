@@ -826,89 +826,76 @@ class Swrite(BaseInstruction):
         y = cpu.gfx.Vregisters[1]
         cpu.gfx.set_screen_val(color)
 
-class Srolx(BaseInstruction):
-    """SROLX instruction - rotate screen X"""
+class Srol(BaseInstruction):
+    """SROL instruction - roll screen by axis and amount"""
     def __init__(self):
-        opcode_val = 0x34  # SROLX
-        super().__init__("SROLX", opcode_val)
+        opcode_val = 0x34  # SROL
+        super().__init__("SROL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        axis = cpu.get_operand_value(operands[0])
+        amount = cpu.get_operand_value(operands[1])
+        
+        if axis == 0:  # horizontal roll
+            cpu.gfx.roll_x(-amount)
+        elif axis == 1:  # vertical roll
+            cpu.gfx.roll_y(-amount)
+        else:
+            raise ValueError(f"Invalid axis for SROL: {axis}")
+
+class Srot(BaseInstruction):
+    """SROT instruction - rotate screen by direction and amount"""
+    def __init__(self):
+        opcode_val = 0x35  # SROT
+        super().__init__("SROT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        direction = cpu.get_operand_value(operands[0])
+        amount = cpu.get_operand_value(operands[1])
+        
+        if direction == 0:  # Left
+            cpu.gfx.rotate_left(amount)
+        elif direction == 1:  # Right
+            cpu.gfx.rotate_right(amount)
+        else:
+            raise ValueError(f"Invalid direction for SROT: {direction}")
+
+class Sshft(BaseInstruction):
+    """SSHFT instruction - shift screen by axis and amount"""
+    def __init__(self):
+        opcode_val = 0x36  # SSHFT
+        super().__init__("SSHFT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        axis = cpu.get_operand_value(operands[0])
+        amount = cpu.get_operand_value(operands[1])
+        
+        if axis == 0:  # X axis
+            cpu.gfx.shift_x(amount)
+        elif axis == 1:  # Y axis
+            cpu.gfx.shift_y(amount)
+        else:
+            raise ValueError(f"Invalid axis for SSHFT: {axis}")
+
+class Sflip(BaseInstruction):
+    """SFLIP instruction - flip screen by axis"""
+    def __init__(self):
+        opcode_val = 0x37  # SFLIP
+        super().__init__("SFLIP", opcode_val)
     
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
-        amount = cpu.get_operand_value(operands[0])
-        cpu.gfx.rotate_x(amount)
-
-class Sroly(BaseInstruction):
-    """SROLY instruction - rotate screen Y"""
-    def __init__(self):
-        opcode_val = 0x35  # SROLY
-        super().__init__("SROLY", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        amount = cpu.get_operand_value(operands[0])
-        cpu.gfx.rotate_y(amount)
-
-class Srotl(BaseInstruction):
-    """SROTL instruction - rotate screen left"""
-    def __init__(self):
-        opcode_val = 0x36  # SROTL
-        super().__init__("SROTL", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        amount = cpu.get_operand_value(operands[0])
-        cpu.gfx.rotate_left(amount)
-
-class Srotr(BaseInstruction):
-    """SROTR instruction - rotate screen right"""
-    def __init__(self):
-        opcode_val = 0x37  # SROTR
-        super().__init__("SROTR", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        amount = cpu.get_operand_value(operands[0])
-        cpu.gfx.rotate_right(amount)
-
-class Sshftx(BaseInstruction):
-    """SSHFTX instruction - shift screen X"""
-    def __init__(self):
-        opcode_val = 0x38  # SSHFTX
-        super().__init__("SSHFTX", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        amount = cpu.get_operand_value(operands[0])
-        cpu.gfx.shift_x(amount)
-
-class Sshfty(BaseInstruction):
-    """SSHFTY instruction - shift screen Y"""
-    def __init__(self):
-        opcode_val = 0x39  # SSHFTY
-        super().__init__("SSHFTY", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        amount = cpu.get_operand_value(operands[0])
-        cpu.gfx.shift_y(amount)
-
-class Sflipx(BaseInstruction):
-    """SFLIPX instruction - flip screen X"""
-    def __init__(self):
-        opcode_val = 0x3A  # SFLIPX
-        super().__init__("SFLIPX", opcode_val)
-    
-    def execute(self, cpu):
-        cpu.gfx.flip_x()
-
-class Sflipy(BaseInstruction):
-    """SFLIPY instruction - flip screen Y"""
-    def __init__(self):
-        opcode_val = 0x3B  # SFLIPY
-        super().__init__("SFLIPY", opcode_val)
-    
-    def execute(self, cpu):
-        cpu.gfx.flip_y()
+        axis = cpu.get_operand_value(operands[0])
+        
+        if axis == 0:  # X axis
+            cpu.gfx.flip_x()
+        elif axis == 1:  # Y axis
+            cpu.gfx.flip_y()
+        else:
+            raise ValueError(f"Invalid axis for SFLIP: {axis}")
 
 class Sblit(BaseInstruction):
     """SBLIT instruction - blit screen"""
@@ -995,7 +982,7 @@ class Text(BaseInstruction):
         color = cpu.get_operand_value(operands[1])
         x = cpu.gfx.Vregisters[0]
         y = cpu.gfx.Vregisters[1]
-        cpu.gfx.draw_text(x, y, text_addr, color)
+        cpu.gfx.draw_text(x, y, text_addr, color, cpu.memory)
 
 # Keyboard operations
 class Keyin(BaseInstruction):
@@ -1072,14 +1059,15 @@ class Rndr(BaseInstruction):
         super().__init__("RNDR", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        max_value = cpu.get_operand_value(operands[0])
-        if max_value == 0:
-            random_value = 0
+        operands = cpu.parse_operands(3)
+        min_value = cpu.get_operand_value(operands[1])
+        max_value = cpu.get_operand_value(operands[2])
+        if max_value < min_value:
+            random_value = min_value
         else:
             # Simple linear congruential generator
             cpu.rng_seed = (cpu.rng_seed * 1103515245 + 12345) & 0xFFFF
-            random_value = cpu.rng_seed % (max_value + 1)
+            random_value = min_value + (cpu.rng_seed % (max_value - min_value + 1))
         cpu.set_operand_value(operands[0], random_value)
 
 # Memory operations
@@ -1270,9 +1258,8 @@ class Splay(BaseInstruction):
         super().__init__("SPLAY", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        sound_id = cpu.get_operand_value(operands[0])
-        cpu.sound.play(sound_id)
+        if cpu.sound:
+            cpu.sound.splay()
 
 class Sstop(BaseInstruction):
     """SSTOP instruction - stop sound"""
@@ -1281,9 +1268,8 @@ class Sstop(BaseInstruction):
         super().__init__("SSTOP", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        sound_id = cpu.get_operand_value(operands[0])
-        cpu.sound.stop(sound_id)
+        if cpu.sound:
+            cpu.sound.sstop()
 
 class Strig(BaseInstruction):
     """STRIG instruction - trigger sound effect"""
@@ -1294,7 +1280,8 @@ class Strig(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
         effect_id = cpu.get_operand_value(operands[0])
-        cpu.sound.trigger_effect(effect_id)
+        if cpu.sound:
+            cpu.sound.strig(effect_id)
 
 # Loop operation
 class Loop(BaseInstruction):
@@ -1398,14 +1385,10 @@ def create_instruction_table():
         Sblend(),   # 0x31
         Sread(),    # 0x32
         Swrite(),   # 0x33
-        Srolx(),    # 0x34
-        Sroly(),    # 0x35
-        Srotl(),    # 0x36
-        Srotr(),    # 0x37
-        Sshftx(),   # 0x38
-        Sshfty(),   # 0x39
-        Sflipx(),   # 0x3A
-        Sflipy(),   # 0x3B
+        Srol(),     # 0x34
+        Srot(),     # 0x35
+        Sshft(),    # 0x36
+        Sflip(),    # 0x37
         Sblit(),    # 0x3C
         Sfill(),    # 0x3D
 

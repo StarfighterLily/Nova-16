@@ -12,8 +12,8 @@ SETUP:
     MOV P1, STAR_COUNT ; P1 = number of stars to generate
     MOV R0, 0        ; R0 = color counter
     MOV TT, 0        ; Set timer to 0
-    MOV TM, 255      ; Trigger at 255
-    MOV TS, 80       ; Set speed
+    MOV TM, 255      ; Trigger at 10
+    MOV TS, 32       ; Set speed
     MOV TC, 3        ; Enable timer and interrupt
 
 LOOP:
@@ -80,14 +80,12 @@ TXT: DEFSTR "StarField"
 BGROLL:
     ; Layer roll subroutine
     MOV VL, 1
-    SROLX 1
+    SROL 0, 1
     MOV VL, 2
-    SROLX 2
+    SROL 0, 2
     MOV VL, 3
-    SROLX 3
-    RET
+    SROL 0, 3
+    IRET
 
 ORG 0x0100
-    ; Timer vector
-    CALL BGROLL
-    IRET             ; Return from interrupt
+    DW BGROLL

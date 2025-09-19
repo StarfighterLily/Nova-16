@@ -789,3 +789,137 @@ class TestCPUErrorHandling:
         assert cpu.flags == saved_state['flags']
         # PC should have changed
         assert cpu.pc != saved_state['pc']
+
+
+class TestCPUTimer:
+    """Test CPU timer functionality."""
+
+    def test_timer_register_tt_access(self, cpu):
+        """Test setting and reading timer counter register TT."""
+        # MOV TT, 42
+        cpu.memory.write_byte(0x0000, 0x06)  # MOV opcode
+        cpu.memory.write_byte(0x0001, 0x04)  # mode: register + immediate 8-bit
+        cpu.memory.write_byte(0x0002, 0xE3)  # TT register code
+        cpu.memory.write_byte(0x0003, 42)    # value
+        
+        cpu.step()
+        assert cpu.timer[0] == 42
+
+    def test_timer_register_tm_access(self, cpu):
+        """Test setting timer modulo register TM."""
+        # MOV TM, 100
+        cpu.memory.write_byte(0x0000, 0x06)  # MOV
+        cpu.memory.write_byte(0x0001, 0x04)  # mode
+        cpu.memory.write_byte(0x0002, 0xE4)  # TM
+        cpu.memory.write_byte(0x0003, 100)   # value
+        
+        cpu.step()
+        assert cpu.timer[1] == 100
+
+    def test_timer_register_tc_access(self, cpu):
+        """Test setting timer control register TC."""
+        # MOV TC, 3 (enable timer and interrupts)
+        cpu.memory.write_byte(0x0000, 0x06)  # MOV
+        cpu.memory.write_byte(0x0001, 0x04)  # mode
+        cpu.memory.write_byte(0x0002, 0xE5)  # TC
+        cpu.memory.write_byte(0x0003, 3)     # value
+        
+        cpu.step()
+        assert cpu.timer[2] == 3
+        assert cpu.timer_enabled == True
+        assert cpu.interrupts[0] == 1
+
+    def test_timer_register_ts_access(self, cpu):
+        """Test setting timer speed register TS."""
+        # MOV TS, 5
+        cpu.memory.write_byte(0x0000, 0x06)  # MOV
+        cpu.memory.write_byte(0x0001, 0x04)  # mode
+        cpu.memory.write_byte(0x0002, 0xE6)  # TS
+        cpu.memory.write_byte(0x0003, 5)     # value
+        
+        cpu.step()
+        assert cpu.timer[3] == 5
+
+    def test_timer_increment_basic(self, cpu):
+        """Test basic timer increment with speed 0 (every cycle)."""
+        # Set up timer
+        cpu.timer[0] = 0   # TT
+        cpu.timer[1] = 10  # TM
+        cpu.timer[2] = 1   # TC: enable timer, disable interrupts
+        cpu.timer[3] = 0   # TS: speed 0
+        cpu.set_timer_control(cpu.timer[2])
+        
+        # Run enough cycles to see increment (accounting for batching)
+        for _ in range(8):  # 8 calls should give at least 4 increments
+            cpu.update_timer()
+        
+        assert cpu.timer[0] >= 4  # Should have incremented
+
+    def test_timer_interrupt_trigger(self, cpu):
+        """Test timer interrupt triggering."""
+        # Set up interrupt vector
+        cpu.memory.write_word(0x0100, 0x2000)  # Timer interrupt handler at 0x2000
+        
+        # Set up timer
+        cpu.timer[0] = 0   # TT
+        cpu.timer[1] = 5   # TM
+        cpu.timer[2] = 3   # TC: enable timer and interrupts
+        cpu.timer[3] = 0   # TS: speed 0
+        cpu.set_timer_control(cpu.timer[2])
+        
+        # Enable global interrupts
+        cpu.flags[5] = 1
+        
+        # Run until interrupt
+        cycles = 0
+        while cpu.pc == 0x0000 and cycles < 20:
+            cpu.update_timer()
+            cycles += 1
+        
+        # Should have triggered interrupt and jumped to 0x2000
+        assert cpu.pc == 0x2000
+        assert cpu.timer[0] == 0  # Reset after interrupt
+
+    def test_timer_speed_scaling(self, cpu):
+        """Test timer speed scaling."""
+        # Speed 1: increment every 2 cycles
+        cpu.timer[0] = 0
+        cpu.timer[1] = 10
+        cpu.timer[2] = 1  # Enable timer
+        cpu.timer[3] = 1   # Speed 1
+        cpu.set_timer_control(cpu.timer[2])
+        
+        # Run 4 cycles
+        for _ in range(4):
+            cpu.update_timer()
+        
+        assert cpu.timer[0] == 2  # Should increment by 2
+
+    def test_timer_disable_reset(self, cpu):
+        """Test timer disable resets state."""
+        cpu.timer[0] = 5
+        cpu.timer_cycles = 10
+        cpu.timer[2] = 0  # Disable timer
+        cpu.set_timer_control(cpu.timer[2])
+        
+        assert cpu.timer_enabled == False
+        assert cpu.timer[0] == 0
+        assert cpu.timer_cycles == 0
+
+    def test_timer_modulo_zero_no_interrupt(self, cpu):
+        """Test that TM=0 prevents interrupts but allows increment."""
+        cpu.memory.write_word(0x0100, 0x2000)
+        cpu.timer[0] = 0
+        cpu.timer[1] = 0   # TM=0
+        cpu.timer[2] = 3   # Enable
+        cpu.timer[3] = 0
+        cpu.set_timer_control(cpu.timer[2])
+        cpu.flags[5] = 1
+        
+        # Run many cycles
+        for _ in range(20):
+            cpu.update_timer()
+        
+        # Should not have triggered interrupt
+        assert cpu.pc == 0x0000
+        assert cpu.timer[0] > 0  # Should have incremented

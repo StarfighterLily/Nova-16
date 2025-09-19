@@ -16,7 +16,8 @@ def run_headless(program_path, max_cycles=10000):
     mem = ram.Memory()
     gfx = gpu.GFX()
     kbd = keyboard.NovaKeyboard()
-    snd = sound.NovaSound()
+    # snd = sound.NovaSound()
+    snd = None
     proc = cpu.CPU(mem, gfx, kbd, snd)
     
     # Ensure keyboard is properly connected
@@ -63,7 +64,10 @@ def run_headless(program_path, max_cycles=10000):
     print(f"VX,VY: 0x{gfx.Vregisters[0]:04X}, 0x{gfx.Vregisters[1]:04X}")
     
     # Sound system info
-    print(f"Sound: SA=0x{proc.sound.get_register('SA'):04X}, SF=0x{proc.sound.get_register('SF'):02X}, SV=0x{proc.sound.get_register('SV'):02X}, SW=0x{proc.sound.get_register('SW'):02X}")
+    if proc.sound:
+        print(f"Sound: SA=0x{proc.sound.get_register('SA'):04X}, SF=0x{proc.sound.get_register('SF'):02X}, SV=0x{proc.sound.get_register('SV'):02X}, SW=0x{proc.sound.get_register('SW'):02X}")
+    else:
+        print("Sound: Disabled")
     
     # Check if there's any graphics output
     screen = gfx.get_screen()
@@ -71,7 +75,8 @@ def run_headless(program_path, max_cycles=10000):
     print(f"Graphics: {non_zero_pixels} non-black pixels on screen")
     
     # Cleanup sound system
-    snd.cleanup()
+    if snd:
+        snd.cleanup()
     
     return proc, mem, gfx
 
@@ -89,7 +94,8 @@ def main():
         mem = ram.Memory()
         gfx = gpu.GFX()
         kbd = keyboard.NovaKeyboard()
-        snd = sound.NovaSound()
+        # snd = sound.NovaSound()
+        snd = None
         proc = cpu.CPU(mem, gfx, kbd, snd)
         
         # Ensure keyboard is properly connected to CPU
@@ -97,7 +103,10 @@ def main():
         
         print(f"Nova-16 Emulator")
         print(f"CPU: Standard Python implementation")
-        print(f"Sound: {snd.max_channels} channels, {snd.sample_rate}Hz")
+        if snd:
+            print(f"Sound: {snd.max_channels} channels, {snd.sample_rate}Hz")
+        else:
+            print("Sound: Disabled")
         
         # Load program if specified
         if args.program:

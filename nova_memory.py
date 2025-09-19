@@ -121,7 +121,7 @@ class Memory:
             # Determine how much data to load to avoid buffer overflows
             load_size = min( len( data ), self.size )
             # Efficiently copy data into the memory array
-            self.memory[ :load_size ] = np.frombuffer( data[ :load_size ], dtype=np.uint8 )
+            self.memory[ :load_size ] = data[ :load_size ]
         return 0x0000
     
     def load_with_org_info(self, bin_file_path, org_file_path):
@@ -172,7 +172,7 @@ class Memory:
                     
                     # Load this segment
                     segment_data = bin_data[bin_offset:bin_offset + length]
-                    self.memory[start_addr:start_addr + length] = np.frombuffer(segment_data, dtype=np.uint8)
+                    self.memory[start_addr:start_addr + length] = segment_data
                     
                     print(f"Loaded {length} bytes at 0x{start_addr:04X} from binary offset {bin_offset}")
                     

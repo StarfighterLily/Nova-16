@@ -101,7 +101,7 @@ class Parser:
             'directive': re.compile(r'^\s*(ORG|EQU|DB|DW|DEFSTR)\s+', re.IGNORECASE),
             'hex16': re.compile(r'^0x[0-9A-Fa-f]{1,4}$'),
             'hex8': re.compile(r'^0x[0-9A-Fa-f]{1,2}$'),
-            'decimal': re.compile(r'^\d+$'),
+            'decimal': re.compile(r'^-?\d+$'),
             'indirect': re.compile(r'^\[([A-Za-z0-9:]+)\]$'),
             'indexed': re.compile(r'^\[([A-Za-z0-9]+)\s*\+\s*([A-Za-z0-9]+)\]$'),
             'direct': re.compile(r'^\[0x([0-9A-Fa-f]{1,4})\]$'),
@@ -230,7 +230,7 @@ class OperandClassifier:
         self.patterns = {
             'hex16': re.compile(r'^0x[0-9A-Fa-f]{3,4}$'),
             'hex8': re.compile(r'^0x[0-9A-Fa-f]{1,2}$'),
-            'decimal': re.compile(r'^\d+$'),
+            'decimal': re.compile(r'^-?\d+$'),
             'indirect': re.compile(r'^\[([A-Za-z0-9:]+)\]$'),
             'indexed': re.compile(r'^\[([A-Za-z0-9]+)\s*\+\s*([A-Za-z0-9]+)\]$'),
             'fp_offset': re.compile(r'^\[(FP|fp)\s*[-+]\s*(\d+)\]$'),
@@ -358,7 +358,7 @@ class OperandClassifier:
             return OperandType.IMMEDIATE16 if val > 127 else OperandType.IMMEDIATE8
         elif self.patterns['decimal'].match(operand):
             val = int(operand)
-            return OperandType.IMMEDIATE16 if val > 127 else OperandType.IMMEDIATE8
+            return OperandType.IMMEDIATE16 if val < -128 or val > 127 else OperandType.IMMEDIATE8
         
         # Default to 16-bit immediate for unknown symbols
         return OperandType.IMMEDIATE16
@@ -552,26 +552,28 @@ class CodeGenerator:
                 raise Exception(f"Unknown register: {operand}")
         
         elif operand_type == OperandType.IMMEDIATE8:
-            if operand.startswith('0x'):
-                val = int(operand, 16)
-            elif operand.isdigit():
-                val = int(operand)
-            elif symbol_table and operand in symbol_table:
-                symbol_val = symbol_table[operand].strip()
-                val = int(symbol_val, 16) if symbol_val.startswith('0x') else int(symbol_val)
-            else:
+            try:
+                if operand.startswith('0x'):
+                    val = int(operand, 16)
+                elif symbol_table and operand in symbol_table:
+                    symbol_val = symbol_table[operand].strip()
+                    val = int(symbol_val, 16) if symbol_val.startswith('0x') else int(symbol_val)
+                else:
+                    val = int(operand)
+            except ValueError:
                 val = 0  # Unknown symbol defaults to 0
             return [val & 0xFF]
         
         elif operand_type == OperandType.IMMEDIATE16:
-            if operand.startswith('0x'):
-                val = int(operand, 16)
-            elif operand.isdigit():
-                val = int(operand)
-            elif symbol_table and operand in symbol_table:
-                symbol_val = symbol_table[operand].strip()
-                val = int(symbol_val, 16) if symbol_val.startswith('0x') else int(symbol_val)
-            else:
+            try:
+                if operand.startswith('0x'):
+                    val = int(operand, 16)
+                elif symbol_table and operand in symbol_table:
+                    symbol_val = symbol_table[operand].strip()
+                    val = int(symbol_val, 16) if symbol_val.startswith('0x') else int(symbol_val)
+                else:
+                    val = int(operand)
+            except ValueError:
                 val = 0  # Unknown symbol defaults to 0
             return [(val >> 8) & 0xFF, val & 0xFF]
         
@@ -894,24 +896,29 @@ class Assembler:
                     continue
                 
                 # For new prefixed operand system, calculate size dynamically
-                # Size = 1 (opcode) + 1 (mode) + operand bytes
-                size = 2  # opcode + mode byte
-                
-                # Add operand sizes
-                for operand in line.operands:
-                    op_type = self.code_generator.classifier.classify_operand(operand, symbol_table)
-                    if op_type == OperandType.REGISTER:
-                        size += 1  # 1 byte for register number
-                    elif op_type == OperandType.IMMEDIATE8:
-                        size += 1  # 1 byte
-                    elif op_type == OperandType.IMMEDIATE16:
-                        size += 2  # 2 bytes
-                    elif op_type == OperandType.REGISTER_INDIRECT:
-                        size += 1  # 1 byte for register number
-                    elif op_type == OperandType.REGISTER_INDEXED:
-                        size += 2  # base register + index (1 byte each)
-                    elif op_type == OperandType.DIRECT:
-                        size += 2  # 16-bit address
+                # Check if this is a no-operand instruction first
+                instr_info = self.instruction_set.get_instruction_info(line.instruction)
+                if instr_info and instr_info[1] == 0:  # operand_count == 0
+                    size = 1  # Just opcode, no mode byte
+                else:
+                    # Size = 1 (opcode) + 1 (mode) + operand bytes
+                    size = 2  # opcode + mode byte
+                    
+                    # Add operand sizes
+                    for operand in line.operands:
+                        op_type = self.code_generator.classifier.classify_operand(operand, symbol_table)
+                        if op_type == OperandType.REGISTER:
+                            size += 1  # 1 byte for register number
+                        elif op_type == OperandType.IMMEDIATE8:
+                            size += 1  # 1 byte
+                        elif op_type == OperandType.IMMEDIATE16:
+                            size += 2  # 2 bytes
+                        elif op_type == OperandType.REGISTER_INDIRECT:
+                            size += 1  # 1 byte for register number
+                        elif op_type == OperandType.REGISTER_INDEXED:
+                            size += 2  # base register + index (1 byte each)
+                        elif op_type == OperandType.DIRECT:
+                            size += 2  # 16-bit address
                 
                 location_counter += size
         
@@ -981,7 +988,7 @@ class Assembler:
         # Store segments for use in assemble method
         self.segments = segments
         
-        return code
+        return code, segments
     
     def assemble(self, filename: str) -> bool:
         """Assemble a file"""
@@ -996,7 +1003,7 @@ class Assembler:
             
             # Second pass
             print("Second pass...")
-            machine_code = self.second_pass(lines, symbol_table)
+            machine_code, segments = self.second_pass(lines, symbol_table)
             
             # Write binary output
             base_name = os.path.splitext(filename)[0]
@@ -1006,12 +1013,12 @@ class Assembler:
                 f.write(machine_code)
             
             # Write ORG segment information if we have segments
-            if hasattr(self, 'segments') and self.segments:
+            if segments:
                 org_file = f"{base_name}.org"
                 with open(org_file, 'w') as f:
                     f.write("# ORG segment information\n")
                     f.write("# Format: <start_address> <length> <binary_offset>\n")
-                    for start_addr, length, bin_offset in self.segments:
+                    for start_addr, length, bin_offset in segments:
                         f.write(f"0x{start_addr:04X} {length} {bin_offset}\n")
                 print(f"ORG information written to {org_file}")
             

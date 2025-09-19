@@ -28,6 +28,13 @@ class GFX:
         # Layer visibility controls
         self.layer_visibility = {i: True for i in range(9)}  # All layers visible by default
         
+        # Layer compositing optimization
+        self.layers_dirty = False  # Track if layers need recompositing
+        self.auto_composite = True  # Automatically composite when accessing screen
+        
+        # Layer visibility controls
+        self.layer_visibility = {i: True for i in range(9)}  # All layers visible by default
+        
         # Graphics blending system
         self.blend_mode = 0      # 0=normal, 1=add, 2=subtract, 3=multiply, 4=screen
         self.blend_alpha = 255   # Alpha/intensity for blending (0-255)
@@ -58,6 +65,137 @@ class GFX:
         # Sprite rendering optimization
         self.sprites_dirty = False  # Track if sprites need re-rendering
 
+    def roll_x( self, roll_x ):
+        # Roll the current layer by roll_x pixels horizontally, pixels roll over to the opposite side
+        if self.VL == 0:
+            self.screen = np.roll( self.screen, roll_x, axis=1 )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.roll( self.background_layers[self.VL - 1], roll_x, axis=1 )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.roll( self.sprite_layers[self.VL - 5], roll_x, axis=1 )
+            self.layers_dirty = True
+
+    def roll_y( self, roll_y ):
+        # Roll the current layer by roll_y pixels vertically, pixels roll over to the opposite side
+        if self.VL == 0:
+            self.screen = np.roll( self.screen, roll_y, axis=0 )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.roll( self.background_layers[self.VL - 1], roll_y, axis=0 )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.roll( self.sprite_layers[self.VL - 5], roll_y, axis=0 )
+            self.layers_dirty = True
+
+    def shift_x( self, shift_x ):
+        # Shift the current layer by shift_x pixels horizontally, pixels that roll over are erased (set to 0)
+        if self.VL == 0:
+            if shift_x > 0:
+                self.screen[ :, shift_x: ] = self.screen[ :, :-shift_x ]
+                self.screen[ :, :shift_x ] = 0
+            elif shift_x < 0:
+                self.screen[ :, :shift_x ] = self.screen[ :, -shift_x: ]
+                self.screen[ :, shift_x: ] = 0
+        elif 1 <= self.VL <= 4:
+            layer = self.background_layers[self.VL - 1]
+            if shift_x > 0:
+                layer[ :, shift_x: ] = layer[ :, :-shift_x ]
+                layer[ :, :shift_x ] = 0
+            elif shift_x < 0:
+                layer[ :, :shift_x ] = layer[ :, -shift_x: ]
+                layer[ :, shift_x: ] = 0
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            layer = self.sprite_layers[self.VL - 5]
+            if shift_x > 0:
+                layer[ :, shift_x: ] = layer[ :, :-shift_x ]
+                layer[ :, :shift_x ] = 0
+            elif shift_x < 0:
+                layer[ :, :shift_x ] = layer[ :, -shift_x: ]
+                layer[ :, shift_x: ] = 0
+            self.layers_dirty = True
+        # If shift_x == 0, do nothing
+
+    def shift_y( self, shift_y ):
+        # Shift the current layer by shift_y pixels vertically, pixels that roll over are erased (set to 0)
+        if self.VL == 0:
+            if shift_y > 0:
+                self.screen[ shift_y:, : ] = self.screen[ :-shift_y, : ]
+                self.screen[ :shift_y, : ] = 0
+            elif shift_y < 0:
+                self.screen[ :shift_y, : ] = self.screen[ -shift_y:, : ]
+                self.screen[ shift_y:, : ] = 0
+        elif 1 <= self.VL <= 4:
+            layer = self.background_layers[self.VL - 1]
+            if shift_y > 0:
+                layer[ shift_y:, : ] = layer[ :-shift_y, : ]
+                layer[ :shift_y, : ] = 0
+            elif shift_y < 0:
+                layer[ :shift_y, : ] = layer[ -shift_y:, : ]
+                layer[ shift_y:, : ] = 0
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            layer = self.sprite_layers[self.VL - 5]
+            if shift_y > 0:
+                layer[ shift_y:, : ] = layer[ :-shift_y, : ]
+                layer[ :shift_y, : ] = 0
+            elif shift_y < 0:
+                layer[ :shift_y, : ] = layer[ -shift_y:, : ]
+                layer[ shift_y:, : ] = 0
+            self.layers_dirty = True
+        # If shift_y == 0, do nothing
+
+    def flip_x( self ):
+        # Flip the current layer horizontally
+        if self.VL == 0:
+            self.screen = np.flip( self.screen, axis=1 )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.flip( self.background_layers[self.VL - 1], axis=1 )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.flip( self.sprite_layers[self.VL - 5], axis=1 )
+            self.layers_dirty = True
+
+    def flip_y( self ):
+        # Flip the current layer vertically
+        if self.VL == 0:
+            self.screen = np.flip( self.screen, axis=0 )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.flip( self.background_layers[self.VL - 1], axis=0 )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.flip( self.sprite_layers[self.VL - 5], axis=0 )
+            self.layers_dirty = True
+
+    def rotate_r( self, times ):
+        # Rotate the current layer 90 degrees clockwise
+        if self.VL == 0:
+            self.screen = np.rot90( self.screen, times, axes=(1,0) )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.rot90( self.background_layers[self.VL - 1], times, axes=(1,0) )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.rot90( self.sprite_layers[self.VL - 5], times, axes=(1,0) )
+            self.layers_dirty = True
+
+    def rotate_l( self, times ):
+        # Rotate the current layer 90 degrees counter-clockwise
+        if self.VL == 0:
+            self.screen = np.rot90( self.screen, times, axes=(0,1) )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.rot90( self.background_layers[self.VL - 1], times, axes=(0,1) )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.rot90( self.sprite_layers[self.VL - 5], times, axes=(0,1) )
+            self.layers_dirty = True
+
+    def rotate_left( self, times ):
+        # Alias for rotate_l
+        self.rotate_l(times)
+
+    def rotate_right( self, times ):
+        # Alias for rotate_r
+        self.rotate_r(times)
     @property
     def vmode(self):
         """Video mode - now uses VM register (Vregisters[2])"""
@@ -310,10 +448,10 @@ class GFX:
     
     def composite_layers(self):
         """Composite all visible layers into the main screen buffer"""
-        # Start with a clear screen
+        # Clear the main screen to start fresh compositing
         self.screen.fill(0)
         
-        # Add background layers (1-4) first
+        # Add background layers (1-4) on top
         for i, layer in enumerate(self.background_layers):
             layer_num = i + 1
             if self.layer_visibility.get(layer_num, True):  # Check visibility
@@ -331,7 +469,7 @@ class GFX:
         self.layers_dirty = False
     
     def get_vram_val( self ):
-        if self.vmode == 1:
+        if self.Vregisters[2] == 1:
             # Direct memory access: Vregisters[0] = VX (high byte), Vregisters[1] = VY (low byte)
             addr = int( self.Vregisters[ 1 ] ) | ( int( self.Vregisters[ 0 ] ) << 8 )
             if 0 <= addr < self.width * self.height:
@@ -340,7 +478,7 @@ class GFX:
                 return self.vram[ y, x ]
             else:
                 raise IndexError( f"VRAM address out of range: {addr}" )
-        elif self.vmode == 0:
+        elif self.Vregisters[2] == 0:
             # Coordinate mode: Vregisters[0] = x, Vregisters[1] = y
             x = int( self.Vregisters[ 0 ] )
             y = int( self.Vregisters[ 1 ] )
@@ -349,10 +487,10 @@ class GFX:
             else:
                 raise IndexError( f"VRAM coordinates out of range: x={x}, y={y}" )
         else:
-            raise ValueError( f"Unknown vmode: {self.vmode}" )
+            raise ValueError( f"Unknown vmode: {self.Vregisters[2]}" )
 
     def set_vram_val( self, value ):
-        if self.vmode == 1:
+        if self.Vregisters[2] == 1:
             # Direct memory access: Vregisters[0] = VX (high byte), Vregisters[1] = VY (low byte)
             addr = int( self.Vregisters[ 1 ] ) | ( int( self.Vregisters[ 0 ] ) << 8 )
             if 0 <= addr < self.width * self.height:
@@ -361,7 +499,7 @@ class GFX:
                 self.vram[ y, x ] = value
             else:
                 raise IndexError( f"Screen address out of range: {addr}" )
-        elif self.vmode == 0:
+        elif self.Vregisters[2] == 0:
             # Coordinate mode: Vregisters[0] = x, Vregisters[1] = y
             x = int( self.Vregisters[ 0 ] )
             y = int( self.Vregisters[ 1 ] )
@@ -370,10 +508,10 @@ class GFX:
             else:
                 raise IndexError( f"Screen coordinates out of range: x={x}, y={y}" )
         else:
-            raise ValueError( f"Unknown vmode: {self.vmode}" )
+            raise ValueError( f"Unknown vmode: {self.Vregisters[2]}" )
 
     def get_screen_val( self ):
-        if self.vmode == 1:
+        if self.Vregisters[2] == 1:
             # Direct memory access: Vregisters[0] = VX (high byte), Vregisters[1] = VY (low byte)
             addr = int( self.Vregisters[ 1 ] ) | ( int( self.Vregisters[ 0 ] ) << 8 )
             if 0 <= addr < self.width * self.height:
@@ -382,7 +520,7 @@ class GFX:
                 return self.screen[ y, x ]
             else:
                 raise IndexError( f"Screen address out of range: {addr}" )
-        elif self.vmode == 0:
+        elif self.Vregisters[2] == 0:
             # Coordinate mode: Vregisters[0] = x, Vregisters[1] = y
             x = int( self.Vregisters[ 0 ] )
             y = int( self.Vregisters[ 1 ] )
@@ -391,10 +529,10 @@ class GFX:
             else:
                 raise IndexError( f"Screen coordinates out of range: x={x}, y={y}" )
         else:
-            raise ValueError( f"Unknown vmode: {self.vmode}" )
+            raise ValueError( f"Unknown vmode: {self.Vregisters[2]}" )
 
     def set_screen_val( self, value ):
-        if self.vmode == 1:
+        if self.Vregisters[2] == 1:
             # Linear addressing mode
             addr = int( self.Vregisters[ 1 ] ) | ( int( self.Vregisters[ 0 ] ) << 8 )
             if 0 <= addr < (self.width * self.height):  # Total pixels, not just first dimension
@@ -430,48 +568,136 @@ class GFX:
             self.layers_dirty = True  # Mark layers as needing recomposition
 
     def roll_x( self, roll_x ):
-        # Roll the screen by roll_x pixels, pixels roll over to the opposite side
-        self.screen = np.roll( self.screen, roll_x, axis=1 )
+        # Roll the current layer by roll_x pixels horizontally, pixels roll over to the opposite side
+        if self.VL == 0:
+            self.screen = np.roll( self.screen, roll_x, axis=1 )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.roll( self.background_layers[self.VL - 1], roll_x, axis=1 )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.roll( self.sprite_layers[self.VL - 5], roll_x, axis=1 )
+            self.layers_dirty = True
 
     def roll_y( self, roll_y ):
-        # Roll the screen by roll_y pixels, pixels roll over to the opposite side
-        self.screen = np.roll( self.screen, roll_y, axis=0 )
+        # Roll the current layer by roll_y pixels vertically, pixels roll over to the opposite side
+        if self.VL == 0:
+            self.screen = np.roll( self.screen, roll_y, axis=0 )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.roll( self.background_layers[self.VL - 1], roll_y, axis=0 )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.roll( self.sprite_layers[self.VL - 5], roll_y, axis=0 )
+            self.layers_dirty = True
 
     def shift_x( self, shift_x ):
-        # Shift the screen by shift_x pixels, pixels that roll over are erased (set to 0)
-        if shift_x > 0:
-            self.screen[ :, shift_x: ] = self.screen[ :, :-shift_x ]
-            self.screen[ :, :shift_x ] = 0
-        elif shift_x < 0:
-            self.screen[ :, :shift_x ] = self.screen[ :, -shift_x: ]
-            self.screen[ :, shift_x: ] = 0
+        # Shift the current layer by shift_x pixels horizontally, pixels that roll over are erased (set to 0)
+        if self.VL == 0:
+            if shift_x > 0:
+                self.screen[ :, shift_x: ] = self.screen[ :, :-shift_x ]
+                self.screen[ :, :shift_x ] = 0
+            elif shift_x < 0:
+                self.screen[ :, :shift_x ] = self.screen[ :, -shift_x: ]
+                self.screen[ :, shift_x: ] = 0
+        elif 1 <= self.VL <= 4:
+            layer = self.background_layers[self.VL - 1]
+            if shift_x > 0:
+                layer[ :, shift_x: ] = layer[ :, :-shift_x ]
+                layer[ :, :shift_x ] = 0
+            elif shift_x < 0:
+                layer[ :, :shift_x ] = layer[ :, -shift_x: ]
+                layer[ :, shift_x: ] = 0
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            layer = self.sprite_layers[self.VL - 5]
+            if shift_x > 0:
+                layer[ :, shift_x: ] = layer[ :, :-shift_x ]
+                layer[ :, :shift_x ] = 0
+            elif shift_x < 0:
+                layer[ :, :shift_x ] = layer[ :, -shift_x: ]
+                layer[ :, shift_x: ] = 0
+            self.layers_dirty = True
         # If shift_x == 0, do nothing
 
     def shift_y( self, shift_y ):
-        # Shift the screen by shift_y pixels, pixels that roll over are erased (set to 0)
-        if shift_y > 0:
-            self.screen[ shift_y:, : ] = self.screen[ :-shift_y, : ]
-            self.screen[ :shift_y, : ] = 0
-        elif shift_y < 0:
-            self.screen[ :shift_y, : ] = self.screen[ -shift_y:, : ]
-            self.screen[ shift_y:, : ] = 0
+        # Shift the current layer by shift_y pixels vertically, pixels that roll over are erased (set to 0)
+        if self.VL == 0:
+            if shift_y > 0:
+                self.screen[ shift_y:, : ] = self.screen[ :-shift_y, : ]
+                self.screen[ :shift_y, : ] = 0
+            elif shift_y < 0:
+                self.screen[ :shift_y, : ] = self.screen[ -shift_y:, : ]
+                self.screen[ shift_y:, : ] = 0
+        elif 1 <= self.VL <= 4:
+            layer = self.background_layers[self.VL - 1]
+            if shift_y > 0:
+                layer[ shift_y:, : ] = layer[ :-shift_y, : ]
+                layer[ :shift_y, : ] = 0
+            elif shift_y < 0:
+                layer[ :shift_y, : ] = layer[ -shift_y:, : ]
+                layer[ shift_y:, : ] = 0
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            layer = self.sprite_layers[self.VL - 5]
+            if shift_y > 0:
+                layer[ shift_y:, : ] = layer[ :-shift_y, : ]
+                layer[ :shift_y, : ] = 0
+            elif shift_y < 0:
+                layer[ :shift_y, : ] = layer[ -shift_y:, : ]
+                layer[ shift_y:, : ] = 0
+            self.layers_dirty = True
         # If shift_y == 0, do nothing
 
-    def rotate_r( self, times ):
-        # Rotate the screen 90 degrees clockwise
-        self.screen = np.rot90( self.screen, times, axes=(1,0) )
-
     def rotate_l( self, times ):
-        # Rotate the screen 90 degrees counter-clockwise
-        self.screen = np.rot90( self.screen, times, axes=(0,1) )
+        # Rotate the current layer 90 degrees counter-clockwise
+        if self.VL == 0:
+            self.screen = np.rot90( self.screen, times, axes=(0,1) )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.rot90( self.background_layers[self.VL - 1], times, axes=(0,1) )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.rot90( self.sprite_layers[self.VL - 5], times, axes=(0,1) )
+            self.layers_dirty = True
+
+    def rotate_left( self, times ):
+        # Alias for rotate_l
+        self.rotate_l(times)
+
+    def rotate_r( self, times ):
+        # Rotate the current layer 90 degrees clockwise
+        if self.VL == 0:
+            self.screen = np.rot90( self.screen, times, axes=(1,0) )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.rot90( self.background_layers[self.VL - 1], times, axes=(1,0) )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.rot90( self.sprite_layers[self.VL - 5], times, axes=(1,0) )
+            self.layers_dirty = True
+
+    def rotate_right( self, times ):
+        # Alias for rotate_r
+        self.rotate_r(times)
     
     def flip_x( self ):
-        # Flip the screen horizontally
-        self.screen = np.flip( self.screen, axis=1 )
+        # Flip the current layer horizontally
+        if self.VL == 0:
+            self.screen = np.flip( self.screen, axis=1 )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.flip( self.background_layers[self.VL - 1], axis=1 )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.flip( self.sprite_layers[self.VL - 5], axis=1 )
+            self.layers_dirty = True
 
     def flip_y( self ):
-        # Flip the screen vertically
-        self.screen = np.flip( self.screen, axis=0 )
+        # Flip the current layer vertically
+        if self.VL == 0:
+            self.screen = np.flip( self.screen, axis=0 )
+        elif 1 <= self.VL <= 4:
+            self.background_layers[self.VL - 1] = np.flip( self.background_layers[self.VL - 1], axis=0 )
+            self.layers_dirty = True
+        elif 5 <= self.VL <= 8:
+            self.sprite_layers[self.VL - 5] = np.flip( self.sprite_layers[self.VL - 5], axis=0 )
+            self.layers_dirty = True
     
     # Layer-aware transform operations for Phase 2
     def roll_x_layer( self, roll_x, layer_num=None ):
@@ -635,10 +861,8 @@ class GFX:
         if ascii_code < 32 or ascii_code > 127:
             ascii_code = 32  # Default to space for invalid characters
         
-        # Adjust for the apparent 2-character shift in font data
-        font_index = ascii_code - 32 + 2
-        
-        # Get the 8 bytes for this character
+        # Adjust for font data indexing
+        font_index = ascii_code - 32
         char_data = font_data[font_index * 8:(font_index + 1) * 8]
         
         # Get the target buffer based on current layer
@@ -647,7 +871,7 @@ class GFX:
         # Draw the character pixel by pixel to the appropriate layer (8x8 characters)
         for row in range(8):  # Use all 8 rows
             byte_data = char_data[row]
-            for col in range(8):  # Use all 8 columns for 8x8 characters
+            for col in range(8):  # Use 8 columns for 8-pixel wide characters
                 pixel_x = x + col
                 pixel_y = y + row
                 
@@ -660,8 +884,12 @@ class GFX:
                     elif background is not None:
                         # Background pixel
                         target_buffer[pixel_y, pixel_x] = background
+        
+        # Mark layers as dirty if drawing to a non-main layer
+        if self.VL != 0:
+            self.layers_dirty = True
     
-    def draw_string(self, text, x, y, color=0xFF, background=None, char_spacing=8):
+    def draw_string(self, text, x, y, color=0xFF, background=None, char_spacing=9):
         """Draw a string at the specified position (8x8 characters)"""
         current_x = x
         
@@ -683,7 +911,7 @@ class GFX:
                     current_x = x
                     y += 8  # Move down by character height (8 pixels)
 
-    def draw_string_to_screen(self, text, x, y, color=0xFF, background=None, char_spacing=8):
+    def draw_string_to_screen(self, text, x, y, color=0xFF, background=None, char_spacing=9):
         """Draw a string to screen instead of VRAM (8x8 characters)"""
         # Ensure coordinates are valid integers and not overflowed
         x = int(x) & 0xFFFF  # Mask to 16-bit to prevent overflow
@@ -713,7 +941,7 @@ class GFX:
                     y += 8  # Move down by character height (8 pixels)
 
     def draw_char_to_screen(self, char, x, y, color=0xFF, background=None):
-        """Draw a sinVLe character to screen - optimized version (5x8 characters)"""
+        """Draw a single character to screen - optimized version (8x8 characters)"""
         # Convert character to ASCII code
         if isinstance(char, str):
             ascii_code = ord(char)
@@ -734,7 +962,7 @@ class GFX:
         if y > 32767:  # Treat as negative due to overflow  
             y = y - 65536
         
-        # Bounds check for entire character (5x8 instead of 8x8)
+        # Bounds check for entire character (8x8)
         if x + 8 > self.width or y + 8 > self.height or x < 0 or y < 0:
             return  # Skip if character would be off-screen
         
@@ -759,10 +987,10 @@ class GFX:
         if background is None:
             # Only draw foreground pixels, leave background transparent
             mask = char_matrix
-            target_buffer[y:y+8, x:x+8][mask] = color  # 8 rows, 5 columns
+            target_buffer[y:y+8, x:x+8][mask] = color  # 8 rows, 8 columns
         else:
             # Draw entire character bitmap
-            target_buffer[y:y+8, x:x+8] = char_bitmap  # 8 rows, 5 columns
+            target_buffer[y:y+8, x:x+8] = char_bitmap  # 8 rows, 8 columns
         
         # Blit the entire character at once
         if background is not None:
@@ -771,7 +999,11 @@ class GFX:
         else:
             # Only draw foreground pixels
             mask = char_bitmap != 0
-            target_buffer[y:y+8, x:x+8][mask] = char_bitmap[mask]  # 8 rows, 5 columns
+            target_buffer[y:y+8, x:x+8][mask] = char_bitmap[mask]  # 8 rows, 8 columns
+        
+        # Mark layers as dirty if drawing to a non-main layer
+        if self.VL != 0:
+            self.layers_dirty = True
     
     def _get_layer_buffer(self):
         """Get the numpy array for the current layer specified by VL register"""
@@ -783,6 +1015,21 @@ class GFX:
             return self.sprite_layers[self.VL - 5]
         else:
             return self.screen  # Fallback to screen for invalid layers    
+    
+    def draw_text(self, x, y, text_addr, color, memory):
+        """Draw null-terminated string from memory at text_addr"""
+        # Convert coordinates to int to prevent numpy overflow warnings
+        x = int(x)
+        y = int(y)
+        text = ""
+        addr = text_addr
+        while True:
+            byte = memory.read(addr, 1)[0]
+            if byte == 0:
+                break
+            text += chr(byte)
+            addr += 1
+        self.draw_string(text, x, y, color)
     
     # ========================================
     # SPRITE SYSTEM IMPLEMENTATION

@@ -57,16 +57,16 @@ class NovaSound:
         self.max_channels = channels
         
         # Initialize pygame mixer
-        pygame.mixer.pre_init(
-            frequency=sample_rate,
-            size=-16,  # 16-bit signed
-            channels=2,  # Stereo
-            buffer=buffer_size
-        )
-        pygame.mixer.init()
+        # pygame.mixer.pre_init(
+        #     frequency=sample_rate,
+        #     size=-16,  # 16-bit signed
+        #     channels=2,  # Stereo
+        #     buffer=buffer_size
+        # )
+        # pygame.mixer.init()
         
         # Sound registers (accessible via CPU)
-        self.sound_registers = np.zeros(4, dtype=np.uint16)
+        self.sound_registers = [0] * 4
         self.SA = 0  # Sound Address (16-bit)
         self.SF = 0  # Sound Frequency (8-bit, but stored as 16-bit for consistency)
         self.SV = 0  # Sound Volume (8-bit, but stored as 16-bit for consistency)
@@ -91,8 +91,8 @@ class NovaSound:
         self.memory = None
         
         # Pre-generated waveform tables for efficiency
-        self.waveform_table_size = 1024
-        self.waveform_tables = self._generate_waveform_tables()
+        # self.waveform_table_size = 1024
+        # self.waveform_tables = self._generate_waveform_tables()
         
         # Sound effects and envelope system
         self.envelope_stages = ['attack', 'decay', 'sustain', 'release']

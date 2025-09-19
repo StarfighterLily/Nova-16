@@ -12,8 +12,9 @@ class CPU:
         
         # Initialize sound system
         if sound_system is None:
-            self.sound = sound.NovaSound()
-            self.sound.set_memory_reference(memory)
+            # self.sound = sound.NovaSound()
+            self.sound = None
+            # self.sound.set_memory_reference(memory)
         else:
             self.sound = sound_system
 
@@ -66,6 +67,8 @@ class CPU:
         # Timer internal state
         self.timer_cycles = 0  # Cycle counter for timer
         self.timer_enabled = False  # Timer enable state
+        
+        self.rng_seed = 0x1234  # Random number generator seed
         
         self.serial = [0] * 2  # Serial data for the serial interrupt
         self.serial[ 0 ] = 0 # Serial data register (S)
@@ -609,13 +612,13 @@ class CPU:
             
         # Sound registers
         elif type == 'SA': 
-            self.sound.update_registers(sa=int(value) & 0xFFFF)
+            if self.sound: self.sound.update_registers(sa=int(value) & 0xFFFF)
         elif type == 'SF': 
-            self.sound.update_registers(sf=int(value) & 0xFF)
+            if self.sound: self.sound.update_registers(sf=int(value) & 0xFF)
         elif type == 'SV': 
-            self.sound.update_registers(sv=int(value) & 0xFF)
+            if self.sound: self.sound.update_registers(sv=int(value) & 0xFF)
         elif type == 'SW': 
-            self.sound.update_registers(sw=int(value) & 0xFF)
+            if self.sound: self.sound.update_registers(sw=int(value) & 0xFF)
         elif type == 'SA:':  # Sound Address high byte
             current_sa = self.sound.get_register('SA')
             new_sa = (current_sa & 0x00FF) | ((int(value) & 0xFF) << 8)
@@ -957,18 +960,6 @@ class CPU:
         if not self.timer_enabled:
             return
             
-        # Batch timer updates for better performance
-        self.timer_update_counter += 1
-        if self.timer_update_counter < self.timer_update_frequency:
-            return
-        
-        # Reset counter and process batched cycles
-        cycles_to_process = self.timer_update_counter
-        self.timer_update_counter = 0
-        
-        # Increment cycle counter by batch amount
-        self.timer_cycles += cycles_to_process
-        
         # Check if we should increment timer based on speed setting
         # Speed controls how many cycles per timer increment:
         # Speed 0 = every cycle, 1 = every 2 cycles, 2 = every 4 cycles, etc.
@@ -979,6 +970,24 @@ class CPU:
         else:
             # Linear scaling: speed 1 = 2 cycles, speed 4 = 5 cycles, speed 16 = 17 cycles, etc.
             speed_divisor = speed_value + 1
+        
+        # For high speeds where divisor > batch frequency, don't batch to avoid missing increments
+        if speed_divisor > self.timer_update_frequency:
+            # Process one cycle at a time for high speeds
+            self.timer_cycles += 1
+            cycles_to_process = self.timer_cycles
+        else:
+            # Batch timer updates for better performance
+            self.timer_update_counter += 1
+            if self.timer_update_counter < self.timer_update_frequency:
+                return
+            
+            # Reset counter and process batched cycles
+            cycles_to_process = self.timer_update_counter
+            self.timer_update_counter = 0
+            
+            # Increment cycle counter by batch amount
+            self.timer_cycles += cycles_to_process
         
         if self.timer_cycles >= speed_divisor:
             timer_increments = self.timer_cycles // speed_divisor
@@ -1061,10 +1070,10 @@ class CPU:
         lookup[0xFD] = (0, 'V')  # VX
         lookup[0xFE] = (1, 'V')  # VY
         
-        # P register byte access (0xA0-0xA9 for high bytes, 0xB0-0xB9 for low bytes)
+        # P register byte access (0xC9-0xD2 for high bytes, 0xD3-0xDC for low bytes)
         for i in range(10):
-            lookup[0xA0 + i] = (i, 'P_high')  # P0: to P9: (high bytes)
-            lookup[0xB0 + i] = (i, 'P_low')   # :P0 to :P9 (low bytes)
+            lookup[0xC9 + i] = (i, 'P_high')  # P0: to P9: (high bytes)
+            lookup[0xD3 + i] = (i, 'P_low')   # :P0 to :P9 (low bytes)
         
         return lookup
 

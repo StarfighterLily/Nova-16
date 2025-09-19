@@ -15,10 +15,12 @@ MAIN:
     NOP
     JMP MAIN
 
-ORG 0x0100
 DO:
     TEXT STR, R0    ; Print string at STR address with color in R0
     INC R0
     IRET
 
 STR: DEFSTR "This is a very long string test to test the string wrapping functionality of the Nova-16 system."
+
+ORG 0x0100
+    DW DO

@@ -1,0 +1,6 @@
+# Symbol table
+# Format: <symbol> <value>
+START 0x1000
+MAIN 0x1023
+DO 0x1028
+STR 0x1031

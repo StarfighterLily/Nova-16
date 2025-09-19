@@ -12,8 +12,8 @@ SETUP:
     MOV P1, FINISH   ; P1 = end address (0xFFFF)
     MOV R0, 0        ; R0 = color counter
     MOV TT, 0        ; Set timer to 0
-    MOV TM, 50       ; Trigger at 50 (slower)
-    MOV TS, 4        ; Set speed to 4 (slower)
+    MOV TM, 255      ; Trigger at 255 (max count)
+    MOV TS, 32       ; Set speed to 32 (0 = slowest, 255 = fastest)
     MOV TC, 3        ; Enable timer and interrupt
     MOV VL, 1        ; Switch to Layer 1
 
@@ -25,6 +25,8 @@ LOOP:
     INC R0           ; Increment R0 (color)
     CMP P0, P1       ; Compare P0 with P1 
     JNZ LOOP         ; If not equal, loop back
+    INC VY           ; Inc once more
+    SWRITE R0        ; Fill in the last pixel
     MOV VM, 0        ; Set to coordinate mode
     MOV VX, 108      ; Set X to mid point
     MOV VY, 118      ; Set Y to mid point
@@ -39,7 +41,7 @@ LOOP2:
 TXT: DEFSTR "De Nova Stella"
 
 TIMER_HANDLER:       ; Timer interrupt handler
-    SROLX 1          ; Roll screen 1 pixel
+    SROL 0, -1        ; Roll screen -1 pixel
     IRET             ; Return from interrupt
 
 ORG 0x0100          ; Timer interrupt vector  
