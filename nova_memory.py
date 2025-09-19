@@ -12,6 +12,10 @@ class Memory:
         self.gfx_system = None
 
     def write( self, address, value, bytes=1 ):
+        # Check bounds
+        if address < 0 or address + bytes > self.size:
+            raise IndexError(f"Write address out of bounds: {address}")
+        
         # Check if writing to sprite memory region (0xF000-0xF0FF)
         if 0xF000 <= address <= 0xF0FF and self.gfx_system:
             self.gfx_system.sprites_dirty = True  # Mark sprites as needing re-render
@@ -30,6 +34,8 @@ class Memory:
     def read( self, address, bytes=1 ):
         address = int(address)
         bytes = int(bytes)
+        if address < 0 or address + bytes > self.size:
+            raise IndexError(f"Read address out of bounds: {address}")
         return self.memory[ address:address + bytes ]
     
     # ========================================
@@ -38,20 +44,22 @@ class Memory:
     
     def read_byte(self, address):
         """Optimized single byte read without array overhead"""
-        addr = int(address) & 0xFFFF  # Ensure address is within 16-bit bounds
+        addr = int(address)
+        if addr < 0 or addr >= self.size:
+            raise IndexError(f"Address out of bounds: {addr}")
         return int(self.memory[addr]) & 0xFF
     
     def read_word(self, address):
         """Optimized 16-bit read without array overhead (big-endian for Nova-16)"""
-        # Ensure we're working with standard Python integers to avoid numpy overflow warnings
-        # and add bounds checking
-        addr = int(address) & 0xFFFF  # Ensure address is within 16-bit bounds
+        addr = int(address)
+        if addr < 0:
+            raise IndexError(f"Address out of bounds for word read: {addr}")
         if addr >= self.size - 1:
             # For edge case where we're at the last byte, return just that byte as a word
             if addr == self.size - 1:
                 return int(self.memory[addr]) & 0xFF
             else:
-                raise IndexError(f"Address {addr:04X} out of bounds for word read")
+                raise IndexError(f"Address out of bounds for word read: {addr}")
         
         high_byte = int(self.memory[addr]) & 0xFF
         low_byte = int(self.memory[addr + 1]) & 0xFF
@@ -69,17 +77,10 @@ class Memory:
     
     def write_word(self, address, value):
         """Optimized 16-bit write without method overhead (big-endian for Nova-16)"""
-        # Convert to standard Python int and add bounds checking
-        addr = int(address) & 0xFFFF  # Ensure address is within 16-bit bounds
-        if addr >= self.size - 1:
-            # For edge case where we're at the last byte, write just the low byte
-            if addr == self.size - 1:
-                val = int(value) & 0xFFFF
-                self.memory[addr] = val & 0xFF
-                return
-            else:
-                raise IndexError(f"Address {addr:04X} out of bounds for word write")
-            
+        addr = int(address)
+        if addr < 0 or addr >= self.size - 1:
+            raise IndexError(f"Address out of bounds for word write: {addr}")
+        
         # Check if writing to sprite memory region (0xF000-0xF0FF)
         if 0xF000 <= addr <= 0xF0FF and self.gfx_system:
             self.gfx_system.sprites_dirty = True
@@ -90,6 +91,8 @@ class Memory:
     
     def read_bytes_direct(self, address, count):
         """Optimized multi-byte read returning list of ints"""
+        if address + count > self.size:
+            raise IndexError(f"Read beyond memory bounds: {address + count} > {self.size}")
         return [int(self.memory[address + i]) for i in range(count)]
 
     def dump( self ):
@@ -120,8 +123,9 @@ class Memory:
             data = file.read()
             # Determine how much data to load to avoid buffer overflows
             load_size = min( len( data ), self.size )
-            # Efficiently copy data into the memory array
-            self.memory[ :load_size ] = data[ :load_size ]
+            # Convert bytes to numpy array and copy to memory
+            data_array = np.frombuffer(data[:load_size], dtype=np.uint8)
+            self.memory[ :load_size ] = data_array
         return 0x0000
     
     def load_with_org_info(self, bin_file_path, org_file_path):
@@ -140,7 +144,7 @@ class Memory:
         first_segment = True
         
         # Read the ORG segment information
-        with open(org_file_path, 'r') as org_file:
+        with open(org_file_path, 'r', encoding='utf-8') as org_file:
             for line_num, line in enumerate(org_file, 1):
                 line = line.strip()
                 if not line or line.startswith('#'):
@@ -149,8 +153,7 @@ class Memory:
                 try:
                     parts = line.split()
                     if len(parts) != 3:
-                        print(f"Warning: Invalid format in {org_file_path} line {line_num}: {line}")
-                        continue
+                        raise ValueError(f"Invalid format in {org_file_path} line {line_num}: {line}")
                         
                     start_addr = int(parts[0], 16)
                     length = int(parts[1])
@@ -163,16 +166,15 @@ class Memory:
                     
                     # Validate bounds
                     if start_addr + length > self.size:
-                        print(f"Warning: Segment at 0x{start_addr:04X} extends beyond memory size")
-                        continue
+                        raise ValueError(f"Segment at 0x{start_addr:04X} extends beyond memory size")
                         
                     if bin_offset + length > len(bin_data):
-                        print(f"Warning: Binary offset {bin_offset} + {length} exceeds binary file size")
-                        continue
+                        raise ValueError(f"Binary offset {bin_offset} + {length} exceeds binary file size")
                     
                     # Load this segment
                     segment_data = bin_data[bin_offset:bin_offset + length]
-                    self.memory[start_addr:start_addr + length] = segment_data
+                    segment_array = np.frombuffer(segment_data, dtype=np.uint8)
+                    self.memory[start_addr:start_addr + length] = segment_array
                     
                     print(f"Loaded {length} bytes at 0x{start_addr:04X} from binary offset {bin_offset}")
                     
@@ -198,3 +200,25 @@ class Memory:
             return
         with open( file_path, 'wb' ) as file:
             file.write( bytes( self.memory ) )
+
+    def load_binary(self, binary_data, address=0x0000):
+        """
+        Load binary data directly into memory at the specified address.
+        Used for loading assembled programs from assembler output.
+        """
+        if isinstance(binary_data, str):
+            # If it's a string, assume it's a file path
+            with open(binary_data, 'rb') as f:
+                binary_data = f.read()
+        
+        # Ensure we don't overflow memory
+        load_size = min(len(binary_data), self.size - address)
+        self.memory[address:address + load_size] = binary_data[:load_size]
+        return address
+
+    def write_bytes_direct(self, address, data):
+        """Write multiple bytes directly to memory"""
+        if address + len(data) > self.size:
+            raise IndexError(f"Write beyond memory bounds: {address + len(data)} > {self.size}")
+        for i, byte in enumerate(data):
+            self.memory[address + i] = byte & 0xFF

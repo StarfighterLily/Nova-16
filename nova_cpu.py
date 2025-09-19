@@ -219,6 +219,24 @@ class CPU:
     @hacker_flag.setter
     def hacker_flag(self, value):
         self._flags[11] = int(bool(value))
+    
+    @property
+    def decimal_mode(self):
+        """Decimal mode flag (maps to decimal flag D)"""
+        return bool(self._flags[4])
+    
+    @decimal_mode.setter
+    def decimal_mode(self, value):
+        self._flags[4] = int(bool(value))
+    
+    @property
+    def aux_carry(self):
+        """Auxiliary carry flag (maps to BCD carry flag A)"""
+        return bool(self._flags[10])
+    
+    @aux_carry.setter
+    def aux_carry(self, value):
+        self._flags[10] = int(bool(value))
 
     # ========================================
     # REGISTER PROPERTIES - Readable Access to Registers
@@ -797,6 +815,33 @@ class CPU:
         # Parity flag (P) - even number of 1s in result
         parity = bin(result & 0xFF).count('1') % 2
         self.parity_flag = parity == 0
+    
+    # Public BCD methods for instructions
+    def bcd_add(self, val1, val2):
+        """Public BCD add method for instructions"""
+        result, carry = self._bcd_add(val1, val2)
+        self._set_flags_8bit_bcd(result, carry)
+        return result
+    
+    def bcd_subtract(self, val1, val2):
+        """Public BCD subtract method for instructions"""
+        result, borrow = self._bcd_sub(val1, val2)
+        self._set_flags_8bit_bcd(result, borrow)
+        return result
+    
+    def bcd_compare(self, val1, val2):
+        """Public BCD compare method for instructions"""
+        result, borrow = self._bcd_sub(val1, val2)
+        self._set_flags_8bit_bcd(result, borrow)
+        return result
+    
+    def bcd_to_binary(self, bcd_value):
+        """Public BCD to binary conversion for instructions"""
+        return self._bcd_to_binary(bcd_value)
+    
+    def binary_to_bcd(self, binary_value):
+        """Public binary to BCD conversion for instructions"""
+        return self._binary_to_bcd(binary_value)
 
     # Keyboard input handling
     def add_key_to_buffer(self, key_code):
@@ -998,11 +1043,14 @@ class CPU:
             timer_increments = min(timer_increments, 255)
             
             # Increment timer counter by calculated amount (use Python int to avoid numpy overflow warnings)
-            new_timer_value = (int(self.timer[0]) + int(timer_increments)) & 0xFF
+            old_timer_value = int(self.timer[0])
+            new_timer_value = (old_timer_value + int(timer_increments)) & 0xFF
             self.timer[0] = new_timer_value
             
             # Check for timer interrupt after incrementing
-            if self.interrupts[0] == 1 and self.timer[1] > 0 and self.timer[0] >= self.timer[1]:
+            # Trigger if: interrupt enabled AND modulo > 0 AND (timer wrapped around OR reached/exceeded modulo)
+            if (self.interrupts[0] == 1 and self.timer[1] > 0 and 
+                ((new_timer_value < old_timer_value) or (old_timer_value < self.timer[1] and new_timer_value >= self.timer[1]))):
                 # Reset timer counter when interrupt is triggered
                 self.timer[0] = 0
                 self._trigger_interrupt(0)

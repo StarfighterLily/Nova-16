@@ -360,9 +360,8 @@ class TestFullSystemIntegration:
         keyboard_device.press_key('X')
 
         # Assemble and load program
-        binary = assembler.assemble(program)
-        memory.load_binary(binary, 0x1000)
-        cpu.pc = 0x1000
+        success = assemble_and_load_program(cpu, assembler, program)
+        assert success
 
         # Run the program
         while not cpu.halted and cpu.cycles < 100:  # Prevent infinite loop
@@ -425,9 +424,8 @@ class TestFullSystemIntegration:
         """
 
         # Assemble and load program
-        binary = assembler.assemble(program)
-        memory.load_binary(binary, 0x1000)
-        cpu.pc = 0x1000
+        success = assemble_and_load_program(cpu, assembler, program)
+        assert success
 
         # Run the program
         while not cpu.halted:

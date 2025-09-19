@@ -57,13 +57,19 @@ class NovaSound:
         self.max_channels = channels
         
         # Initialize pygame mixer
-        # pygame.mixer.pre_init(
-        #     frequency=sample_rate,
-        #     size=-16,  # 16-bit signed
-        #     channels=2,  # Stereo
-        #     buffer=buffer_size
-        # )
-        # pygame.mixer.init()
+        try:
+            pygame.mixer.pre_init(
+                frequency=sample_rate,
+                size=-16,  # 16-bit signed
+                channels=2,  # Stereo
+                buffer=buffer_size
+            )
+            pygame.init()
+            pygame.mixer.init()
+            self.mixer_initialized = True
+        except Exception as e:
+            print(f"Warning: Could not initialize pygame mixer: {e}")
+            self.mixer_initialized = False
         
         # Sound registers (accessible via CPU)
         self.sound_registers = [0] * 4
@@ -91,8 +97,8 @@ class NovaSound:
         self.memory = None
         
         # Pre-generated waveform tables for efficiency
-        # self.waveform_table_size = 1024
-        # self.waveform_tables = self._generate_waveform_tables()
+        self.waveform_table_size = 1024
+        self.waveform_tables = self._generate_waveform_tables()
         
         # Sound effects and envelope system
         self.envelope_stages = ['attack', 'decay', 'sustain', 'release']
@@ -302,16 +308,20 @@ class NovaSound:
             
             # Create pygame Sound object and play
             try:
-                sound = pygame.mixer.Sound(audio_data)
-                loops = -1 if loop_flag else 0  # -1 = infinite loop
-                
-                # Stop any existing sound on this channel
-                if self.sound_channels[channel] is not None:
-                    pygame.mixer.stop()
-                
-                # Play the new sound
-                sound.play(loops=loops)
-                self.sound_channels[channel] = sound
+                if not self.mixer_initialized:
+                    # In test environment, just update state without playing
+                    pass
+                else:
+                    sound = pygame.mixer.Sound(audio_data)
+                    loops = -1 if loop_flag else 0  # -1 = infinite loop
+                    
+                    # Stop any existing sound on this channel
+                    if self.sound_channels[channel] is not None:
+                        pygame.mixer.stop()
+                    
+                    # Play the new sound
+                    sound.play(loops=loops)
+                    self.sound_channels[channel] = sound
                 
                 # Update channel state
                 self.channel_states[channel].update({

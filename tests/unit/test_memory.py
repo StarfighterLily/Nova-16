@@ -340,8 +340,12 @@ class TestMemoryEdgeCases:
         for addr, value in operations:
             memory.write_byte(addr, value)
 
-        # Read phase - verify all writes
-        for addr, expected in operations:
+        # Read phase - verify the last write for each address
+        last_values = {}
+        for addr, value in operations:
+            last_values[addr] = value
+        
+        for addr, expected in last_values.items():
             actual = memory.read_byte(addr)
             assert actual == expected
 
@@ -373,18 +377,22 @@ class TestMemoryLoadSaveEdgeCases:
         empty_file.write_bytes(b"")
 
         # Should handle empty file gracefully
-        memory.load_with_org_info(str(empty_file))
+        memory.load(str(empty_file))
         # Memory should remain unchanged (all zeros)
         assert np.all(memory.memory == 0)
 
     def test_corrupted_org_file(self, memory, tmp_path):
         """Test loading file with corrupted ORG data."""
+        # Create a dummy bin file
+        bin_file = tmp_path / "test.bin"
+        bin_file.write_bytes(b"test")
+        
         corrupted_file = tmp_path / "corrupted.org"
         # Write invalid ORG data
         corrupted_file.write_bytes(b"INVALID_ORG_DATA")
 
         with pytest.raises(ValueError):
-            memory.load_with_org_info(str(corrupted_file))
+            memory.load_with_org_info(str(bin_file), str(corrupted_file))
 
     def test_oversized_file_load(self, memory, tmp_path):
         """Test loading file larger than memory."""
@@ -394,7 +402,7 @@ class TestMemoryLoadSaveEdgeCases:
         large_file.write_bytes(large_data)
 
         # Should load only up to memory size
-        memory.load_with_org_info(str(large_file))
+        memory.load(str(large_file))
         # First 64KB should be loaded
         assert memory.read_byte(0) == 0xAA
         assert memory.read_byte(0xFFFF) == 0xAA
@@ -405,7 +413,11 @@ class TestMemoryLoadSaveEdgeCases:
         test_data = b'\x11\x22\x33\x44'
         test_file.write_bytes(test_data)
 
-        memory.load_with_org_info(str(test_file), org_address=0)
+        # Create ORG file for address 0
+        org_file = tmp_path / "zero_org.org"
+        org_file.write_text("0 4 0\n")
+        
+        memory.load_with_org_info(str(test_file), str(org_file))
         assert memory.read_byte(0) == 0x11
         assert memory.read_byte(1) == 0x22
         assert memory.read_byte(2) == 0x33
@@ -417,7 +429,11 @@ class TestMemoryLoadSaveEdgeCases:
         test_data = b'\x55'
         test_file.write_bytes(test_data)
 
-        memory.load_with_org_info(str(test_file), org_address=0xFFFF)
+        # Create ORG file for address 0xFFFF
+        org_file = tmp_path / "max_org.org"
+        org_file.write_text("FFFF 1 0\n")
+        
+        memory.load_with_org_info(str(test_file), str(org_file))
         assert memory.read_byte(0xFFFF) == 0x55
 
     def test_org_beyond_memory(self, memory, tmp_path):
@@ -426,9 +442,13 @@ class TestMemoryLoadSaveEdgeCases:
         test_data = b'\x77'
         test_file.write_bytes(test_data)
 
+        # Create ORG file for address beyond memory
+        org_file = tmp_path / "beyond_mem.org"
+        org_file.write_text("10000 1 0\n")
+
         # Should handle gracefully or raise error
         with pytest.raises(ValueError):
-            memory.load_with_org_info(str(test_file), org_address=0x10000)
+            memory.load_with_org_info(str(test_file), str(org_file))
 
     def test_save_empty_memory(self, memory, tmp_path):
         """Test saving memory that is all zeros."""
@@ -469,10 +489,15 @@ class TestMemoryLoadSaveEdgeCases:
         ]
 
         # Load all sections
-        for org_addr, data in test_data:
+        for i, (org_addr, data) in enumerate(test_data):
             temp_file = tmp_path / f"temp_{org_addr}.bin"
             temp_file.write_bytes(data)
-            memory.load_with_org_info(str(temp_file), org_address=org_addr)
+            
+            # Create ORG file for this section
+            org_file = tmp_path / f"temp_{org_addr}.org"
+            org_file.write_text(f"{org_addr:04X} {len(data)} 0\n")
+            
+            memory.load_with_org_info(str(temp_file), str(org_file))
 
         # Save and reload
         roundtrip_file = tmp_path / "roundtrip.bin"
@@ -482,7 +507,7 @@ class TestMemoryLoadSaveEdgeCases:
         from nova_memory import Memory
         new_memory = Memory()
 
-        new_memory.load_with_org_info(str(roundtrip_file))
+        new_memory.load(str(roundtrip_file))
 
         # Verify all data is preserved
         for org_addr, data in test_data:
