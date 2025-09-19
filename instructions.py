@@ -321,7 +321,7 @@ class Not(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
         value = cpu.get_operand_value(operands[0])
-        result = ~value
+        result = (~value) & 0xFFFF  # Mask to 16 bits
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
 
@@ -334,8 +334,22 @@ class Shl(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        shift_amount = cpu.get_operand_value(operands[1])
-        result = dest_value << shift_amount
+        shift_amount = cpu.get_operand_value(operands[1]) & 0x1F  # Mask to 0-31
+        
+        # Determine if this is an 8-bit or 16-bit operation based on destination register type
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
+            # 8-bit shift for R registers
+            bit_width = 8
+            mask = 0xFF
+        else:
+            # 16-bit shift for P registers and memory
+            bit_width = 16
+            mask = 0xFFFF
+        
+        if shift_amount >= bit_width:  # Shifts >= bit_width should result in 0
+            result = 0
+        else:
+            result = (dest_value << shift_amount) & mask
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
 
@@ -348,8 +362,22 @@ class Shr(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        shift_amount = cpu.get_operand_value(operands[1])
-        result = dest_value >> shift_amount
+        shift_amount = cpu.get_operand_value(operands[1]) & 0x1F  # Mask to 0-31
+        
+        # Determine if this is an 8-bit or 16-bit operation based on destination register type
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
+            # 8-bit shift for R registers
+            bit_width = 8
+            mask = 0xFF
+        else:
+            # 16-bit shift for P registers and memory
+            bit_width = 16
+            mask = 0xFFFF
+        
+        if shift_amount >= bit_width:  # Shifts >= bit_width should result in 0
+            result = 0
+        else:
+            result = dest_value >> shift_amount
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
 
@@ -362,8 +390,20 @@ class Rol(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        rotate_amount = cpu.get_operand_value(operands[1])
-        result = ((dest_value << rotate_amount) | (dest_value >> (16 - rotate_amount))) & 0xFFFF
+        rotate_amount = cpu.get_operand_value(operands[1]) & 0x0F  # Mask to 0-15
+        
+        # Determine if this is an 8-bit or 16-bit operation based on destination register type
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
+            # 8-bit rotate for R registers
+            bit_width = 8
+            mask = 0xFF
+        else:
+            # 16-bit rotate for P registers and memory
+            bit_width = 16
+            mask = 0xFFFF
+        
+        # Perform rotate
+        result = ((dest_value << rotate_amount) | (dest_value >> (bit_width - rotate_amount))) & mask
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
 
@@ -376,8 +416,82 @@ class Ror(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        rotate_amount = cpu.get_operand_value(operands[1])
-        result = ((dest_value >> rotate_amount) | (dest_value << (16 - rotate_amount))) & 0xFFFF
+        rotate_amount = cpu.get_operand_value(operands[1]) & 0x0F  # Mask to 0-15
+        
+        # Determine if this is an 8-bit or 16-bit operation based on destination register type
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
+            # 8-bit rotate for R registers
+            bit_width = 8
+            mask = 0xFF
+        else:
+            # 16-bit rotate for P registers and memory
+            bit_width = 16
+            mask = 0xFFFF
+        
+        # Perform rotate
+        result = ((dest_value >> rotate_amount) | (dest_value << (bit_width - rotate_amount))) & mask
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+# Bit test and modify
+class Btst(BaseInstruction):
+    """BTST instruction for prefixed operand system - test bit"""
+    def __init__(self):
+        opcode_val = 0x6D  # BTST
+        super().__init__("BTST", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        bit_pos = cpu.get_operand_value(operands[1]) & 0x0F  # 0-15 bits
+        bit_mask = 1 << bit_pos
+        bit_set = (dest_value & bit_mask) != 0
+        # Set zero flag: Z=1 if bit is 0, Z=0 if bit is 1
+        cpu._flags[7] = 0 if bit_set else 1  # Direct flag access for BTST
+        # For BTST, we don't modify the destination, just test the bit
+
+class Bset(BaseInstruction):
+    """BSET instruction for prefixed operand system - set bit"""
+    def __init__(self):
+        opcode_val = 0x6E  # BSET
+        super().__init__("BSET", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        bit_pos = cpu.get_operand_value(operands[1]) & 0x0F  # 0-15 bits
+        bit_mask = 1 << bit_pos
+        result = dest_value | bit_mask
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Bclr(BaseInstruction):
+    """BCLR instruction for prefixed operand system - clear bit"""
+    def __init__(self):
+        opcode_val = 0x6F  # BCLR
+        super().__init__("BCLR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        bit_pos = cpu.get_operand_value(operands[1]) & 0x0F  # 0-15 bits
+        bit_mask = ~(1 << bit_pos) & 0xFFFF
+        result = dest_value & bit_mask
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Bflip(BaseInstruction):
+    """BFLIP instruction for prefixed operand system - flip bit"""
+    def __init__(self):
+        opcode_val = 0x70  # BFLIP
+        super().__init__("BFLIP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        bit_pos = cpu.get_operand_value(operands[1]) & 0x0F  # 0-15 bits
+        bit_mask = 1 << bit_pos
+        result = dest_value ^ bit_mask
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
 
@@ -1120,6 +1234,375 @@ class Memcpy(BaseInstruction):
             data = cpu.memory.read((source_addr + i) & 0xFFFF, 1)[0]
             cpu.memory.write((dest_addr + i) & 0xFFFF, data, 1)
 
+# String operations
+class Strcpy(BaseInstruction):
+    """STRCPY instruction - string copy"""
+    def __init__(self):
+        opcode_val = 0x71  # STRCPY
+        super().__init__("STRCPY", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_addr = cpu.get_operand_value(operands[0])
+        source_addr = cpu.get_operand_value(operands[1])
+        
+        i = 0
+        while True:
+            char = cpu.memory.read((source_addr + i) & 0xFFFF, 1)[0]
+            cpu.memory.write((dest_addr + i) & 0xFFFF, char, 1)
+            if char == 0:  # Null terminator
+                break
+            i += 1
+
+class Strcat(BaseInstruction):
+    """STRCAT instruction - string concatenate"""
+    def __init__(self):
+        opcode_val = 0x72  # STRCAT
+        super().__init__("STRCAT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_addr = cpu.get_operand_value(operands[0])
+        source_addr = cpu.get_operand_value(operands[1])
+        
+        # Find end of destination string
+        i = 0
+        while cpu.memory.read((dest_addr + i) & 0xFFFF, 1)[0] != 0:
+            i += 1
+        
+        # Copy source string to end of destination
+        j = 0
+        while True:
+            char = cpu.memory.read((source_addr + j) & 0xFFFF, 1)[0]
+            cpu.memory.write((dest_addr + i + j) & 0xFFFF, char, 1)
+            if char == 0:  # Null terminator
+                break
+            j += 1
+
+class Strcmp(BaseInstruction):
+    """STRCMP instruction - string compare"""
+    def __init__(self):
+        opcode_val = 0x73  # STRCMP
+        super().__init__("STRCMP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(3)
+        str1_addr = cpu.get_operand_value(operands[0])
+        str2_addr = cpu.get_operand_value(operands[1])
+        max_length = cpu.get_operand_value(operands[2])
+        
+        result = 0
+        for i in range(max_length):
+            char1 = cpu.memory.read((str1_addr + i) & 0xFFFF, 1)[0]
+            char2 = cpu.memory.read((str2_addr + i) & 0xFFFF, 1)[0]
+            
+            if char1 != char2:
+                result = 1 if char1 > char2 else -1
+                break
+            if char1 == 0:  # End of string
+                break
+        
+        # Store result in a register (typically R0)
+        cpu.Rregisters[0] = result & 0xFF
+
+class Strlen(BaseInstruction):
+    """STRLEN instruction - string length"""
+    def __init__(self):
+        opcode_val = 0x74  # STRLEN
+        super().__init__("STRLEN", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        str_addr = cpu.get_operand_value(operands[0])
+        
+        length = 0
+        while cpu.memory.read((str_addr + length) & 0xFFFF, 1)[0] != 0:
+            length += 1
+        
+        # Store result in R0
+        cpu.Rregisters[0] = length & 0xFF
+
+class Strext(BaseInstruction):
+    """STREXT instruction - string extract"""
+    def __init__(self):
+        opcode_val = 0x75  # STREXT
+        super().__init__("STREXT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(4)
+        dest_addr = cpu.get_operand_value(operands[0])
+        haystack_addr = cpu.get_operand_value(operands[1])
+        needle_addr = cpu.get_operand_value(operands[2])
+        max_length = cpu.get_operand_value(operands[3])
+        
+        # Find needle in haystack
+        needle = []
+        i = 0
+        while i < max_length:
+            char = cpu.memory.read((needle_addr + i) & 0xFFFF, 1)[0]
+            if char == 0:
+                break
+            needle.append(char)
+            i += 1
+        
+        needle_len = len(needle)
+        if needle_len == 0:
+            # Empty needle - copy nothing
+            cpu.memory.write(dest_addr & 0xFFFF, 0, 1)
+            return
+        
+        # Search for needle in haystack
+        found = False
+        start_pos = 0
+        for i in range(max_length - needle_len + 1):
+            match = True
+            for j in range(needle_len):
+                h_char = cpu.memory.read((haystack_addr + i + j) & 0xFFFF, 1)[0]
+                if h_char != needle[j]:
+                    match = False
+                    break
+            if match:
+                found = True
+                start_pos = i
+                break
+        
+        if found:
+            # Copy from start_pos to end of haystack
+            i = 0
+            while i < max_length:
+                char = cpu.memory.read((haystack_addr + start_pos + i) & 0xFFFF, 1)[0]
+                cpu.memory.write((dest_addr + i) & 0xFFFF, char, 1)
+                if char == 0:
+                    break
+                i += 1
+        else:
+            # Not found - empty result
+            cpu.memory.write(dest_addr & 0xFFFF, 0, 1)
+
+class Strexti(BaseInstruction):
+    """STREXTI instruction - string extract case-insensitive"""
+    def __init__(self):
+        opcode_val = 0x76  # STREXTI
+        super().__init__("STREXTI", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(4)
+        dest_addr = cpu.get_operand_value(operands[0])
+        haystack_addr = cpu.get_operand_value(operands[1])
+        needle_addr = cpu.get_operand_value(operands[2])
+        max_length = cpu.get_operand_value(operands[3])
+        
+        # Find needle in haystack (case-insensitive)
+        needle = []
+        i = 0
+        while i < max_length:
+            char = cpu.memory.read((needle_addr + i) & 0xFFFF, 1)[0]
+            if char == 0:
+                break
+            needle.append(char)
+            i += 1
+        
+        needle_len = len(needle)
+        if needle_len == 0:
+            # Empty needle - copy nothing
+            cpu.memory.write(dest_addr & 0xFFFF, 0, 1)
+            return
+        
+        # Search for needle in haystack (case-insensitive)
+        found = False
+        start_pos = 0
+        for i in range(max_length - needle_len + 1):
+            match = True
+            for j in range(needle_len):
+                h_char = cpu.memory.read((haystack_addr + i + j) & 0xFFFF, 1)[0]
+                n_char = needle[j]
+                # Simple case-insensitive comparison
+                if h_char != n_char and not (
+                    (h_char >= 65 and h_char <= 90 and n_char == h_char + 32) or
+                    (h_char >= 97 and h_char <= 122 and n_char == h_char - 32)
+                ):
+                    match = False
+                    break
+            if match:
+                found = True
+                start_pos = i
+                break
+        
+        if found:
+            # Copy from start_pos to end of haystack
+            i = 0
+            while i < max_length:
+                char = cpu.memory.read((haystack_addr + start_pos + i) & 0xFFFF, 1)[0]
+                cpu.memory.write((dest_addr + i) & 0xFFFF, char, 1)
+                if char == 0:
+                    break
+                i += 1
+        else:
+            # Not found - empty result
+            cpu.memory.write(dest_addr & 0xFFFF, 0, 1)
+
+class Strupr(BaseInstruction):
+    """STRUPR instruction - string to uppercase"""
+    def __init__(self):
+        opcode_val = 0x77  # STRUPR
+        super().__init__("STRUPR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        str_addr = cpu.get_operand_value(operands[0])
+        
+        i = 0
+        while True:
+            char = cpu.memory.read((str_addr + i) & 0xFFFF, 1)[0]
+            if char == 0:
+                break
+            if char >= 97 and char <= 122:  # lowercase a-z
+                char -= 32
+                cpu.memory.write((str_addr + i) & 0xFFFF, char, 1)
+            i += 1
+
+class Strlwr(BaseInstruction):
+    """STRLWR instruction - string to lowercase"""
+    def __init__(self):
+        opcode_val = 0x78  # STRLWR
+        super().__init__("STRLWR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        str_addr = cpu.get_operand_value(operands[0])
+        
+        i = 0
+        while True:
+            char = cpu.memory.read((str_addr + i) & 0xFFFF, 1)[0]
+            if char == 0:
+                break
+            if char >= 65 and char <= 90:  # uppercase A-Z
+                char += 32
+                cpu.memory.write((str_addr + i) & 0xFFFF, char, 1)
+            i += 1
+
+class Strrev(BaseInstruction):
+    """STRREV instruction - string reverse"""
+    def __init__(self):
+        opcode_val = 0x79  # STRREV
+        super().__init__("STRREV", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        str_addr = cpu.get_operand_value(operands[0])
+        
+        # Find string length
+        length = 0
+        while cpu.memory.read((str_addr + length) & 0xFFFF, 1)[0] != 0:
+            length += 1
+        
+        # Reverse in place
+        for i in range(length // 2):
+            left = cpu.memory.read((str_addr + i) & 0xFFFF, 1)[0]
+            right = cpu.memory.read((str_addr + length - 1 - i) & 0xFFFF, 1)[0]
+            cpu.memory.write((str_addr + i) & 0xFFFF, right, 1)
+            cpu.memory.write((str_addr + length - 1 - i) & 0xFFFF, left, 1)
+
+class Strfind(BaseInstruction):
+    """STRFIND instruction - string substring exists"""
+    def __init__(self):
+        opcode_val = 0x7A  # STRFIND
+        super().__init__("STRFIND", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        haystack_addr = cpu.get_operand_value(operands[0])
+        needle_addr = cpu.get_operand_value(operands[1])
+        
+        # Get needle
+        needle = []
+        i = 0
+        while True:
+            char = cpu.memory.read((needle_addr + i) & 0xFFFF, 1)[0]
+            if char == 0:
+                break
+            needle.append(char)
+            i += 1
+        
+        needle_len = len(needle)
+        if needle_len == 0:
+            cpu.Rregisters[0] = 1  # Empty needle always found
+            return
+        
+        # Search for needle in haystack
+        found = False
+        i = 0
+        while True:
+            h_char = cpu.memory.read((haystack_addr + i) & 0xFFFF, 1)[0]
+            if h_char == 0:
+                break
+            
+            if i <= 1000 - needle_len:  # Prevent infinite loop
+                match = True
+                for j in range(needle_len):
+                    if cpu.memory.read((haystack_addr + i + j) & 0xFFFF, 1)[0] != needle[j]:
+                        match = False
+                        break
+                if match:
+                    found = True
+                    break
+            i += 1
+        
+        cpu.Rregisters[0] = 1 if found else 0
+
+class Strfindi(BaseInstruction):
+    """STRFINDI instruction - string case-insensitive substring exists"""
+    def __init__(self):
+        opcode_val = 0x7B  # STRFINDI
+        super().__init__("STRFINDI", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        haystack_addr = cpu.get_operand_value(operands[0])
+        needle_addr = cpu.get_operand_value(operands[1])
+        
+        # Get needle
+        needle = []
+        i = 0
+        while True:
+            char = cpu.memory.read((needle_addr + i) & 0xFFFF, 1)[0]
+            if char == 0:
+                break
+            needle.append(char)
+            i += 1
+        
+        needle_len = len(needle)
+        if needle_len == 0:
+            cpu.Rregisters[0] = 1  # Empty needle always found
+            return
+        
+        # Search for needle in haystack (case-insensitive)
+        found = False
+        i = 0
+        while True:
+            h_char = cpu.memory.read((haystack_addr + i) & 0xFFFF, 1)[0]
+            if h_char == 0:
+                break
+            
+            if i <= 1000 - needle_len:  # Prevent infinite loop
+                match = True
+                for j in range(needle_len):
+                    n_char = needle[j]
+                    h_cmp = cpu.memory.read((haystack_addr + i + j) & 0xFFFF, 1)[0]
+                    # Simple case-insensitive comparison
+                    if h_cmp != n_char and not (
+                        (h_cmp >= 65 and h_cmp <= 90 and n_char == h_cmp + 32) or
+                        (h_cmp >= 97 and h_cmp <= 122 and n_char == h_cmp - 32)
+                    ):
+                        match = False
+                        break
+                if match:
+                    found = True
+                    break
+            i += 1
+        
+        cpu.Rregisters[0] = 1 if found else 0
+
 class Memset(BaseInstruction):
     """MEMSET instruction - memory set"""
     def __init__(self):
@@ -1693,6 +2176,12 @@ def create_instruction_table():
         Rol(),      # 0x16
         Ror(),      # 0x17
 
+        # Bit test and modify
+        Btst(),     # 0x6D
+        Bset(),     # 0x6E
+        Bclr(),     # 0x6F
+        Bflip(),    # 0x70
+
         # Stack operations
         Push(),     # 0x18
         Pop(),      # 0x19
@@ -1764,6 +2253,19 @@ def create_instruction_table():
         # Memory operations
         Memcpy(),   # 0x4A
         Memset(),   # 0x7C
+
+        # String operations
+        Strcpy(),   # 0x71
+        Strcat(),   # 0x72
+        Strcmp(),   # 0x73
+        Strlen(),   # 0x74
+        Strext(),   # 0x75
+        Strexti(),  # 0x76
+        Strupr(),   # 0x77
+        Strlwr(),   # 0x78
+        Strrev(),   # 0x79
+        Strfind(),  # 0x7A
+        Strfindi(), # 0x7B
 
         # BCD operations
         Sed(),      # 0x4B

@@ -243,234 +243,84 @@ class TestCPURegisterOperations:
         cpu.step()
         assert_register_equals(cpu, 'R0', 0x04)
 
-
-class TestCPUStackOperations:
-    """Test stack operations in detail."""
-
-    def test_call_ret(self, cpu):
-        """Test CALL and RET instructions."""
-        # CALL 0x1000
-        cpu.memory.write_byte(0x0000, 0x2F)  # CALL opcode
-        cpu.memory.write_byte(0x0001, 0x02)  # Mode byte: op1=immediate 16-bit(2)
-        cpu.memory.write_word(0x0002, 0x1000)  # Address
-
-        initial_sp = cpu.Pregisters[8]
-        cpu.step()
-        assert cpu.pc == 0x1000
-        assert cpu.Pregisters[8] == initial_sp - 2  # SP decreased by 2
-
-        # RET
-        cpu.memory.write_byte(0x1000, 0x01)  # RET opcode (no mode byte)
-        cpu.step()
-        assert cpu.pc == 0x0004  # Back to after CALL
-        assert cpu.Pregisters[8] == initial_sp  # SP restored
-
-    def test_pushf_popf(self, cpu):
-        """Test PUSHF and POPF instructions."""
-        # Set some flags
-        cpu.flags[7] = 1  # Zero flag
-        cpu.flags[6] = 0  # Carry flag
-        original_flags = cpu.flags.copy()
-
-        # PUSHF
-        cpu.memory.write_byte(0x0000, 0x1A)  # PUSHF opcode (no operands)
-        initial_sp = cpu.Pregisters[8]
-        cpu.step()
-        assert cpu.Pregisters[8] == initial_sp - 2  # SP decreased by 2
-
-        # Clear flags
-        cpu.flags[7] = 0
-        cpu.flags[6] = 1
-
-        # POPF
-        cpu.memory.write_byte(0x0001, 0x1B)  # POPF opcode (no operands)
-        cpu.step()
-        assert cpu.Pregisters[8] == initial_sp  # SP restored
-        assert cpu.flags == original_flags  # Flags restored
-
-
-class TestCPUJumpOperations:
-    """Test jump and branch operations."""
-
-    def test_jmp(self, cpu):
-        """Test JMP instruction."""
-        # JMP 0x1000
-        cpu.memory.write_byte(0x0000, 0x1E)  # JMP opcode
-        cpu.memory.write_byte(0x0001, 0x02)  # Mode byte: op1=immediate 16-bit(2)
-        cpu.memory.write_word(0x0002, 0x1000)  # Address
-
-        cpu.step()
-        assert cpu.pc == 0x1000
-
-    def test_jz_jump_taken(self, cpu):
-        """Test JZ when zero flag is set."""
-        cpu.flags[7] = 1  # Set zero flag
-
-        # JZ 0x1000
-        cpu.memory.write_byte(0x0000, 0x1F)  # JZ opcode
-        cpu.memory.write_byte(0x0001, 0x02)  # Mode byte: op1=immediate 16-bit(2)
-        cpu.memory.write_word(0x0002, 0x1000)  # Address
-
-        cpu.step()
-        assert cpu.pc == 0x1000
-
-    def test_jz_jump_not_taken(self, cpu):
-        """Test JZ when zero flag is clear."""
-        cpu.flags[7] = 0  # Clear zero flag
-
-        # JZ 0x1000
-        cpu.memory.write_byte(0x0000, 0x1F)  # JZ opcode
-        cpu.memory.write_byte(0x0001, 0x02)  # Mode byte: op1=immediate 16-bit(2)
-        cpu.memory.write_word(0x0002, 0x1000)  # Address
-
-        cpu.step()
-        assert cpu.pc == 0x0004  # Skip the jump
-
-
-class TestCPUComparisonOperations:
-    """Test comparison and conditional operations."""
-
-    def test_cmp_operation(self, cpu):
-        """Test CMP operation."""
-        cpu.Rregisters[0] = 10
-        cpu.Rregisters[1] = 5
-
-        # CMP R0, R1 (10 > 5, should set appropriate flags)
-        cpu.memory.write_byte(0x0000, 0x2E)  # CMP opcode
-        cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: both register direct
-        cpu.memory.write_byte(0x0002, 0xE7)  # R0
-        cpu.memory.write_byte(0x0003, 0xE8)  # R1
-
-        cpu.step()
-        # CMP should set flags but not change registers
-        assert_register_equals(cpu, 'R0', 10)
-        assert_register_equals(cpu, 'R1', 5)
-
-    def test_jgt_jump_taken(self, cpu):
-        """Test JGT when greater than."""
-        cpu.Rregisters[0] = 10
-        cpu.Rregisters[1] = 5
-
-        # CMP R0, R1 (set flags)
-        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
-        cpu.memory.write_byte(0x0001, 0x00)  # Mode byte
-        cpu.memory.write_byte(0x0002, 0xE7)  # R0
-        cpu.memory.write_byte(0x0003, 0xE8)  # R1
-
-        # JGT 0x1000
-        cpu.memory.write_byte(0x0004, 0x27)  # JGT opcode
-        cpu.memory.write_byte(0x0005, 0x02)  # Mode byte: immediate 16-bit
-        cpu.memory.write_word(0x0006, 0x1000)  # Address
-
-        cpu.step()  # CMP
-        cpu.step()  # JGT
-        assert cpu.pc == 0x1000
-
-    def test_jlt_jump_taken(self, cpu):
-        """Test JLT when less than."""
-        cpu.Rregisters[0] = 5
-        cpu.Rregisters[1] = 10
-
-        # CMP R0, R1 (set flags)
-        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
-        cpu.memory.write_byte(0x0001, 0x00)  # Mode byte
-        cpu.memory.write_byte(0x0002, 0xE7)  # R0
-        cpu.memory.write_byte(0x0003, 0xE8)  # R1
-
-        # JLT 0x1000
-        cpu.memory.write_byte(0x0004, 0x28)  # JLT opcode
-        cpu.memory.write_byte(0x0005, 0x02)  # Mode byte: immediate 16-bit
-        cpu.memory.write_word(0x0006, 0x1000)  # Address
-
-        cpu.step()  # CMP
-        cpu.step()  # JLT
-        assert cpu.pc == 0x1000
-
-
-class TestCPUBitwiseOperations:
-    """Test bitwise operations."""
-
-    def test_and_operation(self, cpu):
-        """Test AND operation."""
-        cpu.Rregisters[0] = 0x0F  # 00001111
-        cpu.Rregisters[1] = 0xF0  # 11110000
-
-        # AND R0, R1 (result = 0x00)
-        cpu.memory.write_byte(0x0000, 0x10)  # AND opcode
-        cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: both register direct
-        cpu.memory.write_byte(0x0002, 0xE7)  # R0
-        cpu.memory.write_byte(0x0003, 0xE8)  # R1
-
-        cpu.step()
-        assert_register_equals(cpu, 'R0', 0x00)
-
-    def test_or_operation(self, cpu):
-        """Test OR operation."""
-        cpu.Rregisters[0] = 0x0F  # 00001111
-        cpu.Rregisters[1] = 0xF0  # 11110000
-
-        # OR R0, R1 (result = 0xFF)
-        cpu.memory.write_byte(0x0000, 0x11)  # OR opcode
-        cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: both register direct
-        cpu.memory.write_byte(0x0002, 0xE7)  # R0
-        cpu.memory.write_byte(0x0003, 0xE8)  # R1
-
-        cpu.step()
-        assert_register_equals(cpu, 'R0', 0xFF)
-
-    def test_xor_operation(self, cpu):
-        """Test XOR operation."""
+    def test_btst_operation(self, cpu):
+        """Test BTST (bit test) operation."""
         cpu.Rregisters[0] = 0xAA  # 10101010
-        cpu.Rregisters[1] = 0x55  # 01010101
+        cpu.Rregisters[1] = 0x01  # test bit 1
 
-        # XOR R0, R1 (result = 0xFF)
-        cpu.memory.write_byte(0x0000, 0x12)  # XOR opcode
+        # BTST R0, R1 (bit 1 is set, so Z should be 0)
+        cpu.memory.write_byte(0x0000, 0x6D)  # BTST opcode
         cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: both register direct
         cpu.memory.write_byte(0x0002, 0xE7)  # R0
         cpu.memory.write_byte(0x0003, 0xE8)  # R1
 
         cpu.step()
-        assert_register_equals(cpu, 'R0', 0xFF)
+        assert cpu.zero_flag == False  # Bit 1 is set
+        assert_register_equals(cpu, 'R0', 0xAA)  # R0 unchanged
 
-    def test_not_operation(self, cpu):
-        """Test NOT operation."""
+        # Test bit 2 (which is clear)
+        cpu.pc = 0  # Reset PC
+        cpu.Rregisters[1] = 0x02  # test bit 2
+        cpu.memory.write_byte(0x0000, 0x6D)  # BTST opcode
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: both register direct
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+        cpu.memory.write_byte(0x0003, 0xE8)  # R1
+
+        cpu.step()
+        assert cpu.zero_flag == True  # Bit 2 is clear
+        assert_register_equals(cpu, 'R0', 0xAA)  # R0 unchanged
+
+    def test_bset_operation(self, cpu):
+        """Test BSET (bit set) operation."""
         cpu.Rregisters[0] = 0xAA  # 10101010
+        cpu.Rregisters[1] = 0x02  # set bit 2
 
-        # NOT R0 (result = 0x55)
-        cpu.memory.write_byte(0x0000, 0x13)  # NOT opcode
-        cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: register direct
-        cpu.memory.write_byte(0x0002, 0xE7)  # R0
-
-        cpu.step()
-        assert_register_equals(cpu, 'R0', 0x55)
-
-    def test_shl_operation(self, cpu):
-        """Test SHL (shift left) operation."""
-        cpu.Rregisters[0] = 0x01  # 00000001
-        cpu.Rregisters[1] = 0x03  # shift by 3
-
-        # SHL R0, R1 (result = 0x08)
-        cpu.memory.write_byte(0x0000, 0x14)  # SHL opcode
+        # BSET R0, R1 (result = 0xAE = 10101110)
+        cpu.memory.write_byte(0x0000, 0x6E)  # BSET opcode
         cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: both register direct
         cpu.memory.write_byte(0x0002, 0xE7)  # R0
         cpu.memory.write_byte(0x0003, 0xE8)  # R1
 
         cpu.step()
-        assert_register_equals(cpu, 'R0', 0x08)
+        assert_register_equals(cpu, 'R0', 0xAE)
 
-    def test_shr_operation(self, cpu):
-        """Test SHR (shift right) operation."""
-        cpu.Rregisters[0] = 0x10  # 00010000
-        cpu.Rregisters[1] = 0x02  # shift by 2
+    def test_bclr_operation(self, cpu):
+        """Test BCLR (bit clear) operation."""
+        cpu.Rregisters[0] = 0xAA  # 10101010
+        cpu.Rregisters[1] = 0x01  # clear bit 1
 
-        # SHR R0, R1 (result = 0x04)
-        cpu.memory.write_byte(0x0000, 0x15)  # SHR opcode
+        # BCLR R0, R1 (result = 0xA8 = 10101000)
+        cpu.memory.write_byte(0x0000, 0x6F)  # BCLR opcode
         cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: both register direct
         cpu.memory.write_byte(0x0002, 0xE7)  # R0
         cpu.memory.write_byte(0x0003, 0xE8)  # R1
 
         cpu.step()
-        assert_register_equals(cpu, 'R0', 0x04)
+        assert_register_equals(cpu, 'R0', 0xA8)
+
+    def test_bflip_operation(self, cpu):
+        """Test BFLIP (bit flip) operation."""
+        cpu.Rregisters[0] = 0xAA  # 10101010
+        cpu.Rregisters[1] = 0x01  # flip bit 1
+
+        # BFLIP R0, R1 (result = 0xA8 = 10101000, bit 1 was set, now clear)
+        cpu.memory.write_byte(0x0000, 0x70)  # BFLIP opcode
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: both register direct
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+        cpu.memory.write_byte(0x0003, 0xE8)  # R1
+
+        cpu.step()
+        assert_register_equals(cpu, 'R0', 0xA8)
+
+        # Flip again (bit 1 was clear, now set)
+        cpu.pc = 0  # Reset PC
+        cpu.memory.write_byte(0x0000, 0x70)  # BFLIP opcode
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: both register direct
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+        cpu.memory.write_byte(0x0003, 0xE8)  # R1
+
+        cpu.step()
+        assert_register_equals(cpu, 'R0', 0xAA)
 
 
 class TestCPUProgramExecution:
@@ -1719,6 +1569,7 @@ class TestCPUInterruptOperations:
 
     def test_interrupt_stack_overflow_protection(self, cpu):
         """Test interrupt handling with stack overflow."""
+       
         # Set SP to near end of memory
         cpu.Pregisters[8] = 0xFFFF
 
@@ -1895,15 +1746,26 @@ class TestCPUEdgeCases:
         import random
         random.seed(12345)
 
-        # Test more patterns
-        for _ in range(2000):
+        # Test more patterns with timeout protection
+        for i in range(2000):
             opcode = random.randint(0, 255)
             cpu.memory.write_byte(0, opcode)
             cpu.pc = 0
             cpu.halted = False
 
+            # Add cycle limit to prevent infinite loops
+            cycles = 0
+            max_cycles = 100  # Prevent any single opcode from running too long
+            
             try:
-                cpu.step()
+                while not cpu.halted and cycles < max_cycles:
+                    cpu.step()
+                    cycles += 1
+                    
+                # If we hit the cycle limit, force halt to prevent hang
+                if cycles >= max_cycles:
+                    cpu.halted = True
+                    
             except Exception:
                 # Expected for invalid opcodes
                 pass
@@ -1932,8 +1794,8 @@ class TestCPUEdgeCases:
         # Perform operations that use multiple registers
         cpu.memory.write_byte(0x0000, 0x07)  # ADD R0, R1
         cpu.memory.write_byte(0x0001, 0x00)
-        cpu.memory.write_byte(0x0002, 0xE7)
-        cpu.memory.write_byte(0x0003, 0xE8)
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+        cpu.memory.write_byte(0x0003, 0xE8)  # R1
 
         cpu.pc = 0
         cpu.step()

@@ -140,43 +140,43 @@ opcodes = [
     ("LOOP",               "0x5A", 2), # Loop instruction # implemented
 
     # Math functions
-    ("POWR",               "0x5B", 2), # Power base, exponent # unimplemented
-    ("SQRT",               "0x5C", 1), # Square value # unimplemented
-    ("LOG",                "0x5D", 1), # Logarithm value # unimplemented
-    ("EXP",                "0x5E", 1), # Exponential value # unimplemented
-    ("SIN",                "0x5F", 1), # Sine value # unimplemented
-    ("COS",                "0x60", 1), # Cosine value # unimplemented
-    ("TAN",                "0x61", 1), # Tangent value # unimplemented
-    ("ATAN",               "0x62", 1), # Arctangent value # unimplemented
-    ("ASIN",               "0x63", 1), # Arcsine value # unimplemented
-    ("ACOS",               "0x64", 1), # Arccosine value # unimplemented
-    ("DEG",                "0x65", 1), # Degrees to radians # unimplemented
-    ("RAD",                "0x66", 1), # Radians to degrees # unimplemented
-    ("FLOOR",              "0x67", 1), # Floor value # unimplemented
-    ("CEIL",               "0x68", 1), # Ceil value # unimplemented
-    ("ROUND",              "0x69", 1), # Round value # unimplemented
-    ("TRUNC",              "0x6A", 1), # Truncate value # unimplemented
-    ("FRAC",               "0x6B", 1), # Fractional part # unimplemented
-    ("INTGR",              "0x6C", 1), # Integer part # unimplemented
+    ("POWR",               "0x5B", 2), # Power base, exponent # implemented
+    ("SQRT",               "0x5C", 1), # Square value # implemented
+    ("LOG",                "0x5D", 1), # Logarithm value # implemented
+    ("EXP",                "0x5E", 1), # Exponential value # implemented
+    ("SIN",                "0x5F", 1), # Sine value # implemented
+    ("COS",                "0x60", 1), # Cosine value # implemented
+    ("TAN",                "0x61", 1), # Tangent value # implemented
+    ("ATAN",               "0x62", 1), # Arctangent value # implemented
+    ("ASIN",               "0x63", 1), # Arcsine value # implemented
+    ("ACOS",               "0x64", 1), # Arccosine value # implemented
+    ("DEG",                "0x65", 1), # Degrees to radians # implemented
+    ("RAD",                "0x66", 1), # Radians to degrees # implemented
+    ("FLOOR",              "0x67", 1), # Floor value # implemented
+    ("CEIL",               "0x68", 1), # Ceil value # implemented
+    ("ROUND",              "0x69", 1), # Round value # implemented
+    ("TRUNC",              "0x6A", 1), # Truncate value # implemented
+    ("FRAC",               "0x6B", 1), # Fractional part # implemented
+    ("INTGR",              "0x6C", 1), # Integer part # implemented
 
     # Bit test and modify
-    ("BTST",               "0x6D", 2), # Bit test # unimplemented
-    ("BSET",               "0x6E", 2), # Bit set # unimplemented
-    ("BCLR",               "0x6F", 2), # Bit clear # unimplemented
-    ("BFLIP",              "0x70", 2), # Bit flip # unimplemented
+    ("BTST",               "0x6D", 2), # Bit test # implemented
+    ("BSET",               "0x6E", 2), # Bit set # implemented
+    ("BCLR",               "0x6F", 2), # Bit clear # implemented
+    ("BFLIP",              "0x70", 2), # Bit flip # implemented
 
     # String operations
-    ("STRCPY",             "0x71", 2), # String copy destination, source # unimplemented
-    ("STRCAT",             "0x72", 2), # String concatenate destination, source # unimplemented
-    ("STRCMP",             "0x73", 3), # String compare str1, str2, length # unimplemented
-    ("STRLEN",             "0x74", 1), # String length # unimplemented
-    ("STREXT",             "0x75", 4), # String extract destination, haystack, needle, length # unimplemented
-    ("STREXTI",            "0x76", 4), # String extract case-insensitive destination, haystack, needle, length # unimplemented
-    ("STRUPR",             "0x77", 1), # String to uppercase # unimplemented
-    ("STRLWR",             "0x78", 1), # String to lowercase # unimplemented
-    ("STRREV",             "0x79", 1), # String reverse # unimplemented
-    ("STRFIND",            "0x7A", 2), # String substring exists haystack, needle # unimplemented
-    ("STRFINDI",           "0x7B", 2), # String case-insensitive substring exists haystack, needle # unimplemented
+    ("STRCPY",             "0x71", 2), # String copy destination, source # implemented
+    ("STRCAT",             "0x72", 2), # String concatenate destination, source # implemented
+    ("STRCMP",             "0x73", 3), # String compare str1, str2, length # implemented
+    ("STRLEN",             "0x74", 1), # String length # implemented
+    ("STREXT",             "0x75", 4), # String extract destination, haystack, needle, length # implemented
+    ("STREXTI",            "0x76", 4), # String extract case-insensitive destination, haystack, needle, length # implemented
+    ("STRUPR",             "0x77", 1), # String to uppercase # implemented
+    ("STRLWR",             "0x78", 1), # String to lowercase # implemented
+    ("STRREV",             "0x79", 1), # String reverse # implemented
+    ("STRFIND",            "0x7A", 2), # String substring exists haystack, needle # implemented
+    ("STRFINDI",           "0x7B", 2), # String case-insensitive substring exists haystack, needle # implemented
 
     # Memory de/allocation and testing
     ("MEMSET",             "0x7C", 3), # Memory set address, value, length # unimplemented
