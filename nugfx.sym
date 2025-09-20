@@ -1,0 +1,5 @@
+# Symbol table
+# Format: <symbol> <value>
+START 0x1000
+LOOP 0x1015
+DONE 0x1030

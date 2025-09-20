@@ -1,8 +1,0 @@
-# Symbol table
-# Format: <symbol> <value>
-delay_loop 0x002F
-delay_loop2 0x003C
-delay_loop3 0x0051
-delay_loop4 0x006F
-delay_loop5 0x0084
-main_loop 0x0098

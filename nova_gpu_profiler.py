@@ -66,7 +66,14 @@ class GPUProfiler:
             0x41: 'CHAR',     # Draw character
             0x42: 'TEXT',     # Draw text
             0x55: 'SPBLIT',   # Blit sprite
-            0x56: 'SPBLITALL' # Blit all sprites
+            0x56: 'SPBLITALL', # Blit all sprites
+            # Layer operations
+            0x83: 'LCPY',     # Copy contents of layer dest, source
+            0x84: 'LCLR',     # Clear layer to color
+            0x86: 'LSHFT',    # Shift layer by axis, amount
+            0x87: 'LROT',     # Rotate layer by direction, amount
+            0x88: 'LFLIP',    # Flip layer by axis, amount
+            0x89: 'LSWAP'     # Swap two layers dest, source
         }
 
         # State tracking

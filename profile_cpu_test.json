@@ -1,0 +1,36 @@
+{
+  "execution_time": 0.008914709091186523,
+  "cycles_executed": 1000,
+  "cycles_per_second": 112174.15955711267,
+  "timestamp": 1758346444.6543317,
+  "program": null,
+  "cpu_profile": {
+    "total_cycles": 1000,
+    "instructions_executed": 1000,
+    "opcode_counts": {
+      "6": 33,
+      "56": 1,
+      "57": 1,
+      "58": 2,
+      "12": 450,
+      "32": 450,
+      "59": 2,
+      "131": 2,
+      "132": 2,
+      "134": 2,
+      "136": 2,
+      "135": 2,
+      "137": 1,
+      "30": 50
+    },
+    "method_times": {},
+    "memory_accesses": 2774,
+    "start_time": 1758346444.6453326,
+    "instruction_start_times": {},
+    "cycle_start_time": 1758346444.6454172,
+    "operand_parses": 998,
+    "operand_values": 1025
+  },
+  "cpu_report_text": "=== CPU Profiling Report ===\nTotal execution time: 0.0090 seconds\nInstructions executed: 1000\nMemory accesses: 2774\nOperand parses: 998\nOperand value gets: 1025\nAverage IPS: 111063.26\n\nTop 10 instructions by frequency:\n  DEC: 450 (45.0%)\n  JNZ: 450 (45.0%)\n  JMP: 50 (5.0%)\n  MOV: 33 (3.3%)\n  SCIRC: 2 (0.2%)\n  SINV: 2 (0.2%)\n  LCPY: 2 (0.2%)\n  LCLR: 2 (0.2%)\n  LSHFT: 2 (0.2%)\n  LFLIP: 2 (0.2%)",
+  "instructions_per_second": 112174.15955711267
+}

@@ -312,54 +312,41 @@ class AdvancedGraphicsMonitor:
     def _decode_graphics_instruction(self, opcode):
         """Decode graphics-related opcodes to instruction names"""
         graphics_opcodes = {
-            # Screen access
-            0x4E: "SBLEND",    # SBLEND reg
-            0x4F: "SBLEND",    # SBLEND imm
-            0x50: "SREAD",     # SREAD
-            0x51: "SWRITE",    # SWRITE reg
-            0x52: "SWRITE",    # SWRITE imm
-            
-            # Screen transformations
-            0x53: "SROLX",     # SROLX reg  
-            0x54: "SROLX",     # SROLX imm
-            0x55: "SROLY",     # SROLY reg
-            0x56: "SROLY",     # SROLY imm
-            0x57: "SROTL",     # SROTL reg
-            0x58: "SROTL",     # SROTL imm
-            0x59: "SROTR",     # SROTR reg
-            0x5A: "SROTR",     # SROTR imm
-            0x5B: "SSHFTX",    # SSHFTX reg
-            0x5C: "SSHFTX",    # SSHFTX imm
-            0x5D: "SSHFTY",    # SSHFTY reg
-            0x5E: "SSHFTY",    # SSHFTY imm
-            0x5F: "SFLIPX",    # SFLIPX
-            0x60: "SFLIPY",    # SFLIPY
-            
             # Screen operations
-            0x61: "SBLIT",     # SBLIT
-            0x7F: "SFILL",     # SFILL reg
-            0x80: "SFILL",     # SFILL imm
+            0x31: "SBLEND",    # Set blend mode
+            0x32: "SREAD",     # Read screen pixel
+            0x33: "SWRITE",    # Write screen pixel
+            0x34: "SROL",      # Roll screen by axis, amount
+            0x35: "SROT",      # Rotate screen by direction, amount
+            0x36: "SSHFT",     # Shift screen by axis, amount
+            0x37: "SFLIP",     # Flip screen by axis, amount
+            0x38: "SLINE",     # Line x1, y1, x2, y2, color
+            0x39: "SRECT",     # Rectangle x1, y1, x2, y2, color, un/filled
+            0x3A: "SCIRC",     # Circle x, y, radius, color, un/filled
+            0x3B: "SINV",      # Invert screen colors
+            0x3C: "SBLIT",     # Blit screen
+            0x3D: "SFILL",     # Fill screen
             
-            # Text/Character operations
-            0x6A: "CHAR",      # CHAR reg imm8
-            0x6B: "TEXT",      # TEXT reg imm8
-            0x6C: "TEXT",      # TEXT imm16 imm8
-            0x6D: "CHAR",      # CHAR reg reg
-            0x6E: "TEXT",      # TEXT reg reg
-            0x6F: "TEXT",      # TEXT imm16 reg
+            # VRAM operations
+            0x3E: "VREAD",     # Read VRAM
+            0x3F: "VWRITE",    # Write VRAM
+            0x40: "VBLIT",     # Blit VRAM
+            
+            # Text operations
+            0x41: "CHAR",      # Draw character
+            0x42: "TEXT",      # Draw text
             
             # Sprite operations
-            0x94: "SPBLIT",    # SPBLIT reg
-            0x95: "SPBLIT",    # SPBLIT imm
-            0x96: "SPBLITALL", # SPBLITALL
+            0x55: "SPBLIT",    # Blit sprite
+            0x56: "SPBLITALL", # Blit all sprites
             
-            # Sound operations (for completeness)
-            0x97: "SPLAY",     # SPLAY reg
-            0x98: "SPLAY",     # SPLAY imm
-            0x99: "SSTOP",     # SSTOP reg
-            0x9A: "SSTOP",     # SSTOP imm
-            0x9B: "STRIG",     # STRIG reg
-            0x9C: "STRIG",     # STRIG imm
+            # Layer operations
+            0x83: "LCPY",      # Copy contents of layer dest, source
+            0x84: "LCLR",      # Clear layer to color
+            0x86: "LSHFT",     # Shift layer by axis, amount
+            0x87: "LROT",      # Rotate layer by direction, amount
+            0x88: "LFLIP",     # Flip layer by axis, amount
+            0x89: "LSWAP"      # Swap two layers dest, source
         }
         return graphics_opcodes.get(opcode, None)
             

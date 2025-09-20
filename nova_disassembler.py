@@ -227,10 +227,11 @@ def disassemble_instruction_new(bytecode, pc, opcode_map, register_map):
     
     mode_byte = bytecode[pc + 1]
     
-    # Parse mode byte
+    # Parse mode byte - extract modes for up to 4 operands
     op1_mode = mode_byte & 0x03
     op2_mode = (mode_byte >> 2) & 0x03
     op3_mode = (mode_byte >> 4) & 0x03
+    op4_mode = (mode_byte >> 6) & 0x03  # Note: this overlaps with indexed bit
     indexed = (mode_byte & (1 << 6)) != 0
     direct = (mode_byte & (1 << 7)) != 0
     
@@ -285,21 +286,34 @@ def disassemble_instruction_new(bytecode, pc, opcode_map, register_map):
         else:
             return f"0x{reg_num:02X}"
     
-    # Parse operand 1
-    if operand_count >= 1:
-        if op1_mode == 0:  # Register direct
+    # Parse all operands
+    for i in range(operand_count):
+        # Get mode for this operand
+        if i == 0:
+            mode = op1_mode
+        elif i == 1:
+            mode = op2_mode
+        elif i == 2:
+            mode = op3_mode
+        elif i == 3:
+            mode = op4_mode
+        else:
+            # For operands beyond 4, mode defaults to 0 (register direct)
+            mode = 0
+        
+        if mode == 0:  # Register direct
             if current_pc < len(bytecode):
                 reg_num = bytecode[current_pc]
                 operands.append(reg_num_to_name(reg_num))
                 current_pc += 1
                 size += 1
-        elif op1_mode == 1:  # Immediate 8-bit
+        elif mode == 1:  # Immediate 8-bit
             if current_pc < len(bytecode):
                 imm8 = bytecode[current_pc]
                 operands.append(f"0x{imm8:02X}")
                 current_pc += 1
                 size += 1
-        elif op1_mode == 2:  # Immediate 16-bit
+        elif mode == 2:  # Immediate 16-bit
             if current_pc + 1 < len(bytecode):
                 high = bytecode[current_pc]
                 low = bytecode[current_pc + 1]
@@ -307,75 +321,7 @@ def disassemble_instruction_new(bytecode, pc, opcode_map, register_map):
                 operands.append(f"0x{imm16:04X}")
                 current_pc += 2
                 size += 2
-        elif op1_mode == 3:  # Memory reference
-            if direct and not indexed:
-                # Direct memory address
-                if current_pc + 1 < len(bytecode):
-                    high = bytecode[current_pc]
-                    low = bytecode[current_pc + 1]
-                    addr = (high << 8) | low
-                    operands.append(f"[0x{addr:04X}]")
-                    current_pc += 2
-                    size += 2
-            elif not direct and not indexed:
-                # Register indirect
-                if current_pc < len(bytecode):
-                    reg_num = bytecode[current_pc]
-                    reg_name = reg_num_to_name(reg_num)
-                    operands.append(f"[{reg_name}]")
-                    current_pc += 1
-                    size += 1
-            elif not direct and indexed:
-                # Register indexed
-                if current_pc + 1 < len(bytecode):
-                    reg_num = bytecode[current_pc]
-                    offset = bytecode[current_pc + 1]
-                    reg_name = reg_num_to_name(reg_num)
-                    if offset > 127:
-                        offset = offset - 256
-                        operands.append(f"[{reg_name}{offset}]")
-                    else:
-                        operands.append(f"[{reg_name}+{offset}]")
-                    current_pc += 2
-                    size += 2
-            elif direct and indexed:
-                # Direct indexed
-                if current_pc + 2 < len(bytecode):
-                    high = bytecode[current_pc]
-                    low = bytecode[current_pc + 1]
-                    addr = (high << 8) | low
-                    offset = bytecode[current_pc + 2]
-                    if offset > 127:
-                        offset = offset - 256
-                        operands.append(f"[0x{addr:04X}{offset}]")
-                    else:
-                        operands.append(f"[0x{addr:04X}+{offset}]")
-                    current_pc += 3
-                    size += 3
-    
-    # Parse operand 2 (same logic as operand 1)
-    if operand_count >= 2:
-        if op2_mode == 0:  # Register direct
-            if current_pc < len(bytecode):
-                reg_num = bytecode[current_pc]
-                operands.append(reg_num_to_name(reg_num))
-                current_pc += 1
-                size += 1
-        elif op2_mode == 1:  # Immediate 8-bit
-            if current_pc < len(bytecode):
-                imm8 = bytecode[current_pc]
-                operands.append(f"0x{imm8:02X}")
-                current_pc += 1
-                size += 1
-        elif op2_mode == 2:  # Immediate 16-bit
-            if current_pc + 1 < len(bytecode):
-                high = bytecode[current_pc]
-                low = bytecode[current_pc + 1]
-                imm16 = (high << 8) | low
-                operands.append(f"0x{imm16:04X}")
-                current_pc += 2
-                size += 2
-        elif op2_mode == 3:  # Memory reference
+        elif mode == 3:  # Memory reference
             if direct and not indexed:
                 # Direct memory address
                 if current_pc + 1 < len(bytecode):

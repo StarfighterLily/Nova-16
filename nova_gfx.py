@@ -448,8 +448,13 @@ class GFX:
     
     def composite_layers(self):
         """Composite all visible layers into the main screen buffer"""
-        # Clear the main screen to start fresh compositing
+        # Preserve the current screen content (layer 0)
+        temp = self.screen.copy()
+        
+        # Clear the screen and restore layer 0 if visible
         self.screen.fill(0)
+        if self.layer_visibility.get(0, True):
+            self.screen[:, :] = temp[:, :]
         
         # Add background layers (1-4) on top
         for i, layer in enumerate(self.background_layers):
@@ -1244,7 +1249,8 @@ class GFX:
         """Invert all colors on the current layer"""
         target_buffer = self._get_layer_buffer()
         target_buffer[:, :] = 255 - target_buffer[:, :]
-        self.layers_dirty = True
+        if self.VL != 0:
+            self.layers_dirty = True
 
     def shift_layer_x(self, amount, layer_num=None):
         """Shift layer horizontally by amount pixels"""

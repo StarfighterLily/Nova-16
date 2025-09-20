@@ -117,6 +117,11 @@ class CPU:
         # Initialize instruction dispatch table
         self.instruction_table = create_instruction_table()
         
+        # Create reverse mapping for profiling (opcode -> name)
+        self.opcode_to_name = {}
+        for opcode, instruction in self.instruction_table.items():
+            self.opcode_to_name[opcode] = instruction.name
+        
         # Connect memory system to graphics for sprite memory-mapping
         self.memory.gfx_system = self.gfx
 
@@ -177,12 +182,13 @@ class CPU:
         report.append(f"Average IPS: {self.profile_data['instructions_executed'] / total_time:.2f}")
 
         if self.profile_data['opcode_counts']:
-            report.append("\nTop 10 opcodes by frequency:")
+            report.append("\nTop 10 instructions by frequency:")
             sorted_opcodes = sorted(self.profile_data['opcode_counts'].items(),
                                   key=lambda x: x[1], reverse=True)[:10]
             for opcode, count in sorted_opcodes:
                 pct = (count / self.profile_data['instructions_executed']) * 100
-                report.append(f"  0x{opcode:02X}: {count} ({pct:.1f}%)")
+                name = self.opcode_to_name.get(opcode, f"0x{opcode:02X}")
+                report.append(f"  {name}: {count} ({pct:.1f}%)")
 
         if self.profile_data['method_times']:
             report.append("\nMethod timing (total time spent):")
