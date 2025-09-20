@@ -1075,7 +1075,7 @@ class GFX:
         # Convert to 2D array
         sprite_bitmap = np.array(sprite_data, dtype=np.uint8).reshape(sprite['height'], sprite['width'])
         
-        # Get target layer buffer
+        # Get target layer
         target_layer = sprite['layer']
         if target_layer == 5:
             target_buffer = self.sprite_layers[0]
@@ -1127,3 +1127,258 @@ class GFX:
             
         self.sprites_dirty = False  # Mark sprites as clean
         self.layers_dirty = True   # Mark layers as needing compositing
+
+    def draw_line(self, x1, y1, x2, y2, color):
+        """Draw a line from (x1,y1) to (x2,y2) with the specified color"""
+        target_buffer = self._get_layer_buffer()
+        
+        # Bresenham's line algorithm
+        dx = abs(x2 - x1)
+        dy = abs(y2 - y1)
+        sx = 1 if x1 < x2 else -1
+        sy = 1 if y1 < y2 else -1
+        err = dx - dy
+        
+        x, y = x1, y1
+        
+        while True:
+            if 0 <= x < self.width and 0 <= y < self.height:
+                target_buffer[y, x] = color
+            
+            if x == x2 and y == y2:
+                break
+                
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x += sx
+            if e2 < dx:
+                err += dx
+                y += sy
+        
+        self.layers_dirty = True
+
+    def draw_rectangle(self, x1, y1, x2, y2, color, filled=True):
+        """Draw a rectangle from (x1,y1) to (x2,y2) with the specified color"""
+        target_buffer = self._get_layer_buffer()
+        
+        # Ensure coordinates are in bounds
+        x1 = max(0, min(x1, self.width - 1))
+        y1 = max(0, min(y1, self.height - 1))
+        x2 = max(0, min(x2, self.width - 1))
+        y2 = max(0, min(y2, self.height - 1))
+        
+        if filled:
+            # Fill the rectangle
+            target_buffer[y1:y2+1, x1:x2+1] = color
+        else:
+            # Draw outline only
+            # Top and bottom lines
+            target_buffer[y1, x1:x2+1] = color
+            target_buffer[y2, x1:x2+1] = color
+            # Left and right lines
+            target_buffer[y1:y2+1, x1] = color
+            target_buffer[y1:y2+1, x2] = color
+        
+        self.layers_dirty = True
+
+    def draw_circle(self, center_x, center_y, radius, color, filled=True):
+        """Draw a circle centered at (center_x, center_y) with the specified radius and color"""
+        target_buffer = self._get_layer_buffer()
+        
+        if filled:
+            # Filled circle using midpoint circle algorithm
+            x = radius
+            y = 0
+            err = 0
+            
+            while x >= y:
+                # Fill horizontal lines for each octant
+                for i in range(center_x - x, center_x + x + 1):
+                    if 0 <= i < self.width:
+                        if 0 <= center_y + y < self.height:
+                            target_buffer[center_y + y, i] = color
+                        if 0 <= center_y - y < self.height:
+                            target_buffer[center_y - y, i] = color
+                
+                for i in range(center_x - y, center_x + y + 1):
+                    if 0 <= i < self.width:
+                        if 0 <= center_y + x < self.height:
+                            target_buffer[center_y + x, i] = color
+                        if 0 <= center_y - x < self.height:
+                            target_buffer[center_y - x, i] = color
+                
+                y += 1
+                err += 1 + 2*y
+                if 2*(err - x) + 1 > 0:
+                    x -= 1
+                    err += 1 - 2*x
+        else:
+            # Outline circle using midpoint circle algorithm
+            x = radius
+            y = 0
+            err = 0
+            
+            while x >= y:
+                # Plot points in all 8 octants
+                points = [
+                    (center_x + x, center_y + y), (center_x - x, center_y + y),
+                    (center_x + x, center_y - y), (center_x - x, center_y - y),
+                    (center_x + y, center_y + x), (center_x - y, center_y + x),
+                    (center_x + y, center_y - x), (center_x - y, center_y - x)
+                ]
+                
+                for px, py in points:
+                    if 0 <= px < self.width and 0 <= py < self.height:
+                        target_buffer[py, px] = color
+                
+                y += 1
+                err += 1 + 2*y
+                if 2*(err - x) + 1 > 0:
+                    x -= 1
+                    err += 1 - 2*x
+        
+        self.layers_dirty = True
+
+    def invert_colors(self):
+        """Invert all colors on the current layer"""
+        target_buffer = self._get_layer_buffer()
+        target_buffer[:, :] = 255 - target_buffer[:, :]
+        self.layers_dirty = True
+
+    def shift_layer_x(self, amount, layer_num=None):
+        """Shift layer horizontally by amount pixels"""
+        if layer_num is None:
+            layer_num = self.VL
+            
+        if layer_num == 0:
+            buffer = self.screen
+        elif 1 <= layer_num <= 4:
+            buffer = self.background_layers[layer_num - 1]
+        elif 5 <= layer_num <= 8:
+            buffer = self.sprite_layers[layer_num - 5]
+        else:
+            return
+            
+        if amount > 0:
+            buffer[:, amount:] = buffer[:, :-amount]
+            buffer[:, :amount] = 0
+        elif amount < 0:
+            buffer[:, :amount] = buffer[:, -amount:]
+            buffer[:, amount:] = 0
+            
+        self.layers_dirty = True
+
+    def shift_layer_y(self, amount, layer_num=None):
+        """Shift layer vertically by amount pixels"""
+        if layer_num is None:
+            layer_num = self.VL
+            
+        if layer_num == 0:
+            buffer = self.screen
+        elif 1 <= layer_num <= 4:
+            buffer = self.background_layers[layer_num - 1]
+        elif 5 <= layer_num <= 8:
+            buffer = self.sprite_layers[layer_num - 5]
+        else:
+            return
+            
+        if amount > 0:
+            buffer[amount:, :] = buffer[:-amount, :]
+            buffer[:amount, :] = 0
+        elif amount < 0:
+            buffer[:amount, :] = buffer[-amount:, :]
+            buffer[amount:, :] = 0
+            
+        self.layers_dirty = True
+
+    def rotate_layer_left(self, amount, layer_num=None):
+        """Rotate layer left by amount degrees"""
+        if layer_num is None:
+            layer_num = self.VL
+            
+        if layer_num == 0:
+            buffer = self.screen
+        elif 1 <= layer_num <= 4:
+            buffer = self.background_layers[layer_num - 1]
+        elif 5 <= layer_num <= 8:
+            buffer = self.sprite_layers[layer_num - 5]
+        else:
+            return
+            
+        # Simple 90-degree rotations
+        rotations = (amount // 90) % 4
+        for _ in range(rotations):
+            buffer[:, :] = np.rot90(buffer, k=1)
+            
+        self.layers_dirty = True
+
+    def rotate_layer_right(self, amount, layer_num=None):
+        """Rotate layer right by amount degrees"""
+        if layer_num is None:
+            layer_num = self.VL
+            
+        if layer_num == 0:
+            buffer = self.screen
+        elif 1 <= layer_num <= 4:
+            buffer = self.background_layers[layer_num - 1]
+        elif 5 <= layer_num <= 8:
+            buffer = self.sprite_layers[layer_num - 5]
+        else:
+            return
+            
+        # Simple 90-degree rotations
+        rotations = (amount // 90) % 4
+        for _ in range(rotations):
+            buffer[:, :] = np.rot90(buffer, k=-1)
+            
+        self.layers_dirty = True
+
+    def flip_layer_x(self, layer_num=None):
+        """Flip layer horizontally"""
+        if layer_num is None:
+            layer_num = self.VL
+            
+        if layer_num == 0:
+            buffer = self.screen
+        elif 1 <= layer_num <= 4:
+            buffer = self.background_layers[layer_num - 1]
+        elif 5 <= layer_num <= 8:
+            buffer = self.sprite_layers[layer_num - 5]
+        else:
+            return
+            
+        buffer[:, :] = np.fliplr(buffer)
+        self.layers_dirty = True
+
+    def flip_layer_y(self, layer_num=None):
+        """Flip layer vertically"""
+        if layer_num is None:
+            layer_num = self.VL
+            
+        if layer_num == 0:
+            buffer = self.screen
+        elif 1 <= layer_num <= 4:
+            buffer = self.background_layers[layer_num - 1]
+        elif 5 <= layer_num <= 8:
+            buffer = self.sprite_layers[layer_num - 5]
+        else:
+            return
+            
+        buffer[:, :] = np.flipud(buffer)
+        self.layers_dirty = True
+
+    def swap_layers(self, layer1, layer2):
+        """Swap the contents of two layers"""
+        if layer1 == layer2:
+            return
+            
+        buf1 = self.get_layer_buffer_by_num(layer1)
+        buf2 = self.get_layer_buffer_by_num(layer2)
+        
+        if buf1 is not None and buf2 is not None:
+            temp = buf1.copy()
+            buf1[:, :] = buf2[:, :]
+            buf2[:, :] = temp
+            
+        self.layers_dirty = True

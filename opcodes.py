@@ -85,10 +85,10 @@ opcodes = [
     ("SROT",               "0x35", 2), # Rotate screen by direction, amount # implemented
     ("SSHFT",              "0x36", 2), # Shift screen by axis, amount # implemented
     ("SFLIP",              "0x37", 2), # Flip screen by axis, amount # implemented
-    ("SLINE",              "0x38", 5), # Line x1, y1, x2, y2, color # unimplemented
-    ("SRECT",              "0x39", 6), # Rectangle x1, y1, x2, y2, color, un/filled # unimplemented
-    ("SCIRC",              "0x3A", 5), # Circle x, y, radius, color, un/filled # unimplemented
-    ("SINV",               "0x3B", 0), # Invert screen colors # unimplemented
+    ("SLINE",              "0x38", 5), # Line x1, y1, x2, y2, color # implemented
+    ("SRECT",              "0x39", 6), # Rectangle x1, y1, x2, y2, color, un/filled # implemented
+    ("SCIRC",              "0x3A", 5), # Circle x, y, radius, color, un/filled # implemented
+    ("SINV",               "0x3B", 0), # Invert screen colors # implemented
     ("SBLIT",              "0x3C", 1), # Blit screen # implemented
     ("SFILL",              "0x3D", 1), # Fill screen # implemented
 
@@ -190,13 +190,13 @@ opcodes = [
     ("SFILTER",            "0x82", 2), # Filter channel, type # unimplemented
 
     # Layer operations
-    ("LCPY",               "0x83", 2), # Copy contents of layer dest, source # unimplemented
-    ("LCLR",               "0x84", 1), # Clear layer to color # unimplemented
-    ("LMOV",               "0x85", 2), # Move contents of layer dest, source # unimplemented
-    ("LSHFT",              "0x86", 2), # Shift layer by axis, amount # unimplemented
-    ("LROT",               "0x87", 2), # Rotate layer by direction, amount # unimplemented
-    ("LFLIP",              "0x88", 2), # Flip layer by axis, amount # unimplemented
-    ("LSWAP",              "0x89", 2), # Swap two layers dest, source # unimplemented
+    ("LCPY",               "0x83", 2), # Copy contents of layer dest, source # implemented
+    ("LCLR",               "0x84", 2), # Clear layer to color # implemented
+    ("LMOV",               "0x85", 2), # Move contents of layer dest, source # implemented
+    ("LSHFT",              "0x86", 3), # Shift layer by axis, amount # implemented
+    ("LROT",               "0x87", 3), # Rotate layer by direction, amount # implemented
+    ("LFLIP",              "0x88", 2), # Flip layer by axis, amount # implemented
+    ("LSWAP",              "0x89", 2), # Swap two layers dest, source # implemented
 
     # 
 

@@ -1072,6 +1072,61 @@ class Sfill(BaseInstruction):
         color = cpu.get_operand_value(operands[0])
         cpu.gfx.fill_layer(color)
 
+class Sline(BaseInstruction):
+    """SLINE instruction - draw line x1, y1, x2, y2, color"""
+    def __init__(self):
+        opcode_val = 0x38  # SLINE
+        super().__init__("SLINE", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(5)
+        x1 = cpu.get_operand_value(operands[0])
+        y1 = cpu.get_operand_value(operands[1])
+        x2 = cpu.get_operand_value(operands[2])
+        y2 = cpu.get_operand_value(operands[3])
+        color = cpu.get_operand_value(operands[4])
+        cpu.gfx.draw_line(x1, y1, x2, y2, color)
+
+class Srect(BaseInstruction):
+    """SRECT instruction - draw rectangle x1, y1, x2, y2, color, filled"""
+    def __init__(self):
+        opcode_val = 0x39  # SRECT
+        super().__init__("SRECT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(6)
+        x1 = cpu.get_operand_value(operands[0])
+        y1 = cpu.get_operand_value(operands[1])
+        x2 = cpu.get_operand_value(operands[2])
+        y2 = cpu.get_operand_value(operands[3])
+        color = cpu.get_operand_value(operands[4])
+        filled = cpu.get_operand_value(operands[5]) != 0
+        cpu.gfx.draw_rectangle(x1, y1, x2, y2, color, filled)
+
+class Scirc(BaseInstruction):
+    """SCIRC instruction - draw circle x, y, radius, color, filled"""
+    def __init__(self):
+        opcode_val = 0x3A  # SCIRC
+        super().__init__("SCIRC", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(5)
+        x = cpu.get_operand_value(operands[0])
+        y = cpu.get_operand_value(operands[1])
+        radius = cpu.get_operand_value(operands[2])
+        color = cpu.get_operand_value(operands[3])
+        filled = cpu.get_operand_value(operands[4]) != 0
+        cpu.gfx.draw_circle(x, y, radius, color, filled)
+
+class Sinv(BaseInstruction):
+    """SINV instruction - invert screen colors"""
+    def __init__(self):
+        opcode_val = 0x3B  # SINV
+        super().__init__("SINV", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.gfx.invert_colors()
+
 # VRAM operations
 class Vread(BaseInstruction):
     """VREAD instruction - read VRAM"""
@@ -1261,6 +1316,21 @@ class Memcpy(BaseInstruction):
             data = cpu.memory.read((source_addr + i) & 0xFFFF, 1)[0]
             cpu.memory.write((dest_addr + i) & 0xFFFF, data, 1)
 
+class Memset(BaseInstruction):
+    """MEMSET instruction - memory set"""
+    def __init__(self):
+        opcode_val = 0x7C  # MEMSET
+        super().__init__("MEMSET", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(3)
+        dest_addr = cpu.get_operand_value(operands[0])
+        fill_value = cpu.get_operand_value(operands[1])
+        length = cpu.get_operand_value(operands[2])
+        
+        for i in range(length):
+            cpu.memory.write((dest_addr + i) & 0xFFFF, fill_value, 1)
+
 # String operations
 class Strcpy(BaseInstruction):
     """STRCPY instruction - string copy"""
@@ -1423,7 +1493,7 @@ class Strexti(BaseInstruction):
         needle = []
         i = 0
         while i < max_length:
-            char = cpu.memory.read((needle_addr + i) & 0xFFFF, 1)[0]
+            char = cpu.memory.read((needleAddr + i) & 0xFFFF, 1)[0]
             if char == 0:
                 break
             needle.append(char)
@@ -1592,7 +1662,7 @@ class Strfindi(BaseInstruction):
         needle = []
         i = 0
         while True:
-            char = cpu.memory.read((needle_addr + i) & 0xFFFF, 1)[0]
+            char = cpu.memory.read((needleAddr + i) & 0xFFFF, 1)[0]
             if char == 0:
                 break
             needle.append(char)
@@ -1630,541 +1700,113 @@ class Strfindi(BaseInstruction):
         
         cpu.Rregisters[0] = 1 if found else 0
 
-class Memset(BaseInstruction):
-    """MEMSET instruction - memory set"""
+# Layer operations
+class Lcpy(BaseInstruction):
+    """LCPY instruction - copy contents of layer dest, source"""
     def __init__(self):
-        opcode_val = 0x7C  # MEMSET
-        super().__init__("MEMSET", opcode_val)
+        opcode_val = 0x83  # LCPY
+        super().__init__("LCPY", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_layer = cpu.get_operand_value(operands[0])
+        source_layer = cpu.get_operand_value(operands[1])
+        cpu.gfx.copy_layer(source_layer, dest_layer)
+
+class Lclr(BaseInstruction):
+    """LCLR instruction - clear layer to color"""
+    def __init__(self):
+        opcode_val = 0x84  # LCLR
+        super().__init__("LCLR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        layer_num = cpu.get_operand_value(operands[0])
+        color = cpu.get_operand_value(operands[1])
+        cpu.gfx.fill_layer(color, layer_num)
+
+class Lmov(BaseInstruction):
+    """LMOV instruction - move contents of layer dest, source"""
+    def __init__(self):
+        opcode_val = 0x85  # LMOV
+        super().__init__("LMOV", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_layer = cpu.get_operand_value(operands[0])
+        source_layer = cpu.get_operand_value(operands[1])
+        cpu.gfx.copy_layer(source_layer, dest_layer)
+        cpu.gfx.clear_layer(0, source_layer)  # Clear source after copy
+
+class Lshft(BaseInstruction):
+    """LSHFT instruction - shift layer by axis, amount"""
+    def __init__(self):
+        opcode_val = 0x86  # LSHFT
+        super().__init__("LSHFT", opcode_val)
     
     def execute(self, cpu):
         operands = cpu.parse_operands(3)
-        dest_addr = cpu.get_operand_value(operands[0])
-        fill_value = cpu.get_operand_value(operands[1])
-        length = cpu.get_operand_value(operands[2])
+        layer_num = cpu.get_operand_value(operands[0])
+        axis = cpu.get_operand_value(operands[1])
+        amount = cpu.get_operand_value(operands[2])
         
-        for i in range(length):
-            cpu.memory.write((dest_addr + i) & 0xFFFF, fill_value, 1)
+        if axis == 0:  # X axis
+            cpu.gfx.shift_layer_x(amount, layer_num)
+        elif axis == 1:  # Y axis
+            cpu.gfx.shift_layer_y(amount, layer_num)
+        else:
+            raise ValueError(f"Invalid axis for LSHFT: {axis}")
 
-# BCD operations
-class Sed(BaseInstruction):
-    """SED instruction - set decimal flag"""
+class Lrot(BaseInstruction):
+    """LROT instruction - rotate layer by direction, amount"""
     def __init__(self):
-        opcode_val = 0x4B  # SED
-        super().__init__("SED", opcode_val)
+        opcode_val = 0x87  # LROT
+        super().__init__("LROT", opcode_val)
     
     def execute(self, cpu):
-        cpu.decimal_mode = True
+        operands = cpu.parse_operands(3)
+        layer_num = cpu.get_operand_value(operands[0])
+        direction = cpu.get_operand_value(operands[1])
+        amount = cpu.get_operand_value(operands[2])
+        
+        if direction == 0:  # Left
+            cpu.gfx.rotate_layer_left(amount, layer_num)
+        elif direction == 1:  # Right
+            cpu.gfx.rotate_layer_right(amount, layer_num)
+        else:
+            raise ValueError(f"Invalid direction for LROT: {direction}")
 
-class Cld(BaseInstruction):
-    """CLD instruction - clear decimal flag"""
+class Lflip(BaseInstruction):
+    """LFLIP instruction - flip layer by axis"""
     def __init__(self):
-        opcode_val = 0x4C  # CLD
-        super().__init__("CLD", opcode_val)
-    
-    def execute(self, cpu):
-        cpu.decimal_mode = False
-
-class Cla(BaseInstruction):
-    """CLA instruction - clear auxiliary carry"""
-    def __init__(self):
-        opcode_val = 0x4D  # CLA
-        super().__init__("CLA", opcode_val)
-    
-    def execute(self, cpu):
-        cpu.aux_carry = False
-
-class Bcda(BaseInstruction):
-    """BCDA instruction - BCD add with carry"""
-    def __init__(self):
-        opcode_val = 0x4E  # BCDA
-        super().__init__("BCDA", opcode_val)
+        opcode_val = 0x88  # LFLIP
+        super().__init__("LFLIP", opcode_val)
     
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
-        dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        layer_num = cpu.get_operand_value(operands[0])
+        axis = cpu.get_operand_value(operands[1])
         
-        if cpu.decimal_mode:
-            result = cpu.bcd_add(dest_value, source_value)
+        if axis == 0:  # X axis
+            cpu.gfx.flip_layer_x(layer_num)
+        elif axis == 1:  # Y axis
+            cpu.gfx.flip_layer_y(layer_num)
         else:
-            result = dest_value + source_value + (1 if cpu.aux_carry else 0)
-        
-        cpu.set_operand_value(operands[0], result)
+            raise ValueError(f"Invalid axis for LFLIP: {axis}")
 
-class Bcds(BaseInstruction):
-    """BCDS instruction - BCD subtract with carry"""
+class Lswap(BaseInstruction):
+    """LSWAP instruction - swap two layers dest, source"""
     def __init__(self):
-        opcode_val = 0x4F  # BCDS
-        super().__init__("BCDS", opcode_val)
+        opcode_val = 0x89  # LSWAP
+        super().__init__("LSWAP", opcode_val)
     
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
-        dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
-        
-        if cpu.decimal_mode:
-            result = cpu.bcd_subtract(dest_value, source_value)
-        else:
-            result = dest_value - source_value - (1 if cpu.aux_carry else 0)
-        
-        cpu.set_operand_value(operands[0], result)
-
-class Bcdcmp(BaseInstruction):
-    """BCDCMP instruction - BCD compare"""
-    def __init__(self):
-        opcode_val = 0x50  # BCDCMP
-        super().__init__("BCDCMP", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(2)
-        dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
-        
-        if cpu.decimal_mode:
-            result = cpu.bcd_compare(dest_value, source_value)
-        else:
-            result = dest_value - source_value
-        
-        # For comparison, set flags based on comparison result
-        cpu.zero_flag = (result & 0xFF) == 0
-        cpu.sign_flag = dest_value < source_value  # Set sign flag if dest < source
-        cpu.carry_flag = dest_value < source_value  # Set carry flag if borrow occurred
-
-class Bcd2bin(BaseInstruction):
-    """BCD2BIN instruction - BCD to binary"""
-    def __init__(self):
-        opcode_val = 0x51  # BCD2BIN
-        super().__init__("BCD2BIN", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        bcd_value = cpu.get_operand_value(operands[0])
-        binary_value = cpu.bcd_to_binary(bcd_value)
-        cpu.set_operand_value(operands[0], binary_value)
-
-class Bin2bcd(BaseInstruction):
-    """BIN2BCD instruction - binary to BCD"""
-    def __init__(self):
-        opcode_val = 0x52  # BIN2BCD
-        super().__init__("BIN2BCD", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        binary_value = cpu.get_operand_value(operands[0])
-        bcd_value = cpu.binary_to_bcd(binary_value)
-        cpu.set_operand_value(operands[0], bcd_value)
-
-class Bcdadd(BaseInstruction):
-    """BCDADD instruction - BCD add immediate"""
-    def __init__(self):
-        opcode_val = 0x53  # BCDADD
-        super().__init__("BCDADD", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(2)
-        dest_value = cpu.get_operand_value(operands[0])
-        imm_value = cpu.get_operand_value(operands[1])
-        
-        if cpu.decimal_mode:
-            result = cpu.bcd_add(dest_value, imm_value)
-        else:
-            result = dest_value + imm_value
-        
-        cpu.set_operand_value(operands[0], result)
-
-class Bcdsub(BaseInstruction):
-    """BCDSUB instruction - BCD subtract immediate"""
-    def __init__(self):
-        opcode_val = 0x54  # BCDSUB
-        super().__init__("BCDSUB", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(2)
-        dest_value = cpu.get_operand_value(operands[0])
-        imm_value = cpu.get_operand_value(operands[1])
-        
-        if cpu.decimal_mode:
-            result = cpu.bcd_subtract(dest_value, imm_value)
-        else:
-            result = dest_value - imm_value
-        
-        cpu.set_operand_value(operands[0], result)
-
-# Sprite operations
-class Spblit(BaseInstruction):
-    """SPBLIT instruction - blit sprite"""
-    def __init__(self):
-        opcode_val = 0x55  # SPBLIT
-        super().__init__("SPBLIT", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        sprite_id = cpu.get_operand_value(operands[0])
-        cpu.gfx.blit_sprite(sprite_id)
-
-class Spblitall(BaseInstruction):
-    """SPBLITALL instruction - blit all sprites"""
-    def __init__(self):
-        opcode_val = 0x56  # SPBLITALL
-        super().__init__("SPBLITALL", opcode_val)
-    
-    def execute(self, cpu):
-        cpu.gfx.blit_all_sprites()
-
-# Sound operations
-class Splay(BaseInstruction):
-    """SPLAY instruction - play sound"""
-    def __init__(self):
-        opcode_val = 0x57  # SPLAY
-        super().__init__("SPLAY", opcode_val)
-    
-    def execute(self, cpu):
-        if cpu.sound:
-            cpu.sound.splay()
-
-class Sstop(BaseInstruction):
-    """SSTOP instruction - stop sound"""
-    def __init__(self):
-        opcode_val = 0x58  # SSTOP
-        super().__init__("SSTOP", opcode_val)
-    
-    def execute(self, cpu):
-        if cpu.sound:
-            cpu.sound.sstop()
-
-class Strig(BaseInstruction):
-    """STRIG instruction - trigger sound effect"""
-    def __init__(self):
-        opcode_val = 0x59  # STRIG
-        super().__init__("STRIG", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        effect_id = cpu.get_operand_value(operands[0])
-        if cpu.sound:
-            cpu.sound.strig(effect_id)
-
-# Loop operation
-class Loop(BaseInstruction):
-    """LOOP instruction"""
-    def __init__(self):
-        opcode_val = 0x5A  # LOOP
-        super().__init__("LOOP", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(2)
-        # Decrement counter register
-        counter_value = cpu.get_operand_value(operands[0]) - 1
-        cpu.set_operand_value(operands[0], counter_value)
-        
-        # If counter != 0, branch back
-        if counter_value != 0:
-            offset = cpu.get_operand_value(operands[1])
-            if offset & 0x8000:  # Sign extend
-                offset -= 0x10000
-            cpu.pc = (cpu.pc + offset) & 0xFFFF
-            cpu.invalidate_prefetch()
-
-# Math functions
-class Powr(BaseInstruction):
-    """POWR instruction - Power base^exponent"""
-    def __init__(self):
-        opcode_val = 0x5B  # POWR
-        super().__init__("POWR", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(2)
-        base = cpu.get_operand_value(operands[0])
-        exponent = cpu.get_operand_value(operands[1])
-        
-        # Handle negative exponents by returning 0
-        if exponent < 0:
-            result = 0
-        else:
-            result = base ** exponent
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Sqrt(BaseInstruction):
-    """SQRT instruction - Square root"""
-    def __init__(self):
-        opcode_val = 0x5C  # SQRT
-        super().__init__("SQRT", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # For 16-bit values, treat values >= 0x8000 as negative
-        if value >= 0x8000:
-            result = 0  # Return 0 for negative inputs
-        else:
-            result = int(math.sqrt(value))
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Log(BaseInstruction):
-    """LOG instruction - Natural logarithm"""
-    def __init__(self):
-        opcode_val = 0x5D  # LOG
-        super().__init__("LOG", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point (divide by 256), output is fixed-point
-        float_value = value / 256.0
-        
-        if float_value <= 0:
-            result = 0  # Return 0 for non-positive inputs
-        else:
-            result = int(math.log(float_value) * 256)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Exp(BaseInstruction):
-    """EXP instruction - Exponential function"""
-    def __init__(self):
-        opcode_val = 0x5E  # EXP
-        super().__init__("EXP", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point (divide by 256), output is fixed-point
-        float_value = value / 256.0
-        result = int(math.exp(float_value) * 256)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Sin(BaseInstruction):
-    """SIN instruction - Sine function"""
-    def __init__(self):
-        opcode_val = 0x5F  # SIN
-        super().__init__("SIN", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        angle = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point radians (divide by 256)
-        float_angle = angle / 256.0
-        result = int(math.sin(float_angle) * 256)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Cos(BaseInstruction):
-    """COS instruction - Cosine function"""
-    def __init__(self):
-        opcode_val = 0x60  # COS
-        super().__init__("COS", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        angle = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point radians (divide by 256)
-        float_angle = angle / 256.0
-        result = int(math.cos(float_angle) * 256)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Tan(BaseInstruction):
-    """TAN instruction - Tangent function"""
-    def __init__(self):
-        opcode_val = 0x61  # TAN
-        super().__init__("TAN", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        angle = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point radians (divide by 256)
-        float_angle = angle / 256.0
-        result = int(math.tan(float_angle) * 256)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Atan(BaseInstruction):
-    """ATAN instruction - Arctangent function"""
-    def __init__(self):
-        opcode_val = 0x62  # ATAN
-        super().__init__("ATAN", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point (divide by 256), output is fixed-point radians
-        float_value = value / 256.0
-        result = int(math.atan(float_value) * 256)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Asin(BaseInstruction):
-    """ASIN instruction - Arcsine function"""
-    def __init__(self):
-        opcode_val = 0x63  # ASIN
-        super().__init__("ASIN", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point (divide by 256), clamp to [-1, 1]
-        float_value = max(-1.0, min(1.0, value / 256.0))
-        result = int(math.asin(float_value) * 256)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Acos(BaseInstruction):
-    """ACOS instruction - Arccosine function"""
-    def __init__(self):
-        opcode_val = 0x64  # ACOS
-        super().__init__("ACOS", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point (divide by 256), clamp to [-1, 1]
-        float_value = max(-1.0, min(1.0, value / 256.0))
-        result = int(math.acos(float_value) * 256)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Deg(BaseInstruction):
-    """DEG instruction - Degrees to radians"""
-    def __init__(self):
-        opcode_val = 0x65  # DEG
-        super().__init__("DEG", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        degrees = cpu.get_operand_value(operands[0])
-        
-        # Convert degrees to fixed-point radians
-        result = int((degrees * math.pi / 180.0) * 256)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Rad(BaseInstruction):
-    """RAD instruction - Radians to degrees"""
-    def __init__(self):
-        opcode_val = 0x66  # RAD
-        super().__init__("RAD", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        radians = cpu.get_operand_value(operands[0])
-        
-        # Convert fixed-point radians to degrees
-        float_radians = radians / 256.0
-        result = int((float_radians * 180.0 / math.pi))
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Floor(BaseInstruction):
-    """FLOOR instruction - Floor function"""
-    def __init__(self):
-        opcode_val = 0x67  # FLOOR
-        super().__init__("FLOOR", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point, floor it
-        float_value = value / 256.0
-        result = int(math.floor(float_value))
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Ceil(BaseInstruction):
-    """CEIL instruction - Ceiling function"""
-    def __init__(self):
-        opcode_val = 0x68  # CEIL
-        super().__init__("CEIL", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point, ceil it
-        float_value = value / 256.0
-        result = int(math.ceil(float_value))
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Round(BaseInstruction):
-    """ROUND instruction - Round function"""
-    def __init__(self):
-        opcode_val = 0x69  # ROUND
-        super().__init__("ROUND", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point, round it
-        float_value = value / 256.0
-        result = int(round(float_value))
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Trunc(BaseInstruction):
-    """TRUNC instruction - Truncate function"""
-    def __init__(self):
-        opcode_val = 0x6A  # TRUNC
-        super().__init__("TRUNC", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point, truncate it
-        float_value = value / 256.0
-        result = int(float_value)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Frac(BaseInstruction):
-    """FRAC instruction - Fractional part"""
-    def __init__(self):
-        opcode_val = 0x6B  # FRAC
-        super().__init__("FRAC", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point, get fractional part as fixed-point
-        float_value = value / 256.0
-        fractional_part = float_value - int(float_value)
-        result = int(fractional_part * 256)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
-
-class Intgr(BaseInstruction):
-    """INTGR instruction - Integer part"""
-    def __init__(self):
-        opcode_val = 0x6C  # INTGR
-        super().__init__("INTGR", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        value = cpu.get_operand_value(operands[0])
-        
-        # Input is fixed-point, get integer part
-        float_value = value / 256.0
-        result = int(float_value)
-        
-        cpu.set_operand_value(operands[0], result & 0xFFFF)
+        layer1 = cpu.get_operand_value(operands[0])
+        layer2 = cpu.get_operand_value(operands[1])
+        cpu.gfx.swap_layers(layer1, layer2)
 
 # Register/special references (for direct access)
-# These are handled by the assembler, not individual instructions
 
 # Instruction table creation
 
@@ -2254,6 +1896,10 @@ def create_instruction_table():
         Srot(),     # 0x35
         Sshft(),    # 0x36
         Sflip(),    # 0x37
+        Sline(),    # 0x38
+        Srect(),    # 0x39
+        Scirc(),    # 0x3A
+        Sinv(),     # 0x3B
         Sblit(),    # 0x3C
         Sfill(),    # 0x3D
 
@@ -2294,49 +1940,58 @@ def create_instruction_table():
         Strfind(),  # 0x7A
         Strfindi(), # 0x7B
 
+        # Layer operations
+        Lcpy(),     # 0x83
+        Lclr(),     # 0x84
+        Lmov(),     # 0x85
+        Lshft(),    # 0x86
+        Lrot(),     # 0x87
+        Lflip(),    # 0x88
+        Lswap(),    # 0x89
+
         # BCD operations
-        Sed(),      # 0x4B
-        Cld(),      # 0x4C
-        Cla(),      # 0x4D
-        Bcda(),     # 0x4E
-        Bcds(),     # 0x4F
-        Bcdcmp(),   # 0x50
-        Bcd2bin(),  # 0x51
-        Bin2bcd(),  # 0x52
-        Bcdadd(),   # 0x53
-        Bcdsub(),   # 0x54
+        # Sed(),      # 0x4B
+        # Cld(),      # 0x4C
+        # Cla(),      # 0x4D
+        # Bcda(),     # 0x4E
+        # Bcds(),     # 0x4F
+        # Bcdcmp(),   # 0x50
+        # Bcd2bin(),  # 0x51
+        # Bin2bcd(),  # 0x52
+        # Bcdadd(),   # 0x53
+        # Bcdsub(),   # 0x54
 
         # Sprite operations
-        Spblit(),   # 0x55
-        Spblitall(),# 0x56
+        # Spblit(),   # 0x55
+        # Spblitall(),# 0x56
 
         # Sound operations
-        Splay(),    # 0x57
-        Sstop(),    # 0x58
-        Strig(),    # 0x59
+        # Splay(),    # 0x57
+        # Sstop(),    # 0x58
+        # Strig(),    # 0x59
 
         # Loop operation
-        Loop(),     # 0x5A
+        # Loop(),     # 0x5A
 
         # Math functions
-        Powr(),     # 0x5B
-        Sqrt(),     # 0x5C
-        Log(),      # 0x5D
-        Exp(),      # 0x5E
-        Sin(),      # 0x5F
-        Cos(),      # 0x60
-        Tan(),      # 0x61
-        Atan(),     # 0x62
-        Asin(),     # 0x63
-        Acos(),     # 0x64
-        Deg(),      # 0x65
-        Rad(),      # 0x66
-        Floor(),    # 0x67
-        Ceil(),     # 0x68
-        Round(),    # 0x69
-        Trunc(),    # 0x6A
-        Frac(),     # 0x6B
-        Intgr(),    # 0x6C
+        # Powr(),     # 0x5B
+        # Sqrt(),     # 0x5C
+        # Log(),      # 0x5D
+        # Exp(),      # 0x5E
+        # Sin(),      # 0x5F
+        # Cos(),      # 0x60
+        # Tan(),      # 0x61
+        # Atan(),     # 0x62
+        # Asin(),     # 0x63
+        # Acos(),     # 0x64
+        # Deg(),      # 0x65
+        # Rad(),      # 0x66
+        # Floor(),    # 0x67
+        # Ceil(),     # 0x68
+        # Round(),    # 0x69
+        # Trunc(),    # 0x6A
+        # Frac(),     # 0x6B
+        # Intgr(),    # 0x6C
     ]
     
     # Create the dispatch table
