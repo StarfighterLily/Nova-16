@@ -194,13 +194,17 @@ def main( cpu, memory, gfx, kbd=None ):
                 elif event.key == pygame.K_F9:  # F9 = Load
                     root = tk.Tk()
                     root.withdraw()
-                    file_path = filedialog.askopenfilename( filetypes=[ ( "Binary files", "*.bin" ) ] )
+                    file_path = filedialog.askopenfilename( 
+                        filetypes=[ ( "Binary files", "*.bin" ) ],
+                        initialdir="asm"
+                    )
                     root.destroy()
                     if file_path:
                         cpu_controller.stop()
                         cpu_controller.reset()
                         entry_point = memory.load( file_path )
                         cpu_controller.cpu.pc = entry_point
+                        cpu_controller.start()  # Auto-start after loading
                         print(f"Loaded {file_path}")
                         print(f"Entry point: 0x{entry_point:04X}")
                 elif kbd is not None:
@@ -274,13 +278,17 @@ def main( cpu, memory, gfx, kbd=None ):
                         elif name == 'Load':
                             root = tk.Tk()
                             root.withdraw()
-                            file_path = filedialog.askopenfilename( filetypes=[ ( "Binary files", "*.bin" ) ] )
+                            file_path = filedialog.askopenfilename( 
+                                filetypes=[ ( "Binary files", "*.bin" ) ],
+                                initialdir="asm"
+                            )
                             root.destroy()
                             if file_path:
                                 cpu_controller.stop()
                                 cpu_controller.reset()
                                 entry_point = memory.load( file_path )
                                 cpu_controller.cpu.pc = entry_point  # Set PC to entry point from ORG
+                                cpu_controller.start()  # Auto-start after loading
                                 print(f"Loaded {file_path}")
                                 print(f"Entry point: 0x{entry_point:04X}")
 

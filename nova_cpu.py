@@ -12,8 +12,8 @@ class CPU:
         
         # Initialize sound system
         if sound_system is None:
-            # self.sound = sound.NovaSound()
-            self.sound = None
+            self.sound = sound.NovaSound()
+            # self.sound = None
             # self.sound.set_memory_reference(memory)
         else:
             self.sound = sound_system
@@ -447,38 +447,50 @@ class CPU:
     @property
     def sa(self):
         """SA register - Sound Address (16-bit)"""
-        return int(self.sound.get_register('SA'))
+        if self.sound:
+            return int(self.sound.get_register('SA'))
+        return 0
     
     @sa.setter
     def sa(self, value):
-        self.sound.update_registers(sa=int(value) & 0xFFFF)
+        if self.sound:
+            self.sound.update_registers(sa=int(value) & 0xFFFF)
     
     @property
     def sf(self):
         """SF register - Sound Frequency (8-bit)"""
-        return int(self.sound.get_register('SF'))
+        if self.sound:
+            return int(self.sound.get_register('SF'))
+        return 0
     
     @sf.setter
     def sf(self, value):
-        self.sound.update_registers(sf=int(value) & 0xFF)
+        if self.sound:
+            self.sound.update_registers(sf=int(value) & 0xFF)
     
     @property
     def sv(self):
         """SV register - Sound Volume (8-bit)"""
-        return int(self.sound.get_register('SV'))
+        if self.sound:
+            return int(self.sound.get_register('SV'))
+        return 0
     
     @sv.setter
     def sv(self, value):
-        self.sound.update_registers(sv=int(value) & 0xFF)
+        if self.sound:
+            self.sound.update_registers(sv=int(value) & 0xFF)
     
     @property
     def sw(self):
         """SW register - Sound Waveform/Control (8-bit)"""
-        return int(self.sound.get_register('SW'))
+        if self.sound:
+            return int(self.sound.get_register('SW'))
+        return 0
     
     @sw.setter
     def sw(self, value):
-        self.sound.update_registers(sw=int(value) & 0xFF)
+        if self.sound:
+            self.sound.update_registers(sw=int(value) & 0xFF)
 
     # ========================================
     # BULK OPERATIONS - Maintain numpy efficiency
@@ -486,12 +498,12 @@ class CPU:
     
     def reset_all_flags(self):
         """Reset all flags to 0 - efficient bulk operation"""
-        self._flags[:] = 0
+        self._flags[:] = [0] * len(self._flags)
     
     def reset_all_registers(self):
         """Reset all registers to 0 - efficient bulk operation"""
-        self.Rregisters[:] = 0
-        self.Pregisters[:] = 0
+        self.Rregisters[:] = [0] * len(self.Rregisters)
+        self.Pregisters[:] = [0] * len(self.Pregisters)
         
         # Re-initialize stack pointer and frame pointer
         self.Pregisters[8] = 0xFFFF  # SP
@@ -521,17 +533,22 @@ class CPU:
 
 
     def reinit( self ):
-        self.Rregisters[:] = 0
-        self.Pregisters[:] = 0
+        self.Rregisters[:] = [0] * len(self.Rregisters)
+        self.Pregisters[:] = [0] * len(self.Pregisters)
+        
+        # Re-initialize stack pointer and frame pointer
+        self.Pregisters[8] = 0xFFFF  # SP (Stack Pointer)
+        self.Pregisters[9] = 0xFFFF  # FP (Frame Pointer)
+        
         self.pc = 0x0000
-        self._flags[:] = 0  # Use internal flag array
+        self._flags[:] = [0] * len(self._flags)  # Use internal flag array
         self.stack = []
-        self.interrupts[:] = 0
-        self.timer[:] = 0
+        self.interrupts[:] = [0] * len(self.interrupts)
+        self.timer[:] = [0] * len(self.timer)
         self.timer_cycles = 0
         self.timer_enabled = False
-        self.serial[:] = 0
-        self.keyboard[:] = 0
+        self.serial[:] = [0] * len(self.serial)
+        self.keyboard[:] = [0] * len(self.keyboard)
         self.key_buffer = []
         self.halted = False
         self.memory.memory[:] = 0
@@ -542,8 +559,9 @@ class CPU:
         self.gfx.vmode = 0
         
         # Reset sound system
-        self.sound.sstop()  # Stop all sounds
-        self.sound.update_registers(sa=0, sf=0, sv=0, sw=0)  # Reset sound registers
+        if self.sound:
+            self.sound.sstop()  # Stop all sounds
+            self.sound.update_registers(sa=0, sf=0, sv=0, sw=0)  # Reset sound registers
         
         # Rebuild register lookup table 
         self._register_lookup = self._build_register_lookup_table()
@@ -558,8 +576,8 @@ class CPU:
         if type == 'P_high': return int( (self.Pregisters[ idx ] >> 8) & 0xFF )  # High byte of P register
         if type == 'P_low': return int( self.Pregisters[ idx ] & 0xFF )  # Low byte of P register
         if type == 'V': return int( self.gfx.Vregisters[ idx ] )
-        if type == 'SP': return int( self.SP )
-        if type == 'FP': return int( self.FP )
+        if type == 'SP': return int( self.sp )
+        if type == 'FP': return int( self.fp )
         if type == 'T': return int( self.timer[ idx ] )  # Generic timer register access
         if type == 'TT': return int( self.timer[ 0 ] )  # Timer Time/Counter
         if type == 'TM': return int( self.timer[ 1 ] )  # Timer Modulo
@@ -568,18 +586,30 @@ class CPU:
         if type == 'VL': return int( self.gfx.VL )  # Graphics Layer register
         
         # Sound registers
-        if type == 'SA': return int( self.sound.get_register('SA') )  # Sound Address
-        if type == 'SF': return int( self.sound.get_register('SF') )  # Sound Frequency
-        if type == 'SV': return int( self.sound.get_register('SV') )  # Sound Volume
-        if type == 'SW': return int( self.sound.get_register('SW') )  # Sound Waveform
-        if type == 'SA:': return int( (self.sound.get_register('SA') >> 8) & 0xFF )  # Sound Address high byte
-        if type == ':SA': return int( self.sound.get_register('SA') & 0xFF )  # Sound Address low byte
+        if type == 'SA': 
+            if self.sound: return int( self.sound.get_register('SA') )  # Sound Address
+            return 0
+        if type == 'SF': 
+            if self.sound: return int( self.sound.get_register('SF') )  # Sound Frequency
+            return 0
+        if type == 'SV': 
+            if self.sound: return int( self.sound.get_register('SV') )  # Sound Volume
+            return 0
+        if type == 'SW': 
+            if self.sound: return int( self.sound.get_register('SW') )  # Sound Waveform
+            return 0
+        if type == 'SA:': 
+            if self.sound: return int( (self.sound.get_register('SA') >> 8) & 0xFF )  # Sound Address high byte
+            return 0
+        if type == ':SA': 
+            if self.sound: return int( self.sound.get_register('SA') & 0xFF )  # Sound Address low byte
+            return 0
         
         # Optimized indirect memory access - Phase 3
         if type == 'Rind': return self.memory.read_byte( self.Rregisters[ idx ] )
         if type == 'Pind': return self.memory.read_byte( self.Pregisters[ idx ] )
-        if type == 'SPind': return self.memory.read_byte( self.SP )
-        if type == 'FPind': return self.memory.read_byte( self.FP )
+        if type == 'SPind': return self.memory.read_byte( self.sp )
+        if type == 'FPind': return self.memory.read_byte( self.fp )
         if type == 'Vind': return self.memory.read_byte( self.gfx.Vregisters[ idx ] )
         
         # NOTE: Indexed addressing (Ridx, Pidx, etc.) should not be used in _get_operand_value
@@ -605,9 +635,9 @@ class CPU:
             new_val = (current_val & 0xFF00) | (int(value) & 0xFF)
             self.Pregisters[ idx ] = new_val & 0xFFFF
         elif type == 'SP':
-            self.SP = int(value) & 0xFFFF
+            self.sp = int(value) & 0xFFFF
         elif type == 'FP':
-            self.FP = int(value) & 0xFFFF
+            self.fp = int(value) & 0xFFFF
         elif type == 'V': 
             self.gfx.Vregisters[ idx ] = int(value) & 0xFFFF
         elif type == 'T':
@@ -638,13 +668,15 @@ class CPU:
         elif type == 'SW': 
             if self.sound: self.sound.update_registers(sw=int(value) & 0xFF)
         elif type == 'SA:':  # Sound Address high byte
-            current_sa = self.sound.get_register('SA')
-            new_sa = (current_sa & 0x00FF) | ((int(value) & 0xFF) << 8)
-            self.sound.update_registers(sa=new_sa)
+            if self.sound:
+                current_sa = self.sound.get_register('SA')
+                new_sa = (current_sa & 0x00FF) | ((int(value) & 0xFF) << 8)
+                self.sound.update_registers(sa=new_sa)
         elif type == ':SA':  # Sound Address low byte
-            current_sa = self.sound.get_register('SA')
-            new_sa = (current_sa & 0xFF00) | (int(value) & 0xFF)
-            self.sound.update_registers(sa=new_sa)
+            if self.sound:
+                current_sa = self.sound.get_register('SA')
+                new_sa = (current_sa & 0xFF00) | (int(value) & 0xFF)
+                self.sound.update_registers(sa=new_sa)
         
         # Optimized indirect memory writes - Phase 3
         elif type == 'Rind': 
@@ -652,9 +684,9 @@ class CPU:
         elif type == 'Pind': 
             self.write_byte( self.Pregisters[ idx ], int(value) & 0xFF )
         elif type == 'SPind':
-            self.write_byte( self.SP, int(value) & 0xFF )
+            self.write_byte( self.sp, int(value) & 0xFF )
         elif type == 'FPind':
-            self.write_byte( self.FP, int(value) & 0xFF )
+            self.write_byte( self.fp, int(value) & 0xFF )
         elif type == 'Vind': 
             self.write_byte( self.gfx.Vregisters[ idx ], int(value) & 0xFF )
         

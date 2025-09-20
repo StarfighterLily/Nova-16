@@ -564,7 +564,7 @@ class NovaSound:
                 pygame.mixer.quit()
                 print("Nova Sound System cleaned up")
             else:
-                print("Nova Sound System already cleaned up")
+                print("")
         except Exception as e:
             print(f"Error during sound cleanup: {e}")
     

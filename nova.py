@@ -32,9 +32,10 @@ def run_headless(program_path, max_cycles=10000):
     print(f"Initial PC: 0x{proc.pc:04X}")
     
     # Run for max_cycles or until halt
-    for cycle in range(max_cycles):
+    cycle = 0
+    while cycle < max_cycles and not proc.halted:
+        cycle += 1
         try:
-            # Check if we've hit a halt instruction or infinite loop
             old_pc = proc.pc
             proc.step()
             
@@ -49,17 +50,18 @@ def run_headless(program_path, max_cycles=10000):
                 break
                 
             # Print every 1000 cycles for progress
-            if cycle % 1000 == 0 and cycle > 0:
+            if cycle % 1000 == 0:
                 print(f"Cycle {cycle}, PC: 0x{proc.pc:04X}")
                 
         except Exception as e:
             print(f"Error at cycle {cycle}, PC: 0x{proc.pc:04X}: {e}")
             break
     
-    print(f"Execution finished after {cycle + 1} cycles")
+    print(f"Execution finished after {cycle} cycles")
     print(f"Final PC: 0x{proc.pc:04X}")
+    print(f"CPU Halted: {proc.halted}")
     print("Final register states:")
-    print(f"R0-R9: {[f'0x{r:04X}' for r in proc.Rregisters[:10]]}")
+    print(f"R0-R9: {[f'0x{r:02X}' for r in proc.Rregisters[:10]]}")
     print(f"P0-P9: {[f'0x{r:04X}' for r in proc.Pregisters[:10]]}")
     print(f"VX,VY: 0x{gfx.Vregisters[0]:04X}, 0x{gfx.Vregisters[1]:04X}")
     
@@ -94,8 +96,8 @@ def main():
         mem = ram.Memory()
         gfx = gpu.GFX()
         kbd = keyboard.NovaKeyboard()
-        # snd = sound.NovaSound()
-        snd = None
+        snd = sound.NovaSound()
+        # snd = None
         proc = cpu.CPU(mem, gfx, kbd, snd)
         
         # Ensure keyboard is properly connected to CPU
