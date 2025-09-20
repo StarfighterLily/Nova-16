@@ -1,0 +1,30 @@
+{
+  "execution_time": 1.0604958534240723,
+  "cycles_executed": 100000,
+  "cycles_per_second": 94295.51249740897,
+  "timestamp": 1758337267.0828311,
+  "program": null,
+  "cpu_profile": {
+    "total_cycles": 100000,
+    "instructions_executed": 100000,
+    "opcode_counts": {
+      "4": 1,
+      "6": 28573,
+      "51": 14281,
+      "11": 28562,
+      "46": 14281,
+      "32": 14280,
+      "52": 11,
+      "2": 11
+    },
+    "method_times": {},
+    "memory_accesses": 357108,
+    "start_time": 1758337266.022215,
+    "instruction_start_times": {},
+    "cycle_start_time": 1758337266.0223358,
+    "operand_parses": 99988,
+    "operand_values": 114280
+  },
+  "cpu_report_text": "=== CPU Profiling Report ===\nTotal execution time: 1.0606 seconds\nInstructions executed: 100000\nMemory accesses: 357108\nOperand parses: 99988\nOperand value gets: 114280\nAverage IPS: 94284.26\n\nTop 10 opcodes by frequency:\n  0x06: 28573 (28.6%)\n  0x0B: 28562 (28.6%)\n  0x33: 14281 (14.3%)\n  0x2E: 14281 (14.3%)\n  0x20: 14280 (14.3%)\n  0x34: 11 (0.0%)\n  0x02: 11 (0.0%)\n  0x04: 1 (0.0%)",
+  "instructions_per_second": 94295.51249740897
+}

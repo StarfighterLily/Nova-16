@@ -127,9 +127,12 @@ class CPUController:
         self.stop_event.set()
         self.thread.join()
 
-def draw_button( surface, rect, text, font, color, text_color, active ):
+def draw_button_cached( surface, rect, text, font, color, text_color, active, cache ):
     pygame.draw.rect( surface, color if active else ( 100, 100, 100 ), rect, border_radius=6 )
-    label = font.render( text, True, text_color )
+    cache_key = (text, color, text_color, active)
+    if cache_key not in cache:
+        cache[cache_key] = font.render( text, True, text_color )
+    label = cache[cache_key]
     label_rect = label.get_rect( center=rect.center )
     surface.blit( label, label_rect )
 
@@ -154,11 +157,12 @@ def main( cpu, memory, gfx, kbd=None ):
     cpu_controller.force_screen_update()
     
     # Performance optimizations
-    target_fps = 120  # Increase from 30 to 60 FPS for smoother display
+    target_fps = 32
     update_queue = cpu_controller.update_queue 
 
 
     font = pygame.font.SysFont( None, 24 )
+    small_font = pygame.font.SysFont( None, 18 )
     button_w, button_h = 75, 32
     margin = 10
     buttons = {
@@ -172,6 +176,19 @@ def main( cpu, memory, gfx, kbd=None ):
         'Start/Pause': ( 0, 200, 0 ), 'Stop': ( 200, 0, 0 ), 'Reset': ( 0, 0, 200 ),
         'Step': ( 200, 200, 0 ), 'Load': ( 0, 200, 200 )
     }
+
+    # Cache for status text to avoid re-rendering every frame
+    cached_status_text = ""
+    cached_status_label = None
+    prev_pc = cpu.pc
+    prev_running = cpu_controller.running
+    prev_halted = cpu.halted
+
+    # Cache for scaled surface
+    cached_scaled_surface = None
+
+    # Cache for button labels
+    button_label_cache = {}
 
     running = True
     while running:
@@ -317,30 +334,44 @@ def main( cpu, memory, gfx, kbd=None ):
                 button_text = name
                 button_color = button_colors[ name ]
                 active = True
-            draw_button( screen, rect, button_text, font, button_color, ( 255, 255, 255 ), active )
+            draw_button_cached( screen, rect, button_text, font, button_color, ( 255, 255, 255 ), active, button_label_cache )
 
         # Draw status bar at bottom
         status_y = screen_height + toolbar_height
         screen.fill( ( 30, 30, 30 ), rect=pygame.Rect( 0, status_y, screen_width, status_height ) )
         
         # Display CPU status information
-        status_text = f"PC: 0x{cpu.pc:04X} | "
-        if cpu_controller.running:
-            status_text += "RUNNING"
-        elif cpu.halted:
-            status_text += "HALTED"
-        else:
-            status_text += "STOPPED"
+        current_pc = cpu.pc
+        current_running = cpu_controller.running
+        current_halted = cpu.halted
         
-        status_text += " | Hotkeys: F5=Start/Pause F6=Stop F7=Reset F8=Step F9=Load"
+        # Only update status text if something changed
+        if (current_pc != prev_pc or current_running != prev_running or current_halted != prev_halted):
+            status_text = f"PC: 0x{current_pc:04X} | "
+            if current_running:
+                status_text += "RUNNING"
+            elif current_halted:
+                status_text += "HALTED"
+            else:
+                status_text += "STOPPED"
+            
+            status_text += " | Hotkeys: F5=Start/Pause F6=Stop F7=Reset F8=Step F9=Load"
+            
+            if status_text != cached_status_text:
+                cached_status_text = status_text
+                cached_status_label = small_font.render( status_text, True, ( 200, 200, 200 ) )
+            
+            prev_pc = current_pc
+            prev_running = current_running
+            prev_halted = current_halted
         
-        small_font = pygame.font.SysFont( None, 18 )
-        status_label = small_font.render( status_text, True, ( 200, 200, 200 ) )
-        screen.blit( status_label, ( 5, status_y + 5 ) )
+        if cached_status_label:
+            screen.blit( cached_status_label, ( 5, status_y + 5 ) )
 
         # Always scale and blit to ensure display updates
-        scaled_surface = pygame.transform.scale( surface, ( screen_width, screen_height ) )
-        screen.blit( scaled_surface, ( 0, toolbar_height ) )
+        if screen_updated or cached_scaled_surface is None:
+            cached_scaled_surface = pygame.transform.scale( surface, ( screen_width, screen_height ) )
+        screen.blit( cached_scaled_surface, ( 0, toolbar_height ) )
         pygame.display.flip()
         
         clock.tick( target_fps )

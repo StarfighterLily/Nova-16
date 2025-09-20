@@ -1,0 +1,30 @@
+{
+  "benchmark_type": "instruction_set",
+  "cycles": 11,
+  "time": 0.0002636909484863281,
+  "avg_time_per_instruction": 23.97190440784801,
+  "instructions_per_second": 41715.50090415913,
+  "profile_data": {
+    "total_cycles": 11,
+    "instructions_executed": 11,
+    "opcode_counts": {
+      "6": 3,
+      "8": 1,
+      "10": 1,
+      "16": 1,
+      "17": 1,
+      "18": 1,
+      "7": 1,
+      "14": 1,
+      "0": 1
+    },
+    "method_times": {},
+    "memory_accesses": 42,
+    "start_time": 1758336556.541924,
+    "instruction_start_times": {},
+    "cycle_start_time": 1758336556.5420682,
+    "operand_parses": 10,
+    "operand_values": 16
+  },
+  "timestamp": 1758336556.542332
+}

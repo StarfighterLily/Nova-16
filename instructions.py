@@ -623,8 +623,17 @@ class Jmp(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
         target_address = cpu.get_operand_value(operands[0])
+        
+        # Smart prefetch handling: only invalidate if target is outside current buffer
+        if (cpu.prefetch_valid and 
+            target_address >= cpu.prefetch_pc and 
+            target_address < cpu.prefetch_pc + 16):
+            # Target is within current prefetch buffer, no need to invalidate
+            pass
+        else:
+            cpu.invalidate_prefetch()
+        
         cpu.pc = target_address
-        cpu.invalidate_prefetch()
 
 class Jz(BaseInstruction):
     """JZ instruction - jump if zero"""
@@ -636,8 +645,17 @@ class Jz(BaseInstruction):
         operands = cpu.parse_operands(1)
         if cpu.flags[7]:  # Zero flag
             target_address = cpu.get_operand_value(operands[0])
+            
+            # Smart prefetch handling: only invalidate if target is outside current buffer
+            if (cpu.prefetch_valid and 
+                target_address >= cpu.prefetch_pc and 
+                target_address < cpu.prefetch_pc + 16):
+                # Target is within current prefetch buffer, no need to invalidate
+                pass
+            else:
+                cpu.invalidate_prefetch()
+            
             cpu.pc = target_address
-            cpu.invalidate_prefetch()
 
 class Jnz(BaseInstruction):
     """JNZ instruction - jump if not zero"""
@@ -649,8 +667,17 @@ class Jnz(BaseInstruction):
         operands = cpu.parse_operands(1)
         if not cpu.flags[7]:  # Not zero flag
             target_address = cpu.get_operand_value(operands[0])
+            
+            # Smart prefetch handling: only invalidate if target is outside current buffer
+            if (cpu.prefetch_valid and 
+                target_address >= cpu.prefetch_pc and 
+                target_address < cpu.prefetch_pc + 16):
+                # Target is within current prefetch buffer, no need to invalidate
+                pass
+            else:
+                cpu.invalidate_prefetch()
+            
             cpu.pc = target_address
-            cpu.invalidate_prefetch()
 
 class Jo(BaseInstruction):
     """JO instruction - jump if overflow"""

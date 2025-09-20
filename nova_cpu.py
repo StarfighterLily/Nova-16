@@ -3,6 +3,10 @@ import nova_memory as mem
 import nova_gfx as gpu
 import nova_sound as sound
 from instructions import create_instruction_table
+import time
+import cProfile
+import pstats
+from functools import wraps
 
 class CPU:
     def __init__( self, memory, gfx, keyboard=None, sound_system=None, stack_size = 65535 ):
@@ -88,10 +92,18 @@ class CPU:
         # Pre-computed register lookup table for O(1) access
         self._register_lookup = self._build_register_lookup_table()
         
+        # Register value cache for performance
+        self.register_cache = {}  # Cache register values
+        self.register_cache_size = 64
+        
         # Interrupt checking optimization
         self.interrupt_check_counter = 0
         self.interrupt_check_frequency = 8  # Check every 8 instructions
         self.last_interrupt_state = 0  # Cache of last interrupt state
+        
+        # Operand parsing cache for performance optimization
+        self.operand_cache = {}  # Cache parsed operands by (pc, mode_byte)
+        self.operand_cache_size = 256  # Maximum cache entries
         
         # Memory prefetch optimization
         self.prefetch_buffer = np.zeros(16, dtype=np.uint8)  # 16-byte prefetch buffer
@@ -107,6 +119,100 @@ class CPU:
         
         # Connect memory system to graphics for sprite memory-mapping
         self.memory.gfx_system = self.gfx
+
+        # ========================================
+        # PROFILING SYSTEM
+        # ========================================
+        self.profiling_enabled = False
+        self.profile_data = {
+            'total_cycles': 0,
+            'instructions_executed': 0,
+            'opcode_counts': {},
+            'method_times': {},
+            'memory_accesses': 0,
+            'start_time': None,
+            'instruction_start_times': {},
+            'cycle_start_time': None
+        }
+
+    def enable_profiling(self):
+        """Enable CPU profiling"""
+        self.profiling_enabled = True
+        self.profile_data['start_time'] = time.time()
+        print("CPU profiling enabled")
+
+    def disable_profiling(self):
+        """Disable CPU profiling"""
+        self.profiling_enabled = False
+        print("CPU profiling disabled")
+
+    def reset_profile_data(self):
+        """Reset all profiling data"""
+        self.profile_data = {
+            'total_cycles': 0,
+            'instructions_executed': 0,
+            'opcode_counts': {},
+            'method_times': {},
+            'memory_accesses': 0,
+            'start_time': self.profile_data.get('start_time'),
+            'instruction_start_times': {},
+            'cycle_start_time': None
+        }
+
+    def get_profile_report(self):
+        """Generate a profiling report"""
+        if not self.profiling_enabled:
+            return "Profiling not enabled"
+
+        end_time = time.time()
+        total_time = end_time - (self.profile_data['start_time'] or end_time)
+
+        report = []
+        report.append("=== CPU Profiling Report ===")
+        report.append(f"Total execution time: {total_time:.4f} seconds")
+        report.append(f"Instructions executed: {self.profile_data['instructions_executed']}")
+        report.append(f"Memory accesses: {self.profile_data['memory_accesses']}")
+        report.append(f"Operand parses: {self.profile_data.get('operand_parses', 0)}")
+        report.append(f"Operand value gets: {self.profile_data.get('operand_values', 0)}")
+        report.append(f"Average IPS: {self.profile_data['instructions_executed'] / total_time:.2f}")
+
+        if self.profile_data['opcode_counts']:
+            report.append("\nTop 10 opcodes by frequency:")
+            sorted_opcodes = sorted(self.profile_data['opcode_counts'].items(),
+                                  key=lambda x: x[1], reverse=True)[:10]
+            for opcode, count in sorted_opcodes:
+                pct = (count / self.profile_data['instructions_executed']) * 100
+                report.append(f"  0x{opcode:02X}: {count} ({pct:.1f}%)")
+
+        if self.profile_data['method_times']:
+            report.append("\nMethod timing (total time spent):")
+            sorted_methods = sorted(self.profile_data['method_times'].items(),
+                                  key=lambda x: x[1], reverse=True)
+            for method, total_time in sorted_methods:
+                pct = (total_time / total_time) * 100 if total_time > 0 else 0
+                report.append(f"  {method}: {total_time:.6f}s ({pct:.1f}%)")
+
+        return "\n".join(report)
+
+    def profile_method(self, method_name):
+        """Decorator to profile a method"""
+        def decorator(func):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                if self.profiling_enabled:
+                    start_time = time.time()
+                    result = func(*args, **kwargs)
+                    end_time = time.time()
+                    elapsed = end_time - start_time
+
+                    if method_name not in self.profile_data['method_times']:
+                        self.profile_data['method_times'][method_name] = 0
+                    self.profile_data['method_times'][method_name] += elapsed
+                    return result
+                else:
+                    return func(*args, **kwargs)
+            return wrapper
+        return decorator
 
     # ========================================
     # FLAG PROPERTIES - Readable Access to CPU Flags
@@ -1187,7 +1293,31 @@ class CPU:
     
     def fetch_byte(self):
         """Optimized single byte fetch with prefetching"""
-        # Disable prefetch optimization temporarily for debugging
+        if self.profiling_enabled:
+            self.profile_data['memory_accesses'] += 1
+        
+        # Enable prefetch optimization
+        if (self.prefetch_valid and 
+            self.pc >= self.prefetch_pc and 
+            self.pc < self.prefetch_pc + 16):
+            offset = self.pc - self.prefetch_pc
+            value = self.prefetch_buffer[offset]
+            self.pc = (self.pc + 1) & 0xFFFF
+            return int(value)
+        
+        # Prefetch buffer miss - fill it and try again
+        if not self.prefetch_valid:
+            self._fill_prefetch_buffer()
+            # Try prefetch again
+            if (self.prefetch_valid and 
+                self.pc >= self.prefetch_pc and 
+                self.pc < self.prefetch_pc + 16):
+                offset = self.pc - self.prefetch_pc
+                value = self.prefetch_buffer[offset]
+                self.pc = (self.pc + 1) & 0xFFFF
+                return int(value)
+        
+        # Fallback to direct memory access
         value = self.memory.read_byte(self.pc)
         self.pc = (self.pc + 1) & 0xFFFF
         return int(value)
@@ -1231,16 +1361,15 @@ class CPU:
     
     def fetch_word(self):
         """Optimized 16-bit fetch with prefetching (big-endian for Nova-16)"""
-        # Temporarily disable prefetch for debugging
         # Check if we can fetch both bytes from prefetch buffer
-        # if (self.prefetch_valid and 
-        #     self.pc >= self.prefetch_pc and 
-        #     self.pc + 1 < self.prefetch_pc + 16):
-        #     offset = self.pc - self.prefetch_pc
-        #     high = self.prefetch_buffer[offset]
-        #     low = self.prefetch_buffer[offset + 1]
-        #     self.pc += 2
-        #     return (int(high) << 8) | int(low)
+        if (self.prefetch_valid and 
+            self.pc >= self.prefetch_pc and 
+            self.pc + 1 < self.prefetch_pc + 16):
+            offset = self.pc - self.prefetch_pc
+            high = self.prefetch_buffer[offset]
+            low = self.prefetch_buffer[offset + 1]
+            self.pc += 2
+            return (int(high) << 8) | int(low)
         
         # Use individual byte fetches with prefetching
         high = self.fetch_byte()
@@ -1312,6 +1441,30 @@ class CPU:
     
     def parse_operands(self, num_operands):
         """Parse operands based on current mode byte for prefixed operand instructions"""
+        if self.profiling_enabled:
+            self.profile_data['operand_parses'] = self.profile_data.get('operand_parses', 0) + 1
+        
+        # Check cache first
+        # cache_key = (self.pc - 1, self._current_mode_byte, num_operands)  # PC-1 because mode byte was already fetched
+        # if cache_key in self.operand_cache:
+        #     cached_operands = self.operand_cache[cache_key]
+        #     # Update PC as if we parsed the operands
+        #     for operand in cached_operands:
+        #         if operand['type'] == 'register':
+        #             self.pc = (self.pc + 1) & 0xFFFF  # Skip register code
+        #         elif operand['type'] == 'immediate':
+        #             if operand.get('size') == 16:
+        #                 self.pc = (self.pc + 2) & 0xFFFF  # Skip 16-bit immediate
+        #             else:
+        #                 self.pc = (self.pc + 1) & 0xFFFF  # Skip 8-bit immediate
+        #         elif operand['type'] == 'memory':
+        #             if operand.get('direct', False) and not operand.get('indexed', False):
+        #                 self.pc = (self.pc + 2) & 0xFFFF  # Skip direct address
+        #             elif not operand.get('direct', False) and not operand.get('indexed', False):
+        #                 self.pc = (self.pc + 1) & 0xFFFF  # Skip register code
+        #             # Handle other memory modes...
+        #     return cached_operands
+        
         operands = []
         for i in range(num_operands):
             mode_bits = (self._current_mode_byte >> (i * 2)) & 0x3
@@ -1326,9 +1479,11 @@ class CPU:
             elif mode_bits == 1:  # Immediate 8-bit
                 operand['type'] = 'immediate'
                 operand['value'] = self.fetch_byte()
+                operand['size'] = 8
             elif mode_bits == 2:  # Immediate 16-bit
                 operand['type'] = 'immediate'
                 operand['value'] = self.fetch_word()
+                operand['size'] = 16
             elif mode_bits == 3:  # Memory reference
                 indexed = (self._current_mode_byte & (1 << 6)) != 0
                 direct = (self._current_mode_byte & (1 << 7)) != 0
@@ -1366,12 +1521,41 @@ class CPU:
                     operand['address'] = (addr + index) & 0xFFFF
                     operand['index'] = index
             operands.append(operand)
+        
+        # Cache the parsed operands
+        # if len(self.operand_cache) < self.operand_cache_size:
+        #     self.operand_cache[cache_key] = operands.copy()
+        # elif len(self.operand_cache) >= self.operand_cache_size:
+        #     # Simple LRU: remove oldest entry
+        #     oldest_key = next(iter(self.operand_cache))
+        #     del self.operand_cache[oldest_key]
+        #     self.operand_cache[cache_key] = operands.copy()
+        
         return operands
 
     def get_operand_value(self, operand):
         """Get value from operand"""
+        if self.profiling_enabled:
+            self.profile_data['operand_values'] = self.profile_data.get('operand_values', 0) + 1
+        
         if operand['type'] == 'register':
-            return self._get_operand_value(operand['reg_type'], operand['reg_idx'])
+            # Check cache first
+            # cache_key = (operand['reg_type'], operand['reg_idx'])
+            # if cache_key in self.register_cache:
+            #     return self.register_cache[cache_key]
+            
+            value = self._get_operand_value(operand['reg_type'], operand['reg_idx'])
+            
+            # Cache the value
+            # if len(self.register_cache) < self.register_cache_size:
+            #     self.register_cache[cache_key] = value
+            # elif len(self.register_cache) >= self.register_cache_size:
+            #     # Simple LRU
+            #     oldest_key = next(iter(self.register_cache))
+            #     del self.register_cache[oldest_key]
+            #     self.register_cache[cache_key] = value
+            
+            return value
         elif operand['type'] == 'immediate':
             return operand['value']
         elif operand['type'] == 'memory':
@@ -1385,6 +1569,10 @@ class CPU:
         """Set value to operand"""
         if operand['type'] == 'register':
             self._set_operand_value(operand['reg_type'], operand['reg_idx'], value)
+            # Invalidate register cache for this register
+            # cache_key = (operand['reg_type'], operand['reg_idx'])
+            # if cache_key in self.register_cache:
+            #     del self.register_cache[cache_key]
         elif operand['type'] == 'memory':
             # For memory operands, write appropriate size
             # For now, assume word (16-bit) for most operations
@@ -1467,6 +1655,11 @@ class CPU:
         if self.halted:
             return
         
+        if self.profiling_enabled:
+            if self.profile_data['cycle_start_time'] is None:
+                self.profile_data['cycle_start_time'] = time.time()
+            self.profile_data['total_cycles'] += 1
+        
         # Update timer first (so timer interrupt can happen before instruction execution)
         self.update_timer()
         
@@ -1480,6 +1673,12 @@ class CPU:
 
     def execute(self, opcode):
         """Execute instruction using dispatch table"""
+        if self.profiling_enabled:
+            self.profile_data['instructions_executed'] += 1
+            if opcode not in self.profile_data['opcode_counts']:
+                self.profile_data['opcode_counts'][opcode] = 0
+            self.profile_data['opcode_counts'][opcode] += 1
+        
         instruction = self.instruction_table.get(opcode)
         if instruction:
             # Check if this is a no-operand instruction
