@@ -10,8 +10,9 @@ import nova_sound as sound
 
 import nova_gui as gui
 import nova_keyboard as keyboard
+import nova_memory_profiler as mem_profiler
 
-def run_headless(program_path, max_cycles=10000):
+def run_headless(program_path, max_cycles=10000, enable_memory_profiling=False, profile_output=None):
     """Run a program headlessly for testing"""
     mem = ram.Memory()
     gfx = gpu.GFX()
@@ -22,6 +23,13 @@ def run_headless(program_path, max_cycles=10000):
     
     # Ensure keyboard is properly connected
     kbd.cpu = proc
+    
+    # Initialize memory profiler if requested
+    profiler = None
+    if enable_memory_profiling:
+        profiler = mem_profiler.MemoryProfiler(output_file=profile_output or "memory_profile.json")
+        profiler.enable_profiling(mem)
+        print("Memory profiling enabled")
     
     # Load the program and get entry point
     entry_point = mem.load(program_path)
@@ -35,6 +43,11 @@ def run_headless(program_path, max_cycles=10000):
     cycle = 0
     while cycle < max_cycles and not proc.halted:
         cycle += 1
+        
+        # Update profiler cycle count
+        if profiler:
+            profiler.update_cycle_count(cycle)
+            
         try:
             old_pc = proc.pc
             proc.step()
@@ -76,6 +89,11 @@ def run_headless(program_path, max_cycles=10000):
     non_zero_pixels = (screen != 0).sum()
     print(f"Graphics: {non_zero_pixels} non-black pixels on screen")
     
+    # Generate profiling report if enabled
+    if profiler:
+        profiler.save_report()
+        profiler.print_summary()
+    
     # Cleanup sound system
     if snd:
         snd.cleanup()
@@ -87,11 +105,13 @@ def main():
     parser.add_argument('program', nargs='?', help='Binary program file to load and run')
     parser.add_argument('--headless', action='store_true', help='Run without GUI for testing')
     parser.add_argument('--cycles', type=int, default=10000, help='Maximum cycles to run in headless mode')
+    parser.add_argument('--memory-profile', action='store_true', help='Enable memory profiling')
+    parser.add_argument('--profile-output', default='memory_profile.json', help='Output file for memory profile data')
     
     args = parser.parse_args()
     
     if args.headless and args.program:
-        run_headless(args.program, args.cycles)
+        run_headless(args.program, args.cycles, args.memory_profile, args.profile_output)
     else:
         mem = ram.Memory()
         gfx = gpu.GFX()
@@ -99,6 +119,13 @@ def main():
         snd = sound.NovaSound()
         # snd = None
         proc = cpu.CPU(mem, gfx, kbd, snd)
+        
+        # Enable memory profiling if requested
+        profiler = None
+        if args.memory_profile:
+            profiler = mem_profiler.MemoryProfiler(output_file=args.profile_output)
+            profiler.enable_profiling(mem)
+            print("Memory profiling enabled")
         
         # Ensure keyboard is properly connected to CPU
         kbd.cpu = proc
