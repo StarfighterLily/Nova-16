@@ -280,6 +280,272 @@ class TestGraphicsSprites:
         assert graphics.screen[21, 10] == 200
         assert graphics.screen[21, 11] == 250
 
+    def test_sprite_transparency(self, graphics, memory):
+        """Test sprite transparency functionality."""
+        sprite_addr = 0x1000
+        memory.write_word(0xF000, sprite_addr)  # Sprite 0 data address
+        memory.write_byte(0xF002, 10)  # X position
+        memory.write_byte(0xF003, 20)  # Y position
+        memory.write_byte(0xF004, 2)   # Width
+        memory.write_byte(0xF005, 2)   # Height
+        memory.write_byte(0xF006, 0x03)  # Flags (active + transparency enabled)
+        memory.write_byte(0xF007, 0)   # Transparency color = 0
+
+        # Set sprite pixel data with some transparent pixels
+        memory.write_byte(sprite_addr, 0)       # (0,0) - transparent
+        memory.write_byte(sprite_addr + 1, 150) # (1,0) - visible
+        memory.write_byte(sprite_addr + 2, 200) # (0,1) - visible
+        memory.write_byte(sprite_addr + 3, 0)   # (1,1) - transparent
+
+        # Set background pixels on layer 0 (not directly on screen)
+        graphics.layer_0[20, 10] = 50  # Will be overwritten by visible pixel
+        graphics.layer_0[20, 11] = 60  # Will be overwritten by visible pixel
+        graphics.layer_0[21, 10] = 70  # Will be overwritten by visible pixel
+        graphics.layer_0[21, 11] = 80  # Will remain (transparent pixel)
+
+        graphics.blit_sprite(0, memory)
+        graphics.composite_layers()
+
+        # Check transparency worked
+        assert graphics.screen[20, 10] == 50  # Transparent, background preserved
+        assert graphics.screen[20, 11] == 150 # Visible pixel
+        assert graphics.screen[21, 10] == 200 # Visible pixel
+        assert graphics.screen[21, 11] == 80  # Transparent, background preserved
+
+    def test_sprite_clipping(self, graphics, memory):
+        """Test sprite clipping at screen boundaries."""
+        sprite_addr = 0x1000
+        memory.write_word(0xF000, sprite_addr)  # Sprite 0 data address
+        memory.write_byte(0xF002, 250) # X position (partially off-screen)
+        memory.write_byte(0xF003, 250) # Y position (partially off-screen)
+        memory.write_byte(0xF004, 10)  # Width
+        memory.write_byte(0xF005, 10)  # Height
+        memory.write_byte(0xF006, 0x01)  # Flags (active)
+
+        # Fill sprite data with pattern
+        for i in range(100):
+            memory.write_byte(sprite_addr + i, 100 + i)
+
+        graphics.blit_sprite(0, memory)
+        graphics.composite_layers()
+
+        # Check that only visible portion was drawn
+        assert graphics.screen[250, 250] == 100  # Top-left visible pixel
+        assert graphics.screen[255, 255] == 100 + 55  # Bottom-right visible pixel
+        # Pixels outside screen bounds should not be drawn
+        assert graphics.screen[0, 0] == 0  # Unchanged
+
+    def test_sprite_multiple_layers(self, graphics, memory):
+        """Test sprites on different layers."""
+        # Sprite 0 on layer 5
+        sprite0_addr = 0x1000
+        memory.write_word(0xF000, sprite0_addr)
+        memory.write_byte(0xF002, 10)  # X
+        memory.write_byte(0xF003, 20)  # Y
+        memory.write_byte(0xF004, 2)   # Width
+        memory.write_byte(0xF005, 2)   # Height
+        memory.write_byte(0xF006, 0x01)  # Layer 5
+        memory.write_byte(sprite0_addr, 100)
+        memory.write_byte(sprite0_addr + 1, 101)
+        memory.write_byte(sprite0_addr + 2, 102)
+        memory.write_byte(sprite0_addr + 3, 103)
+
+        # Sprite 1 on layer 6
+        sprite1_addr = 0x1100
+        memory.write_word(0xF010, sprite1_addr)
+        memory.write_byte(0xF012, 12)  # X (overlapping)
+        memory.write_byte(0xF013, 22)  # Y (overlapping)
+        memory.write_byte(0xF014, 2)   # Width
+        memory.write_byte(0xF015, 2)   # Height
+        memory.write_byte(0xF016, 0x81)  # Layer 6 (bit 7 set)
+        memory.write_byte(sprite1_addr, 200)
+        memory.write_byte(sprite1_addr + 1, 201)
+        memory.write_byte(sprite1_addr + 2, 202)
+        memory.write_byte(sprite1_addr + 3, 203)
+
+        graphics.blit_all_sprites(memory)
+        graphics.composite_layers()
+
+        # Layer 6 should be on top (higher layer number)
+        assert graphics.screen[22, 12] == 200  # Layer 6 sprite
+        assert graphics.screen[22, 13] == 201  # Layer 6 sprite
+        assert graphics.screen[23, 12] == 202  # Layer 6 sprite
+        assert graphics.screen[23, 13] == 203  # Layer 6 sprite
+
+    def test_sprite_control_block_parsing(self, graphics, memory):
+        """Test parsing of sprite control block data."""
+        # Set up control block with all fields
+        memory.write_word(0xF000, 0x2000)  # Data address
+        memory.write_byte(0xF002, 100)    # X
+        memory.write_byte(0xF003, 150)    # Y
+        memory.write_byte(0xF004, 8)      # Width
+        memory.write_byte(0xF005, 16)     # Height
+        memory.write_byte(0xF006, 0x83)   # Flags: active + transparency + layer 6
+        memory.write_byte(0xF007, 42)     # Transparency color
+
+        control_block = graphics.get_sprite_control_block(0, memory)
+
+        assert control_block['data_addr'] == 0x2000
+        assert control_block['x'] == 100
+        assert control_block['y'] == 150
+        assert control_block['width'] == 8
+        assert control_block['height'] == 16
+        assert control_block['flags'] == 0x83
+        assert control_block['transparency_color'] == 42
+        assert control_block['active'] == True
+        assert control_block['transparency_enabled'] == True
+        assert control_block['layer'] == 6
+
+    def test_sprite_invalid_id(self, graphics, memory):
+        """Test handling of invalid sprite IDs."""
+        # Invalid sprite ID should return None
+        assert graphics.get_sprite_control_block(-1, memory) is None
+        assert graphics.get_sprite_control_block(16, memory) is None
+
+        # Blitting invalid sprite should not crash
+        graphics.blit_sprite(-1, memory)  # Should not raise exception
+        graphics.blit_sprite(16, memory)  # Should not raise exception
+
+    def test_sprite_inactive(self, graphics, memory):
+        """Test inactive sprites are not rendered."""
+        sprite_addr = 0x1000
+        memory.write_word(0xF000, sprite_addr)
+        memory.write_byte(0xF002, 10)
+        memory.write_byte(0xF003, 20)
+        memory.write_byte(0xF004, 2)
+        memory.write_byte(0xF005, 2)
+        memory.write_byte(0xF006, 0x00)  # Inactive (active bit not set)
+        memory.write_byte(sprite_addr, 100)
+
+        graphics.blit_sprite(0, memory)
+        graphics.composite_layers()
+
+        # Screen should remain unchanged
+        assert graphics.screen[20, 10] == 0
+
+    def test_sprite_zero_size(self, graphics, memory):
+        """Test sprites with zero width or height are not rendered."""
+        sprite_addr = 0x1000
+        memory.write_word(0xF000, sprite_addr)
+        memory.write_byte(0xF002, 10)
+        memory.write_byte(0xF003, 20)
+        memory.write_byte(0xF004, 0)   # Zero width
+        memory.write_byte(0xF005, 2)
+        memory.write_byte(0xF006, 0x01)  # Active
+
+        graphics.blit_sprite(0, memory)
+        graphics.composite_layers()
+
+        # Screen should remain unchanged
+        assert graphics.screen[20, 10] == 0
+
+    def test_sprite_off_screen(self, graphics, memory):
+        """Test completely off-screen sprites."""
+        sprite_addr = 0x1000
+        memory.write_word(0xF000, sprite_addr)
+        memory.write_byte(0xF002, 300)  # Way off-screen
+        memory.write_byte(0xF003, 300)
+        memory.write_byte(0xF004, 10)
+        memory.write_byte(0xF005, 10)
+        memory.write_byte(0xF006, 0x01)  # Active
+
+        graphics.blit_sprite(0, memory)
+        graphics.composite_layers()
+
+        # Screen should remain unchanged
+        assert np.all(graphics.screen == 0)
+
+    def test_sprite_large_coordinates(self, graphics, memory):
+        """Test sprites with coordinates at screen boundaries."""
+        sprite_addr = 0x1000
+        memory.write_word(0xF000, sprite_addr)
+        memory.write_byte(0xF002, 255)  # X at right edge
+        memory.write_byte(0xF003, 255)  # Y at bottom edge
+        memory.write_byte(0xF004, 5)    # Width
+        memory.write_byte(0xF005, 5)    # Height
+        memory.write_byte(0xF006, 0x01)  # Active
+
+        # Fill sprite data
+        for i in range(25):
+            memory.write_byte(sprite_addr + i, 50 + i)
+
+        graphics.blit_sprite(0, memory)
+        graphics.composite_layers()
+
+        # Only the top-left pixel should be visible (at 255,255)
+        assert graphics.screen[255, 255] == 50
+        # Other pixels of the sprite are off-screen
+        assert graphics.screen[254, 254] == 0  # Unchanged
+
+    def test_sprite_data_bounds_checking(self, graphics, memory):
+        """Test bounds checking for sprite data addresses."""
+        # Set sprite data address beyond memory bounds
+        memory.write_word(0xF000, 0xFF00)  # Near end of memory
+        memory.write_byte(0xF002, 10)
+        memory.write_byte(0xF003, 20)
+        memory.write_byte(0xF004, 100)  # Large width that would exceed memory
+        memory.write_byte(0xF005, 100)  # Large height
+        memory.write_byte(0xF006, 0x01)  # Active
+
+        # Should not crash, should handle bounds gracefully
+        graphics.blit_sprite(0, memory)
+        graphics.composite_layers()
+
+        # Screen should remain mostly unchanged (may have partial sprite)
+        assert graphics.screen[20, 10] == 0  # Should not be drawn due to bounds check
+
+    def test_blit_all_sprites_clears_layers(self, graphics, memory):
+        """Test that blit_all_sprites clears sprite layers first."""
+        # Set some pixels in sprite layers
+        graphics.sprite_layers[0][10, 10] = 100
+        graphics.sprite_layers[1][20, 20] = 200
+
+        # Blit all sprites (no active sprites)
+        graphics.blit_all_sprites(memory)
+
+        # Sprite layers should be cleared
+        assert graphics.sprite_layers[0][10, 10] == 0
+        assert graphics.sprite_layers[1][20, 20] == 0
+
+    def test_sprite_layer_assignment(self, graphics, memory):
+        """Test sprite layer assignment based on flags."""
+        # Test layer 5 (default)
+        memory.write_word(0xF000, 0x1000)
+        memory.write_byte(0xF006, 0x01)  # Bit 7 clear = layer 5
+        control_block = graphics.get_sprite_control_block(0, memory)
+        assert control_block['layer'] == 5
+
+        # Test layer 6 (bit 7 set)
+        memory.write_byte(0xF006, 0x81)  # Bit 7 set = layer 6
+        control_block = graphics.get_sprite_control_block(0, memory)
+        assert control_block['layer'] == 6
+
+    def test_sprite_compositing_with_background(self, graphics, memory):
+        """Test sprite compositing with background layers."""
+        # Set background layer
+        graphics.background_layers[0][50, 50] = 100
+
+        # Create sprite that overlaps
+        sprite_addr = 0x1000
+        memory.write_word(0xF000, sprite_addr)
+        memory.write_byte(0xF002, 48)  # Overlap with background
+        memory.write_byte(0xF003, 48)
+        memory.write_byte(0xF004, 5)
+        memory.write_byte(0xF005, 5)
+        memory.write_byte(0xF006, 0x01)  # Active, no transparency
+
+        # Fill sprite with different color
+        for i in range(25):
+            memory.write_byte(sprite_addr + i, 200)
+
+        graphics.blit_sprite(0, memory)
+        graphics.composite_layers()
+
+        # Sprite should be visible on top
+        assert graphics.screen[50, 50] == 200  # Sprite pixel
+        assert graphics.screen[48, 48] == 200  # Sprite pixel
+        assert graphics.screen[52, 52] == 200  # Sprite pixel
+
 
 class TestGraphicsText:
     """Test text rendering operations."""

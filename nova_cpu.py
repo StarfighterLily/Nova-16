@@ -1639,7 +1639,7 @@ class CPU:
         
         return operands
 
-    def get_operand_value(self, operand):
+    def get_operand_value(self, operand, dest_operand=None):
         """Get value from operand"""
         if self.profiling_enabled:
             self.profile_data['operand_values'] = self.profile_data.get('operand_values', 0) + 1
@@ -1665,13 +1665,19 @@ class CPU:
         elif operand['type'] == 'immediate':
             return operand['value']
         elif operand['type'] == 'memory':
-            # For memory operands, read appropriate size based on context
-            # For now, assume word (16-bit) for most operations
-            return self.memory.read_word(operand['address'])
+            # Determine read size based on destination operand
+            if dest_operand and dest_operand['type'] == 'register':
+                if dest_operand['reg_type'] == 'R':
+                    return self.memory.read_byte(operand['address'])
+                else:  # P register
+                    return self.memory.read_word(operand['address'])
+            else:
+                # Default to word for backward compatibility
+                return self.memory.read_word(operand['address'])
         else:
             raise Exception(f"Unknown operand type: {operand['type']}")
 
-    def set_operand_value(self, operand, value):
+    def set_operand_value(self, operand, value, source_operand=None):
         """Set value to operand"""
         if operand['type'] == 'register':
             self._set_operand_value(operand['reg_type'], operand['reg_idx'], value)
@@ -1680,9 +1686,20 @@ class CPU:
             # if cache_key in self.register_cache:
             #     del self.register_cache[cache_key]
         elif operand['type'] == 'memory':
-            # For memory operands, write appropriate size
-            # For now, assume word (16-bit) for most operations
-            self.memory.write_word(operand['address'], value)
+            # Determine write size based on source operand or value size
+            if source_operand and source_operand['type'] == 'immediate':
+                if source_operand.get('size') == 8:
+                    self.memory.write_byte(operand['address'], value)
+                else:  # 16-bit or unknown
+                    self.memory.write_word(operand['address'], value)
+            elif source_operand and source_operand['type'] == 'register':
+                if source_operand['reg_type'] == 'R':
+                    self.memory.write_byte(operand['address'], value)
+                else:  # P register or other
+                    self.memory.write_word(operand['address'], value)
+            else:
+                # Default to word for backward compatibility
+                self.memory.write_word(operand['address'], value)
         else:
             raise Exception(f"Cannot set value for operand type: {operand['type']}")
 

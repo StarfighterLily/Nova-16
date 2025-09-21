@@ -436,3 +436,150 @@ class TestFullSystemIntegration:
         assert sprite_data[0] == 100, "Sprite X position not set"
         assert sprite_data[1] == 50, "Sprite Y position not set"
         # Further validation would check actual rendering
+
+    def test_spblitall_instruction(self, cpu, graphics, assembler, memory):
+        """Test SPBLITALL instruction renders all sprites."""
+        program = """
+        ORG 0x1000
+
+        ; Set up sprite 0
+        MOV [0xF000], 0x2000     ; Sprite data address
+        MOV [0xF002], 10         ; X position
+        MOV [0xF003], 20         ; Y position
+        MOV [0xF004], 4          ; Width
+        MOV [0xF005], 4          ; Height
+        MOV [0xF006], 0x01       ; Active flag
+
+        ; Fill sprite 0 data (4x4 = 16 bytes)
+        MOV [0x2000], 100
+        MOV [0x2001], 101
+        MOV [0x2002], 102
+        MOV [0x2003], 103
+        MOV [0x2004], 104
+        MOV [0x2005], 105
+        MOV [0x2006], 106
+        MOV [0x2007], 107
+        MOV [0x2008], 108
+        MOV [0x2009], 109
+        MOV [0x200A], 110
+        MOV [0x200B], 111
+        MOV [0x200C], 112
+        MOV [0x200D], 113
+        MOV [0x200E], 114
+        MOV [0x200F], 115
+
+        ; Set up sprite 1
+        MOV [0xF010], 0x2100     ; Sprite 1 data address
+        MOV [0xF012], 50         ; X position
+        MOV [0xF013], 30         ; Y position
+        MOV [0xF014], 2          ; Width
+        MOV [0xF015], 2          ; Height
+        MOV [0xF016], 0x03       ; Active + transparency
+        MOV [0xF017], 105        ; Transparency color
+
+        ; Fill sprite 1 data (2x2 = 4 bytes)
+        MOV [0x2100], 100
+        MOV [0x2101], 101
+        MOV [0x2102], 102
+        MOV [0x2103], 103
+
+        ; Execute SPBLITALL
+        SPBLITALL
+
+        HLT
+        """
+
+        # Assemble and load program
+        success = assemble_and_load_program(cpu, assembler, program)
+        assert success
+
+        # Run the program
+        while not cpu.halted:
+            cpu.step()
+
+        # Composite layers to update screen
+        graphics.composite_layers()
+
+        # Check that sprites were rendered
+        # Sprite 0 (4x4 at 10,20) - data is row-major
+        assert graphics.screen[20, 10] == 100  # Row 0, Col 0
+        assert graphics.screen[20, 11] == 101  # Row 0, Col 1
+        assert graphics.screen[20, 12] == 102  # Row 0, Col 2
+        assert graphics.screen[20, 13] == 103  # Row 0, Col 3
+        assert graphics.screen[21, 10] == 104  # Row 1, Col 0
+        assert graphics.screen[21, 11] == 105  # Row 1, Col 1
+        assert graphics.screen[21, 12] == 106  # Row 1, Col 2
+        assert graphics.screen[21, 13] == 107  # Row 1, Col 3
+        assert graphics.screen[22, 10] == 108  # Row 2, Col 0
+        assert graphics.screen[22, 11] == 109  # Row 2, Col 1
+        assert graphics.screen[22, 12] == 110  # Row 2, Col 2
+        assert graphics.screen[22, 13] == 111  # Row 2, Col 3
+        assert graphics.screen[23, 10] == 112  # Row 3, Col 0
+        assert graphics.screen[23, 11] == 113  # Row 3, Col 1
+        assert graphics.screen[23, 12] == 114  # Row 3, Col 2
+        assert graphics.screen[23, 13] == 115  # Row 3, Col 3
+
+        # Sprite 1 (2x2 at 50,30) - should be visible (different color)
+        assert graphics.screen[30, 50] == 100
+        assert graphics.screen[30, 51] == 101
+        assert graphics.screen[31, 50] == 102
+        assert graphics.screen[31, 51] == 103
+
+    def test_sprite_layering_integration(self, cpu, graphics, assembler, memory):
+        """Test sprite layering with background interaction."""
+        program = """
+        ORG 0x1000
+
+        ; Set up background layer 1
+        MOV VM, 0          ; Coordinate mode
+        MOV VL, 1          ; Background layer 1
+        MOV VX, 40
+        MOV VY, 40
+        MOV R0, 50
+        SWRITE R0          ; Write background pixel
+
+        ; Set up sprite on layer 5 (should be above background)
+        MOV [0xF000], 0x2000     ; Sprite data address
+        MOV [0xF002], 38         ; X position (overlapping background)
+        MOV [0xF003], 38         ; Y position
+        MOV [0xF004], 4          ; Width
+        MOV [0xF005], 4          ; Height
+        MOV [0xF006], 0x01       ; Active flag
+
+        ; Fill sprite data
+        MOV [0x2000], 120
+        MOV [0x2001], 120
+        MOV [0x2002], 120
+        MOV [0x2003], 120
+        MOV [0x2004], 120
+        MOV [0x2005], 120
+        MOV [0x2006], 120
+        MOV [0x2007], 120
+        MOV [0x2008], 120
+        MOV [0x2009], 120
+        MOV [0x200A], 120
+        MOV [0x200B], 120
+        MOV [0x200C], 120
+        MOV [0x200D], 120
+        MOV [0x200E], 120
+        MOV [0x200F], 120
+
+        ; Render sprites
+        SPBLITALL
+
+        HLT
+        """
+
+        # Assemble and load program
+        success = assemble_and_load_program(cpu, assembler, program)
+        assert success
+
+        # Run the program
+        while not cpu.halted:
+            cpu.step()
+
+        # Composite layers to update screen
+        graphics.composite_layers()
+
+        # Sprite should be visible on top
+        assert graphics.screen[38, 38] == 120

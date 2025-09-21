@@ -124,8 +124,8 @@ class Mov(BaseInstruction):
     
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
-        source_value = cpu.get_operand_value(operands[1])
-        cpu.set_operand_value(operands[0], source_value)
+        source_value = cpu.get_operand_value(operands[1], operands[0])
+        cpu.set_operand_value(operands[0], source_value, operands[1])
 
 # Arithmetic operations
 class Add(BaseInstruction):
@@ -1277,6 +1277,7 @@ class Keyctrl(BaseInstruction):
         operands = cpu.parse_operands(1)
         control = cpu.get_operand_value(operands[0])
         cpu.keyboard[2] = control  # Set control register
+        cpu.interrupts[2] = control  # Enable keyboard interrupt
 
 # Random operations
 class Rnd(BaseInstruction):

@@ -102,6 +102,7 @@ class Parser:
             'hex16': re.compile(r'^0x[0-9A-Fa-f]{1,4}$'),
             'hex8': re.compile(r'^0x[0-9A-Fa-f]{1,2}$'),
             'decimal': re.compile(r'^-?\d+$'),
+            'char_literal': re.compile(r"^'([^'\\]|\\.)'$"),
             'indirect': re.compile(r'^\[([A-Za-z0-9:]+)\]$'),
             'indexed': re.compile(r'^\[([A-Za-z0-9]+)\s*\+\s*([A-Za-z0-9]+)\]$'),
             'direct': re.compile(r'^\[0x([0-9A-Fa-f]{1,4})\]$'),
@@ -231,6 +232,7 @@ class OperandClassifier:
             'hex16': re.compile(r'^0x[0-9A-Fa-f]{3,4}$'),
             'hex8': re.compile(r'^0x[0-9A-Fa-f]{1,2}$'),
             'decimal': re.compile(r'^-?\d+$'),
+            'char_literal': re.compile(r"^'([^'\\]|\\.)'$"),
             'indirect': re.compile(r'^\[([A-Za-z0-9:]+)\]$'),
             'indexed': re.compile(r'^\[([A-Za-z0-9]+)\s*\+\s*([A-Za-z0-9]+)\]$'),
             'fp_offset': re.compile(r'^\[(FP|fp)\s*[-+]\s*(\d+)\]$'),
@@ -359,6 +361,9 @@ class OperandClassifier:
         elif self.patterns['decimal'].match(operand):
             val = int(operand)
             return OperandType.IMMEDIATE16 if val < -128 or val > 127 else OperandType.IMMEDIATE8
+        elif self.patterns['char_literal'].match(operand):
+            # Character literals are always 8-bit immediates
+            return OperandType.IMMEDIATE8
         
         # Default to 16-bit immediate for unknown symbols
         return OperandType.IMMEDIATE16
@@ -555,6 +560,25 @@ class CodeGenerator:
             try:
                 if operand.startswith('0x'):
                     val = int(operand, 16)
+                elif self.classifier.patterns['char_literal'].match(operand):
+                    # Handle character literals like 'w'
+                    char_content = operand[1:-1]  # Remove quotes
+                    if char_content.startswith('\\'):
+                        # Handle escape sequences
+                        if char_content == '\\n':
+                            val = ord('\n')
+                        elif char_content == '\\t':
+                            val = ord('\t')
+                        elif char_content == '\\r':
+                            val = ord('\r')
+                        elif char_content == '\\\\':
+                            val = ord('\\')
+                        elif char_content == "\\'":
+                            val = ord("'")
+                        else:
+                            val = ord(char_content[1])  # Take the character after backslash
+                    else:
+                        val = ord(char_content)
                 elif symbol_table and operand in symbol_table:
                     symbol_val = symbol_table[operand].strip()
                     val = int(symbol_val, 16) if symbol_val.startswith('0x') else int(symbol_val)
@@ -568,6 +592,25 @@ class CodeGenerator:
             try:
                 if operand.startswith('0x'):
                     val = int(operand, 16)
+                elif self.classifier.patterns['char_literal'].match(operand):
+                    # Handle character literals like 'w' - convert to 16-bit value
+                    char_content = operand[1:-1]  # Remove quotes
+                    if char_content.startswith('\\'):
+                        # Handle escape sequences
+                        if char_content == '\\n':
+                            val = ord('\n')
+                        elif char_content == '\\t':
+                            val = ord('\t')
+                        elif char_content == '\\r':
+                            val = ord('\r')
+                        elif char_content == '\\\\':
+                            val = ord('\\')
+                        elif char_content == "\\'":
+                            val = ord("'")
+                        else:
+                            val = ord(char_content[1])  # Take the character after backslash
+                    else:
+                        val = ord(char_content)
                 elif symbol_table and operand in symbol_table:
                     symbol_val = symbol_table[operand].strip()
                     val = int(symbol_val, 16) if symbol_val.startswith('0x') else int(symbol_val)
@@ -798,6 +841,25 @@ class CodeGenerator:
         # Immediate value
         if operand.startswith('0x'):
             val = int(operand, 16)
+        elif self.classifier.patterns['char_literal'].match(operand):
+            # Handle character literals like 'w'
+            char_content = operand[1:-1]  # Remove quotes
+            if char_content.startswith('\\'):
+                # Handle escape sequences
+                if char_content == '\\n':
+                    val = ord('\n')
+                elif char_content == '\\t':
+                    val = ord('\t')
+                elif char_content == '\\r':
+                    val = ord('\r')
+                elif char_content == '\\\\':
+                    val = ord('\\')
+                elif char_content == "\\'":
+                    val = ord("'")
+                else:
+                    val = ord(char_content[1])  # Take the character after backslash
+            else:
+                val = ord(char_content)
         elif operand.isdigit():
             val = int(operand)
         elif symbol_table and operand in symbol_table:
