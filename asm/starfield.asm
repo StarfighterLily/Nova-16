@@ -80,11 +80,11 @@ TXT: DEFSTR "StarField"
 BGROLL:
     ; Layer roll subroutine
     MOV VL, 1
-    SROL 0, 1
+    SROL 0, -1
     MOV VL, 2
-    SROL 0, 2
+    SROL 0, -2
     MOV VL, 3
-    SROL 0, 3
+    SROL 0, -3
     IRET
 
 ORG 0x0100

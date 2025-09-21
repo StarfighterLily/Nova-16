@@ -81,7 +81,7 @@ opcodes = [
     ("SBLEND",             "0x31", 1), # Set blend mode # implemented
     ("SREAD",              "0x32", 1), # Read screen pixel # implemented
     ("SWRITE",             "0x33", 1), # Write screen pixel # implemented
-    ("SROL",               "0x34", 2), # Roll screen by axis, amount # implemented
+    ("SROL",                "0x34", 2), # Roll screen by axis, amount # implemented
     ("SROT",               "0x35", 2), # Rotate screen by direction, amount # implemented
     ("SSHFT",              "0x36", 2), # Shift screen by axis, amount # implemented
     ("SFLIP",              "0x37", 2), # Flip screen by axis, amount # implemented
@@ -153,7 +153,7 @@ opcodes = [
     ("DEG",                "0x65", 1), # Degrees to radians # implemented
     ("RAD",                "0x66", 1), # Radians to degrees # implemented
     ("FLOOR",              "0x67", 1), # Floor value # implemented
-    ("CEIL",               "0x68", 1), # Ceil value # implemented
+    ("CEIL",               "0x68", 1), # Ceiling value # implemented
     ("ROUND",              "0x69", 1), # Round value # implemented
     ("TRUNC",              "0x6A", 1), # Truncate value # implemented
     ("FRAC",               "0x6B", 1), # Fractional part # implemented
@@ -188,15 +188,6 @@ opcodes = [
     ("SECHO",              "0x80", 2), # Echo channel, delay # unimplemented
     ("SREVERB",            "0x81", 2), # Reverb channel, amount # unimplemented
     ("SFILTER",            "0x82", 2), # Filter channel, type # unimplemented
-
-    # Layer operations
-    ("LCPY",               "0x83", 2), # Copy contents of layer dest, source # implemented
-    ("LCLR",               "0x84", 2), # Clear layer to color # implemented
-    ("LMOV",               "0x85", 2), # Move contents of layer dest, source # implemented
-    ("LSHFT",              "0x86", 3), # Shift layer by axis, amount # implemented
-    ("LROT",               "0x87", 3), # Rotate layer by direction, amount # implemented
-    ("LFLIP",              "0x88", 2), # Flip layer by axis, amount # implemented
-    ("LSWAP",              "0x89", 2), # Swap two layers dest, source # implemented
 
     # 
 

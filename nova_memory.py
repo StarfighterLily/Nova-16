@@ -67,7 +67,9 @@ class Memory:
     
     def write_byte(self, address, value):
         """Optimized single byte write without method overhead"""
-        addr = int(address) & 0xFFFF  # Ensure address is within 16-bit bounds
+        addr = int(address)
+        if addr < 0 or addr >= self.size:
+            raise IndexError(f"Address out of bounds: {addr}")
         
         # Check if writing to sprite memory region (0xF000-0xF0FF)
         if 0xF000 <= addr <= 0xF0FF and self.gfx_system:
@@ -180,9 +182,9 @@ class Memory:
                     print(f"Loaded {length} bytes at 0x{start_addr:04X} from binary offset {bin_offset}")
                     
                 except ValueError as e:
-                    print(f"Error parsing {org_file_path} line {line_num}: {e}")
+                    raise ValueError(f"Error parsing {org_file_path} line {line_num}: {e}")
                 except Exception as e:
-                    print(f"Unexpected error loading segment from line {line_num}: {e}")
+                    raise ValueError(f"Unexpected error loading segment from line {line_num}: {e}")
         
         return entry_point
 
@@ -215,6 +217,19 @@ class Memory:
         # Ensure we don't overflow memory
         load_size = min(len(binary_data), self.size - address)
         self.memory[address:address + load_size] = binary_data[:load_size]
+        return address
+
+    def load_program(self, program_data, address=0x0000):
+        """
+        Load program data (list of bytes) into memory at the specified address.
+        Used for unit testing with raw instruction bytes.
+        """
+        if isinstance(program_data, list):
+            program_data = bytes(program_data)
+        
+        # Ensure we don't overflow memory
+        load_size = min(len(program_data), self.size - address)
+        self.memory[address:address + load_size] = np.frombuffer(program_data[:load_size], dtype=np.uint8)
         return address
 
     def write_bytes_direct(self, address, data):

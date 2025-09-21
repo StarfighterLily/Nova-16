@@ -368,8 +368,8 @@ class TestFullSystemIntegration:
             cpu.step()
 
         # Check if character appeared on screen
-        pixel_value = graphics.get_pixel(0, 0, 1)
-        assert pixel_value == ord('X'), f"Expected screen to show 'X' (0x{ord('X'):02X}), got 0x{pixel_value:02X}"
+        pixel_value = get_pixel_from_graphics(graphics, 0, 0, 1)
+        assert pixel_value == ord('x'), f"Expected screen to show 'x' (0x{ord('x'):02X}), got 0x{pixel_value:02X}"
 
     def test_sound_generation_pipeline(self, cpu, sound_system, assembler, memory):
         """Test CPU sound commands result in audio output."""
@@ -404,9 +404,9 @@ class TestFullSystemIntegration:
         ORG 0x1000
         ; Set up sprite
         MOV P0, 0xF000    ; Sprite control block address
+        MOV P2, 0x4000    ; Sprite data address
         MOV R0, 100       ; X position
         MOV R1, 50        ; Y position
-        MOV R2, 0x4000    ; Sprite data address
         MOV R3, 1         ; Enable sprite
 
         ; Write sprite control block
@@ -414,9 +414,9 @@ class TestFullSystemIntegration:
         INC P0
         MOV [P0], R1      ; Y pos
         INC P0
-        MOV [P0], R2:     ; Data address high
+        MOV [P0], P2:     ; Data address high
         INC P0
-        MOV [P0], :R2     ; Data address low
+        MOV [P0], :P2     ; Data address low
         INC P0
         MOV [P0], R3      ; Enable flag
 

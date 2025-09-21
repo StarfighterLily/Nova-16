@@ -12,17 +12,26 @@ import nova_gui as gui
 import nova_keyboard as keyboard
 import nova_memory_profiler as mem_profiler
 
-def run_headless(program_path, max_cycles=10000, enable_memory_profiling=False, profile_output=None):
-    """Run a program headlessly for testing"""
+def initialize_system(enable_sound=True):
+    """Initialize all Nova-16 system components with consistent state"""
     mem = ram.Memory()
     gfx = gpu.GFX()
     kbd = keyboard.NovaKeyboard()
-    # snd = sound.NovaSound()
-    snd = None
+    snd = sound.NovaSound() if enable_sound else None
+    
     proc = cpu.CPU(mem, gfx, kbd, snd)
     
     # Ensure keyboard is properly connected
     kbd.cpu = proc
+    
+    # Connect graphics system to memory for sprite updates
+    mem.gfx_system = gfx
+    
+    return proc, mem, gfx, kbd, snd
+
+def run_headless(program_path, max_cycles=10000, enable_memory_profiling=False, profile_output=None):
+    """Run a program headlessly for testing"""
+    proc, mem, gfx, kbd, snd = initialize_system(enable_sound=False)
     
     # Initialize memory profiler if requested
     profiler = None
@@ -113,12 +122,7 @@ def main():
     if args.headless and args.program:
         run_headless(args.program, args.cycles, args.memory_profile, args.profile_output)
     else:
-        mem = ram.Memory()
-        gfx = gpu.GFX()
-        kbd = keyboard.NovaKeyboard()
-        snd = sound.NovaSound()
-        # snd = None
-        proc = cpu.CPU(mem, gfx, kbd, snd)
+        proc, mem, gfx, kbd, snd = initialize_system(enable_sound=True)
         
         # Enable memory profiling if requested
         profiler = None
@@ -126,9 +130,6 @@ def main():
             profiler = mem_profiler.MemoryProfiler(output_file=args.profile_output)
             profiler.enable_profiling(mem)
             print("Memory profiling enabled")
-        
-        # Ensure keyboard is properly connected to CPU
-        kbd.cpu = proc
         
         print(f"Nova-16 Emulator")
         print(f"CPU: Standard Python implementation")

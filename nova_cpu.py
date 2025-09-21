@@ -88,6 +88,7 @@ class CPU:
         self.key_buffer_size = 16
 
         self.halted = False
+        self.cycles = 0  # Total cycles executed
         
         # Pre-computed register lookup table for O(1) access
         self._register_lookup = self._build_register_lookup_table()
@@ -109,6 +110,13 @@ class CPU:
         self.prefetch_buffer = np.zeros(16, dtype=np.uint8)  # 16-byte prefetch buffer
         self.prefetch_pc = 0  # PC when buffer was loaded
         self.prefetch_valid = False  # Is the buffer valid?
+        
+        # Instruction cache for performance optimization
+        self.instruction_cache = {}  # Cache decoded instructions by PC
+        self.instruction_cache_size = 128  # Maximum cache entries (8KB of cached instructions)
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.cache_enabled = True
         
         # Timer optimization
         self.timer_update_counter = 0
@@ -678,6 +686,11 @@ class CPU:
         # Rebuild register lookup table 
         self._register_lookup = self._build_register_lookup_table()
 
+        # Clear caches
+        self.instruction_cache.clear()
+        self.operand_cache.clear()
+        self.register_cache.clear()
+
         # Connect keyboard if provided
         if self.keyboard_device is not None:
             self.keyboard_device.cpu = self  # Set back-reference
@@ -752,6 +765,9 @@ class CPU:
             self.fp = int(value) & 0xFFFF
         elif type == 'V': 
             self.gfx.Vregisters[ idx ] = int(value) & 0xFFFF
+            # Invalidate instruction cache when graphics registers change
+            # This prevents stale cached instructions that might access graphics registers as memory
+            self.invalidate_instruction_cache()
         elif type == 'T':
             self.timer[ idx ] = int(value) & 0xFF
             # Update timer enabled state when control register (idx=2) is written
@@ -759,36 +775,56 @@ class CPU:
                 self.set_timer_control(self.timer[ 2 ])
         elif type == 'TT': 
             self.timer[ 0 ] = int(value) & 0xFF
+            # Invalidate instruction cache when timer counter changes
+            self.invalidate_instruction_cache()
         elif type == 'TM': 
             self.timer[ 1 ] = int(value) & 0xFF
+            # Invalidate instruction cache when timer modulo changes
+            self.invalidate_instruction_cache()
         elif type == 'TC': 
             self.timer[ 2 ] = int(value) & 0xFF
             # Update timer enabled state when control register is written
             self.set_timer_control(self.timer[ 2 ])
         elif type == 'TS': 
             self.timer[ 3 ] = int(value) & 0xFF
+            # Invalidate instruction cache when timer speed changes
+            self.invalidate_instruction_cache()
         elif type == 'VL': 
             self.gfx.VL = int(value) & 0xFF
+            # Invalidate instruction cache when graphics layer register changes
+            self.invalidate_instruction_cache()
             
         # Sound registers
         elif type == 'SA': 
             if self.sound: self.sound.update_registers(sa=int(value) & 0xFFFF)
+            # Invalidate instruction cache when sound registers change
+            self.invalidate_instruction_cache()
         elif type == 'SF': 
             if self.sound: self.sound.update_registers(sf=int(value) & 0xFF)
+            # Invalidate instruction cache when sound registers change
+            self.invalidate_instruction_cache()
         elif type == 'SV': 
             if self.sound: self.sound.update_registers(sv=int(value) & 0xFF)
+            # Invalidate instruction cache when sound registers change
+            self.invalidate_instruction_cache()
         elif type == 'SW': 
             if self.sound: self.sound.update_registers(sw=int(value) & 0xFF)
+            # Invalidate instruction cache when sound registers change
+            self.invalidate_instruction_cache()
         elif type == 'SA:':  # Sound Address high byte
             if self.sound:
                 current_sa = self.sound.get_register('SA')
                 new_sa = (current_sa & 0x00FF) | ((int(value) & 0xFF) << 8)
                 self.sound.update_registers(sa=new_sa)
+            # Invalidate instruction cache when sound registers change
+            self.invalidate_instruction_cache()
         elif type == ':SA':  # Sound Address low byte
             if self.sound:
                 current_sa = self.sound.get_register('SA')
                 new_sa = (current_sa & 0xFF00) | (int(value) & 0xFF)
                 self.sound.update_registers(sa=new_sa)
+            # Invalidate instruction cache when sound registers change
+            self.invalidate_instruction_cache()
         
         # Optimized indirect memory writes - Phase 3
         elif type == 'Rind': 
@@ -1077,6 +1113,8 @@ class CPU:
             
             # Invalidate prefetch buffer after jump
             self.invalidate_prefetch()
+            # Invalidate instruction cache on interrupt
+            self.invalidate_instruction_cache()
     
     def _check_pending_interrupts(self):
         """Optimized interrupt checking with batching and caching"""
@@ -1192,9 +1230,8 @@ class CPU:
             self.timer[0] = new_timer_value
             
             # Check for timer interrupt after incrementing
-            # Trigger if: interrupt enabled AND modulo > 0 AND (timer wrapped around OR reached/exceeded modulo)
-            if (self.interrupts[0] == 1 and self.timer[1] > 0 and 
-                ((new_timer_value < old_timer_value) or (old_timer_value < self.timer[1] and new_timer_value >= self.timer[1]))):
+            # Trigger if: interrupt enabled AND modulo > 0 AND timer >= modulo
+            if (self.interrupts[0] == 1 and self.timer[1] > 0 and self.timer[0] >= self.timer[1]):
                 # Reset timer counter when interrupt is triggered
                 self.timer[0] = 0
                 self._trigger_interrupt(0)
@@ -1213,6 +1250,10 @@ class CPU:
         if not self.timer_enabled:
             self.timer_cycles = 0
             self.timer[0] = 0
+            
+        # Invalidate instruction cache when timer control changes
+        # This ensures consistent timing for timer-dependent code
+        self.invalidate_instruction_cache()
     
     def get_timer_status(self):
         """Get timer status for debugging/monitoring"""
@@ -1355,6 +1396,9 @@ class CPU:
             address + bytes > self.prefetch_pc):
             self.prefetch_valid = False
             
+        # Invalidate instruction cache if writing to cached instruction area
+        self.invalidate_instruction_cache(address, address + bytes - 1)
+            
     def write_byte(self, address, value):
         """Write single byte to memory and invalidate prefetch buffer if necessary"""
         self.memory.write_byte(address, value)
@@ -1364,6 +1408,9 @@ class CPU:
             address < self.prefetch_pc + 16 and 
             address + 1 > self.prefetch_pc):
             self.prefetch_valid = False
+            
+        # Invalidate instruction cache if writing to cached instruction area
+        self.invalidate_instruction_cache(address, address)
     
     def fetch_word(self):
         """Optimized 16-bit fetch with prefetching (big-endian for Nova-16)"""
@@ -1389,6 +1436,59 @@ class CPU:
         self.pc += count
         return result
 
+    # ========================================
+    # INSTRUCTION CACHE METHODS
+    # ========================================
+    
+    def get_cached_instruction(self, pc):
+        """Get cached instruction at PC, or None if not cached"""
+        if not self.cache_enabled:
+            return None
+        return self.instruction_cache.get(pc, None)
+    
+    def cache_instruction(self, pc, instruction_data):
+        """Cache a decoded instruction at PC"""
+        if not self.cache_enabled:
+            return
+            
+        # Implement LRU eviction if cache is full
+        if len(self.instruction_cache) >= self.instruction_cache_size:
+            # Remove oldest entry (simple FIFO eviction for now)
+            oldest_pc = next(iter(self.instruction_cache.keys()))
+            del self.instruction_cache[oldest_pc]
+        
+        self.instruction_cache[pc] = instruction_data
+        self.cache_misses += 1  # Count as miss since we're caching it now
+    
+    def invalidate_instruction_cache(self, start_addr=None, end_addr=None):
+        """Invalidate instruction cache entries in the given address range"""
+        if start_addr is None and end_addr is None:
+            # Clear entire cache
+            self.instruction_cache.clear()
+            return
+        
+        # Invalidate specific range
+        if start_addr is not None and end_addr is not None:
+            # Remove entries in the range
+            to_remove = [pc for pc in self.instruction_cache.keys() 
+                        if start_addr <= pc <= end_addr]
+            for pc in to_remove:
+                del self.instruction_cache[pc]
+        elif start_addr is not None:
+            # Remove single address
+            self.instruction_cache.pop(start_addr, None)
+    
+    def get_cache_stats(self):
+        """Get instruction cache statistics"""
+        return {
+            'enabled': self.cache_enabled,
+            'size': len(self.instruction_cache),
+            'max_size': self.instruction_cache_size,
+            'hits': self.cache_hits,
+            'misses': self.cache_misses,
+            'hit_rate': self.cache_hits / (self.cache_hits + self.cache_misses) if (self.cache_hits + self.cache_misses) > 0 else 0
+        }
+    
     # ========================================
     # NEW PREFIXED OPERAND METHODS
     # ========================================
@@ -1607,8 +1707,12 @@ class CPU:
             self.Pregisters[reg_num - 10] = value & 0xFFFF
         elif reg_num == 20:  # VX
             self.gfx.Vregisters[0] = value & 0xFFFF
+            # Invalidate instruction cache when graphics registers change
+            self.invalidate_instruction_cache()
         elif reg_num == 21:  # VY
             self.gfx.Vregisters[1] = value & 0xFFFF
+            # Invalidate instruction cache when graphics registers change
+            self.invalidate_instruction_cache()
         else:
             raise Exception(f"Invalid register number: {reg_num}")
     
@@ -1661,6 +1765,8 @@ class CPU:
         if self.halted:
             return
         
+        self.cycles += 1  # Increment cycle counter
+        
         if self.profiling_enabled:
             if self.profile_data['cycle_start_time'] is None:
                 self.profile_data['cycle_start_time'] = time.time()
@@ -1669,16 +1775,33 @@ class CPU:
         # Update timer first (so timer interrupt can happen before instruction execution)
         self.update_timer()
         
-        #prefetchpc = self.pc
-        opcode = self.fetch_byte()  # Use optimized fetch for single byte opcodes
-        #print( f"pre-fetch pc: {prefetchpc:04x} opcode: {opcode:04x}" )
-        self.execute( opcode )
+        # Check instruction cache first
+        cached_instruction = self.get_cached_instruction(self.pc)
+        if cached_instruction:
+            # Cache hit - use cached instruction
+            self.cache_hits += 1
+            opcode, mode_byte, instruction = cached_instruction
+            self._current_mode_byte = mode_byte
+            
+            # Set PC to position after mode byte (opcode + mode byte = +2)
+            if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D, 0x3B]:
+                # No-operand instruction: PC should be after opcode
+                self.pc = (self.pc + 1) & 0xFFFF
+            else:
+                # Instruction with operands: PC should be after opcode + mode byte
+                self.pc = (self.pc + 2) & 0xFFFF
+            
+            instruction.execute(self)
+        else:
+            # Cache miss - fetch and decode instruction
+            opcode = self.fetch_byte()  # Use optimized fetch for single byte opcodes
+            self.execute_and_cache(opcode)
         
         # Check for other pending interrupts (keyboard, serial, etc.)
         self._check_pending_interrupts()
 
-    def execute(self, opcode):
-        """Execute instruction using dispatch table"""
+    def execute_and_cache(self, opcode):
+        """Execute instruction and cache it for future use"""
         if self.profiling_enabled:
             self.profile_data['instructions_executed'] += 1
             if opcode not in self.profile_data['opcode_counts']:
@@ -1690,13 +1813,25 @@ class CPU:
             # Check if this is a no-operand instruction
             if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D, 0x3B]:  # HLT, NOP, RET, IRET, CLI, STI, PUSHF, POPF, PUSHA, POPA, SINV
                 # No-operand instructions don't have mode byte
+                self._current_mode_byte = 0  # Dummy mode byte
+                start_pc = self.pc - 1  # PC was already advanced by fetch_byte
                 instruction.execute(self)
+                # Cache the instruction (opcode, mode_byte, instruction)
+                self.cache_instruction(start_pc, (opcode, 0, instruction))
             else:
                 # All other instructions use prefixed operand format
-                self._current_mode_byte = self.fetch_byte()
+                mode_byte = self.fetch_byte()
+                self._current_mode_byte = mode_byte
+                start_pc = self.pc - 2  # PC was advanced by fetch_byte (opcode) + fetch_byte (mode)
                 instruction.execute(self)
+                # Cache the instruction (opcode, mode_byte, instruction)
+                self.cache_instruction(start_pc, (opcode, mode_byte, instruction))
         else:
             raise Exception(f"Unknown opcode: {opcode:02X}")
+
+    def execute(self, opcode):
+        """Execute instruction using dispatch table (legacy method for compatibility)"""
+        self.execute_and_cache(opcode)
 
 if __name__ == "__main__":
     print("Nova-16")
