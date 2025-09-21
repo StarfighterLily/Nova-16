@@ -274,6 +274,12 @@ def disassemble_instruction_new(bytecode, pc, opcode_map, register_map):
             return "VX"
         elif reg_num == 0xFE:
             return "VY"
+        # P register byte access (high bytes)
+        elif 0xC9 <= reg_num <= 0xD2:
+            return f"P{reg_num - 0xC9}:"
+        # P register byte access (low bytes)
+        elif 0xD3 <= reg_num <= 0xDC:
+            return f":P{reg_num - 0xD3}"
         # Indirect/indexed register access
         elif 0xA9 <= reg_num <= 0xB2:
             return f"R{reg_num - 0xA9}"
