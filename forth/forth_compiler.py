@@ -67,6 +67,9 @@ class ForthCompiler:
         self.constants: Dict[str, int] = {}  # Constant name -> value
         self.next_var_address = 0x2000  # Start variables at 0x2000
 
+        # Initialize color constants for Nova-16 palette
+        self._init_color_constants()
+
         # String storage
         self.string_counter = 0
         self.string_storage_base = 0x3000  # Base address for string storage
@@ -82,6 +85,51 @@ class ForthCompiler:
         # Initialize with standard header
         self._init_assembly_header()
 
+    def _init_color_constants(self):
+        """Initialize Nova-16 color constants for easy access"""
+        # Grayscale ramp (0x00-0x0F)
+        self.constants['BLACK'] = 0x00
+        self.constants['DARK_GRAY'] = 0x07
+        self.constants['GRAY'] = 0x08
+        self.constants['LIGHT_GRAY'] = 0x0E
+        self.constants['WHITE'] = 0x0F
+
+        # Primary color ramps - darkest and brightest
+        self.constants['RED'] = 0x1F        # Bright red
+        self.constants['DARK_RED'] = 0x10
+        self.constants['GREEN'] = 0x2F      # Bright green
+        self.constants['DARK_GREEN'] = 0x20
+        self.constants['BLUE'] = 0x3F       # Bright blue
+        self.constants['DARK_BLUE'] = 0x30
+        self.constants['YELLOW'] = 0x4F     # Bright yellow
+        self.constants['DARK_YELLOW'] = 0x40
+        self.constants['MAGENTA'] = 0x5F    # Bright magenta
+        self.constants['DARK_MAGENTA'] = 0x50
+        self.constants['CYAN'] = 0x6F       # Bright cyan
+        self.constants['DARK_CYAN'] = 0x60
+
+        # Extended color ramps
+        self.constants['ORANGE'] = 0x7F
+        self.constants['DARK_ORANGE'] = 0x70
+        self.constants['PURPLE'] = 0x8F
+        self.constants['DARK_PURPLE'] = 0x80
+        self.constants['LIME'] = 0x9F
+        self.constants['DARK_LIME'] = 0x90
+        self.constants['PINK'] = 0xAF
+        self.constants['DARK_PINK'] = 0xA0
+        self.constants['TEAL'] = 0xBF
+        self.constants['DARK_TEAL'] = 0xB0
+        self.constants['BROWN'] = 0xCF
+        self.constants['DARK_BROWN'] = 0xC0
+
+        # Light color ramps
+        self.constants['LIGHT_BLUE'] = 0xDF
+        self.constants['DARK_LIGHT_BLUE'] = 0xD0
+        self.constants['LIGHT_GREEN'] = 0xEF
+        self.constants['DARK_LIGHT_GREEN'] = 0xE0
+        self.constants['LIGHT_RED'] = 0xFF
+        self.constants['DARK_LIGHT_RED'] = 0xF0
+
     def _init_assembly_header(self):
         """Initialize the assembly file with standard FORTH setup"""
         self.assembly_lines = [
@@ -91,8 +139,8 @@ class ForthCompiler:
             "ORG 0x1000",
             "",
             "; Initialize stacks",
-            "MOV P8, 0xF000    ; Parameter stack pointer",
-            "MOV P9, 0xFFFF    ; Return stack pointer",
+            "MOV P8,0xF000    ; Parameter stack pointer",
+            "MOV P9,0xFFFF    ; Return stack pointer",
             "",
             "; Main program entry point",
             "main:",
@@ -109,44 +157,44 @@ class ForthCompiler:
             "print_number:",
             "    ; Convert 16-bit number in R0 to decimal and print",
             "    ; Handle negative numbers",
-            "    MOV R1, R0",        # Copy number
-            "    MOV R2, 0",         # Flag for negative
-            "    JGE R1, positive",
-            "    MOV R2, 1",         # Set negative flag
+            "    MOV R1,R0",        # Copy number
+            "    MOV R2,0",         # Flag for negative
+            "    JGE R1,positive",
+            "    MOV R2,1",         # Set negative flag
             "    NEG R1",            # Make positive
             "positive:",
             "    ; Convert to decimal digits",
-            "    MOV P3, 10000",     # Start with 10000s place (use P register for 16-bit value)
-            "    MOV R4, 0",         # Digit counter
+            "    MOV P3,10000",     # Start with 10000s place (use P register for 16-bit value)
+            "    MOV R4,0",         # Digit counter
             "convert_loop:",
-            "    MOV R5, R1",        # Copy remaining value
-            "    DIV R5, P3",        # Divide by current place
+            "    MOV R5,R1",        # Copy remaining value
+            "    DIV R5,P3",        # Divide by current place
             "    ; R5 now contains the digit",
-            "    CMP R5, 0",         # Compare digit with 0
+            "    CMP R5,0",         # Compare digit with 0
             "    JZ skip_digit",     # Skip leading zeros
-            "    MOV R4, 1",         # We've seen a non-zero digit
-            "    ADD R5, 48",        # Convert to ASCII
+            "    MOV R4,1",         # We've seen a non-zero digit
+            "    ADD R5,48",        # Convert to ASCII
             "    ; EMIT R5",         # Print digit (removed - no console output)
             "skip_digit:",
             "    ; Multiply remainder by current place and subtract",
-            "    MUL R5, P3",        # R5 = digit * place (use P3)
-            "    SUB R1, R5",        # R1 = R1 - (digit * place)
+            "    MUL R5,P3",        # R5 = digit * place (use P3)
+            "    SUB R1,R5",        # R1 = R1 - (digit * place)
             "    ; Next place value",
-            "    MOV R5, P3",        # Copy current place value
-            "    DIV R5, 10",        # Divide by 10
-            "    MOV P3, R5",        # Store new place value
-            "    CMP P3, 0",         # Check if done
+            "    MOV R5,P3",        # Copy current place value
+            "    DIV R5,10",        # Divide by 10
+            "    MOV P3,R5",        # Store new place value
+            "    CMP P3,0",         # Check if done
             "    JNZ convert_loop",
             "    ; Handle case where number was 0",
-            "    CMP R4, 0",         # Compare digit counter with 0
+            "    CMP R4,0",         # Compare digit counter with 0
             "    JNZ done_print",
-            "    ; MOV R5, 48",      # ASCII '0' (removed - no console output)
+            "    ; MOV R5,48",      # ASCII '0' (removed - no console output)
             "    ; EMIT R5",         # Print '0' (removed - no console output)
             "done_print:",
             "    ; Print negative sign if needed",
-            "    CMP R2, 0",         # Compare negative flag with 0
+            "    CMP R2,0",         # Compare negative flag with 0
             "    JZ no_sign",
-            "    ; MOV R5, 45",      # ASCII '-' (removed - no console output)
+            "    ; MOV R5,45",      # ASCII '-' (removed - no console output)
             "    ; EMIT R5",         # Print '-' (removed - no console output)
             "no_sign:",
             "    RET",
@@ -155,12 +203,12 @@ class ForthCompiler:
             "print_string:",
             "    ; Print string pointed to by R0",
             "    ; String format: length byte, string data, null terminator",
-            "    MOV R1, [R0]",        # Get string length (first byte)",
+            "    MOV R1,[R0]",        # Get string length (first byte)",
             "    INC R0",              # Point to string data",
             "print_string_loop:",
-            "    CMP R1, 0",           # Check if we've printed all characters",
+            "    CMP R1,0",           # Check if we've printed all characters",
             "    JZ print_string_done",
-            "    MOV R2, [R0]",        # Get next character",
+            "    MOV R2,[R0]",        # Get next character",
             "    ; EMIT R2",           # Print character (removed - no console output)",
             "    INC R0",              # Next character",
             "    DEC R1",              # Decrement counter",
@@ -196,24 +244,24 @@ class ForthCompiler:
         lines = []
         if 0 <= value <= 255:
             # 8-bit values (like colors)
-            lines.append(f"    MOV R0, {value}")
+            lines.append(f"    MOV R0,{value}")
             lines.extend([
-                "    SUB P8, 2",        # Proper arithmetic instruction for stack pointer
-                "    MOV [P8+0], R0",   # Store 8-bit value using indexed addressing
+                "    SUB P8,2",        # Proper arithmetic instruction for stack pointer
+                "    MOV [P8],R0",   # Store 8-bit value using indirect addressing
             ])
         elif 0 <= value <= 65535:
             # 16-bit values (like coordinates)
-            lines.append(f"    MOV P0, {value}")
+            lines.append(f"    MOV P0,{value}")
             lines.extend([
-                "    SUB P8, 2",        # Proper arithmetic instruction for stack pointer
-                "    MOV [P8+0], P0",   # Store 16-bit value using indexed addressing
+                "    SUB P8,2",        # Proper arithmetic instruction for stack pointer
+                "    MOV [P8],P0",   # Store 16-bit value using indirect addressing
             ])
         else:
             # Handle larger values if needed
-            lines.append(f"    MOV P0, {value & 0xFFFF}")
+            lines.append(f"    MOV P0,{value & 0xFFFF}")
             lines.extend([
-                "    SUB P8, 2",        # Proper arithmetic instruction for stack pointer
-                "    MOV [P8+0], P0",   # Store value using indexed addressing
+                "    SUB P8,2",        # Proper arithmetic instruction for stack pointer
+                "    MOV [P8],P0",   # Store value using indirect addressing
             ])
         self.param_stack_depth += 1
         return lines
@@ -222,13 +270,13 @@ class ForthCompiler:
         """Generate assembly to pop value from parameter stack"""
         if is_8bit:
             lines = [
-                f"    MOV {dest}, [P8+0]",  # Load 8-bit value using indexed addressing
-                "    ADD P8, 2",             # Proper arithmetic instruction for stack pointer
+                f"    MOV {dest},[P8]",  # Load 8-bit value using indirect addressing
+                "    ADD P8,2",             # Proper arithmetic instruction for stack pointer
             ]
         else:
             lines = [
-                f"    MOV {dest}, [P8+0]",  # Load 16-bit value using indexed addressing
-                "    ADD P8, 2",             # Proper arithmetic instruction for stack pointer
+                f"    MOV {dest},[P8]",  # Load 16-bit value using indirect addressing
+                "    ADD P8,2",             # Proper arithmetic instruction for stack pointer
             ]
         self.param_stack_depth -= 1
         return lines
@@ -419,6 +467,10 @@ class ForthCompiler:
             lines.extend(self._compile_vl_store())
         elif token == "TIMER!":
             lines.extend(self._compile_timer_store())
+        elif token == "REFRESH":
+            lines.extend(self._compile_refresh())
+        elif token == "GUI":
+            lines.extend(self._compile_gui())
 
         else:
             # Check if it's a defined variable or constant
@@ -436,108 +488,121 @@ class ForthCompiler:
     def _compile_dup(self) -> List[str]:
         return [
             "    ; DUP",
-            "    MOV R0, [P8+0]",      # Get top of stack using indexed addressing
-            "    SUB P8, 2",           # Make room for duplicate using proper arithmetic
-            "    MOV [P8+0], R0",      # Store duplicate using indexed addressing
+            "    MOV R0,[P8]",      # Get top of stack using indirect addressing
+            "    SUB P8,2",           # Make room for duplicate using proper arithmetic
+            "    MOV [P8],R0",      # Store duplicate using indirect addressing
         ]
 
     def _compile_add(self) -> List[str]:
         return [
             "    ; +",
-            "    MOV R0, [P8+0]",      # Get first operand using indexed addressing
-            "    MOV R1, [P8+2]",      # Get second operand using indexed addressing
-            "    ADD P8, 2",           # Adjust stack pointer (pop one operand)
-            "    ADD R1, R0",          # Add them
-            "    MOV [P8+0], R1",      # Store result using indexed addressing
+            "    MOV R0,[P8]",      # Get first operand using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer to access second operand
+            "    MOV R1,[P8]",      # Get second operand using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer (pop one operand)
+            "    ADD R1,R0",        # Add them
+            "    SUB P8,2",         # Make room for result
+            "    MOV [P8],R1",      # Store result using indirect addressing
         ]
 
     def _compile_sub(self) -> List[str]:
         return [
             "    ; -",
-            "    MOV R0, [P8+0]",     # Get first operand using indexed addressing
-            "    MOV R1, [P8+2]",     # Get second operand using indexed addressing
-            "    ADD P8, 2",          # Adjust stack pointer (pop one operand)
-            "    SUB R1, R0",         # Subtract (second - first)
-            "    MOV [P8+0], R1",     # Store result using indexed addressing
+            "    MOV R0,[P8]",     # Get first operand using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer to access second operand
+            "    MOV R1,[P8]",     # Get second operand using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer (pop one operand)
+            "    SUB R1,R0",        # Subtract (second - first)
+            "    SUB P8,2",         # Make room for result
+            "    MOV [P8],R1",     # Store result using indirect addressing
         ]
 
     def _compile_mul(self) -> List[str]:
         return [
             "    ; *",
-            "    MOV R0, [P8+0]",     # Get first operand using indexed addressing
-            "    MOV R1, [P8+2]",     # Get second operand using indexed addressing
-            "    ADD P8, 2",          # Adjust stack pointer (pop one operand)
-            "    MUL R1, R0",         # Multiply them
-            "    MOV [P8+0], R1",     # Store result using indexed addressing
+            "    MOV R0,[P8]",     # Get first operand using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer to access second operand
+            "    MOV R1,[P8]",     # Get second operand using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer (pop one operand)
+            "    MUL R1,R0",        # Multiply them
+            "    SUB P8,2",         # Make room for result
+            "    MOV [P8],R1",     # Store result using indirect addressing
         ]
 
     def _compile_div(self) -> List[str]:
         return [
             "    ; /",
-            "    MOV P0, [P8+0]",     # Get first operand using indexed addressing
-            "    MOV P1, [P8+2]",     # Get second operand using indexed addressing
-            "    ADD P8, 2",          # Adjust stack pointer (pop one operand)
-            "    DIV P1, P0",         # Divide (second / first)
-            "    MOV [P8+0], P1",     # Store result using indexed addressing
+            "    MOV P0,[P8]",     # Get first operand using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer to access second operand
+            "    MOV P1,[P8]",     # Get second operand using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer (pop one operand)
+            "    DIV P1,P0",        # Divide (second / first)
+            "    SUB P8,2",         # Make room for result
+            "    MOV [P8],P1",     # Store result using indirect addressing
         ]
 
     def _compile_dot(self) -> List[str]:
         return [
             "    ; .",
-            "    MOV R0, [P8+0]",     # Get number using indexed addressing
-            "    ADD P8, 2",          # Pop from stack using proper arithmetic
-            "    CALL print_number",  # Call print routine
+            "    MOV R0,[P8]",     # Get number using indirect addressing
+            "    ADD P8,2",        # Pop the number
+            "    CALL print_number", # Print it
         ]
 
     def _compile_drop(self) -> List[str]:
         return [
             "    ; DROP",
-            "    ADD P8, 2",          # Pop one item using proper arithmetic
+            "    ADD P8,2",          # Pop one item using proper arithmetic
         ]
 
     def _compile_swap(self) -> List[str]:
         return [
             "    ; SWAP",
-            "    MOV R0, [P8+0]",     # Get first using indexed addressing
-            "    MOV R1, [P8+2]",     # Get second using indexed addressing
-            "    MOV [P8+0], R1",     # Store second in first's position
-            "    MOV [P8+2], R0",     # Store first in second's position
+            "    MOV R0,[P8]",     # Get first using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer to access second
+            "    MOV R1,[P8]",     # Get second using indirect addressing
+            "    MOV [P8],R0",     # Store first in second's position
+            "    SUB P8,2",         # Adjust stack pointer back
+            "    MOV [P8],R1",     # Store second in first's position
         ]
 
     def _compile_over(self) -> List[str]:
         return [
             "    ; OVER",
-            "    MOV R0, [P8+2]",     # Get second item using indexed addressing
-            "    SUB P8, 2",          # Make room using proper arithmetic
-            "    MOV [P8+0], R0",     # Push copy of second item using indexed addressing
+            "    ADD P8,2",         # Adjust stack pointer to access second item
+            "    MOV R0,[P8]",     # Get second item using indirect addressing
+            "    SUB P8,4",         # Make room for copy (adjust for both items)
+            "    MOV [P8],R0",     # Push copy of second item using indirect addressing
         ]
 
     def _compile_fetch(self) -> List[str]:
         return [
             "    ; @",
-            "    MOV R0, [P8+0]",     # Get address using indexed addressing
-            "    MOV R0, [R0+0]",     # Fetch value from address using indexed addressing
-            "    MOV [P8+0], R0",     # Store value back on stack using indexed addressing
+            "    MOV R0,[P8]",     # Get address using indirect addressing
+            "    MOV R0,[R0+0]",     # Fetch value from address using indexed addressing
+            "    MOV [P8],R0",     # Store value back on stack using indirect addressing
         ]
 
     def _compile_store(self) -> List[str]:
         return [
             "    ; !",
-            "    MOV R0, [P8+0]",     # Get address using indexed addressing
-            "    MOV R1, [P8+2]",     # Get value using indexed addressing
-            "    ADD P8, 4",          # Pop both items using proper arithmetic
-            "    MOV [R0+0], R1",     # Store value to address using indexed addressing
+            "    MOV R0,[P8]",     # Get address using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer to access value
+            "    MOV R1,[P8]",     # Get value using indirect addressing
+            "    ADD P8,2",         # Pop both items using proper arithmetic
+            "    MOV [R0+0],R1",     # Store value to address using indexed addressing
         ]
 
     def _compile_plus_store(self) -> List[str]:
         return [
             "    ; +!",
-            "    MOV R0, [P8+0]",     # Get address using indexed addressing
-            "    MOV R1, [P8+2]",     # Get value to add using indexed addressing
-            "    ADD P8, 4",          # Pop both items using proper arithmetic
-            "    MOV R2, [R0+0]",     # Fetch current value using indexed addressing
-            "    ADD R2, R1",         # Add the value
-            "    MOV [R0+0], R2",     # Store result back using indexed addressing
+            "    MOV R0,[P8]",     # Get address using indirect addressing
+            "    ADD P8,2",         # Adjust stack pointer to access value
+            "    MOV R1,[P8]",     # Get value to add using indirect addressing
+            "    ADD P8,2",         # Pop both items using proper arithmetic
+            "    MOV R2,[R0+0]",     # Fetch current value using indexed addressing
+            "    ADD R2,R1",         # Add the value
+            "    MOV [R0+0],R2",     # Store result back using indexed addressing
         ]
 
     # Control flow implementations
@@ -548,10 +613,10 @@ class ForthCompiler:
         
         return [
             "    ; IF",
-            "    MOV R0, [P8+0]",     # Get condition using indexed addressing
-            "    ADD P8, 2",          # Pop condition using proper arithmetic
-            "    CMP R0, 0",          # Test condition
-            f"    JZ {else_label}",   # Jump to else if false
+            "    MOV R0,[P8]",     # Get condition using indirect addressing
+            "    ADD P8,2",        # Pop condition using proper arithmetic
+            "    CMP R0,0",        # Test condition
+            f"    JZ {else_label}", # Jump to else if false
         ]
 
     def _compile_else(self) -> List[str]:
@@ -589,9 +654,9 @@ class ForthCompiler:
         _, begin_label = self.control_stack.pop()
         return [
             "    ; UNTIL",
-            "    MOV R0, [P8+0]",     # Get condition using indexed addressing
-            "    ADD P8, 2",          # Pop condition using proper arithmetic
-            "    CMP R0, 0",          # Test condition
+            "    MOV R0,[P8+0]",     # Get condition using indexed addressing
+            "    ADD P8,2",          # Pop condition using proper arithmetic
+            "    CMP R0,0",          # Test condition
             f"    JZ {begin_label}",  # Jump back if false (continue loop)
         ]
 
@@ -611,14 +676,15 @@ class ForthCompiler:
         
         return [
             "    ; DO (limit index DO)",
-            "    MOV R0, [P8+0]",     # Get index using indexed addressing
-            "    MOV R1, [P8+2]",     # Get limit using indexed addressing
-            "    ADD P8, 4",          # Pop both items using proper arithmetic
+            "    MOV R1,[P8]",       # Get index
+            "    ADD P8,2",          # Pop index
+            "    MOV R0,[P8]",       # Get limit  
+            "    ADD P8,2",          # Pop limit
             "    ; Push to return stack for loop control",
-            "    SUB P9, 2",          # Make room on return stack using proper arithmetic
-            "    MOV [P9+0], R1",     # Push limit to return stack using indexed addressing
-            "    SUB P9, 2",          # Make room on return stack using proper arithmetic
-            "    MOV [P9+0], R0",     # Push index to return stack using indexed addressing
+            "    SUB P9,2",          # Make room on return stack
+            "    MOV [P9],R0",       # Push limit to return stack
+            "    SUB P9,2",          # Make room on return stack
+            "    MOV [P9],R1",       # Push index to return stack
             f"{do_label}:",           # Loop start
         ]
 
@@ -629,41 +695,43 @@ class ForthCompiler:
         _, do_label, loop_label = self.control_stack.pop()
         return [
             "    ; LOOP",
-            "    MOV R0, [P9+0]",   # Get current index using indexed addressing
+            "    MOV R0,[P9]",     # Get current index
             "    INC R0",           # Increment index
-            "    MOV [P9+0], R0",   # Store back using indexed addressing
-            "    MOV R1, [P9+2]",   # Get limit using indexed addressing
-            "    CMP R0, R1",       # Compare index with limit
-            f"    JL {do_label}",   # Continue if index < limit
+            "    MOV [P9],R0",     # Store back
+            "    MOV R1,[P9+2]",   # Get limit
+            "    CMP R0,R1",       # Compare index with limit
+            f"    JLT {do_label}",   # Continue if index < limit
             "    ; Clean up return stack",
-            "    ADD P9, 4",        # Remove both index and limit using proper arithmetic
+            "    ADD P9,4",        # Remove both index and limit
             f"{loop_label}:",       # End of loop
         ]
 
     def _compile_i(self) -> List[str]:
         return [
             "    ; I - Get loop index",
-            "    MOV R0, [P9+0]",     # Get index from return stack using indexed addressing
-            "    SUB P8, 2",          # Make room on parameter stack using proper arithmetic
-            "    MOV [P8+0], R0",     # Push to parameter stack using indexed addressing
+            "    MOV R0,[P9]",     # Get index from return stack
+            "    SUB P8,2",        # Make room on parameter stack
+            "    MOV [P8],R0",     # Push to parameter stack
         ]
 
     def _compile_j(self) -> List[str]:
         return [
             "    ; J - Get outer loop index",
-            "    MOV R0, [P9+4]",     # Get outer index from return stack using indexed addressing
-            "    SUB P8, 2",          # Make room on parameter stack using proper arithmetic
-            "    MOV [P8+0], R0",     # Push to parameter stack using indexed addressing
+            "    MOV R0,[P9+4]",   # Get outer index from return stack
+            "    SUB P8,2",        # Make room on parameter stack
+            "    MOV [P8],R0",     # Push to parameter stack
         ]
 
     def _compile_and(self) -> List[str]:
         return [
             "    ; AND",
-            "    MOV R0, [P8+0]",     # Get first operand using indexed addressing
-            "    MOV R1, [P8+2]",     # Get second operand using indexed addressing
-            "    ADD P8, 2",          # Pop one operand using proper arithmetic
-            "    AND R0, R1",         # Bitwise AND
-            "    MOV [P8+0], R0",     # Store result using indexed addressing
+            "    MOV R0,[P8]",     # Get first operand
+            "    ADD P8,2",        # Pop first
+            "    MOV R1,[P8]",     # Get second operand
+            "    ADD P8,2",        # Pop second
+            "    AND R1,R0",       # Bitwise AND (second & first)
+            "    SUB P8,2",        # Push result
+            "    MOV [P8],R1",     # Store result
         ]
 
     def _compile_equals(self) -> List[str]:
@@ -672,17 +740,19 @@ class ForthCompiler:
         
         return [
             "    ; =",
-            "    MOV R0, [P8+0]",     # Get first operand using indexed addressing
-            "    MOV R1, [P8+2]",     # Get second operand using indexed addressing
-            "    ADD P8, 2",          # Pop one operand using proper arithmetic
-            "    CMP R0, R1",         # Compare values
+            "    MOV R0,[P8]",     # Get first operand
+            "    ADD P8,2",        # Pop first
+            "    MOV R1,[P8]",     # Get second operand
+            "    ADD P8,2",        # Pop second
+            "    CMP R1,R0",       # Compare values (second == first)
             f"    JZ {true_label}",
-            "    MOV R0, 0",          # False
+            "    MOV R0,0",        # False
             f"    JMP {end_label}",
             f"{true_label}:",
-            "    MOV R0, -1",         # True (FORTH uses -1 for true)
+            "    MOV R0,-1",       # True (FORTH uses -1 for true)
             f"{end_label}:",
-            "    MOV [P8+0], R0",     # Store result using indexed addressing
+            "    SUB P8,2",        # Push result
+            "    MOV [P8],R0",     # Store result
         ]
 
     def _compile_exit(self) -> List[str]:
@@ -697,19 +767,13 @@ class ForthCompiler:
             "    ; PIXEL - Draw at (x,y) with color",
             "    ; Stack before: ( x y color -- )",
         ]
-        lines.extend(self._pop_param("P2", is_8bit=False))  # Color
-        lines.extend([
-            "    MOV R0, :P2",    # Extract low byte (the actual color value)
-        ])
-        lines.extend(self._pop_param("P0"))  # Y coordinate
-        lines.extend([
-            "    MOV R1, :P0",    # Extract low byte (the actual Y coordinate)
-        ])
-        lines.extend(self._pop_param("P1"))  # X coordinate
+        lines.extend(self._pop_param("R0", is_8bit=True))  # Color (8-bit) - pop first since it's on top
+        lines.extend(self._pop_param("R1", is_8bit=True))  # Y coordinate (8-bit)
+        lines.extend(self._pop_param("R2", is_8bit=True))  # X coordinate (8-bit)
         lines.extend([
             "    ; Set coordinates to video registers",
-            "    MOV VX, :P1",    # Low byte of X coordinate
-            "    MOV VY, R1",     # Y coordinate  
+            "    MOV VX, R2",     # X coordinate
+            "    MOV VY, R1",     # Y coordinate
             "    ; Write the pixel",
             "    SWRITE R0",
         ])
@@ -720,21 +784,22 @@ class ForthCompiler:
             "    ; LAYER - Set active graphics layer",
             "    ; Stack before: ( layer -- )",
         ]
-        lines.extend(self._pop_param("P0", is_8bit=False))
+        lines.extend(self._pop_param("R0", is_8bit=True))  # Layer (8-bit)
         lines.extend([
-            "    MOV R0, :P0",    # Extract low byte
             "    MOV VL, R0",     # Set video layer register
         ])
         return lines
 
     def _compile_vmode(self) -> List[str]:
-        return [
+        lines = [
             "    ; VMODE - Set video mode",
             "    ; Stack before: ( mode -- )",
-            "    MOV R0, [P8+0]",     # Get mode using indexed addressing
-            "    ADD P8, 2",          # Pop mode using proper arithmetic
-            "    MOV VM, R0",         # Set video mode register
         ]
+        lines.extend(self._pop_param("R0", is_8bit=True))  # Mode (8-bit)
+        lines.extend([
+            "    MOV VM, R0",      # Set video mode register
+        ])
+        return lines
 
     def _compile_play(self) -> List[str]:
         return [
@@ -743,32 +808,34 @@ class ForthCompiler:
         ]
 
     def _compile_sound(self) -> List[str]:
-        return [
+        lines = [
             "    ; SOUND - Set sound parameters",
             "    ; Stack before: ( freq volume waveform -- )",
-            "    MOV R0, [P8+0]",     # Get waveform using indexed addressing
-            "    MOV SW, R0",         # Set waveform
-            "    MOV R0, [P8+2]",     # Get volume using indexed addressing
-            "    MOV SV, R0",         # Set volume
-            "    MOV R0, [P8+4]",     # Get frequency using indexed addressing
-            "    ADD P8, 6",          # Pop all three items using proper arithmetic
-            "    MOV SF, R0",         # Set frequency
         ]
+        lines.extend(self._pop_param("R2", is_8bit=True))  # Waveform
+        lines.extend(self._pop_param("R1", is_8bit=True))  # Volume  
+        lines.extend(self._pop_param("R0", is_8bit=True))  # Frequency
+        lines.extend([
+            "    MOV SW, R2",      # Set waveform
+            "    MOV SV, R1",      # Set volume
+            "    MOV SF, R0",      # Set frequency
+        ])
+        return lines
 
     def _compile_key(self) -> List[str]:
         return [
             "    ; KEY - Read key from keyboard",
             "    KEYIN R0",         # Read key into R0
-            "    SUB P8, 2",        # Make room on stack using proper arithmetic
-            "    MOV [P8+0], R0",   # Push key to stack using indexed addressing
+            "    SUB P8,2",         # Make room on stack
+            "    MOV [P8],R0",      # Push key to stack
         ]
 
     def _compile_key_available(self) -> List[str]:
         return [
             "    ; KEY? - Check if key is available",
             "    KEYSTAT R0",       # Check key status
-            "    SUB P8, 2",        # Make room on stack using proper arithmetic
-            "    MOV [P8+0], R0",   # Push status to stack using indexed addressing
+            "    SUB P8,2",         # Make room on stack
+            "    MOV [P8],R0",      # Push status to stack
         ]
 
     def _compile_swrite(self) -> List[str]:
@@ -776,9 +843,8 @@ class ForthCompiler:
             "    ; SWRITE - Write pixel at current coordinates",
             "    ; Stack before: ( color -- )",
         ]
-        lines.extend(self._pop_param("P0", is_8bit=False))
+        lines.extend(self._pop_param("R0", is_8bit=True))  # Color
         lines.extend([
-            "    MOV R0, :P0",    # Extract low byte (color)
             "    SWRITE R0",     # Write pixel
         ])
         return lines
@@ -820,9 +886,8 @@ class ForthCompiler:
             "    ; VX! - Store to VX register", 
             "    ; Stack before: ( value -- )",
         ]
-        lines.extend(self._pop_param("P0", is_8bit=False))
+        lines.extend(self._pop_param("R0", is_8bit=True))  # Value
         lines.extend([
-            "    MOV R0, :P0",    # Extract low byte
             "    MOV VX, R0",     # Set VX register
         ])
         return lines
@@ -832,9 +897,8 @@ class ForthCompiler:
             "    ; VY! - Store to VY register",
             "    ; Stack before: ( value -- )",
         ]
-        lines.extend(self._pop_param("P0", is_8bit=False))
+        lines.extend(self._pop_param("R0", is_8bit=True))  # Value
         lines.extend([
-            "    MOV R0, :P0",    # Extract low byte
             "    MOV VY, R0",     # Set VY register
         ])
         return lines
@@ -844,9 +908,8 @@ class ForthCompiler:
             "    ; VM! - Store to VM register (video mode)",
             "    ; Stack before: ( mode -- )",
         ]
-        lines.extend(self._pop_param("P0", is_8bit=False))
+        lines.extend(self._pop_param("R0", is_8bit=True))  # Mode
         lines.extend([
-            "    MOV R0, :P0",    # Extract low byte
             "    MOV VM, R0",     # Set VM register
         ])
         return lines
@@ -856,9 +919,8 @@ class ForthCompiler:
             "    ; VL! - Store to VL register (video layer)",
             "    ; Stack before: ( layer -- )",
         ]
-        lines.extend(self._pop_param("P0", is_8bit=False))
+        lines.extend(self._pop_param("R0", is_8bit=True))  # Layer
         lines.extend([
-            "    MOV R0, :P0",    # Extract low byte
             "    MOV VL, R0",     # Set VL register
         ])
         return lines
@@ -868,11 +930,23 @@ class ForthCompiler:
             "    ; TIMER! - Store to timer register",
             "    ; Stack before: ( value -- )",
         ]
-        lines.extend(self._pop_param("P0", is_8bit=False))
+        lines.extend(self._pop_param("R0", is_8bit=True))  # Value
         lines.extend([
-            "    MOV TT, P0",      # Set timer register (16-bit)
+            "    MOV TT, R0",      # Set timer register
         ])
         return lines
+
+    def _compile_refresh(self) -> List[str]:
+        return [
+            "    ; REFRESH - Refresh the display",
+            "    ; No operation needed for Nova-16 immediate graphics",
+        ]
+
+    def _compile_gui(self) -> List[str]:
+        return [
+            "    ; GUI - GUI operation",
+            "    ; No operation for now",
+        ]
 
     # String handling
     def _compile_print_string(self, string_content: str) -> List[str]:
@@ -944,23 +1018,23 @@ class ForthCompiler:
         address = self.variables[name]
         return [
             f"    ; Variable access: {name}",
-            f"    MOV P0, {address}",
-            "    SUB P8, 2",          # Proper arithmetic instruction
-            "    MOV [P8+0], P0",     # Store using indexed addressing
+            f"    MOV P0,{address}",
+            "    SUB P8,2",          # Proper arithmetic instruction
+            "    MOV [P8+0],P0",     # Store using indexed addressing
         ]
 
     def _compile_constant_access(self, name: str) -> List[str]:
         value = self.constants[name]
         return [
             f"    ; Constant access: {name}",
-            f"    MOV P0, {value}",
-            "    SUB P8, 2",          # Proper arithmetic instruction
-            "    MOV [P8+0], P0",     # Store using indexed addressing
+            f"    MOV P0,{value}",
+            "    SUB P8,2",          # Proper arithmetic instruction
+            "    MOV [P8+0],P0",     # Store using indexed addressing
         ]
 
     # Main compilation methods
     def compile_word(self, word_name: str, forth_code: str) -> List[str]:
-        """Compile a FORTH word definition to assembly with proper frame management"""
+        """Compile a FORTH word definition to assembly"""
         self.current_word = word_name
         self.compiling = True
         self.control_stack = []
@@ -968,10 +1042,6 @@ class ForthCompiler:
         lines = [
             f"; Word: {word_name}",
             f"{word_name}:",
-            "    ; Function prologue - Nova-16 frame management",
-            "    SUB P9, 2",          # Make room on return stack
-            "    MOV [P9+0], P9",     # Save caller's frame pointer (recursive save)
-            "    MOV P9, P8",         # Set new frame pointer to current stack position
         ]
 
         tokens = self._tokenize_forth(forth_code)
@@ -981,10 +1051,6 @@ class ForthCompiler:
 
         # Function epilogue
         lines.extend([
-            "    ; Function epilogue - restore frame",
-            "    MOV P8, P9",         # Restore stack pointer
-            "    MOV P9, [P9+0]",     # Restore caller's frame pointer
-            "    ADD P9, 2",          # Clean up return stack
             "    RET"
         ])
         lines.append("")
@@ -1059,8 +1125,10 @@ class ForthCompiler:
                         # Insert into forth_main routine
                         for j, line in enumerate(self.assembly_lines):
                             if "forth_main:" in line:
-                                for k in range(j, len(self.assembly_lines)):
-                                    if "    RET" in self.assembly_lines[k] and "forth_main" in self.assembly_lines[j:k+1]:
+                                # Find the RET instruction for forth_main
+                                for k in range(j + 1, len(self.assembly_lines)):
+                                    if self.assembly_lines[k].strip() == "RET":
+                                        # Insert main code lines before the RET
                                         for line_to_insert in reversed(main_code_lines):
                                             self.assembly_lines.insert(k, line_to_insert)
                                         break
@@ -1075,7 +1143,7 @@ class ForthCompiler:
         if self.enable_optimization:
             self.assembly_lines = self.optimizer.optimize_assembly(self.assembly_lines)
         
-        with open(output_file, 'w') as f:
+        with open(output_file, 'w', encoding='ascii') as f:
             f.write('\n'.join(self.assembly_lines))
         
         if self.enable_optimization:

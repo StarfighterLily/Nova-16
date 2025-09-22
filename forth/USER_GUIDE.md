@@ -326,6 +326,48 @@ SSTOP
 
 ### Graphics System
 
+#### Color System
+
+NOVA-16 uses a 256-color palette organized into 16 themed color ramps, each with 16 intensity levels (0-15):
+
+```
+0x00-0x0F: Grayscale ramp     (0=black, 15=white)
+0x10-0x1F: Red ramp           (0x10=dark red, 0x1F=bright red)
+0x20-0x2F: Green ramp         (0x20=dark green, 0x2F=bright green)
+0x30-0x3F: Blue ramp          (0x30=dark blue, 0x3F=bright blue)
+0x40-0x4F: Yellow ramp        (0x40=dark yellow, 0x4F=bright yellow)
+0x50-0x5F: Magenta ramp       (0x50=dark magenta, 0x5F=bright magenta)
+0x60-0x6F: Cyan ramp          (0x60=dark cyan, 0x6F=bright cyan)
+0x70-0x7F: Orange ramp        (0x70=dark orange, 0x7F=bright orange)
+0x80-0x8F: Purple ramp        (0x80=dark purple, 0x8F=bright purple)
+0x90-0x9F: Lime ramp          (0x90=dark lime, 0x9F=bright lime)
+0xA0-0xAF: Pink ramp          (0xA0=dark pink, 0xAF=bright pink)
+0xB0-0xBF: Teal ramp          (0xB0=dark teal, 0xBF=bright teal)
+0xC0-0xCF: Brown ramp         (0xC0=dark brown, 0xCF=bright brown)
+0xD0-0xDF: Light blue ramp    (0xD0=dark blue, 0xDF=bright blue)
+0xE0-0xEF: Light green ramp   (0xE0=dark green, 0xEF=bright green)
+0xF0-0xFF: Light red ramp     (0xF0=dark red, 0xFF=bright red)
+```
+
+**Color Examples:**
+```
+0 PIXEL        \ Black
+15 PIXEL       \ White (brightest gray)
+16 PIXEL       \ Dark red
+31 PIXEL       \ Bright red
+240 PIXEL      \ Dark red (light red ramp)
+255 PIXEL      \ Bright red (light red ramp)
+```
+
+**Using Color Constants:**
+```
+RED PIXEL      \ Bright red
+BLUE PIXEL     \ Bright blue
+GREEN PIXEL    \ Bright green
+WHITE PIXEL    \ White
+BLACK PIXEL    \ Black
+```
+
 #### Basic Graphics
 ```
 0 LAYER          \ Select layer 0

@@ -624,17 +624,18 @@ class CodeGenerator:
             indirect_match = re.match(r'^\[([A-Za-z0-9]+)\]$', operand)
             if indirect_match:
                 reg_name = indirect_match.group(1)
-                if reg_name.startswith('R'):
-                    reg_num = 0xA9 + int(reg_name[1:])  # R0-R9 = 0xA9-0xB2
-                elif reg_name.startswith('P'):
-                    reg_num = 0xB3 + int(reg_name[1:])  # P0-P9 = 0xB3-0xBC
-                elif reg_name == 'SP':
-                    reg_num = 0xB3 + 8  # SP = P8 = 0xBB
-                elif reg_name == 'FP':
-                    reg_num = 0xB3 + 9  # FP = P9 = 0xBC
+                # Use the same register codes as direct register access
+                if reg_name in self.instruction_set.registers:
+                    reg_num = int(self.instruction_set.registers[reg_name], 16)
+                    return [reg_num]
+                elif reg_name in self.instruction_set.high_byte_registers:
+                    reg_num = int(self.instruction_set.high_byte_registers[reg_name], 16)
+                    return [reg_num]
+                elif reg_name in self.instruction_set.low_byte_registers:
+                    reg_num = int(self.instruction_set.low_byte_registers[reg_name], 16)
+                    return [reg_num]
                 else:
                     raise Exception(f"Unknown register for indirect: {reg_name}")
-                return [reg_num]
             else:
                 raise Exception(f"Invalid indirect operand: {operand}")
         
@@ -644,15 +645,13 @@ class CodeGenerator:
                 reg_name = indexed_match.group(1)
                 index_name = indexed_match.group(2)
                 
-                # Base register
-                if reg_name.startswith('R'):
-                    reg_num = 0xA9 + int(reg_name[1:])  # R0-R9 = 0xA9-0xB2
-                elif reg_name.startswith('P'):
-                    reg_num = 0xB3 + int(reg_name[1:])  # P0-P9 = 0xB3-0xBC
-                elif reg_name == 'SP':
-                    reg_num = 0xB3 + 8  # SP = P8 = 0xBB
-                elif reg_name == 'FP':
-                    reg_num = 0xB3 + 9  # FP = P9 = 0xBC
+                # Base register - use same codes as direct register access
+                if reg_name in self.instruction_set.registers:
+                    reg_num = int(self.instruction_set.registers[reg_name], 16)
+                elif reg_name in self.instruction_set.high_byte_registers:
+                    reg_num = int(self.instruction_set.high_byte_registers[reg_name], 16)
+                elif reg_name in self.instruction_set.low_byte_registers:
+                    reg_num = int(self.instruction_set.low_byte_registers[reg_name], 16)
                 else:
                     raise Exception(f"Unknown base register for indexed: {reg_name}")
                 

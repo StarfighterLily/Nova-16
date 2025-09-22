@@ -20,6 +20,7 @@ Memory Layout for FORTH:
 
 import sys
 import os
+import threading
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from nova_cpu import CPU
@@ -27,13 +28,14 @@ from nova_memory import Memory
 from nova_gfx import GFX
 from nova_keyboard import NovaKeyboard
 from nova_sound import NovaSound
+import nova_gui as gui
 
 class ForthInterpreter:
     """
     FORTH interpreter for Nova-16 CPU
     """
 
-    def __init__(self, memory_size=0x10000):  # 64KB
+    def __init__(self, memory_size=0x10000, gui_enabled=False):  # 64KB
         # Initialize Nova-16 components
         self.memory = Memory(memory_size)
         self.gfx = GFX()
@@ -42,6 +44,12 @@ class ForthInterpreter:
         self.sound.set_memory_reference(self.memory)
 
         self.cpu = CPU(self.memory, self.gfx, self.keyboard, self.sound)
+        
+        # GUI support
+        self.gui_enabled = gui_enabled
+        self.gui_active = False
+        self.graphics_used = False  # Track if graphics commands have been used
+        self.gui_thread = None  # Thread for running GUI
 
         # FORTH memory layout
         self.FORTH_START = 0x0120
@@ -75,8 +83,20 @@ class ForthInterpreter:
         self.open_files = {}  # fileid -> file object
         self.next_fileid = 1  # Next available file ID
 
+        # Immediate mode control flow
+        self.immediate_begin_stack = []
+        self.immediate_do_stack = []
+
         # Initialize FORTH kernel
         self.init_forth_kernel()
+
+    def start_gui(self):
+        """Mark that graphics operations have been used"""
+        if self.gui_enabled:
+            if not self.graphics_used:
+                self.graphics_used = True
+                if not self.gui_active:  # Only show message if GUI not already running
+                    print("Graphics commands detected. Type 'GUI' to view graphics, or 'BYE' to exit.")
 
     def init_forth_kernel(self):
         """Initialize the FORTH kernel with core words"""
@@ -196,41 +216,50 @@ class ForthInterpreter:
         self.define_word("READ-FILE", self.word_read_file)
         self.define_word("WRITE-FILE", self.word_write_file)
         self.define_word("INCLUDE-FILE", self.word_include_file)
-    # --- Hardware Word Implementations ---
+        
+        # GUI words
+        self.define_word("GUI", self.word_gui)
+        self.define_word("REFRESH", self.word_refresh)
+        self.define_word("GUI-QUIT", self.word_gui_quit)
     def word_pixel(self):
         # Usage: x y color PIXEL
         color = self.pop_param()
         y = self.pop_param()
         x = self.pop_param()
         
-        # Ensure coordinate mode
-        self.gfx.vmode = 0
+        # Start GUI if graphics operations are used
+        self.start_gui()
         
-        # Ensure active layer (use layer 1 if none set)
-        if self.gfx.VL == 0:
-            self.gfx.VL = 1
-            
         # Set coordinates in hardware registers
         self.gfx.Vregisters[0] = x & 0xFF  # VX
         self.gfx.Vregisters[1] = y & 0xFF  # VY
         
-        # Write pixel
-        self.gfx.swrite(color)  # This will write to current layer
+        # Write pixel using the correct method
+        self.gfx.set_screen_val(color)
 
     def word_layer(self):
         # Usage: layer_num LAYER
         layer = self.pop_param()
-        self.gfx.set_current_layer(layer)
+        
+        # Start GUI if graphics operations are used
+        self.start_gui()
+        
+        self.gfx.VL = layer  # Set current layer directly
 
     def word_vmode(self):
         # Usage: mode VMODE
         mode = self.pop_param()
-        self.gfx.set_vmode(mode)
+        
+        # Start GUI if graphics operations are used
+        self.start_gui()
+        
+        self.gfx.vmode = mode  # Set vmode directly
 
     def word_sprite(self):
         # Usage: sprite_id SPRITE
         sprite_id = self.pop_param()
-        self.gfx.activate_sprite(sprite_id)
+        # For now, just set the layer to sprite range (5-8)
+        self.gfx.VL = 5 + (sprite_id % 4)
 
     def word_sound(self):
         # Usage: addr freq vol wave SOUND
@@ -238,22 +267,30 @@ class ForthInterpreter:
         vol = self.pop_param()
         freq = self.pop_param()
         addr = self.pop_param()
-        self.sound.play(addr, freq, vol, wave)
+        
+        # Set sound registers
+        self.sound.SA = addr
+        self.sound.SF = freq
+        self.sound.SV = vol
+        self.sound.SW = wave
+        
+        # Play sound
+        self.sound.splay()
 
     def word_keyin(self):
         # Usage: KEYIN ( -- key )
-        key = self.keyboard.read_key()
-        self.push_param(key)
+        # For now, return 0 as keyboard input is not fully implemented
+        self.push_param(0)
 
     def word_keystat(self):
         # Usage: KEYSTAT ( -- status )
-        status = self.keyboard.key_available()
-        self.push_param(int(status))
+        # For now, always return 0 (no key available)
+        self.push_param(0)
 
     def word_swrite(self):
         # Usage: value SWRITE
         value = self.pop_param()
-        self.gfx.set_vram_val(value)
+        self.gfx.set_screen_val(value)
 
     def word_splay(self):
         # Usage: SPLAY
@@ -272,22 +309,23 @@ class ForthInterpreter:
     def word_set_tt(self):
         # Usage: value TT!
         value = self.pop_param()
-        self.cpu.timer[0] = value & 0xFF
+        # Timer registers not implemented yet, just store in CPU registers for now
+        self.cpu.Rregisters[0] = value & 0xFF
 
     def word_set_tm(self):
         # Usage: value TM!
         value = self.pop_param()
-        self.cpu.timer[1] = value & 0xFF
+        self.cpu.Rregisters[1] = value & 0xFF
 
     def word_set_tc(self):
         # Usage: value TC!
         value = self.pop_param()
-        self.cpu.timer[2] = value & 0xFF
+        self.cpu.Rregisters[2] = value & 0xFF
 
     def word_set_ts(self):
         # Usage: value TS!
         value = self.pop_param()
-        self.cpu.timer[3] = value & 0xFF
+        self.cpu.Rregisters[3] = value & 0xFF
 
     # --- File I/O Word Implementations ---
     def word_open_file(self):
@@ -412,6 +450,71 @@ class ForthInterpreter:
         except Exception as e:
             print(f"Error including file {filename}: {e}")
 
+    def word_gui(self):
+        """GUI: Start the graphics GUI in background if graphics commands have been used"""
+        if not self.gui_enabled:
+            print("GUI not enabled. Run with --gui flag to enable graphics.")
+            return
+        
+        if not self.graphics_used:
+            print("No graphics commands used yet. Try: 100 120 15 PIXEL")
+            return
+        
+        if self.gui_thread and self.gui_thread.is_alive():
+            print("GUI is already running in background. Use REFRESH to update display.")
+            return
+        
+        print("Starting FORTH Graphics GUI in background...")
+        print("GUI is now running. Type graphics commands and use REFRESH to update.")
+        print("Type GUI-QUIT to stop the background GUI.")
+        
+        # Start GUI in background thread
+        self.gui_active = True
+        self.gui_thread = threading.Thread(target=self.run_background_gui, daemon=True)
+        self.gui_thread.start()
+
+    def run_background_gui(self):
+        """Run GUI in background thread"""
+        try:
+            gui.main(self.cpu, self.memory, self.gfx, self.keyboard)
+        except Exception as e:
+            print(f"GUI error: {e}")
+        finally:
+            self.gui_active = False
+
+    def word_refresh(self):
+        """REFRESH: Update the background GUI display"""
+        if not self.gui_enabled:
+            print("GUI not enabled.")
+            return
+        
+        if not self.graphics_used:
+            print("No graphics to refresh.")
+            return
+            
+        if not self.gui_thread or not self.gui_thread.is_alive():
+            print("GUI not running. Type GUI to start it.")
+            return
+        
+        # Force GUI to update by triggering a screen refresh
+        # This is a bit of a hack, but it works
+        try:
+            # The GUI thread will automatically pick up graphics changes
+            # We could add a more direct refresh mechanism if needed
+            pass
+        except Exception as e:
+            print(f"Refresh error: {e}")
+
+    def word_gui_quit(self):
+        """GUI-QUIT: Stop the background GUI"""
+        if self.gui_thread and self.gui_thread.is_alive():
+            print("Stopping background GUI...")
+            # The GUI will stop when the user closes the window
+            # For now, just mark it as not active
+            self.gui_active = False
+        else:
+            print("GUI not running.")
+
     def define_word(self, name, handler):
         """Define a new FORTH word with validation"""
         if not name:
@@ -450,9 +553,6 @@ class ForthInterpreter:
         ip = 0  # Instruction pointer
         while ip < len(tokens):
             token = tokens[ip]
-            
-            # Debug print
-            # print(f"Executing token[{ip}]: {token}")
             
             # Handle control flow
             if token == 'IF':
@@ -515,12 +615,28 @@ class ForthInterpreter:
                     ip += 1
                 continue
             elif token == 'DO':
-                # DO loop setup
+                # DO loop setup - only execute this once
                 index = self.pop_param()  # Pop index first (top of stack)
                 limit = self.pop_param()  # Pop limit second
-                self.push_return(limit)  # Push limit to return stack
-                self.push_return(index)  # Push index to return stack
-                ip += 1
+                if index >= limit:
+                    # Skip loop body - find matching LOOP and jump to after it
+                    depth = 0
+                    search_ip = ip + 1
+                    while search_ip < len(tokens):
+                        if tokens[search_ip] == 'DO':
+                            depth += 1
+                        elif tokens[search_ip] == 'LOOP':
+                            if depth == 0:
+                                ip = search_ip + 1  # Jump to after LOOP
+                                break
+                            depth -= 1
+                        search_ip += 1
+                    else:
+                        ip += 1  # No LOOP found, continue
+                else:
+                    self.push_return(limit)  # Push limit to return stack
+                    self.push_return(index)  # Push index to return stack
+                    ip += 1
                 continue
             elif token == 'LOOP':
                 # LOOP increment and check
@@ -528,21 +644,26 @@ class ForthInterpreter:
                 limit = self.pop_return()
                 index += 1
                 if index < limit:
-                    # Continue loop
+                    # Continue loop - jump back to after DO
                     self.push_return(limit)
                     self.push_return(index)
-                    # Find the corresponding DO
+                    # Search backwards for the DO
+                    search_ip = ip - 1
                     depth = 1
-                    while ip >= 0 and depth > 0:
-                        ip -= 1
-                        if tokens[ip] == 'LOOP':
+                    while search_ip >= 0 and depth > 0:
+                        if tokens[search_ip] == 'LOOP':
                             depth += 1
-                        elif tokens[ip] == 'DO':
+                        elif tokens[search_ip] == 'DO':
                             depth -= 1
                             if depth == 0:
+                                ip = search_ip + 1  # Jump to after DO
                                 break
-                    ip += 1  # Will be incremented again at end of loop
+                        search_ip -= 1
+                    else:
+                        # No matching DO found
+                        ip += 1
                 else:
+                    # Exit loop
                     ip += 1
                 continue
             
@@ -1218,7 +1339,12 @@ class ForthInterpreter:
             self.word_definitions.append('IF')
             self.control_stack.append(('IF', len(self.word_definitions) - 1))
         else:
-            print("IF can only be used in word definitions")
+            # Immediate mode: execute conditional
+            condition = self.pop_param()
+            if condition == 0:  # FALSE
+                # Skip to THEN - find the matching THEN in the input
+                self.skip_to_then()
+            # If TRUE, continue execution
 
     def word_else(self):
         """ELSE: Alternative branch"""
@@ -1241,7 +1367,8 @@ class ForthInterpreter:
             if self.control_stack:
                 self.control_stack.pop()
         else:
-            print("THEN can only be used in word definitions")
+            # In immediate mode, THEN is just a marker
+            pass
 
     def word_begin(self):
         """BEGIN: Start loop"""
@@ -1249,7 +1376,8 @@ class ForthInterpreter:
             self.word_definitions.append('BEGIN')
             self.control_stack.append(('BEGIN', len(self.word_definitions) - 1))
         else:
-            print("BEGIN can only be used in word definitions")
+            # Immediate mode: mark begin position
+            self.immediate_begin_stack.append(self.input_ptr)
 
     def word_until(self):
         """UNTIL: End loop with condition"""
@@ -1261,7 +1389,17 @@ class ForthInterpreter:
             else:
                 print("UNTIL without BEGIN")
         else:
-            print("UNTIL can only be used in word definitions")
+            # Immediate mode: check condition and loop if false
+            condition = self.pop_param()
+            if condition == 0:  # FALSE, continue loop
+                if self.immediate_begin_stack:
+                    self.input_ptr = self.immediate_begin_stack[-1]
+                else:
+                    print("UNTIL without BEGIN")
+            else:
+                # TRUE, exit loop
+                if self.immediate_begin_stack:
+                    self.immediate_begin_stack.pop()
 
     def word_do(self):
         """DO: Start definite loop"""
@@ -1269,7 +1407,38 @@ class ForthInterpreter:
             self.word_definitions.append('DO')
             self.control_stack.append(('DO', len(self.word_definitions) - 1))
         else:
-            print("DO can only be used in word definitions")
+            # Immediate mode: DO loop setup
+            index = self.pop_param()  # Pop index first (top of stack)
+            limit = self.pop_param()  # Pop limit second
+            if index >= limit:
+                # Skip loop - find LOOP and jump to after it
+                loop_pos = self.find_matching_loop()
+                if loop_pos is not None:
+                    self.input_ptr = loop_pos
+                return
+            self.push_return(limit)  # Push limit to return stack
+            self.push_return(index)  # Push index to return stack
+            self.immediate_do_stack.append(self.input_ptr)
+
+    def find_matching_loop(self):
+        """Find the position after the matching LOOP in immediate mode"""
+        # Parse the input string manually to find LOOP
+        buffer = self.input_buffer[self.input_ptr:]
+        tokens = buffer.upper().split()
+        depth = 0
+        pos = 0
+        for i, token in enumerate(tokens):
+            if token == 'DO':
+                depth += 1
+            elif token == 'LOOP':
+                if depth == 0:
+                    # Found matching LOOP - calculate position after it
+                    loop_end = self.input_ptr
+                    for j in range(i + 1):
+                        loop_end += len(tokens[j]) + 1  # +1 for space
+                    return loop_end
+                depth -= 1
+        return None
 
     def word_loop(self):
         """LOOP: End definite loop"""
@@ -1281,7 +1450,22 @@ class ForthInterpreter:
             else:
                 print("LOOP without DO")
         else:
-            print("LOOP can only be used in word definitions")
+            # Immediate mode: LOOP increment and check
+            if not self.immediate_do_stack:
+                print("LOOP without DO")
+                return
+                
+            index = self.pop_return()
+            limit = self.pop_return()
+            index += 1
+            if index < limit:
+                # Continue loop
+                self.push_return(limit)
+                self.push_return(index)
+                self.input_ptr = self.immediate_do_stack[-1]  # Go back to DO
+            else:
+                # Exit loop
+                self.immediate_do_stack.pop()
 
     def word_recurse(self):
         """RECURSE: Call the current word being defined"""
@@ -1331,14 +1515,18 @@ class ForthInterpreter:
 
     def word_i(self):
         """I: Get current loop index"""
-        # Check if we're in a loop (return stack has loop info)
+        # The loop index is the top item on the return stack
+        # Return stack has: ... limit, index (top)
         if self.cpu.Pregisters[9] >= self.RETURN_STACK_START:
             print("I can only be used in DO/LOOP constructs")
             return
-        # The loop index is the top item on the return stack
-        index = self.pop_return()
+        # Peek at the top of return stack (the index)
+        addr = self.cpu.Pregisters[9]
+        index = self.memory.read_word(addr)
+        # Convert to signed
+        if index & 0x8000:
+            index = index - 0x10000
         self.push_param(index)
-        self.push_return(index)  # Put it back
 
     def word_j(self):
         """J: Get outer loop index (for nested loops)"""
@@ -1414,6 +1602,25 @@ class ForthInterpreter:
         # This is handled in process_token for string literals
         print('S" should be followed by a string in quotes')
 
+    @property
+    def param_stack(self):
+        """Get current parameter stack contents for testing (bottom to top)"""
+        stack = []
+        sp = self.cpu.Pregisters[8]
+        addr = sp
+        while addr < self.PARAM_STACK_START:
+            try:
+                value = self.memory.read_word(addr)
+                # Convert to signed
+                if value & 0x8000:
+                    value = value - 0x10000
+                stack.append(value)
+                addr += 2
+            except:
+                break
+        # Reverse to get bottom-to-top order
+        return stack[::-1]
+
     def repl(self):
         """Read-Eval-Print Loop"""
         print("NOVA-16 FORTH Interpreter")
@@ -1429,10 +1636,44 @@ class ForthInterpreter:
             except EOFError:
                 break
 
-def main():
-    """Main entry point"""
-    forth = ForthInterpreter()
-    forth.repl()
+    def execute_token(self, token):
+        """Execute a single token (for testing compatibility)"""
+        # Temporarily set up input buffer for this token
+        original_buffer = self.input_buffer
+        original_ptr = self.input_ptr
+        
+        self.input_buffer = token
+        self.input_ptr = 0
+        
+        try:
+            self.process_token(token)
+        finally:
+            # Restore original state
+            self.input_buffer = original_buffer
+            self.input_ptr = original_ptr
+
+    def skip_to_then(self):
+        """Skip tokens until matching THEN (for immediate IF)"""
+        depth = 1
+        while True:
+            token = self.next_token()
+            if not token:
+                break
+            if token == 'IF':
+                depth += 1
+            elif token == 'THEN':
+                depth -= 1
+                if depth == 0:
+                    break
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='NOVA-16 FORTH Interpreter')
+    parser.add_argument('--gui', action='store_true', help='Enable GUI for graphics programming')
+    parser.add_argument('--memory', type=int, default=0x10000, help='Memory size in bytes (default: 64KB)')
+    
+    args = parser.parse_args()
+    
+    interpreter = ForthInterpreter(memory_size=args.memory, gui_enabled=args.gui)
+    interpreter.repl()

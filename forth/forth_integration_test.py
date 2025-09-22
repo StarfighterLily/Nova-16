@@ -36,11 +36,11 @@ class ForthIntegrationTester:
         print("=== Testing FORTH Interpreter ===")
         
         test_cases = [
-            ("Basic Arithmetic", "5 3 + .", [8]),
-            ("Stack Operations", "1 2 3 DUP DROP SWAP", [1, 3]),
-            ("Word Definition", ": DOUBLE DUP + ; 7 DOUBLE .", [14]),
-            ("Control Flow", "5 0 > IF 42 THEN .", [42]),
-            ("Variables", "VARIABLE X 15 X ! X @ .", [15]),
+            ("Basic Arithmetic", "5 3 + .", []),  # . consumes the result
+            ("Stack Operations", "1 2 3 DUP DROP SWAP", [1, 3, 2]),  # DUP DROP SWAP leaves 1, 3, 2
+            ("Word Definition", ": DOUBLE DUP + ; 7 DOUBLE .", []),  # . consumes the result
+            ("Control Flow", "5 0 > IF 42 THEN .", []),  # . consumes the result
+            ("Variables", "VARIABLE X 15 X ! X @ .", []),  # . consumes the result
         ]
         
         for test_name, code, expected_stack in test_cases:
@@ -48,9 +48,8 @@ class ForthIntegrationTester:
                 print(f"  Testing: {test_name}")
                 interpreter = ForthInterpreter()
                 
-                # Execute the code
-                for token in code.split():
-                    interpreter.execute_token(token)
+                # Execute the code as a complete line
+                interpreter.interpret(code)
                 
                 # Check results
                 if len(interpreter.param_stack) >= len(expected_stack):
@@ -135,16 +134,18 @@ class ForthIntegrationTester:
                 
                 # Assemble the program
                 bin_file = asm_file.replace(".asm", ".bin")
+                assembler_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nova_assembler.py")
                 result = subprocess.run([
-                    sys.executable, "../nova_assembler.py", asm_file
+                    sys.executable, assembler_path, asm_file
                 ], capture_output=True, text=True, cwd=".")
                 
                 if result.returncode == 0 and os.path.exists(bin_file):
                     print(f"    ✓ Assembly successful")
                     
                     # Execute the program
+                    emulator_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nova.py")
                     result = subprocess.run([
-                        sys.executable, "../nova.py", "--headless", bin_file, "--cycles", "1000"
+                        sys.executable, emulator_path, "--headless", bin_file, "--cycles", "1000"
                     ], capture_output=True, text=True, cwd=".")
                     
                     if result.returncode == 0:
