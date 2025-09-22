@@ -1,16 +1,21 @@
 0 LAYER
 0 VMODE
-10 10 15 PIXEL
-50 50 31 PIXEL
-100 100 47 PIXEL
-150 150 63 PIXEL
 
-: FILL
+: WFILL
     256 0 DO
         256 0 DO
-            I J 31 PIXEL
+            I J 15 PIXEL
         LOOP
     LOOP
 ;
-
-FILL
+: BFILL
+    256 0 DO
+        256 0 DO
+            I J 0 PIXEL
+        LOOP
+    LOOP
+;
+5 0 DO
+    WFILL
+    BFILL
+LOOP

@@ -143,9 +143,11 @@ class Add(BaseInstruction):
         # Set flags based on destination operand type and masked result
         if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
             masked_result = result & 0xFF
+            cpu._set_overflow_flag_8bit(dest_value, source_value, result, is_subtraction=False)
             cpu._set_flags_8bit(masked_result, result)
         else:
             masked_result = result & 0xFFFF
+            cpu._set_overflow_flag_16bit(dest_value, source_value, result, is_subtraction=False)
             cpu._set_flags_16bit(masked_result, result)
 
 class Sub(BaseInstruction):
@@ -163,9 +165,11 @@ class Sub(BaseInstruction):
         # Set flags based on destination operand type and masked result
         if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
             masked_result = result & 0xFF
+            cpu._set_overflow_flag_8bit(dest_value, source_value, result, is_subtraction=True)
             cpu._set_flags_8bit(masked_result, result)
         else:
             masked_result = result & 0xFFFF
+            cpu._set_overflow_flag_16bit(dest_value, source_value, result, is_subtraction=True)
             cpu._set_flags_16bit(masked_result, result)
 
 class Mul(BaseInstruction):
@@ -887,7 +891,18 @@ class Cmp(BaseInstruction):
         dest_value = cpu.get_operand_value(operands[0])
         source_value = cpu.get_operand_value(operands[1])
         result = dest_value - source_value
-        cpu._set_flags_16bit(result, result)
+        
+        # Set flags based on destination operand type
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
+            # 8-bit comparison
+            cpu._set_overflow_flag_8bit(dest_value, source_value, result, is_subtraction=True)
+            cpu._last_operation_was_cmp = True
+            cpu._set_flags_8bit(result & 0xFF, result)
+        else:
+            # 16-bit comparison
+            cpu._set_overflow_flag_16bit(dest_value, source_value, result, is_subtraction=True)
+            cpu._last_operation_was_cmp = True
+            cpu._set_flags_16bit(result & 0xFFFF, result)
 
 # Call
 class Call(BaseInstruction):

@@ -52,6 +52,80 @@ The CPU maintains a 12-bit flags register with the following flags:
 | 1 | S | Sign | Set if result is negative (MSB = 1) |
 | 0 | T | Trap | Set to enable single-step mode | unimplemented
 
+### Flag Behavior in Arithmetic Operations
+
+The CPU flags are updated by arithmetic and comparison operations according to standard x86-like behavior:
+
+#### Zero Flag (Z)
+- Set when the result of an operation is zero
+- Used by JZ/JNZ instructions for equality testing
+
+#### Sign Flag (S) 
+- Set when the result has the most significant bit set (negative in signed interpretation)
+- Used by JS/JNS instructions for signed value testing
+
+#### Carry Flag (C)
+- For addition: Set when unsigned overflow occurs (result < either operand)
+- For subtraction/CMP: Set when borrow occurs (op1 < op2 in unsigned comparison)
+- Used by JC/JNC instructions for unsigned overflow detection
+
+#### Overflow Flag (O)
+- Set when signed arithmetic overflow occurs
+- For addition: (pos + pos = neg) or (neg + neg = pos)
+- For subtraction: (pos - neg = neg) or (neg - pos = pos)
+- Used by JO/JNO instructions and critical for signed comparisons
+
+#### Parity Flag (P)
+- Set when the low 8 bits of the result have an even number of 1 bits
+- Used by JP/JNP instructions
+
+### Conditional Jump Instructions
+
+The Nova-16 provides conditional jump instructions that test various flag combinations:
+
+| Instruction | Syntax | Condition | Description |
+|-------------|--------|-----------|-------------|
+| JZ | `JZ addr` | Z = 1 | Jump if zero (equal) |
+| JNZ | `JNZ addr` | Z = 0 | Jump if not zero (not equal) |
+| JS | `JS addr` | S = 1 | Jump if sign (negative) |
+| JNS | `JNS addr` | S = 0 | Jump if no sign (positive/zero) |
+| JC | `JC addr` | C = 1 | Jump if carry (unsigned overflow/borrow) |
+| JNC | `JNC addr` | C = 0 | Jump if no carry |
+| JO | `JO addr` | O = 1 | Jump if overflow (signed overflow) |
+| JNO | `JNO addr` | O = 0 | Jump if no overflow |
+| JLT | `JLT addr` | O ⊕ S = 1 | Jump if less than (signed comparison) |
+| JGE | `JGE addr` | O ⊕ S = 0 | Jump if greater or equal (signed) |
+| JGT | `JGT addr` | Z = 0 ∧ (O ⊕ S) = 0 | Jump if greater than (signed) |
+| JLE | `JLE addr` | Z = 1 ∨ (O ⊕ S) = 1 | Jump if less or equal (signed) |
+
+#### Signed Comparison Logic
+The signed comparison instructions (JLT, JGE, JGT, JLE) use the overflow and sign flags together:
+- **JLT (Jump if Less Than)**: Jumps when O ⊕ S = 1
+- **JGE (Jump if Greater or Equal)**: Jumps when O ⊕ S = 0
+
+This implements the standard signed comparison logic where:
+- Less than occurs when overflow and sign differ
+- Greater than or equal occurs when overflow and sign are the same
+
+#### Comparison Examples
+```asm
+; Signed comparison: if (a < b) goto less
+CMP a, b
+JLT less
+
+; Unsigned comparison: if (a < b) goto less  
+CMP a, b
+JC less
+
+; Equality test: if (a == b) goto equal
+CMP a, b
+JZ equal
+
+; Signed greater than: if (a > b) goto greater
+CMP a, b
+JGT greater
+```
+
 ### Memory Architecture
 - **64KB unified address space** (0x0000 - 0xFFFF)
 - **Memory-mapped I/O** for peripheral access

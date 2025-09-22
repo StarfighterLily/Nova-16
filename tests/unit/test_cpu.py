@@ -2549,3 +2549,239 @@ class TestInstructionCache:
         # Note: This is a simplified test - in a real loop the hits would be more obvious
         assert cpu.cache_misses >= initial_misses  # At least some misses occurred
         assert cpu.pc == loop_start  # Should be back at start after jump
+
+
+class TestConditionalJumpsAndComparisons:
+    """Test conditional jump instructions and comparison flag setting."""
+
+    def test_cmp_flag_setting_16bit_equal(self, cpu):
+        """Test CMP sets correct flags when values are equal."""
+        cpu.Pregisters[0] = 0x1234
+        cpu.Pregisters[1] = 0x1234
+
+        # CMP P0, P1
+        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+
+        assert cpu.flags[7] == 1  # Zero flag set
+        assert cpu.flags[1] == 0  # Sign flag clear
+        assert cpu.flags[6] == 0  # Carry flag clear (no borrow)
+        assert cpu.flags[2] == 0  # Overflow flag clear
+
+    def test_cmp_flag_setting_16bit_less_than_signed(self, cpu):
+        """Test CMP sets correct flags for signed less than."""
+        cpu.Pregisters[0] = 0x8000  # -32768 (most negative)
+        cpu.Pregisters[1] = 0x0001  # 1
+
+        # CMP P0, P1 (0x8000 - 0x0001 = 0x7FFF, but overflow)
+        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+
+        assert cpu.flags[7] == 0  # Zero flag clear
+        assert cpu.flags[1] == 0  # Sign flag clear (result is 0x7FFF)
+        assert cpu.flags[6] == 0  # Carry flag clear (no borrow in unsigned)
+        assert cpu.flags[2] == 1  # Overflow flag set (signed overflow)
+
+    def test_cmp_flag_setting_16bit_greater_than_signed(self, cpu):
+        """Test CMP sets correct flags for signed greater than."""
+        cpu.Pregisters[0] = 0x0001  # 1
+        cpu.Pregisters[1] = 0x8000  # -32768
+
+        # CMP P0, P1 (0x0001 - 0x8000 = 0x8001, overflow)
+        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+
+        assert cpu.flags[7] == 0  # Zero flag clear
+        assert cpu.flags[1] == 1  # Sign flag set (result is 0x8001)
+        assert cpu.flags[6] == 1  # Carry flag set (borrow occurred)
+        assert cpu.flags[2] == 1  # Overflow flag set (signed overflow)
+
+    def test_cmp_flag_setting_16bit_unsigned_less(self, cpu):
+        """Test CMP sets correct flags for unsigned less than."""
+        cpu.Pregisters[0] = 0x0001  # 1
+        cpu.Pregisters[1] = 0xFFFF  # 65535
+
+        # CMP P0, P1 (0x0001 - 0xFFFF = 0x0002 with borrow)
+        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+
+        assert cpu.flags[7] == 0  # Zero flag clear
+        assert cpu.flags[1] == 0  # Sign flag clear (result is 0x0002)
+        assert cpu.flags[6] == 1  # Carry flag set (borrow occurred)
+        assert cpu.flags[2] == 0  # Overflow flag clear (no signed overflow)
+
+    def test_cmp_flag_setting_8bit_equal(self, cpu):
+        """Test CMP sets correct flags for 8-bit equal comparison."""
+        cpu.Rregisters[0] = 0x42
+        cpu.Rregisters[1] = 0x42
+
+        # CMP R0, R1
+        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+        cpu.memory.write_byte(0x0003, 0xE8)  # R1
+
+        cpu.step()
+
+        assert cpu.flags[7] == 1  # Zero flag set
+        assert cpu.flags[1] == 0  # Sign flag clear
+        assert cpu.flags[6] == 0  # Carry flag clear
+        assert cpu.flags[2] == 0  # Overflow flag clear
+
+    def test_cmp_flag_setting_8bit_signed_overflow(self, cpu):
+        """Test CMP sets correct flags for 8-bit signed overflow."""
+        cpu.Rregisters[0] = 0x80  # -128 (most negative 8-bit)
+        cpu.Rregisters[1] = 0x01  # 1
+
+        # CMP R0, R1 (0x80 - 0x01 = 0x7F, but overflow)
+        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+        cpu.memory.write_byte(0x0003, 0xE8)  # R1
+
+        cpu.step()
+
+        assert cpu.flags[7] == 0  # Zero flag clear
+        assert cpu.flags[1] == 0  # Sign flag clear (result is 0x7F)
+        assert cpu.flags[6] == 0  # Carry flag clear (no borrow in unsigned)
+        assert cpu.flags[2] == 1  # Overflow flag set (signed overflow)
+
+    def test_jlt_jump_taken_signed_less(self, cpu):
+        """Test JLT jumps when signed less than condition is true."""
+        # Set up flags for signed less than: overflow=1, sign=0 (overflow XOR sign = 1)
+        cpu.flags[2] = 1  # Overflow
+        cpu.flags[1] = 0  # Sign
+
+        # JLT to 0x1000
+        cpu.memory.write_byte(0x0000, 0x28)  # JLT
+        cpu.memory.write_byte(0x0001, 0x02)
+        cpu.memory.write_word(0x0002, 0x1000)
+
+        cpu.step()
+        assert cpu.pc == 0x1000
+
+    def test_jlt_jump_not_taken_signed_greater_equal(self, cpu):
+        """Test JLT does not jump when signed greater or equal."""
+        # Set up flags for signed greater than: overflow=0, sign=0 (overflow XOR sign = 0)
+        cpu.flags[2] = 0  # Overflow
+        cpu.flags[1] = 0  # Sign
+
+        # JLT to 0x1000
+        cpu.memory.write_byte(0x0000, 0x28)  # JLT
+        cpu.memory.write_byte(0x0001, 0x02)
+        cpu.memory.write_word(0x0002, 0x1000)
+
+        cpu.step()
+        assert cpu.pc == 0x0004  # PC advances past instruction
+
+    def test_jlt_jump_not_taken_signed_equal(self, cpu):
+        """Test JLT does not jump when values are equal."""
+        # Set up flags for equal: zero=1, overflow=0, sign=0
+        cpu.flags[7] = 1  # Zero
+        cpu.flags[2] = 0  # Overflow
+        cpu.flags[1] = 0  # Sign
+
+        # JLT to 0x1000
+        cpu.memory.write_byte(0x0000, 0x28)  # JLT
+        cpu.memory.write_byte(0x0001, 0x02)
+        cpu.memory.write_word(0x0002, 0x1000)
+
+        cpu.step()
+        assert cpu.pc == 0x0004  # PC advances past instruction
+
+    def test_js_jump_taken_negative(self, cpu):
+        """Test JS jumps when sign flag is set."""
+        cpu.flags[1] = 1  # Sign flag set
+
+        # JS to 0x1000
+        cpu.memory.write_byte(0x0000, 0x25)  # JS
+        cpu.memory.write_byte(0x0001, 0x02)
+        cpu.memory.write_word(0x0002, 0x1000)
+
+        cpu.step()
+        assert cpu.pc == 0x1000
+
+    def test_js_jump_not_taken_positive(self, cpu):
+        """Test JS does not jump when sign flag is clear."""
+        cpu.flags[1] = 0  # Sign flag clear
+
+        # JS to 0x1000
+        cpu.memory.write_byte(0x0000, 0x25)  # JS
+        cpu.memory.write_byte(0x0001, 0x02)
+        cpu.memory.write_word(0x0002, 0x1000)
+
+        cpu.step()
+        assert cpu.pc == 0x0004  # PC advances past instruction
+
+    def test_cmp_jlt_integration_signed_less(self, cpu):
+        """Test CMP followed by JLT for signed less than."""
+        cpu.Pregisters[0] = 0x0001  # 1
+        cpu.Pregisters[1] = 0x0002  # 2
+
+        # CMP P0, P1 followed by JLT
+        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+        cpu.memory.write_byte(0x0004, 0x28)  # JLT
+        cpu.memory.write_byte(0x0005, 0x02)  # Mode: immediate 16-bit
+        cpu.memory.write_word(0x0006, 0x1000)
+
+        cpu.step()  # CMP
+        cpu.step()  # JLT
+
+        assert cpu.pc == 0x1000  # Should have jumped
+
+    def test_cmp_jlt_integration_signed_greater(self, cpu):
+        """Test CMP followed by JLT for signed greater than."""
+        cpu.Pregisters[0] = 0x0002  # 2
+        cpu.Pregisters[1] = 0x0001  # 1
+
+        # CMP P0, P1 followed by JLT
+        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+        cpu.memory.write_byte(0x0004, 0x28)  # JLT
+        cpu.memory.write_byte(0x0005, 0x02)  # Mode: immediate 16-bit
+        cpu.memory.write_word(0x0006, 0x1000)
+
+        cpu.step()  # CMP
+        cpu.step()  # JLT
+
+        assert cpu.pc == 0x0008  # Should not have jumped (PC at next instruction after JLT)
+
+    def test_cmp_js_integration_negative_result(self, cpu):
+        """Test CMP followed by JS for negative result."""
+        cpu.Pregisters[0] = 0x0001  # 1
+        cpu.Pregisters[1] = 0x0002  # 2
+
+        # CMP P0, P1 followed by JS
+        cpu.memory.write_byte(0x0000, 0x2E)  # CMP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+        cpu.memory.write_byte(0x0004, 0x25)  # JS
+        cpu.memory.write_byte(0x0005, 0x02)  # Mode: immediate 16-bit
+        cpu.memory.write_word(0x0006, 0x1000)
+
+        cpu.step()  # CMP
+        cpu.step()  # JS
+
+        assert cpu.pc == 0x1000  # Should have jumped (result is negative)

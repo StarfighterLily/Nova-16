@@ -14,8 +14,8 @@ Memory Layout for FORTH:
 - 0x0100-0x011F: Interrupt vectors
 - 0x0120-0x0FFF: System area (FORTH kernel)
 - 0x1000-0xDFFF: User code space
-- 0xE000-0xEFFF: Parameter stack (grows downward)
-- 0xF000-0xFFFF: Return stack (grows downward)
+- 0xE000-0xEFFF: Parameter stack (grows downward from 0xF000)
+- 0xF000-0xFFFF: Return stack (grows downward from 0xFFFF)
 """
 
 import sys
@@ -1258,7 +1258,14 @@ class ForthInterpreter:
             b = self.pop_param()
             if a == 0:
                 raise ZeroDivisionError("Division by zero in MOD")
-            self.push_param(b % a)
+            # FORTH MOD should have the same sign as the dividend (b)
+            result = b % a
+            # Adjust for FORTH semantics: if dividend is negative, result should be negative
+            if b < 0 and result > 0:
+                result -= abs(a)
+            elif b > 0 and result < 0:
+                result += abs(a)
+            self.push_param(result)
         except IndexError:
             print("Stack underflow in MOD")
             return
@@ -1478,12 +1485,8 @@ class ForthInterpreter:
         """.: Print number"""
         try:
             val = self.pop_param()
-            # Handle 16-bit signed display
-            if val & 0x8000:  # If sign bit is set
-                display_val = val - 0x10000  # Convert to negative
-            else:
-                display_val = val
-            print(display_val, end=" ")
+            # val is already converted to signed by pop_param
+            print(val, end=" ")
         except IndexError:
             print("Stack underflow in .")
             return

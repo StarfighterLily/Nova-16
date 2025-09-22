@@ -81,6 +81,36 @@ KEYIN R0            ; Read key into R0
 KEYSTAT R0          ; Check if key available (0=no key, 1=key ready)
 ```
 
+### Conditional Jumps and Comparisons
+```asm
+; Comparison operations set flags for conditional jumps
+CMP R0, R1          ; Compare R0 with R1, set flags
+
+; Signed comparisons (use overflow flag)
+JLT label           ; Jump if less than (signed)
+JGE label           ; Jump if greater or equal (signed)
+JGT label           ; Jump if greater than (signed)  
+JLE label           ; Jump if less or equal (signed)
+
+; Unsigned comparisons (use carry flag)
+JC label            ; Jump if carry (unsigned less than)
+JNC label           ; Jump if no carry (unsigned greater or equal)
+
+; Other conditions
+JZ label            ; Jump if zero (equal)
+JNZ label           ; Jump if not zero (not equal)
+JS label            ; Jump if sign (negative)
+JNS label           ; Jump if no sign (positive/zero)
+```
+
+### Flag Setting in Comparisons
+- **CMP op1, op2** performs `result = op1 - op2` and sets flags
+- **Zero (Z)**: Set if result = 0 (op1 == op2)
+- **Sign (S)**: Set if result negative (op1 < op2 in signed)
+- **Carry (C)**: Set if borrow occurred (op1 < op2 in unsigned)
+- **Overflow (O)**: Set if signed overflow occurred
+- **JLT**: Jumps when O ⊕ S = 1 (signed less than)
+
 ### Stack Operations
 - **Grows downward** from 0xFFFF (SP decreases on push)
 - **PUSH/POP** instructions auto-manage SP (P8)
