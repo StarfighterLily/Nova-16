@@ -1376,6 +1376,58 @@ class Memset(BaseInstruction):
         for i in range(length):
             cpu.write_memory((dest_addr + i) & 0xFFFF, fill_value, 1)
 
+class Memtest(BaseInstruction):
+    """MEMTEST instruction - memory test/compare"""
+    def __init__(self):
+        opcode_val = 0x7D  # MEMTEST
+        super().__init__("MEMTEST", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(3)
+        addr1 = cpu.get_operand_value(operands[0])
+        addr2 = cpu.get_operand_value(operands[1])
+        length = cpu.get_operand_value(operands[2])
+        
+        # Compare memory regions
+        match = True
+        for i in range(length):
+            byte1 = cpu.memory.read((addr1 + i) & 0xFFFF, 1)[0]
+            byte2 = cpu.memory.read((addr2 + i) & 0xFFFF, 1)[0]
+            if byte1 != byte2:
+                match = False
+                break
+        
+        # Set zero flag if regions match (Z=1 means equal)
+        cpu.flags[0] = 1 if match else 0  # Zero flag
+        # Clear other flags
+        cpu.flags[1] = 0  # Sign flag
+        cpu.flags[2] = 0  # Overflow flag
+        cpu.flags[3] = 0  # Carry flag
+
+class Memmove(BaseInstruction):
+    """MEMMOVE instruction - memory move (handles overlapping regions)"""
+    def __init__(self):
+        opcode_val = 0x7E  # MEMMOVE
+        super().__init__("MEMMOVE", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(3)
+        dest_addr = cpu.get_operand_value(operands[0])
+        source_addr = cpu.get_operand_value(operands[1])
+        length = cpu.get_operand_value(operands[2])
+        
+        # Handle overlapping regions correctly
+        if dest_addr < source_addr:
+            # Copy forward (no overlap issue)
+            for i in range(length):
+                data = cpu.memory.read((source_addr + i) & 0xFFFF, 1)[0]
+                cpu.write_memory((dest_addr + i) & 0xFFFF, data, 1)
+        else:
+            # Copy backward to handle overlap
+            for i in range(length - 1, -1, -1):
+                data = cpu.memory.read((source_addr + i) & 0xFFFF, 1)[0]
+                cpu.write_memory((dest_addr + i) & 0xFFFF, data, 1)
+
 # String operations
 class Strcpy(BaseInstruction):
     """STRCPY instruction - string copy"""
@@ -2577,6 +2629,8 @@ def create_instruction_table():
         Stoi(),     # 0x86
 
         Memset(),   # 0x7C
+        Memtest(),  # 0x7D
+        Memmove(),  # 0x7E
 
     ]
     

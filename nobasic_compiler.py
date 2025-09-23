@@ -1213,6 +1213,139 @@ class NoBasicCompiler:
                         f"len_done_{self.label_counter}:",
                     ])
                     self.label_counter += 1
+                elif func_name == 'MEMSET':
+                    # MEMSET(address, value, length) - set memory block to value
+                    # Parse address argument
+                    addr_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(addr_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MEMSET(address, value, length)")
+                    
+                    # Parse value argument
+                    value_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(value_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MEMSET(address, value, length)")
+                    
+                    # Parse length argument
+                    length_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(length_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in MEMSET()")
+                    
+                    # Get registers for the three arguments
+                    length_reg = self._get_current_register()
+                    value_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    addr_reg = self.register_stack[-3] if len(self.register_stack) >= 3 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; MEMSET({addr_reg}, {value_reg}, {length_reg})",
+                        f"    MEMSET {addr_reg},{value_reg},{length_reg}",
+                        f"    MOV {addr_reg},0",  # Return 0 to indicate success
+                    ])
+                    
+                    # Free registers we don't need
+                    self._free_register(length_reg)
+                    self._free_register(value_reg)
+                    
+                    # Keep addr_reg as result register (contains 0)
+                elif func_name == 'MEMTEST':
+                    # MEMTEST(addr1, addr2, length) - compare memory blocks, return 1 if equal, 0 if different
+                    # Parse addr1 argument
+                    addr1_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(addr1_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MEMTEST(addr1, addr2, length)")
+                    
+                    # Parse addr2 argument
+                    addr2_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(addr2_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MEMTEST(addr1, addr2, length)")
+                    
+                    # Parse length argument
+                    length_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(length_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in MEMTEST()")
+                    
+                    # Get registers for the three arguments
+                    length_reg = self._get_current_register()
+                    addr2_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    addr1_reg = self.register_stack[-3] if len(self.register_stack) >= 3 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; MEMTEST({addr1_reg}, {addr2_reg}, {length_reg})",
+                        f"    MEMTEST {addr1_reg},{addr2_reg},{length_reg}",
+                        f"    MOV {addr1_reg},0",      # Assume not equal
+                        f"    JNZ memtest_done_{self.label_counter}",
+                        f"    MOV {addr1_reg},1",      # Equal
+                        f"memtest_done_{self.label_counter}:",
+                    ])
+                    
+                    # Free registers we don't need
+                    self._free_register(length_reg)
+                    self._free_register(addr2_reg)
+                    
+                    # Keep addr1_reg as result register
+                    self.label_counter += 1
+                elif func_name == 'MEMMOVE':
+                    # MEMMOVE(destination, source, length) - move memory block
+                    # Parse destination argument
+                    dest_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(dest_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MEMMOVE(destination, source, length)")
+                    
+                    # Parse source argument
+                    src_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(src_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MEMMOVE(destination, source, length)")
+                    
+                    # Parse length argument
+                    length_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(length_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in MEMMOVE()")
+                    
+                    # Get registers for the three arguments
+                    length_reg = self._get_current_register()
+                    src_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    dest_reg = self.register_stack[-3] if len(self.register_stack) >= 3 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; MEMMOVE({dest_reg}, {src_reg}, {length_reg})",
+                        f"    MEMMOVE {dest_reg},{src_reg},{length_reg}",
+                        f"    MOV {dest_reg},0",  # Return 0 to indicate success
+                    ])
+                    
+                    # Free registers we don't need
+                    self._free_register(length_reg)
+                    self._free_register(src_reg)
+                    
+                    # Keep dest_reg as result register (contains 0)
                 else:
                     raise ValueError(f"Unknown function: {func_name}")
             else:

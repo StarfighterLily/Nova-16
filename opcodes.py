@@ -179,9 +179,9 @@ opcodes = [
     ("STRFINDI",           "0x7B", 2), # String case-insensitive substring exists haystack, needle # implemented
 
     # Memory de/allocation and testing
-    ("MEMSET",             "0x7C", 3), # Memory set address, value, length # unimplemented
-    ("MEMTEST",            "0x7D", 3), # Memory test addr1, addr2, length # unimplemented
-    ("MEMMOVE",            "0x7E", 3), # Memory move destination, source, length # unimplemented
+    ("MEMSET",             "0x7C", 3), # Memory set address, value, length # implemented
+    ("MEMTEST",            "0x7D", 3), # Memory test addr1, addr2, length # implemented
+    ("MEMMOVE",            "0x7E", 3), # Memory move destination, source, length # implemented
 
     # Sound Enhancements
     ("SMIX",               "0x7F", 1), # Mix channels output, in1, in2 # unimplemented
@@ -194,6 +194,48 @@ opcodes = [
     ("BTOI",               "0x84", 2), # Binary to integer
     ("ITOS",               "0x85", 2), # Integer to string
     ("STOI",               "0x86", 2), # String to integer
+
+    # Enhanced arithmetic
+    ("ADC",                "0x87", 2), # Add with carry
+    ("SBC",                "0x88", 2), # Subtract with carry
+    ("MULH",               "0x89", 2), # Multiply high
+    ("DIVH",               "0x8A", 2), # Divide high
+    ("MIN",                "0x8B", 2), # Minimum
+    ("MAX",                "0x8C", 2), # Maximum
+    ("CLZ",                "0x8D", 1), # Count leading zeros
+    ("CTZ",                "0x8E", 1), # Count trailing zeros
+    ("POPCNT",             "0x8F", 1), # Population count
+
+    # Enhanced bitwise
+    ("SAR",                "0x90", 2), # Shift arithmetic right
+    ("SAL",                "0x91", 2), # Shift arithmetic left
+    ("RCL",                "0x92", 2), # Rotate through carry left
+    ("RCR",                "0x93", 2), # Rotate through carry right
+
+    # Enhanced data movement
+    ("SWAP",               "0x94", 1), # Swap nibbles
+    ("XCHNG",              "0x95", 2), # Exchange
+    ("MOVZ",               "0x96", 2), # Move if zero
+    ("MOVNZ",              "0x97", 2), # Move if not zero
+    ("LEA",                "0x98", 2), # Load effective address
+
+    # Enhanced memory operations
+    ("MEMCMP",             "0x99", 3), # Memory compare
+    ("MEMSWAP",            "0x9A", 3), # Memory swap
+
+    # Enhanced control flow
+    ("CALLI",              "0x9B", 1), # Call indirect
+    ("JMPI",               "0x9C", 1), # Jump indirect
+    ("ENTER",              "0x9D", 1), # Enter subroutine (stack frame)
+    ("LEAVE",              "0x9E", 0), # Leave subroutine (stack frame)
+
+    # Flags operations
+    ("STC",                "0x9F", 0), # Set carry flag
+    ("CLC",                "0xA0", 0), # Clear carry flag
+    ("CMC",                "0xA1", 0), # Complement carry flag
+    
+    # 
+
 
     # Register/special references (for direct access)
     ("SA",                 "0xDD", 1), # Sound Address

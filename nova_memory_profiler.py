@@ -84,12 +84,14 @@ class MemoryProfiler:
         self.original_write_byte = memory_system.write_byte
         self.original_read_word = memory_system.read_word
         self.original_write_word = memory_system.write_word
+        self.original_write = memory_system.write
 
         # Monkey patch memory methods to add profiling
         original_read_byte = memory_system.read_byte
         original_write_byte = memory_system.write_byte
         original_read_word = memory_system.read_word
         original_write_word = memory_system.write_word
+        original_write = memory_system.write
 
         def profiled_read_byte(address):
             if self.profiling_enabled:
@@ -111,10 +113,16 @@ class MemoryProfiler:
                 self._record_write(address, 2)
             return original_write_word(address, value)
 
+        def profiled_write(address, value, bytes=1):
+            if self.profiling_enabled:
+                self._record_write(address, bytes)
+            return original_write(address, value, bytes)
+
         memory_system.read_byte = profiled_read_byte
         memory_system.write_byte = profiled_write_byte
         memory_system.read_word = profiled_read_word
         memory_system.write_word = profiled_write_word
+        memory_system.write = profiled_write
 
     def disable_profiling(self):
         """Disable memory profiling and restore original methods"""
@@ -129,6 +137,7 @@ class MemoryProfiler:
             self.original_memory.write_byte = self.original_write_byte
             self.original_memory.read_word = self.original_read_word
             self.original_memory.write_word = self.original_write_word
+            self.original_memory.write = self.original_write
 
     def _record_read(self, address: int, size: int):
         """Record a memory read operation"""

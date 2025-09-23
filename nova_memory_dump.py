@@ -67,17 +67,17 @@ def dump_memory_range(memory, start, end, label):
 dump_memory_range(memory.data, 0x2000, 0x2020, "BENCHMARK RESULTS")
 
 print(f"Final PC: 0x{proc.pc:04X}")
-    print("Final register states:")
-    print(f"R0-R9: {[f'0x{r:04X}' for r in proc.Rregisters[:10]]}")
-    print(f"P0-P9: {[f'0x{r:04X}' for r in proc.Pregisters[:10]]}")
-    print(f"VX,VY: 0x{gfx.Vregisters[0]:04X}, 0x{gfx.Vregisters[1]:04X}")
-    
-    # Sound system info
-    print(f"Sound: SA=0x{proc.sound.get_register('SA'):04X}, SF=0x{proc.sound.get_register('SF'):02X}, SV=0x{proc.sound.get_register('SV'):02X}, SW=0x{proc.sound.get_register('SW'):02X}")
-    
-    # Check if there's any graphics output
-    screen = gfx.get_screen()
-    non_zero_pixels = (screen != 0).sum()
+print("Final register states:")
+print(f"R0-R9: {[f'0x{r:04X}' for r in proc.Rregisters[:10]]}")
+print(f"P0-P9: {[f'0x{r:04X}' for r in proc.Pregisters[:10]]}")
+print(f"VX,VY: 0x{gfx.Vregisters[0]:04X}, 0x{gfx.Vregisters[1]:04X}")
+
+# Sound system info
+print(f"Sound: SA=0x{proc.sound.get_register('SA'):04X}, SF=0x{proc.sound.get_register('SF'):02X}, SV=0x{proc.sound.get_register('SV'):02X}, SW=0x{proc.sound.get_register('SW'):02X}")
+
+# Check if there's any graphics output
+screen = gfx.get_screen()
+non_zero_pixels = (screen != 0).sum()
     print(f"Graphics: {non_zero_pixels} non-black pixels on screen")
     
     # Cleanup sound system

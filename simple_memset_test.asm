@@ -1,0 +1,2 @@
+MEMSET 0x1000, 0xAA, 10
+HLT
