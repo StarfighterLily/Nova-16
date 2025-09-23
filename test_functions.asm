@@ -14,292 +14,288 @@ MOV VL,0
 ; Program start
 start:
     ; ClrHome
-    MOV VM,0
-    MOV VL,0
-    MOV VX,0
-    MOV VY,0
     MOV P0,0
+    MOV [0xF102],P0
+    MOV [0xF103],P0
+    MOV [0xF100],P0
+    MOV [0xF101],P0
     SFILL P0
     ; A = 
-    MOV P0,0
+    MOV P0,32768
     STOI P0,P0
     ; Store P0 into A
     MOV [0x2000],P0
     ; B = 
     MOV P0,456
-    PUSH P1
+    PUSH P0
     MOV P1,0x6000
     ITOS P1,P0
     MOV P0,P1
-    POP P1
+    POP P0
     ; Store P0 into B
     MOV [0x2002],P0
     ; Disp
-    MOV VX,0
-    MOV VY,0
-    MOV VL,0
+    MOV P0,0
+    MOV [0xF100],P0
+    MOV P0,0
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF103],P0
     ; Display 'I'
     MOV P0,73
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'N'
     MOV P0,78
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'T'
     MOV P0,84
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'r'
     MOV P0,114
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'e'
     MOV P0,101
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 's'
     MOV P0,115
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'u'
     MOV P0,117
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'l'
     MOV P0,108
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 't'
     MOV P0,116
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ':'
     MOV P0,58
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
-    ADD VY,8
-    MOV VX,0
+    MOV P0,[0xF101]
+    ADD P0,8
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF100],P0
     ; Load A into P0
     MOV P0,[0x2000]
-    ; Display number (simplified)
-    MOV P1,7
-    CHAR P0,P1
-    ADD VX,8
+    ; Display value (number or string)
+    MOV P1,P0
+    CMP P0,0x4000
+    JC display_as_number
+    CMP P0,0x8000
+    JNC display_as_number
+    ; Display as string
+    MOV P2,P0
+display_str_loop:
+    MOV P0,[P2]
+    CMP P0,0
+    JZ display_value_done
+    CMP P0,10
+    JZ display_str_newline
+    MOV P3,7
+    CHAR P0,P3
+    INC P2
+    JMP display_str_loop
+display_str_newline:
+    MOV P0,[0xF101]
+    ADD P0,8
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF100],P0
+    INC P2
+    JMP display_str_loop
+display_as_number:
+    MOV P0,P1
+    ; Display as number
+    MOV P1,0x6000
+    ITOS P1,P0
+    MOV P2,P1
+display_num_loop:
+    MOV P0,[P2]
+    CMP P0,0
+    JZ display_value_done
+    MOV P3,7
+    CHAR P0,P3
+    INC P2
+    JMP display_num_loop
+display_value_done:
     ; Disp
-    MOV VX,0
-    MOV VY,8
-    MOV VL,0
+    MOV P0,0
+    MOV [0xF100],P0
+    MOV P0,16
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF103],P0
     ; Display 'S'
     MOV P0,83
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'T'
     MOV P0,84
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'R'
     MOV P0,82
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'r'
     MOV P0,114
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'e'
     MOV P0,101
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 's'
     MOV P0,115
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'u'
     MOV P0,117
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'l'
     MOV P0,108
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 't'
     MOV P0,116
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'w'
     MOV P0,119
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'o'
     MOV P0,111
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'u'
     MOV P0,117
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'l'
     MOV P0,108
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'd'
     MOV P0,100
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'b'
     MOV P0,98
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'e'
     MOV P0,101
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'd'
     MOV P0,100
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'i'
     MOV P0,105
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 's'
     MOV P0,115
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'p'
     MOV P0,112
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'l'
     MOV P0,108
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'a'
     MOV P0,97
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'y'
     MOV P0,121
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'e'
     MOV P0,101
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'd'
     MOV P0,100
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'a'
     MOV P0,97
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 's'
     MOV P0,115
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 's'
     MOV P0,115
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 't'
     MOV P0,116
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'r'
     MOV P0,114
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'i'
     MOV P0,105
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'n'
     MOV P0,110
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'g'
     MOV P0,103
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
 
 ; Program end - infinite loop to keep display visible
 halt:
@@ -308,5 +304,10 @@ ORG 0x2000
 DW 0  ; Variable A
 ORG 0x2002
 DW 0  ; Variable B
+ORG 0x8000
+DB 49
+DB 50
+DB 51
+DB 0  ; Null terminator
 
 ORG 0x1000

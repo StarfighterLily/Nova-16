@@ -41,11 +41,15 @@ class NoBasicCompiler:
         # Memory layout for compiled NoBASIC
         self.PROGRAM_START = 0x1000
         self.VARIABLE_START = 0x2000  # Variables A-Z
-        self.LIST_START = 0x3000     # Lists L1-L6
+        self.LIST_START = 0x3000     # Lists L1-L6 (each 100 elements × 2 bytes)
         self.STRING_START = 0x4000   # Strings Str1-Str9
         self.MATRIX_START = 0x5000   # Matrices [A]-[J]
         self.TEMP_START = 0x6000     # Temporary storage
         self.STACK_START = 0xF000    # Parameter stack (grows downward)
+
+        # List management
+        self.lists: Dict[str, int] = {}  # List name -> memory address
+        self.list_sizes: Dict[str, int] = {}  # List name -> size
 
         # Compilation state
         self.assembly_lines: List[str] = []
@@ -54,6 +58,10 @@ class NoBasicCompiler:
         self.label_counter = 0
         self.string_counter = 0
         self.strings: Dict[str, int] = {}    # String content -> memory address
+        
+        # Register allocation for expression evaluation
+        self.available_registers = ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7"]
+        self.register_stack: List[str] = []
         
         # Text cursor position for display statements
         self.cursor_x = 0
@@ -82,13 +90,30 @@ class NoBasicCompiler:
             "start:",
         ]
 
-    def _get_variable_address(self, var_name: str) -> int:
-        """Get memory address for a variable"""
-        if var_name not in self.variables:
-            # Allocate new variable (2 bytes for 16-bit values)
-            addr = self.VARIABLE_START + len(self.variables) * 2
-            self.variables[var_name] = addr
-        return self.variables[var_name]
+    def _parse_tokens_for_expression(self, tokens: List[str]) -> Tuple[List[str], int]:
+        """Parse a subset of tokens as an expression (helper for list indexing)"""
+        # Simple implementation - just parse additive expression
+        return self._parse_additive_expression(tokens, 0)
+
+    def _allocate_register(self) -> str:
+        """Allocate a register for expression evaluation"""
+        if self.available_registers:
+            reg = self.available_registers.pop(0)
+            self.register_stack.append(reg)
+            return reg
+        # If no registers available, use stack as fallback
+        return "P0"
+
+    def _free_register(self, reg: str):
+        """Free a register back to the pool"""
+        if reg in self.register_stack:
+            self.register_stack.remove(reg)
+            if reg not in self.available_registers:
+                self.available_registers.insert(0, reg)
+
+    def _get_current_register(self) -> str:
+        """Get the current result register"""
+        return self.register_stack[-1] if self.register_stack else "P0"
 
     def _generate_label(self, prefix: str = "label") -> str:
         """Generate a unique label"""
@@ -153,6 +178,11 @@ class NoBasicCompiler:
                     self.assembly_lines.extend(lines)
                     i = new_i
 
+                elif token == "WEND":
+                    lines = self._compile_wend()
+                    self.assembly_lines.extend(lines)
+                    i += 1
+
                 elif token == "PAUSE":
                     lines = self._compile_pause()
                     self.assembly_lines.extend(lines)
@@ -173,8 +203,9 @@ class NoBasicCompiler:
                     self.assembly_lines.extend(lines)
                     i = new_i
 
-                elif token.isalpha() and i + 1 < len(tokens) and tokens[i + 1] == "=":
-                    # Variable assignment
+                elif ((token.isalpha() or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit())) and i + 1 < len(tokens) and 
+                      (tokens[i + 1] == "=" or tokens[i + 1] == "(")):
+                    # Variable or list assignment
                     lines, new_i = self._compile_assignment(tokens, i)
                     self.assembly_lines.extend(lines)
                     i = new_i
@@ -225,12 +256,12 @@ class NoBasicCompiler:
         """Compile ClrHome statement"""
         return [
             "    ; ClrHome",
-            "    MOV VM,0",      # Coordinate mode
-            "    MOV VL,0",      # Layer 0
-            "    MOV VX,0",      # X = 0
-            "    MOV VY,0",      # Y = 0
-            "    MOV P0,0",      # Black color
-            "    SFILL P0",      # Fill screen with black
+            "    MOV P0,0",
+            "    MOV [0xF102],P0",  # VM = 0 (coordinate mode)
+            "    MOV [0xF103],P0",  # VL = 0 (layer 0)
+            "    MOV [0xF100],P0",  # VX = 0
+            "    MOV [0xF101],P0",  # VY = 0
+            "    SFILL P0",         # Fill screen with black
         ]
 
     def _compile_disp(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
@@ -240,9 +271,12 @@ class NoBasicCompiler:
 
         # Set cursor to current position
         lines.extend([
-            f"    MOV VX,{self.cursor_x}",  # X position
-            f"    MOV VY,{self.cursor_y}",  # Y position
-            "    MOV VL,0",                 # Layer 0
+            f"    MOV P0,{self.cursor_x}",
+            "    MOV [0xF100],P0",  # VX
+            f"    MOV P0,{self.cursor_y}",
+            "    MOV [0xF101],P0",  # VY
+            "    MOV P0,0",
+            "    MOV [0xF103],P0",  # VL
         ])
 
         # Parse display arguments
@@ -268,13 +302,17 @@ class NoBasicCompiler:
                     lines.extend([
                         f"    MOV P0,{value}",
                     ])
-                lines.extend(self._compile_display_number())
+                lines.extend(self._compile_display_value())
             elif token == ',':
                 # New line
                 lines.extend([
-                    "    ADD VY,8",    # Move down 8 pixels
-                    "    MOV VX,0",    # Reset X to left
+                    "    MOV P0,[0xF101]",  # Get current VY
+                    "    ADD P0,8",
+                    "    MOV [0xF101],P0",  # Set new VY
+                    "    MOV P0,0",
+                    "    MOV [0xF100],P0",  # Reset VX
                 ])
+                self.cursor_y += 8  # Update cursor position for next item in same Disp
 
             i += 1
 
@@ -403,13 +441,14 @@ class NoBasicCompiler:
 
         # Store end label for WEND
         self.labels["current_while_end"] = end_label
+        self.labels["current_while_loop"] = loop_label
 
         return lines, i
 
     def _compile_wend(self) -> List[str]:
         """Compile WEnd statement"""
         end_label = self.labels.get("current_while_end", "while_end")
-        loop_label = end_label.replace("while_end", "while_loop")
+        loop_label = self.labels.get("current_while_loop", "while_loop")
 
         return [
             f"    JMP {loop_label}",
@@ -417,26 +456,69 @@ class NoBasicCompiler:
         ]
 
     def _compile_assignment(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
-        """Compile variable assignment with optimizations"""
-        var_name = tokens[i]
-        var_addr = self._get_variable_address(var_name)
+        """Compile variable or list assignment with optimizations"""
+        target_name = tokens[i]
+        i += 1  # Skip target name
+        
+        # Check if this is a list assignment (L1(index) = ...)
+        is_list_assignment = False
+        list_name = ""
+        index_tokens = []
+        
+        if tokens[i] == '(':
+            # This is a list assignment
+            is_list_assignment = True
+            list_name = target_name.upper()
+            i += 1  # Skip '('
+            
+            # Collect index tokens until ')'
+            paren_count = 1
+            while i < len(tokens) and paren_count > 0:
+                if tokens[i] == '(':
+                    paren_count += 1
+                elif tokens[i] == ')':
+                    paren_count -= 1
+                    if paren_count == 0:
+                        break
+                index_tokens.append(tokens[i])
+                i += 1
+            i += 1  # Skip ')'
+        
+        if tokens[i] != '=':
+            raise ValueError("Expected '=' in assignment")
+        i += 1  # Skip '='
 
-        lines = [f"    ; {var_name} = "]
-        i += 2  # Skip variable and =
-
-        # Check if this is a simple constant assignment
-        if i < len(tokens) and tokens[i].isdigit() and (i + 1 >= len(tokens) or tokens[i + 1] in ['\n', ';']):
-            # Simple constant assignment: optimize to direct memory write
-            value = int(tokens[i])
-            lines = [f"    ; {var_name} = {value} (optimized)"]
-            lines.append(f"    MOV [0x{var_addr:04X}],{value}")
-            i += 1
+        lines = [f"    ; {target_name} = "]
+        
+        # Parse the value expression
+        expr_lines, i = self._parse_expression(tokens, i)
+        lines.extend(expr_lines)
+        
+        if is_list_assignment:
+            # For now, simple list assignment: assume index is a constant
+            # TODO: Handle complex index expressions
+            if len(index_tokens) == 1 and index_tokens[0].isdigit():
+                index = int(index_tokens[0])
+                list_addr = self._get_list_address(list_name)
+                
+                value_reg = self._get_current_register()
+                
+                lines.extend([
+                    f"    ; Store to {list_name}({index})",
+                    f"    MOV [0x{list_addr + index * 2:04X}],{value_reg}",  # Direct address calculation
+                ])
+            else:
+                raise ValueError(f"Complex list indices not yet supported: {index_tokens}")
         else:
-            # Complex expression
-            expr_lines, i = self._parse_expression(tokens, i)
-            lines.extend(expr_lines)
-            lines.extend(self._store_variable(var_name))
-
+            # Regular variable assignment
+            var_addr = self._get_variable_address(target_name)
+            result_reg = self._get_current_register()
+            lines.extend(self._store_variable_from_reg(target_name, result_reg))
+        
+        # Free the result register
+        result_reg = self._get_current_register()
+        self._free_register(result_reg)
+        
         return lines, i
 
     def _parse_condition(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
@@ -453,16 +535,22 @@ class NoBasicCompiler:
 
         # Load left side
         if left.isalpha():
-            lines.extend(self._load_variable(left))
+            left_reg = self._allocate_register()
+            lines.extend(self._load_variable_to_reg(left, left_reg))
         else:
-            lines.append(f"    MOV P0,{left}")
+            left_reg = self._allocate_register()
+            lines.append(f"    MOV {left_reg},{left}")
 
         # Compare with right side
         if right.isalpha():
-            lines.extend(self._load_variable(right, "P1"))
-            lines.append("    CMP P0,P1")
+            right_reg = self._allocate_register()
+            lines.extend(self._load_variable_to_reg(right, right_reg))
+            lines.append(f"    CMP {left_reg},{right_reg}")
+            self._free_register(right_reg)
         else:
-            lines.append(f"    CMP P0,{right}")
+            lines.append(f"    CMP {left_reg},{right}")
+
+        self._free_register(left_reg)
 
         return lines, i
 
@@ -478,20 +566,24 @@ class NoBasicCompiler:
             op = tokens[i]
             i += 1
 
-            # Push current result to stack
-            lines.append("    PUSH P0")
+            # Save current result register
+            left_reg = self._get_current_register()
+            
+            # Allocate new register for right operand
+            right_reg = self._allocate_register()
 
             # Parse right operand
             right_lines, i = self._parse_multiplicative_expression(tokens, i)
             lines.extend(right_lines)
 
-            # Pop left operand and perform operation
-            lines.append("    POP P1")
+            # Perform operation
             if op == '+':
-                lines.append("    ADD P0,P1")
+                lines.append(f"    ADD {left_reg},{right_reg}")
             else:  # op == '-'
-                lines.append("    SUB P1,P0")
-                lines.append("    MOV P0,P1")
+                lines.append(f"    SUB {left_reg},{right_reg}")
+
+            # Free the right register
+            self._free_register(right_reg)
 
         return lines, i
 
@@ -503,23 +595,26 @@ class NoBasicCompiler:
             op = tokens[i]
             i += 1
 
-            # Push current result to stack
-            lines.append("    PUSH P0")
+            # Save current result register
+            left_reg = self._get_current_register()
+            
+            # Allocate new register for right operand
+            right_reg = self._allocate_register()
 
             # Parse right operand
             right_lines, i = self._parse_primary_expression(tokens, i)
             lines.extend(right_lines)
 
-            # Pop left operand and perform operation
-            lines.append("    POP P1")
+            # Perform operation
             if op == '*':
-                lines.append("    MUL P0,P1")
+                lines.append(f"    MUL {left_reg},{right_reg}")
             elif op == '/':
-                lines.append("    DIV P1,P0")
-                lines.append("    MOV P0,P1")
+                lines.append(f"    DIV {left_reg},{right_reg}")
             else:  # op == 'MOD'
-                lines.append("    MOD P1,P0")
-                lines.append("    MOV P0,P1")
+                lines.append(f"    MOD {left_reg},{right_reg}")
+
+            # Free the right register
+            self._free_register(right_reg)
 
         return lines, i
 
@@ -537,21 +632,59 @@ class NoBasicCompiler:
             else:
                 raise ValueError("Missing closing parenthesis")
         elif token.startswith('"') and token.endswith('"'):
-            # String literal - for now, just return 0 (strings in expressions not fully supported)
-            lines.append("    MOV P0,0")
+            # String literal - store in memory and return address
+            string_content = token.strip('"')
+            string_addr = self._store_string_in_memory(string_content)
+            result_reg = self._allocate_register()
+            lines.append(f"    MOV {result_reg},{string_addr}")
             i += 1
         elif token.isdigit():
             # Number literal - check for constant folding
             folded_val, new_i = self._fold_constants(tokens, i)
             if folded_val is not None:
-                lines.append(f"    MOV P0,{folded_val}")
+                result_reg = self._allocate_register()
+                lines.append(f"    MOV {result_reg},{folded_val}")
                 i = new_i
             else:
-                lines.append(f"    MOV P0,{token}")
+                result_reg = self._allocate_register()
+                lines.append(f"    MOV {result_reg},{token}")
                 i += 1
-        elif token.isalpha() or '$' in token:
+        elif token.isalpha() or '$' in token or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit()):
+            # Check if this is a list access (L1(index))
+            if token.upper().startswith('L') and len(token) == 2 and token[1].isdigit():
+                # List access like L1, L2, etc.
+                list_name = token.upper()
+                i += 1
+                if i < len(tokens) and tokens[i] == '(':
+                    i += 1
+                    # Parse index expression
+                    index_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(index_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in list access")
+                    
+                    # Generate code to load from list
+                    list_addr = self._get_list_address(list_name)
+                    index_reg = self._get_current_register()  # Save index register
+                    result_reg = self._allocate_register()    # Allocate result register
+                    
+                    lines.extend([
+                        f"    ; Load {list_name}({index_reg}) into {result_reg}",
+                        f"    MOV P2,{list_addr}",        # Base address of list
+                        f"    ADD P2,{index_reg}",        # Add index (×2 for 16-bit)
+                        f"    ADD P2,{index_reg}",
+                        f"    MOV {result_reg},[P2]",     # Load value
+                    ])
+                else:
+                    # Regular variable
+                    result_reg = self._allocate_register()
+                    lines.extend(self._load_variable_to_reg(token, result_reg))
+                    i += 1
             # Check if this is a function call
-            if i + 1 < len(tokens) and tokens[i + 1] == '(':
+            elif i + 1 < len(tokens) and tokens[i + 1] == '(':
                 # Function call
                 func_name = token.upper()
                 i += 2  # Skip function name and '('
@@ -563,8 +696,9 @@ class NoBasicCompiler:
                         i += 1
                     else:
                         raise ValueError("Missing closing parenthesis in INT()")
-                    # Assume P0 contains string address, convert with STOI
-                    lines.append("    STOI P0,P0")  # Convert string at P0 to integer in P0
+                    # Assume current register contains string address, convert with STOI
+                    current_reg = self._get_current_register()
+                    lines.append(f"    STOI {current_reg},{current_reg}")  # Convert string at reg to integer in reg
                 elif func_name == 'STR':
                     # STR(number) - convert number to string address
                     lines, i = self._parse_additive_expression(tokens, i)  # Parse number argument
@@ -572,19 +706,21 @@ class NoBasicCompiler:
                         i += 1
                     else:
                         raise ValueError("Missing closing parenthesis in STR()")
-                    # Convert number in P0 to string at temporary buffer
+                    # Convert number in current register to string at temporary buffer
+                    current_reg = self._get_current_register()
                     lines.extend([
-                        "    PUSH P1",
+                        f"    PUSH {current_reg}",
                         "    MOV P1,0x6000",  # Temporary string buffer
-                        "    ITOS P1,P0",     # Convert P0 to string at 0x6000
-                        "    MOV P0,P1",      # Return string address
-                        "    POP P1",
+                        f"    ITOS P1,{current_reg}",     # Convert reg to string at 0x6000
+                        f"    MOV {current_reg},P1",      # Return string address
+                        f"    POP {current_reg}",
                     ])
                 else:
                     raise ValueError(f"Unknown function: {func_name}")
             else:
                 # Variable
-                lines.extend(self._load_variable(token))
+                result_reg = self._allocate_register()
+                lines.extend(self._load_variable_to_reg(token, result_reg))
                 i += 1
         else:
             raise ValueError(f"Unexpected token in expression: {token}")
@@ -593,29 +729,61 @@ class NoBasicCompiler:
 
     def _fold_constants(self, tokens: List[str], i: int) -> Tuple[int, int]:
         """Try to fold constants in an expression. Returns (folded_value, new_i) or (None, original_i)"""
-        # Simple constant folding for basic arithmetic
-        if tokens[i].isdigit():
-            left_val = int(tokens[i])
+        # Enhanced constant folding for arithmetic expressions
+        if not tokens[i].isdigit():
+            return None, i
+        
+        left_val = int(tokens[i])
+        original_i = i
+        i += 1
+        
+        # Look for operator and right operand
+        if i < len(tokens) and tokens[i] in ['+', '-', '*', '/']:
+            op = tokens[i]
             i += 1
             
-            if i < len(tokens) and tokens[i] in ['+', '-', '*', '/']:
-                op = tokens[i]
+            if i < len(tokens) and tokens[i].isdigit():
+                right_val = int(tokens[i])
                 i += 1
                 
-                if i < len(tokens) and tokens[i].isdigit():
-                    right_val = int(tokens[i])
-                    i += 1
-                    
+                try:
                     if op == '+':
-                        return left_val + right_val, i
+                        result = left_val + right_val
                     elif op == '-':
-                        return left_val - right_val, i
+                        result = left_val - right_val
                     elif op == '*':
-                        return left_val * right_val, i
+                        result = left_val * right_val
                     elif op == '/' and right_val != 0:
-                        return left_val // right_val, i  # Integer division
+                        result = left_val // right_val  # Integer division
+                    else:
+                        return None, original_i
+                    
+                    # Check for more operations (for expressions like 1+2*3)
+                    if i < len(tokens) and tokens[i] in ['+', '-', '*', '/']:
+                        # Try to fold the next operation too
+                        next_op = tokens[i]
+                        i += 1
+                        if i < len(tokens) and tokens[i].isdigit():
+                            next_val = int(tokens[i])
+                            i += 1
+                            
+                            if next_op == '+':
+                                result = result + next_val
+                            elif next_op == '-':
+                                result = result - next_val
+                            elif next_op == '*':
+                                result = result * next_val
+                            elif next_op == '/' and next_val != 0:
+                                result = result // next_val
+                            else:
+                                return None, original_i
+                    
+                    return result, i
+                    
+                except:
+                    return None, original_i
         
-        return None, i  # No folding possible
+        return None, original_i
 
     def _store_string_in_memory(self, string: str) -> int:
         """Store a string in memory and return its address"""
@@ -648,25 +816,71 @@ class NoBasicCompiler:
         """Generate code to display a string by inlining character display"""
         lines = []
         for char in string:
-            ascii_val = ord(char)
-            lines.extend([
-                f"    ; Display '{char}'",
-                f"    MOV P0,{ascii_val}",  # Character code
-                "    MOV P1,7",            # White color
-                "    CHAR P0,P1",          # Display character
-                "    ADD VX,8",            # Move right for next character
-            ])
+            if char == '\n':
+                # Newline
+                lines.extend([
+                    f"    ; Newline",
+                    "    MOV P0,[0xF101]",  # Get current VY
+                    "    ADD P0,8",
+                    "    MOV [0xF101],P0",  # Set new VY
+                    "    MOV P0,0",
+                    "    MOV [0xF100],P0",  # Reset VX
+                ])
+            else:
+                ascii_val = ord(char)
+                lines.extend([
+                    f"    ; Display '{char}'",
+                    f"    MOV P0,{ascii_val}",  # Character code
+                    "    MOV P1,7",            # White color
+                    "    CHAR P0,P1",          # Display character
+                ])
         return lines
 
-    def _compile_display_number(self) -> List[str]:
-        """Generate code to display a number from P0 by inlining"""
-        # For now, just display the raw value as a character
-        # This is a simplified implementation - a full number-to-string conversion would be more complex
+    def _compile_display_value(self) -> List[str]:
+        """Generate code to display a value from P0 (either number or string address)"""
+        # Check if P0 contains a string address (0x4000-0x7FFF range)
         return [
-            "    ; Display number (simplified)",
-            "    MOV P1,7",      # White color
-            "    CHAR P0,P1",    # Display character in P0
-            "    ADD VX,8",      # Move right
+            "    ; Display value (number or string)",
+            f"    MOV P1,P0",              # Save original value
+            f"    CMP P0,0x4000",          # Check if >= string start
+            f"    JC display_as_number",   # If < 0x4000, treat as number
+            f"    CMP P0,0x8000",          # Check if < string end
+            f"    JNC display_as_number",  # If >= 0x8000, treat as number
+            f"    ; Display as string",
+            f"    MOV P2,P0",              # P2 = string pointer
+            f"display_str_loop:",
+            f"    MOV P0,[P2]",            # Load character
+            f"    CMP P0,0",               # Check for null terminator
+            f"    JZ display_value_done",
+            f"    CMP P0,10",              # Check for newline
+            f"    JZ display_str_newline",
+            f"    MOV P3,7",               # White color
+            f"    CHAR P0,P3",             # Display character
+            f"    INC P2",                 # Next character
+            f"    JMP display_str_loop",
+            f"display_str_newline:",
+            f"    MOV P0,[0xF101]",        # Get current VY
+            f"    ADD P0,8",
+            f"    MOV [0xF101],P0",        # Set new VY
+            f"    MOV P0,0",
+            f"    MOV [0xF100],P0",        # Reset VX
+            f"    INC P2",                 # Next character
+            f"    JMP display_str_loop",
+            f"display_as_number:",
+            f"    MOV P0,P1",              # Restore original value
+            f"    ; Display as number",
+            f"    MOV P1,0x6000",          # Temporary buffer for string
+            f"    ITOS P1,P0",             # Convert P0 to string at buffer
+            f"    MOV P2,P1",              # P2 = string pointer
+            f"display_num_loop:",
+            f"    MOV P0,[P2]",            # Load character
+            f"    CMP P0,0",               # Check for null terminator
+            f"    JZ display_value_done",
+            f"    MOV P3,7",               # White color
+            f"    CHAR P0,P3",             # Display character
+            f"    INC P2",                 # Next character
+            f"    JMP display_num_loop",
+            f"display_value_done:",
         ]
 
     def _compile_pause(self) -> List[str]:
@@ -719,6 +933,14 @@ class NoBasicCompiler:
             f"    MOV {dest_register},[0x{var_addr:04X}]",  # Direct memory access
         ]
 
+    def _load_variable_to_reg(self, var_name: str, dest_register: str) -> List[str]:
+        """Generate code to load a variable into a specific register"""
+        var_addr = self._get_variable_address(var_name)
+        return [
+            f"    ; Load {var_name} into {dest_register}",
+            f"    MOV {dest_register},[0x{var_addr:04X}]",  # Direct memory access
+        ]
+
     def _store_variable(self, var_name: str, source_register: str = "P0") -> List[str]:
         """Generate code to store a register value into a variable"""
         var_addr = self._get_variable_address(var_name)
@@ -726,6 +948,33 @@ class NoBasicCompiler:
             f"    ; Store {source_register} into {var_name}",
             f"    MOV [0x{var_addr:04X}],{source_register}",  # Direct memory access
         ]
+
+    def _store_variable_from_reg(self, var_name: str, source_register: str) -> List[str]:
+        """Generate code to store a register value into a variable"""
+        var_addr = self._get_variable_address(var_name)
+        return [
+            f"    ; Store {source_register} into {var_name}",
+            f"    MOV [0x{var_addr:04X}],{source_register}",  # Direct memory access
+        ]
+
+    def _get_variable_address(self, var_name: str) -> int:
+        """Get or allocate memory address for a variable"""
+        var_name = var_name.upper()
+        if var_name not in self.variables:
+            # Allocate new variable address (2 bytes per variable)
+            addr = self.VARIABLE_START + len(self.variables) * 2
+            self.variables[var_name] = addr
+        return self.variables[var_name]
+
+    def _get_list_address(self, list_name: str) -> int:
+        """Get or allocate memory address for a list"""
+        list_name = list_name.upper()
+        if list_name not in self.lists:
+            # Allocate new list address (100 elements × 2 bytes = 200 bytes per list)
+            addr = self.LIST_START + len(self.lists) * 200
+            self.lists[list_name] = addr
+            self.list_sizes[list_name] = 100  # Default size
+        return self.lists[list_name]
 
 
 def main():

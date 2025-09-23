@@ -1,0 +1,11 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+while_loop_1 0x1104
+display_str_loop 0x11AA
+display_str_newline 0x11CD
+display_as_number 0x11EB
+display_num_loop 0x11FC
+display_value_done 0x1217
+while_end_2 0x122D
+halt 0x1284

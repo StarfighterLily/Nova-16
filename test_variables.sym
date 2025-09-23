@@ -1,4 +1,9 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-halt 0x10C4
+display_str_loop 0x117D
+display_str_newline 0x11A0
+display_as_number 0x11BE
+display_num_loop 0x11CF
+display_value_done 0x11EA
+halt 0x11EA

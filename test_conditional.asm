@@ -14,16 +14,20 @@ MOV VL,0
 ; Program start
 start:
     ; ClrHome
-    MOV VM,0
-    MOV VL,0
-    MOV VX,0
-    MOV VY,0
     MOV P0,0
+    MOV [0xF102],P0
+    MOV [0xF103],P0
+    MOV [0xF100],P0
+    MOV [0xF101],P0
     SFILL P0
-    ; A = 10 (optimized)
-    MOV [0x2000],10
-    ; B = 5 (optimized)
-    MOV [0x2002],5
+    ; A = 
+    MOV P0,10
+    ; Store P0 into A
+    MOV [0x2000],P0
+    ; B = 
+    MOV P0,5
+    ; Store P0 into B
+    MOV [0x2002],P0
     ; Load A into P0
     MOV P0,[0x2000]
     ; Load B into P1
@@ -32,69 +36,60 @@ start:
     JZ if_else_1
 if_else_1:
     ; Disp
-    MOV VX,0
-    MOV VY,0
-    MOV VL,0
+    MOV P0,0
+    MOV [0xF100],P0
+    MOV P0,0
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF103],P0
     ; Display 'A'
     MOV P0,65
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'i'
     MOV P0,105
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 's'
     MOV P0,115
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'g'
     MOV P0,103
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'r'
     MOV P0,114
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'e'
     MOV P0,101
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'a'
     MOV P0,97
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 't'
     MOV P0,116
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'e'
     MOV P0,101
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'r'
     MOV P0,114
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; End - terminate program
     JMP halt
 

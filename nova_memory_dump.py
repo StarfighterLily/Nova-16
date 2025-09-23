@@ -65,7 +65,8 @@ def dump_memory_range(memory, start, end, label):
 
 # After main loop
 dump_memory_range(memory.data, 0x2000, 0x2020, "BENCHMARK RESULTS")
-\nprint(f"Final PC: 0x{proc.pc:04X}")
+
+print(f"Final PC: 0x{proc.pc:04X}")
     print("Final register states:")
     print(f"R0-R9: {[f'0x{r:04X}' for r in proc.Rregisters[:10]]}")
     print(f"P0-P9: {[f'0x{r:04X}' for r in proc.Pregisters[:10]]}")

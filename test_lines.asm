@@ -14,114 +14,105 @@ MOV VL,0
 ; Program start
 start:
     ; ClrHome
-    MOV VM,0
-    MOV VL,0
-    MOV VX,0
-    MOV VY,0
     MOV P0,0
+    MOV [0xF102],P0
+    MOV [0xF103],P0
+    MOV [0xF100],P0
+    MOV [0xF101],P0
     SFILL P0
     ; Disp
-    MOV VX,0
-    MOV VY,0
-    MOV VL,0
+    MOV P0,0
+    MOV [0xF100],P0
+    MOV P0,0
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF103],P0
     ; Display 'L'
     MOV P0,76
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'I'
     MOV P0,73
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'N'
     MOV P0,78
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'E'
     MOV P0,69
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display '1'
     MOV P0,49
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Disp
-    MOV VX,0
-    MOV VY,8
-    MOV VL,0
+    MOV P0,0
+    MOV [0xF100],P0
+    MOV P0,8
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF103],P0
     ; Display 'L'
     MOV P0,76
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'I'
     MOV P0,73
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'N'
     MOV P0,78
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'E'
     MOV P0,69
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display '2'
     MOV P0,50
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Disp
-    MOV VX,0
-    MOV VY,16
-    MOV VL,0
+    MOV P0,0
+    MOV [0xF100],P0
+    MOV P0,16
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF103],P0
     ; Display 'L'
     MOV P0,76
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'I'
     MOV P0,73
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'N'
     MOV P0,78
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'E'
     MOV P0,69
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display '3'
     MOV P0,51
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
 
 ; Program end - infinite loop to keep display visible
 halt:

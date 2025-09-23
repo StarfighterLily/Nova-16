@@ -1,0 +1,10 @@
+ClrHome
+Disp "While Loop Test"
+
+I = 0
+While I < 5
+Disp "Count:", I
+I = I + 1
+WEnd
+
+Disp "Done!"

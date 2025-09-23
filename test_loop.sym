@@ -1,5 +1,10 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-for_loop_1 0x1031
-halt 0x10AA
+for_loop_1 0x1035
+display_str_loop 0x10C2
+display_str_newline 0x10E5
+display_as_number 0x1103
+display_num_loop 0x1114
+display_value_done 0x112F
+halt 0x1133

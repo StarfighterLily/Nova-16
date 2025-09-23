@@ -1,0 +1,12 @@
+ClrHome
+Disp "List Test"
+
+L1(1) = 10
+L1(2) = 20
+L1(3) = 30
+
+A = L1(2)
+Disp "L1(2) =", A
+
+L1(4) = A + 5
+Disp "L1(4) =", L1(4)

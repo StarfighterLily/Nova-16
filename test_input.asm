@@ -14,11 +14,11 @@ MOV VL,0
 ; Program start
 start:
     ; ClrHome
-    MOV VM,0
-    MOV VL,0
-    MOV VX,0
-    MOV VY,0
     MOV P0,0
+    MOV [0xF102],P0
+    MOV [0xF103],P0
+    MOV [0xF100],P0
+    MOV [0xF101],P0
     SFILL P0
     ; Prompt
     ; Prompt A
@@ -26,77 +26,108 @@ start:
     ; Store P0 into A
     MOV [0x2000],P0
     ; Disp
-    MOV VX,0
-    MOV VY,0
-    MOV VL,0
+    MOV P0,0
+    MOV [0xF100],P0
+    MOV P0,0
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF103],P0
     ; Display 'Y'
     MOV P0,89
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'o'
     MOV P0,111
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'u'
     MOV P0,117
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ' '
     MOV P0,32
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'e'
     MOV P0,101
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'n'
     MOV P0,110
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 't'
     MOV P0,116
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'e'
     MOV P0,101
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'r'
     MOV P0,114
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'e'
     MOV P0,101
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display 'd'
     MOV P0,100
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
     ; Display ':'
     MOV P0,58
     MOV P1,7
     CHAR P0,P1
-    ADD VX,8
-    ADD VY,8
-    MOV VX,0
+    MOV P0,[0xF101]
+    ADD P0,8
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF100],P0
     ; Load A into P0
     MOV P0,[0x2000]
-    ; Display number (simplified)
-    MOV P1,7
-    CHAR P0,P1
-    ADD VX,8
+    ; Display value (number or string)
+    MOV P1,P0
+    CMP P0,0x4000
+    JC display_as_number
+    CMP P0,0x8000
+    JNC display_as_number
+    ; Display as string
+    MOV P2,P0
+display_str_loop:
+    MOV P0,[P2]
+    CMP P0,0
+    JZ display_value_done
+    CMP P0,10
+    JZ display_str_newline
+    MOV P3,7
+    CHAR P0,P3
+    INC P2
+    JMP display_str_loop
+display_str_newline:
+    MOV P0,[0xF101]
+    ADD P0,8
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF100],P0
+    INC P2
+    JMP display_str_loop
+display_as_number:
+    MOV P0,P1
+    ; Display as number
+    MOV P1,0x6000
+    ITOS P1,P0
+    MOV P2,P1
+display_num_loop:
+    MOV P0,[P2]
+    CMP P0,0
+    JZ display_value_done
+    MOV P3,7
+    CHAR P0,P3
+    INC P2
+    JMP display_num_loop
+display_value_done:
 
 ; Program end - infinite loop to keep display visible
 halt:

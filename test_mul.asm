@@ -24,23 +24,61 @@ start:
     ; C = 
     ; Load A into P0
     MOV P0,[0x2000]
-    PUSH P0
-    ; Load B into P0
-    MOV P0,[0x2002]
-    POP P1
+    ; Load B into P2
+    MOV P2,[0x2002]
     MUL P0,P1
-    ; Store P0 into C
-    MOV [0x2004],P0
+    ; Store P2 into C
+    MOV [0x2004],P2
     ; Disp
-    MOV VX,0
-    MOV VY,0
-    MOV VL,0
+    MOV P0,0
+    MOV [0xF100],P0
+    MOV P0,0
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF103],P0
     ; Load C into P0
     MOV P0,[0x2004]
-    ; Display number (simplified)
-    MOV P1,7
-    CHAR P0,P1
-    ADD VX,8
+    ; Display value (number or string)
+    MOV P1,P0
+    CMP P0,0x4000
+    JC display_as_number
+    CMP P0,0x8000
+    JNC display_as_number
+    ; Display as string
+    MOV P2,P0
+display_str_loop:
+    MOV P0,[P2]
+    CMP P0,0
+    JZ display_value_done
+    CMP P0,10
+    JZ display_str_newline
+    MOV P3,7
+    CHAR P0,P3
+    INC P2
+    JMP display_str_loop
+display_str_newline:
+    MOV P0,[0xF101]
+    ADD P0,8
+    MOV [0xF101],P0
+    MOV P0,0
+    MOV [0xF100],P0
+    INC P2
+    JMP display_str_loop
+display_as_number:
+    MOV P0,P1
+    ; Display as number
+    MOV P1,0x6000
+    ITOS P1,P0
+    MOV P2,P1
+display_num_loop:
+    MOV P0,[P2]
+    CMP P0,0
+    JZ display_value_done
+    MOV P3,7
+    CHAR P0,P3
+    INC P2
+    JMP display_num_loop
+display_value_done:
 
 ; Program end - infinite loop to keep display visible
 halt:

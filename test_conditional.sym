@@ -1,5 +1,5 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-if_else_1 0x104C
-halt 0x111C
+if_else_1 0x1050
+halt 0x10FF

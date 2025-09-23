@@ -24,17 +24,13 @@ start:
     ; C = 
     ; Load A into P0
     MOV P0,[0x2000]
-    PUSH P0
-    ; Load B into P0
-    MOV P0,[0x2002]
-    PUSH P0
-    MOV P0,2
-    POP P1
-    MUL P0,P1
-    POP P1
+    ; Load B into P2
+    MOV P2,[0x2002]
+    MOV P4,2
+    MUL P2,P3
     ADD P0,P1
-    ; Store P0 into C
-    MOV [0x2004],P0
+    ; Store P4 into C
+    MOV [0x2004],P4
 
 ; Program end - infinite loop to keep display visible
 halt:

@@ -1,4 +1,4 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-halt 0x1044
+halt 0x1053
