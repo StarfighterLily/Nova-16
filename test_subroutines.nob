@@ -1,0 +1,29 @@
+ClrHome
+Disp "Subroutine Test"
+
+// Define a subroutine to draw a star
+Define DrawStar
+  // Draw 5 lines to make a star
+  Line(100,50,120,90,7)
+  Line(120,90,80,70,7)
+  Line(80,70,140,70,7)
+  Line(140,70,100,50,7)
+  Line(100,50,100,110,7)
+Return
+
+// Define a subroutine to play a melody
+Define PlayMelody
+  Sound(261,200,100,0)  // C
+  Sound(293,200,100,0)  // D
+  Sound(329,200,100,0)  // E
+  Sound(349,200,100,0)  // F
+  Sound(392,200,100,0)  // G
+Return
+
+// Call the subroutines
+Call DrawStar
+Call PlayMelody
+
+Disp "Subroutine tests completed"
+Pause
+End

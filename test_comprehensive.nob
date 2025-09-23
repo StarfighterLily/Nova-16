@@ -1,0 +1,47 @@
+ClrHome
+Disp "NoBASIC Comprehensive Test"
+
+// Test complex expressions
+A = 5
+B = 10
+C = A + B * 2
+D = C / 3
+Disp "Expression result:", D
+
+// Test list operations
+L1(1) = 100
+L1(2) = 200
+L1(3) = L1(1) + L1(2)
+Disp "List element:", L1(3)
+
+// Test conditional logic
+If A < B Then
+  Disp "A is less than B"
+End
+
+// Test loop
+For I = 1 To 5
+  Disp "Loop iteration:", I
+End
+
+// Test while loop
+X = 0
+While X < 3
+  Disp "While count:", X
+  X = X + 1
+Wend
+
+// Test graphics subroutine
+Define DrawShape
+  Line(50,150,150,150,3)
+  Circle(100,120,20,5,1)
+Return
+
+Call DrawShape
+
+// Test sound
+Sound(440,300,128,0)
+
+Disp "All tests completed successfully!"
+Pause
+End

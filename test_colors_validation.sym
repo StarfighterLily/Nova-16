@@ -1,0 +1,31 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+for_loop_1 0x118D
+if_else_3 0x119A
+display_str_loop 0x2D64
+display_str_newline 0x2D87
+display_as_number 0x2DA2
+display_num_loop 0x2DB3
+display_value_done 0x2DCE
+if_else_5 0x145A
+if_else_7 0x146C
+for_end_2 0x157F
+for_loop_9 0x16B4
+for_loop_11 0x16BD
+if_else_13 0x1701
+for_end_12 0x171A
+for_end_10 0x172F
+if_else_15 0x195E
+for_loop_17 0x1DFF
+for_loop_19 0x1E08
+if_else_21 0x1E35
+for_end_20 0x1E4E
+for_end_18 0x1E63
+if_else_23 0x2026
+for_loop_25 0x24AF
+if_else_27 0x24F4
+for_end_26 0x250E
+if_else_29 0x270D
+pause_loop 0x2E43
+halt 0x2E51

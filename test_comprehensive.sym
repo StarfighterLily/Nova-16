@@ -1,0 +1,16 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+display_str_loop 0x185A
+display_str_newline 0x187D
+display_as_number 0x189B
+display_num_loop 0x18AC
+display_value_done 0x18C7
+if_else_1 0x1505
+for_loop_3 0x15ED
+while_loop_5 0x176C
+while_end_6 0x18DD
+sub_DrawShape 0x18DD
+sound_wait_loop 0x192D
+pause_loop 0x1ADC
+halt 0x1AEE

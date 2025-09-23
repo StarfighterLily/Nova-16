@@ -58,14 +58,121 @@ class NoBasicCompiler:
         self.label_counter = 0
         self.string_counter = 0
         self.strings: Dict[str, int] = {}    # String content -> memory address
+
+        # Loop tracking for For/Next
+        self.loop_start_labels: Dict[str, str] = {}  # Variable name -> loop start label
+        self.loop_end_values: Dict[str, int] = {}    # Variable name -> end value
         
-        # Register allocation for expression evaluation
+        # Register allocation for expression evaluation - improved system
         self.available_registers = ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7"]
+        self.register_usage: Dict[str, int] = {}  # Track when registers were last used
         self.register_stack: List[str] = []
+        self.next_usage_id = 0
         
         # Text cursor position for display statements
         self.cursor_x = 0
         self.cursor_y = 0
+
+        # Color constants mapping - Nova-16 has 16 ramps × 16 shades = 256 colors
+        # Each ramp has 16 shades from darkest (0) to brightest (15)
+        self.color_constants = {
+            # Grayscale ramp (0x00-0x0F)
+            'BLACK': 0x00,      # Darkest gray
+            'DARKGRAY': 0x04,
+            'GRAY': 0x08,
+            'LIGHTGRAY': 0x0C,
+            'WHITE': 0x0F,      # Brightest gray
+            
+            # Red ramp (0x10-0x1F)
+            'DARKRED': 0x10,
+            'RED': 0x14,
+            'BRIGHTRED': 0x18,
+            'LIGHTRED': 0x1C,
+            
+            # Green ramp (0x20-0x2F)
+            'DARKGREEN': 0x20,
+            'GREEN': 0x24,
+            'BRIGHTGREEN': 0x28,
+            'LIGHTGREEN': 0x2C,
+            
+            # Blue ramp (0x30-0x3F)
+            'DARKBLUE': 0x30,
+            'BLUE': 0x34,
+            'BRIGHTBLUE': 0x38,
+            'LIGHTBLUE': 0x3C,
+            
+            # Yellow ramp (0x40-0x4F)
+            'DARKYELLOW': 0x40,
+            'YELLOW': 0x44,
+            'BRIGHTYELLOW': 0x48,
+            'LIGHTYELLOW': 0x4C,
+            
+            # Magenta ramp (0x50-0x5F)
+            'DARKMAGENTA': 0x50,
+            'MAGENTA': 0x54,
+            'BRIGHTMAGENTA': 0x58,
+            'LIGHTMAGENTA': 0x5C,
+            
+            # Cyan ramp (0x60-0x6F)
+            'DARKCYAN': 0x60,
+            'CYAN': 0x64,
+            'BRIGHTCYAN': 0x68,
+            'LIGHTCYAN': 0x6C,
+            
+            # Orange ramp (0x70-0x7F)
+            'DARKORANGE': 0x70,
+            'ORANGE': 0x74,
+            'BRIGHTORANGE': 0x78,
+            'LIGHTORANGE': 0x7C,
+            
+            # Purple ramp (0x80-0x8F)
+            'DARKPURPLE': 0x80,
+            'PURPLE': 0x84,
+            'BRIGHTPURPLE': 0x88,
+            'LIGHTPURPLE': 0x8C,
+            
+            # Lime ramp (0x90-0x9F)
+            'DARKLIME': 0x90,
+            'LIME': 0x94,
+            'BRIGHTLIME': 0x98,
+            'LIGHTLIME': 0x9C,
+            
+            # Pink ramp (0xA0-0xAF)
+            'DARKPINK': 0xA0,
+            'PINK': 0xA4,
+            'BRIGHTPINK': 0xA8,
+            'LIGHTPINK': 0xAC,
+            
+            # Teal ramp (0xB0-0xBF)
+            'DARKTEAL': 0xB0,
+            'TEAL': 0xB4,
+            'BRIGHTTEAL': 0xB8,
+            'LIGHTTEAL': 0xBC,
+            
+            # Brown ramp (0xC0-0xCF)
+            'DARKBROWN': 0xC0,
+            'BROWN': 0xC4,
+            'BRIGHTBROWN': 0xC8,
+            'LIGHTBROWN': 0xCC,
+            
+            # Light blue ramp (0xD0-0xDF)
+            'DARKLIGHTBLUE': 0xD0,
+            'LIGHTBLUE': 0xD4,
+            'BRIGHTLIGHTBLUE': 0xD8,
+            'VERYLIGHTBLUE': 0xDC,
+            
+            # Light green ramp (0xE0-0xEF)
+            'DARKLIGHTGREEN': 0xE0,
+            'LIGHTGREEN': 0xE4,
+            'BRIGHTLIGHTGREEN': 0xE8,
+            'VERYLIGHTGREEN': 0xEC,
+            
+            # Light red ramp (0xF0-0xFF)
+            'DARKLIGHTRED': 0xF0,
+            'LIGHTRED': 0xF4,
+            'BRIGHTLIGHTRED': 0xF8,
+            'VERYLIGHTRED': 0xFC,
+        }
 
         # Initialize standard header
         self._init_assembly()
@@ -96,12 +203,22 @@ class NoBasicCompiler:
         return self._parse_additive_expression(tokens, 0)
 
     def _allocate_register(self) -> str:
-        """Allocate a register for expression evaluation"""
+        """Allocate a register for expression evaluation using LRU strategy"""
         if self.available_registers:
+            # Use first available register
             reg = self.available_registers.pop(0)
             self.register_stack.append(reg)
+            self.register_usage[reg] = self.next_usage_id
+            self.next_usage_id += 1
             return reg
-        # If no registers available, use stack as fallback
+        
+        # No free registers, find least recently used
+        if self.register_stack:
+            # Find register with oldest usage
+            lru_reg = min(self.register_stack, key=lambda r: self.register_usage.get(r, 0))
+            return lru_reg
+        
+        # Ultimate fallback
         return "P0"
 
     def _free_register(self, reg: str):
@@ -110,6 +227,7 @@ class NoBasicCompiler:
             self.register_stack.remove(reg)
             if reg not in self.available_registers:
                 self.available_registers.insert(0, reg)
+            # Keep usage info for LRU decisions
 
     def _get_current_register(self) -> str:
         """Get the current result register"""
@@ -203,7 +321,82 @@ class NoBasicCompiler:
                     self.assembly_lines.extend(lines)
                     i = new_i
 
-                elif ((token.isalpha() or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit())) and i + 1 < len(tokens) and 
+                elif token == "LINE":
+                    lines, new_i = self._compile_line(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "CIRCLE":
+                    lines, new_i = self._compile_circle(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "PXLON":
+                    lines, new_i = self._compile_pxlon(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "PXLOFF":
+                    lines, new_i = self._compile_pxloff(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "PXLCHANGE":
+                    lines, new_i = self._compile_pxlchange(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "PTON":
+                    lines, new_i = self._compile_pton(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "PTOFF":
+                    lines, new_i = self._compile_ptoff(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "PTCHANGE":
+                    lines, new_i = self._compile_ptchange(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "PLAY":
+                    lines, new_i = self._compile_play(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "STOP":
+                    lines, new_i = self._compile_stop(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "SOUND":
+                    lines, new_i = self._compile_sound(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "DEFINE":
+                    lines, new_i = self._compile_define(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "CALL":
+                    lines, new_i = self._compile_call(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "RETURN":
+                    lines = self._compile_return()
+                    self.assembly_lines.extend(lines)
+                    i += 1
+
+                elif token == "NEXT":
+                    lines, new_i = self._compile_next(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif ((re.match(r'[A-Za-z_][A-Za-z0-9_]*', token) or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit())) and i + 1 < len(tokens) and 
                       (tokens[i + 1] == "=" or tokens[i + 1] == "(")):
                     # Variable or list assignment
                     lines, new_i = self._compile_assignment(tokens, i)
@@ -257,11 +450,11 @@ class NoBasicCompiler:
         return [
             "    ; ClrHome",
             "    MOV P0,0",
-            "    MOV [0xF102],P0",  # VM = 0 (coordinate mode)
-            "    MOV [0xF103],P0",  # VL = 0 (layer 0)
-            "    MOV [0xF100],P0",  # VX = 0
-            "    MOV [0xF101],P0",  # VY = 0
-            "    SFILL P0",         # Fill screen with black
+            "    MOV VM,P0",  # VM = 0 (coordinate mode)
+            "    MOV VL,P0",  # VL = 0 (layer 0)
+            "    MOV VX,P0",  # VX = 0
+            "    MOV VY,P0",  # VY = 0
+            "    SFILL P0",   # Fill screen with black
         ]
 
     def _compile_disp(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
@@ -272,11 +465,11 @@ class NoBasicCompiler:
         # Set cursor to current position
         lines.extend([
             f"    MOV P0,{self.cursor_x}",
-            "    MOV [0xF100],P0",  # VX
+            "    MOV VX,P0",  # VX
             f"    MOV P0,{self.cursor_y}",
-            "    MOV [0xF101],P0",  # VY
+            "    MOV VY,P0",  # VY
             "    MOV P0,0",
-            "    MOV [0xF103],P0",  # VL
+            "    MOV VL,P0",  # VL
         ])
 
         # Parse display arguments
@@ -306,11 +499,11 @@ class NoBasicCompiler:
             elif token == ',':
                 # New line
                 lines.extend([
-                    "    MOV P0,[0xF101]",  # Get current VY
+                    "    MOV P0,VY",  # Get current VY
                     "    ADD P0,8",
-                    "    MOV [0xF101],P0",  # Set new VY
+                    "    MOV VY,P0",  # Set new VY
                     "    MOV P0,0",
-                    "    MOV [0xF100],P0",  # Reset VX
+                    "    MOV VX,P0",  # Reset VX
                 ])
                 self.cursor_y += 8  # Update cursor position for next item in same Disp
 
@@ -344,6 +537,11 @@ class NoBasicCompiler:
             loop_label = self._generate_label("for_loop")
             end_label = self._generate_label("for_end")
 
+            # Store loop info for NEXT
+            self.labels[f"end_{var_name}"] = end_label
+            self.loop_start_labels[var_name] = loop_label
+            self.loop_end_values[var_name] = end_value
+
             # Initialize loop variable
             var_addr = self._get_variable_address(var_name)
             lines.extend([
@@ -352,9 +550,6 @@ class NoBasicCompiler:
                 f"    MOV [0x{var_addr:04X}],P0",
                 f"{loop_label}:",
             ])
-
-            # Store loop info for END
-            self.labels[f"end_{var_name}"] = end_label
 
         return lines, i
 
@@ -569,12 +764,10 @@ class NoBasicCompiler:
             # Save current result register
             left_reg = self._get_current_register()
             
-            # Allocate new register for right operand
-            right_reg = self._allocate_register()
-
             # Parse right operand
             right_lines, i = self._parse_multiplicative_expression(tokens, i)
             lines.extend(right_lines)
+            right_reg = self._get_current_register()
 
             # Perform operation
             if op == '+':
@@ -598,12 +791,10 @@ class NoBasicCompiler:
             # Save current result register
             left_reg = self._get_current_register()
             
-            # Allocate new register for right operand
-            right_reg = self._allocate_register()
-
             # Parse right operand
             right_lines, i = self._parse_primary_expression(tokens, i)
             lines.extend(right_lines)
+            right_reg = self._get_current_register()
 
             # Perform operation
             if op == '*':
@@ -649,7 +840,13 @@ class NoBasicCompiler:
                 result_reg = self._allocate_register()
                 lines.append(f"    MOV {result_reg},{token}")
                 i += 1
-        elif token.isalpha() or '$' in token or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit()):
+        elif token.upper() in self.color_constants:
+            # Color constant
+            color_value = self.color_constants[token.upper()]
+            result_reg = self._allocate_register()
+            lines.append(f"    MOV {result_reg},{color_value}")
+            i += 1
+        elif token.isalpha() or '_' in token or '$' in token or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit()):
             # Check if this is a list access (L1(index))
             if token.upper().startswith('L') and len(token) == 2 and token[1].isdigit():
                 # List access like L1, L2, etc.
@@ -715,6 +912,74 @@ class NoBasicCompiler:
                         f"    MOV {current_reg},P1",      # Return string address
                         f"    POP {current_reg}",
                     ])
+                elif func_name in ['SIN', 'COS', 'TAN', 'ASIN', 'ACOS', 'ATAN', 'SQRT', 'LOG', 'EXP', 'ABS', 'FLOOR', 'CEIL', 'ROUND']:
+                    # Math functions
+                    lines, i = self._parse_additive_expression(tokens, i)  # Parse argument
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError(f"Missing closing parenthesis in {func_name}()")
+                    
+                    current_reg = self._get_current_register()
+                    opcode = func_name.lower()
+                    lines.append(f"    {opcode.upper()} {current_reg},{current_reg}")  # Apply function to register
+                elif func_name == 'COLOR':
+                    # COLOR(ramp, shade) - create color from ramp (0-15) and shade (0-15)
+                    # Parse ramp argument
+                    ramp_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(ramp_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in COLOR(ramp, shade)")
+                    
+                    # Parse shade argument
+                    shade_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(shade_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in COLOR()")
+                    
+                    # Combine ramp and shade: color = (ramp << 4) | shade
+                    shade_reg = self._get_current_register()
+                    ramp_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; COLOR({ramp_reg}, {shade_reg})",
+                        f"    SHL {ramp_reg},4",        # ramp << 4
+                        f"    OR {ramp_reg},{shade_reg}", # (ramp << 4) | shade
+                    ])
+                    
+                    # Free shade register, keep ramp register as result
+                    self._free_register(shade_reg)
+                elif func_name == 'RAMP':
+                    # RAMP(color) - extract ramp from color (color >> 4)
+                    lines, i = self._parse_additive_expression(tokens, i)  # Parse color argument
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in RAMP()")
+                    
+                    current_reg = self._get_current_register()
+                    lines.extend([
+                        f"    ; RAMP({current_reg})",
+                        f"    SHR {current_reg},4",  # color >> 4
+                    ])
+                elif func_name == 'SHADE':
+                    # SHADE(color) - extract shade from color (color & 0x0F)
+                    lines, i = self._parse_additive_expression(tokens, i)  # Parse color argument
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in SHADE()")
+                    
+                    current_reg = self._get_current_register()
+                    lines.extend([
+                        f"    ; SHADE({current_reg})",
+                        f"    AND {current_reg},15",  # color & 0x0F
+                    ])
                 else:
                     raise ValueError(f"Unknown function: {func_name}")
             else:
@@ -733,57 +998,36 @@ class NoBasicCompiler:
         if not tokens[i].isdigit():
             return None, i
         
-        left_val = int(tokens[i])
         original_i = i
+        result = int(tokens[i])
         i += 1
         
-        # Look for operator and right operand
-        if i < len(tokens) and tokens[i] in ['+', '-', '*', '/']:
+        # Process a chain of operations
+        while i < len(tokens) and tokens[i] in ['+', '-', '*', '/']:
             op = tokens[i]
             i += 1
             
-            if i < len(tokens) and tokens[i].isdigit():
-                right_val = int(tokens[i])
-                i += 1
-                
-                try:
-                    if op == '+':
-                        result = left_val + right_val
-                    elif op == '-':
-                        result = left_val - right_val
-                    elif op == '*':
-                        result = left_val * right_val
-                    elif op == '/' and right_val != 0:
-                        result = left_val // right_val  # Integer division
-                    else:
-                        return None, original_i
-                    
-                    # Check for more operations (for expressions like 1+2*3)
-                    if i < len(tokens) and tokens[i] in ['+', '-', '*', '/']:
-                        # Try to fold the next operation too
-                        next_op = tokens[i]
-                        i += 1
-                        if i < len(tokens) and tokens[i].isdigit():
-                            next_val = int(tokens[i])
-                            i += 1
-                            
-                            if next_op == '+':
-                                result = result + next_val
-                            elif next_op == '-':
-                                result = result - next_val
-                            elif next_op == '*':
-                                result = result * next_val
-                            elif next_op == '/' and next_val != 0:
-                                result = result // next_val
-                            else:
-                                return None, original_i
-                    
-                    return result, i
-                    
-                except:
+            if i >= len(tokens) or not tokens[i].isdigit():
+                return None, original_i
+            
+            right_val = int(tokens[i])
+            i += 1
+            
+            try:
+                if op == '+':
+                    result += right_val
+                elif op == '-':
+                    result -= right_val
+                elif op == '*':
+                    result *= right_val
+                elif op == '/' and right_val != 0:
+                    result = result // right_val  # Integer division
+                else:
                     return None, original_i
+            except:
+                return None, original_i
         
-        return None, original_i
+        return result, i
 
     def _store_string_in_memory(self, string: str) -> int:
         """Store a string in memory and return its address"""
@@ -800,6 +1044,9 @@ class NoBasicCompiler:
         """Compile NoBASIC source code to assembly"""
         tokens = self._tokenize(nobasic_source)
         self._parse_tokens(tokens)
+
+        # Optimize the generated assembly
+        self._optimize_assembly()
 
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write('\n'.join(self.assembly_lines))
@@ -820,18 +1067,18 @@ class NoBasicCompiler:
                 # Newline
                 lines.extend([
                     f"    ; Newline",
-                    "    MOV P0,[0xF101]",  # Get current VY
+                    "    MOV P0,VY",  # Get current VY
                     "    ADD P0,8",
-                    "    MOV [0xF101],P0",  # Set new VY
+                    "    MOV VY,P0",  # Set new VY
                     "    MOV P0,0",
-                    "    MOV [0xF100],P0",  # Reset VX
+                    "    MOV VX,P0",  # Reset VX
                 ])
             else:
                 ascii_val = ord(char)
                 lines.extend([
                     f"    ; Display '{char}'",
                     f"    MOV P0,{ascii_val}",  # Character code
-                    "    MOV P1,7",            # White color
+                    "    MOV P1,15",            # White color
                     "    CHAR P0,P1",          # Display character
                 ])
         return lines
@@ -854,16 +1101,16 @@ class NoBasicCompiler:
             f"    JZ display_value_done",
             f"    CMP P0,10",              # Check for newline
             f"    JZ display_str_newline",
-            f"    MOV P3,7",               # White color
+            f"    MOV P3,15",               # White color
             f"    CHAR P0,P3",             # Display character
             f"    INC P2",                 # Next character
             f"    JMP display_str_loop",
             f"display_str_newline:",
-            f"    MOV P0,[0xF101]",        # Get current VY
+            f"    MOV P0,VY",        # Get current VY
             f"    ADD P0,8",
-            f"    MOV [0xF101],P0",        # Set new VY
+            f"    MOV VY,P0",        # Set new VY
             f"    MOV P0,0",
-            f"    MOV [0xF100],P0",        # Reset VX
+            f"    MOV VX,P0",        # Reset VX
             f"    INC P2",                 # Next character
             f"    JMP display_str_loop",
             f"display_as_number:",
@@ -876,7 +1123,7 @@ class NoBasicCompiler:
             f"    MOV P0,[P2]",            # Load character
             f"    CMP P0,0",               # Check for null terminator
             f"    JZ display_value_done",
-            f"    MOV P3,7",               # White color
+            f"    MOV P3,15",               # White color
             f"    CHAR P0,P3",             # Display character
             f"    INC P2",                 # Next character
             f"    JMP display_num_loop",
@@ -976,6 +1223,518 @@ class NoBasicCompiler:
             self.list_sizes[list_name] = 100  # Default size
         return self.lists[list_name]
 
+    def _compile_line(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Line(X1,Y1,X2,Y2[,Color]) statement"""
+        lines = ["    ; Line"]
+        i += 1  # Skip LINE
+
+        if i >= len(tokens) or tokens[i] != '(':
+            raise ValueError("Expected '(' after LINE")
+        i += 1  # Skip '('
+
+        # Parse X1
+        x1_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(x1_lines)
+        x1_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after X1 in LINE")
+        i += 1  # Skip ','
+
+        # Parse Y1
+        y1_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(y1_lines)
+        y1_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after Y1 in LINE")
+        i += 1  # Skip ','
+
+        # Parse X2
+        x2_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(x2_lines)
+        x2_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after X2 in LINE")
+        i += 1  # Skip ','
+
+        # Parse Y2
+        y2_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(y2_lines)
+        y2_reg = self._get_current_register()
+
+        # Optional color parameter
+        color = 15  # Default white
+        if i < len(tokens) and tokens[i] == ',':
+            i += 1  # Skip ','
+            color_lines, i = self._parse_additive_expression(tokens, i)
+            lines.extend(color_lines)
+            color_reg = self._get_current_register()
+            color = color_reg  # Use register
+        else:
+            color_reg = None
+
+        if i >= len(tokens) or tokens[i] != ')':
+            raise ValueError("Expected ')' after LINE parameters")
+        i += 1  # Skip ')'
+
+        # Generate SLINE instruction
+        lines.extend([
+            f"    ; Draw line from ({x1_reg},{y1_reg}) to ({x2_reg},{y2_reg})",
+            f"    SLINE {x1_reg},{y1_reg},{x2_reg},{y2_reg},{color}",
+        ])
+
+        # Free registers
+        for reg in [x1_reg, y1_reg, x2_reg, y2_reg]:
+            self._free_register(reg)
+        if color_reg:
+            self._free_register(color_reg)
+
+        return lines, i
+
+    def _compile_circle(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Circle(X,Y,Radius[,Color,Filled]) statement"""
+        lines = ["    ; Circle"]
+        i += 1  # Skip CIRCLE
+
+        if i >= len(tokens) or tokens[i] != '(':
+            raise ValueError("Expected '(' after CIRCLE")
+        i += 1  # Skip '('
+
+        # Parse X
+        x_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(x_lines)
+        x_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after X in CIRCLE")
+        i += 1  # Skip ','
+
+        # Parse Y
+        y_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(y_lines)
+        y_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after Y in CIRCLE")
+        i += 1  # Skip ','
+
+        # Parse Radius
+        radius_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(radius_lines)
+        radius_reg = self._get_current_register()
+
+        # Optional color parameter (default white)
+        color = 15
+        color_reg = None
+        if i < len(tokens) and tokens[i] == ',':
+            i += 1  # Skip ','
+            color_lines, i = self._parse_additive_expression(tokens, i)
+            lines.extend(color_lines)
+            color_reg = self._get_current_register()
+            color = color_reg
+
+        # Optional filled parameter (default 1 = filled)
+        filled = 1
+        filled_reg = None
+        if i < len(tokens) and tokens[i] == ',':
+            i += 1  # Skip ','
+            filled_lines, i = self._parse_additive_expression(tokens, i)
+            lines.extend(filled_lines)
+            filled_reg = self._get_current_register()
+            filled = filled_reg
+
+        if i >= len(tokens) or tokens[i] != ')':
+            raise ValueError("Expected ')' after CIRCLE parameters")
+        i += 1  # Skip ')'
+
+        # Generate SCIRC instruction
+        lines.extend([
+            f"    ; Draw circle at ({x_reg},{y_reg}) radius {radius_reg}",
+            f"    SCIRC {x_reg},{y_reg},{radius_reg},{color},{filled}",
+        ])
+
+        # Free registers
+        for reg in [x_reg, y_reg, radius_reg]:
+            self._free_register(reg)
+        if color_reg:
+            self._free_register(color_reg)
+        if filled_reg:
+            self._free_register(filled_reg)
+
+        return lines, i
+
+    def _compile_pxlon(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Pxl-On(X,Y[,Color]) statement"""
+        return self._compile_pixel_op(tokens, i, "PXLON", "SWRITE")
+
+    def _compile_pxloff(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Pxl-Off(X,Y) statement"""
+        lines = ["    ; Pxl-Off"]
+        i += 1  # Skip PXLOFF
+
+        if i >= len(tokens) or tokens[i] != '(':
+            raise ValueError("Expected '(' after PXLOFF")
+        i += 1  # Skip '('
+
+        # Parse X
+        x_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(x_lines)
+        x_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after X in PXLOFF")
+        i += 1  # Skip ','
+
+        # Parse Y
+        y_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(y_lines)
+        y_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ')':
+            raise ValueError("Expected ')' after PXLOFF parameters")
+        i += 1  # Skip ')'
+
+        # Set coordinates and write black pixel (0)
+        lines.extend([
+            f"    ; Turn off pixel at ({x_reg},{y_reg})",
+            f"    MOV [0xF100],{x_reg}",  # VX = X
+            f"    MOV [0xF101],{y_reg}",  # VY = Y
+            f"    MOV P0,0",              # Black color
+            f"    SWRITE P0",             # Write pixel
+        ])
+
+        # Free registers
+        self._free_register(x_reg)
+        self._free_register(y_reg)
+
+        return lines, i
+
+    def _compile_pxlchange(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Pxl-Change(X,Y) statement"""
+        lines = ["    ; Pxl-Change"]
+        i += 1  # Skip PXLCHANGE
+
+        if i >= len(tokens) or tokens[i] != '(':
+            raise ValueError("Expected '(' after PXLCHANGE")
+        i += 1  # Skip '('
+
+        # Parse X
+        x_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(x_lines)
+        x_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after X in PXLCHANGE")
+        i += 1  # Skip ','
+
+        # Parse Y
+        y_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(y_lines)
+        y_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ')':
+            raise ValueError("Expected ')' after PXLCHANGE parameters")
+        i += 1  # Skip ')'
+
+        # Read current pixel, invert it, write back
+        lines.extend([
+            f"    ; Toggle pixel at ({x_reg},{y_reg})",
+            f"    MOV VX,{x_reg}",  # VX = X
+            f"    MOV VY,{y_reg}",  # VY = Y
+            f"    SREAD P0",        # Read current pixel color
+            f"    XOR P0,15",        # Invert color (assuming 4-bit color: 0-15)
+            f"    SWRITE P0",       # Write inverted pixel
+        ])
+
+        # Free registers
+        self._free_register(x_reg)
+        self._free_register(y_reg)
+
+        return lines, i
+
+    def _compile_pixel_op(self, tokens: List[str], i: int, command_name: str, operation: str) -> Tuple[List[str], int]:
+        """Helper for pixel operations that set coordinates and write"""
+        lines = [f"    ; {command_name}"]
+        i += 1  # Skip command
+
+        if i >= len(tokens) or tokens[i] != '(':
+            raise ValueError(f"Expected '(' after {command_name}")
+        i += 1  # Skip '('
+
+        # Parse X
+        x_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(x_lines)
+        x_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError(f"Expected ',' after X in {command_name}")
+        i += 1  # Skip ','
+
+        # Parse Y
+        y_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(y_lines)
+        y_reg = self._get_current_register()
+
+        # Optional color parameter
+        color = 15  # Default white
+        if i < len(tokens) and tokens[i] == ',':
+            i += 1  # Skip ','
+            color_lines, i = self._parse_additive_expression(tokens, i)
+            lines.extend(color_lines)
+            color_reg = self._get_current_register()
+            color = color_reg
+
+        if i >= len(tokens) or tokens[i] != ')':
+            raise ValueError(f"Expected ')' after {command_name} parameters")
+        i += 1  # Skip ')'
+
+        # Set coordinates and perform operation
+        lines.extend([
+            f"    ; {command_name} at ({x_reg},{y_reg})",
+            f"    MOV VX,{x_reg}",  # VX = X
+            f"    MOV VY,{y_reg}",  # VY = Y
+        ])
+
+        if operation == "SWRITE":
+            lines.append(f"    MOV P0,{color}")
+            lines.append(f"    {operation} P0")
+        else:
+            lines.append(f"    {operation}")
+
+        # Free registers
+        self._free_register(x_reg)
+        self._free_register(y_reg)
+        if isinstance(color, str):  # If color was a register
+            self._free_register(color)
+
+        return lines, i
+
+    def _compile_pton(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Pt-On(X,Y[,Color]) statement - same as Pxl-On but for points"""
+        return self._compile_pixel_op(tokens, i, "Pt-On", "SWRITE")
+
+    def _compile_ptoff(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Pt-Off(X,Y) statement - same as Pxl-Off but for points"""
+        return self._compile_pxloff(tokens, i)  # Reuse Pxl-Off implementation
+
+    def _compile_ptchange(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Pt-Change(X,Y) statement - same as Pxl-Change but for points"""
+        return self._compile_pxlchange(tokens, i)  # Reuse Pxl-Change implementation
+
+    def _compile_play(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Play statement - start sound playback"""
+        lines = ["    ; Play - start sound playback"]
+        i += 1  # Skip PLAY
+
+        lines.append("    SPLAY")
+        return lines, i
+
+    def _compile_stop(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Stop statement - stop sound playback"""
+        lines = ["    ; Stop - stop sound playback"]
+        i += 1  # Skip STOP
+
+        lines.append("    SSTOP")
+        return lines, i
+
+    def _compile_sound(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Sound(Frequency, Duration[, Volume, Waveform]) statement"""
+        lines = ["    ; Sound"]
+        i += 1  # Skip SOUND
+
+        if i >= len(tokens) or tokens[i] != '(':
+            raise ValueError("Expected '(' after SOUND")
+        i += 1  # Skip '('
+
+        # Parse Frequency
+        freq_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(freq_lines)
+        freq_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after frequency in SOUND")
+        i += 1  # Skip ','
+
+        # Parse Duration (in cycles)
+        duration_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(duration_lines)
+        duration_reg = self._get_current_register()
+
+        # Optional Volume (default 128)
+        volume = 128
+        volume_reg = None
+        if i < len(tokens) and tokens[i] == ',':
+            i += 1  # Skip ','
+            volume_lines, i = self._parse_additive_expression(tokens, i)
+            lines.extend(volume_lines)
+            volume_reg = self._get_current_register()
+            volume = volume_reg
+
+        # Optional Waveform (default 0 = sine)
+        waveform = 0
+        waveform_reg = None
+        if i < len(tokens) and tokens[i] == ',':
+            i += 1  # Skip ','
+            waveform_lines, i = self._parse_additive_expression(tokens, i)
+            lines.extend(waveform_lines)
+            waveform_reg = self._get_current_register()
+            waveform = waveform_reg
+
+        if i >= len(tokens) or tokens[i] != ')':
+            raise ValueError("Expected ')' after SOUND parameters")
+        i += 1  # Skip ')'
+
+        # Set up sound registers and play
+        lines.extend([
+            f"    ; Sound freq={freq_reg}, duration={duration_reg}, vol={volume}, wave={waveform}",
+            f"    MOV SA,0x2000",        # Sound buffer address
+            f"    MOV SF,{freq_reg}",    # Frequency
+            f"    MOV SV,{volume}",      # Volume
+            f"    MOV SW,{waveform}",    # Waveform
+            f"    SPLAY",                # Start playback
+        ])
+
+        # Simple duration wait (not accurate timing, but functional)
+        lines.extend([
+            f"    ; Wait for duration",
+            f"    MOV P2,{duration_reg}",
+            f"sound_wait_loop:",
+            f"    DEC P2",
+            f"    JNZ sound_wait_loop",
+            f"    SSTOP",                # Stop after duration
+        ])
+
+        # Free registers
+        self._free_register(freq_reg)
+        self._free_register(duration_reg)
+        if volume_reg:
+            self._free_register(volume_reg)
+        if waveform_reg:
+            self._free_register(waveform_reg)
+
+        return lines, i
+
+    def _compile_define(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Define SubName statement - start subroutine definition"""
+        lines = []
+        i += 1  # Skip DEFINE
+
+        if i >= len(tokens):
+            raise ValueError("Expected subroutine name after DEFINE")
+
+        sub_name = tokens[i]
+        i += 1
+
+        # Generate label for subroutine
+        sub_label = f"sub_{sub_name}"
+        self.labels[sub_name] = sub_label
+
+        lines.extend([
+            f"    ; Define subroutine {sub_name}",
+            f"{sub_label}:",
+        ])
+
+        return lines, i
+
+    def _compile_call(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Call SubName statement"""
+        lines = []
+        i += 1  # Skip CALL
+
+        if i >= len(tokens):
+            raise ValueError("Expected subroutine name after CALL")
+
+        sub_name = tokens[i]
+        i += 1
+
+        # Get subroutine label
+        if sub_name not in self.labels:
+            raise ValueError(f"Undefined subroutine: {sub_name}")
+
+        sub_label = self.labels[sub_name]
+
+        lines.extend([
+            f"    ; Call subroutine {sub_name}",
+            f"    CALL {sub_label}",
+        ])
+
+        return lines, i
+
+    def _compile_return(self) -> List[str]:
+        """Compile Return statement"""
+        return [
+            "    ; Return",
+            "    RET",
+        ]
+
+    def _compile_next(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Next statement"""
+        lines = []
+        i += 1  # Skip NEXT
+
+        if i < len(tokens):
+            var_name = tokens[i]
+            i += 1
+
+            # Get the end label for this loop variable
+            end_label = self.labels.get(f"end_{var_name}")
+            if end_label:
+                var_addr = self._get_variable_address(var_name)
+                lines.extend([
+                    f"    ; Next {var_name}",
+                    f"    MOV P0,[0x{var_addr:04X}]",  # Load current value
+                    f"    INC P0",                     # Increment
+                    f"    MOV [0x{var_addr:04X}],P0",  # Store back
+                    f"    CMP P0,{self.loop_end_values.get(var_name, 255)}",  # Compare with end value
+                    f"    JLE {self.loop_start_labels.get(var_name, 'start')}",  # Jump back if <= end
+                    f"{end_label}:",  # End label
+                ])
+            else:
+                lines.append(f"    ; Warning: No loop found for variable {var_name}")
+
+        return lines, i
+
+    def _optimize_assembly(self):
+        """Optimize the generated assembly code"""
+        optimized_lines = []
+        i = 0
+        while i < len(self.assembly_lines):
+            line = self.assembly_lines[i]
+            
+            # Remove redundant MOV operations
+            if i + 1 < len(self.assembly_lines):
+                next_line = self.assembly_lines[i + 1]
+                if (line.startswith("    MOV ") and next_line.startswith("    MOV ") and
+                    line.split(",")[0] == next_line.split(",")[0]):
+                    # Skip the first MOV if the second overwrites the same register
+                    i += 1
+                    continue
+            
+            # Optimize immediate loads followed by operations
+            if (line.startswith("    MOV ") and i + 1 < len(self.assembly_lines) and
+                self.assembly_lines[i + 1].startswith("    ADD ") and
+                line.split()[1] == self.assembly_lines[i + 1].split()[1]):
+                # Combine MOV reg,imm + ADD reg,val into MOV reg,imm+val
+                parts = line.split()
+                if len(parts) >= 3 and parts[2].startswith("0x"):
+                    try:
+                        imm_val = int(parts[2], 16)
+                        add_parts = self.assembly_lines[i + 1].split()
+                        if len(add_parts) >= 3 and add_parts[2].startswith("0x"):
+                            add_val = int(add_parts[2], 16)
+                            new_val = imm_val + add_val
+                            optimized_lines.append(f"    MOV {parts[1]},{new_val}")
+                            i += 2
+                            continue
+                    except ValueError:
+                        pass
+            
+            optimized_lines.append(line)
+            i += 1
+        
+        self.assembly_lines = optimized_lines
 
 def main():
     if len(sys.argv) != 3:

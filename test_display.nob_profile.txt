@@ -1,0 +1,47 @@
+================================================================================
+NoBASIC Program Profiling Report
+Program: test_display.bin
+Generated: 2025-09-23 00:24:30
+================================================================================
+
+EXECUTION SUMMARY
+----------------------------------------
+Status: SUCCESSFUL
+Execution Time: 1.0723 seconds
+Cycles Executed: 101
+Final PC: 0x119A
+CPU Halted: False
+
+CPU ANALYSIS
+----------------------------------------
+Instructions Executed: 2550
+Memory Accesses: 5312
+.2f
+.0f
+
+Top Instructions:
+  30: 2450
+  6: 73
+  65: 26
+  61: 1
+
+GRAPHICS ANALYSIS
+----------------------------------------
+Pixel Writes: 459
+Layers Used: [0]
+Colors Used: 3
+
+CODE ANALYSIS
+----------------------------------------
+Total Instructions: 103
+Unique Instructions: 6
+
+Instruction Distribution:
+  MOV: 73
+  CHAR: 26
+  START:: 1
+  SFILL: 1
+  HALT:: 1
+  JMP: 1
+
+================================================================================

@@ -1,27 +1,26 @@
 {
-  "execution_time": 0.0672752857208252,
-  "cycles_executed": 10000,
-  "cycles_per_second": 148642.9956090767,
-  "timestamp": 1758601340.3080196,
+  "execution_time": 0.03378653526306152,
+  "cycles_executed": 5000,
+  "cycles_per_second": 147987.9473011975,
+  "timestamp": 1758605072.807952,
   "program": null,
   "cpu_profile": {
-    "total_cycles": 10000,
-    "instructions_executed": 5060,
+    "total_cycles": 5000,
+    "instructions_executed": 2550,
     "opcode_counts": {
-      "6": 67,
+      "6": 73,
       "61": 1,
       "65": 26,
-      "7": 26,
-      "30": 4940
+      "30": 2450
     },
     "method_times": {},
-    "memory_accesses": 10362,
-    "start_time": 1758601340.2407384,
+    "memory_accesses": 5312,
+    "start_time": 1758605072.7741573,
     "instruction_start_times": {},
-    "cycle_start_time": 1758601340.2407439,
-    "operand_parses": 10000,
-    "operand_values": 10052
+    "cycle_start_time": 1758605072.774166,
+    "operand_parses": 5000,
+    "operand_values": 5026
   },
-  "cpu_report_text": "=== CPU Profiling Report ===\nTotal execution time: 0.0673 seconds\nInstructions executed: 5060\nMemory accesses: 10362\nOperand parses: 10000\nOperand value gets: 10052\nAverage IPS: 75200.03\n\nTop 10 instructions by frequency:\n  JMP: 4940 (97.6%)\n  MOV: 67 (1.3%)\n  CHAR: 26 (0.5%)\n  ADD: 26 (0.5%)\n  SFILL: 1 (0.0%)",
-  "instructions_per_second": 75213.35577819281
+  "cpu_report_text": "=== CPU Profiling Report ===\nTotal execution time: 0.0338 seconds\nInstructions executed: 2550\nMemory accesses: 5312\nOperand parses: 5000\nOperand value gets: 5026\nAverage IPS: 75440.31\n\nTop 10 instructions by frequency:\n  JMP: 2450 (96.1%)\n  MOV: 73 (2.9%)\n  CHAR: 26 (1.0%)\n  SFILL: 1 (0.0%)",
+  "instructions_per_second": 75473.85312361072
 }

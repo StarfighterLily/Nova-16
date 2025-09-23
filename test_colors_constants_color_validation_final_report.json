@@ -1,0 +1,27 @@
+{
+  "cycle": 10000,
+  "timestamp": "Final Report",
+  "statistics": {
+    "total_pixel_writes": 21,
+    "layers_used": [
+      0
+    ],
+    "colors_used": [
+      32,
+      1,
+      2,
+      64,
+      4,
+      128,
+      8,
+      12,
+      15,
+      16,
+      255
+    ],
+    "instruction_counts": {
+      "SFILL": 1,
+      "SWRITE": 65
+    },
+    "memory_regions_accessed": [],
+    "max_x": 

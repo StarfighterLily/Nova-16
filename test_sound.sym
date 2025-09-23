@@ -1,0 +1,6 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+pause_loop 0x11C3
+sound_wait_loop 0x11BB
+halt 0x12ED

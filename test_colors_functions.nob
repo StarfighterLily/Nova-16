@@ -1,0 +1,54 @@
+REM Color Functions Test
+REM Tests COLOR(), RAMP(), and SHADE() functions
+
+CLRHOME
+
+REM Test COLOR() function - create colors from ramps and shades
+DISP "Testing COLOR() function:"
+
+FOR RAMP = 0 TO 15
+    FOR SHADE = 0 TO 15 STEP 5  REM Test every 5th shade
+        COLOR_VAL = COLOR(RAMP, SHADE)
+        X = SHADE * 4
+        Y = RAMP * 4
+        PXLON(X, Y, COLOR_VAL)
+    NEXT SHADE
+NEXT RAMP
+
+REM Test RAMP() and SHADE() extraction functions
+DISP "Testing RAMP() and SHADE() functions:"
+
+TEST_COLORS = [BLACK, RED, GREEN, BLUE, YELLOW, MAGENTA, CYAN, WHITE]
+Y_POS = 140
+
+FOR I = 0 TO 7
+    TEST_COLOR = TEST_COLORS[I]
+    EXTRACTED_RAMP = RAMP(TEST_COLOR)
+    EXTRACTED_SHADE = SHADE(TEST_COLOR)
+
+    DISP "Color " + STR(I) + ": " + STR(TEST_COLOR)
+    DISP "  RAMP: " + STR(EXTRACTED_RAMP) + " (expected: " + STR(I) + ")"
+    DISP "  SHADE: " + STR(EXTRACTED_SHADE)
+
+    REM Draw a test pixel with the extracted color
+    PXLON(200 + I*10, Y_POS, TEST_COLOR)
+    Y_POS = Y_POS + 20
+NEXT I
+
+REM Test round-trip: create color, extract components, recreate
+DISP "Testing round-trip conversion:"
+ORIGINAL = COLOR(7, 11)  REM Cyan ramp, shade 11
+EX_RAMP = RAMP(ORIGINAL)
+EX_SHADE = SHADE(ORIGINAL)
+RECREATED = COLOR(EX_RAMP, EX_SHADE)
+
+DISP "Original: " + STR(ORIGINAL)
+DISP "Ramp: " + STR(EX_RAMP) + ", Shade: " + STR(EX_SHADE)
+DISP "Recreated: " + STR(RECREATED)
+DISP "Match: " + STR(ORIGINAL = RECREATED)
+
+REM Draw comparison pixels
+PXLON(10, 200, ORIGINAL)
+PXLON(20, 200, RECREATED)
+
+PAUSE

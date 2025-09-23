@@ -1,0 +1,8 @@
+ClrHome
+
+// Simple test: draw a diagonal line
+For I = 0 To 10
+  PxlOn(I,I)
+Next I
+
+Disp "DIAGONAL LINE DONE"

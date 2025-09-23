@@ -1,0 +1,12 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+display_str_loop 0x1251
+display_str_newline 0x1274
+display_as_number 0x1292
+display_num_loop 0x12A3
+display_value_done 0x12BE
+sound_wait_loop 0x1373
+sub_DrawBox 0x137B
+pause_loop 0x1513
+halt 0x1525

@@ -1,0 +1,103 @@
+{
+  "program": "test_display.bin",
+  "timestamp": 1758605070.9810774,
+  "cycles_limit": 5000,
+  "analyses": {
+    "execution": {
+      "success": true,
+      "execution_time": 1.0723059177398682,
+      "stdout": "pygame 2.6.1 (SDL 2.28.4, Python 3.13.7)\nHello from the pygame community. https://www.pygame.org/contribute.html\nNova Sound System initialized\nSample Rate: 22050Hz, Channels: 8, Buffer: 512\nLoading test_display.bin with ORG information from test_display.org\nLoaded 414 bytes at 0x1000 from binary offset 0\nRunning test_display.bin headlessly...\nEntry point: 0x1000\nInitial PC: 0x1000\nPossible infinite loop detected at PC: 0x119A\nExecution finished after 101 cycles\nFinal PC: 0x119A\nCPU Halted: False\nFinal register states:\nR0-R9: ['0x00', '0x00', '0x00', '0x00', '0x00', '0x00', '0x00', '0x00', '0x00', '0x00']\nP0-P9: ['0x0059', '0x0007', '0x0000', '0x0000', '0x0000', '0x0000', '0x0000', '0x0000', '0xF000', '0xFFFF']\nVX,VY: 0x00D0, 0x0000\nSound: SA=0x0000, SF=0x00, SV=0x00, SW=0x00\nGraphics: 459 non-black pixels on screen\n\n",
+      "stderr": "",
+      "cycles_executed": 101,
+      "final_pc": "0x119A",
+      "cpu_halted": false
+    },
+    "cpu": {
+      "success": true,
+      "profile_file": "test_display.cpu_profile.json",
+      "data": {
+        "execution_time": 0.03378653526306152,
+        "cycles_executed": 5000,
+        "cycles_per_second": 147987.9473011975,
+        "timestamp": 1758605072.807952,
+        "program": null,
+        "cpu_profile": {
+          "total_cycles": 5000,
+          "instructions_executed": 2550,
+          "opcode_counts": {
+            "6": 73,
+            "61": 1,
+            "65": 26,
+            "30": 2450
+          },
+          "method_times": {},
+          "memory_accesses": 5312,
+          "start_time": 1758605072.7741573,
+          "instruction_start_times": {},
+          "cycle_start_time": 1758605072.774166,
+          "operand_parses": 5000,
+          "operand_values": 5026
+        },
+        "cpu_report_text": "=== CPU Profiling Report ===\nTotal execution time: 0.0338 seconds\nInstructions executed: 2550\nMemory accesses: 5312\nOperand parses: 5000\nOperand value gets: 5026\nAverage IPS: 75440.31\n\nTop 10 instructions by frequency:\n  JMP: 2450 (96.1%)\n  MOV: 73 (2.9%)\n  CHAR: 26 (1.0%)\n  SFILL: 1 (0.0%)",
+        "instructions_per_second": 75473.85312361072
+      }
+    },
+    "memory": {
+      "success": false,
+      "profile_file": "test_display.memory_profile.json"
+    },
+    "graphics": {
+      "success": true,
+      "export_prefix": "test_display_graphics",
+      "stats": {
+        "pixel_writes": 459,
+        "layers_used": [
+          0
+        ],
+        "colors_used": 3
+      }
+    },
+    "code": {
+      "disassembly_success": true,
+      "total_instructions": 103,
+      "instruction_counts": {
+        "MOV": 73,
+        "START:": 1,
+        "SFILL": 1,
+        "CHAR": 26,
+        "HALT:": 1,
+        "JMP": 1
+      },
+      "unique_instructions": 6
+    }
+  },
+  "nobasic_analysis": {
+    "total_lines": 3,
+    "source_size": 49,
+    "construct_counts": {
+      "assignments": 0,
+      "arithmetic_ops": 0,
+      "comparisons": 0,
+      "control_flow": 0,
+      "loops": 0,
+      "subroutines": 0,
+      "graphics_ops": 1,
+      "sound_ops": 1,
+      "io_ops": 2,
+      "comments": 0
+    },
+    "complexity_metrics": {
+      "cyclomatic_complexity": 1,
+      "nesting_depth": 0,
+      "halstead_volume": 1
+    },
+    "performance_estimates": {
+      "cycles_per_source_line": 33.666666666666664,
+      "estimated_complexity_cycles": 550,
+      "execution_efficiency": 0.6733333333333333
+    }
+  },
+  "optimization_suggestions": [
+    "No major optimization opportunities identified - program is well-optimized"
+  ]
+}
