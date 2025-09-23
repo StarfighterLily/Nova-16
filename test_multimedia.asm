@@ -1401,7 +1401,7 @@ DW 0  ; Variable SPRITE_SIZE
 ORG 0x202C
 DW 0  ; Variable FRAME
 
-ORG 0x1000
+ORG 0x8000
 
 ; String concatenation subroutine
 str_concat:

@@ -1642,7 +1642,7 @@ DW 0  ; Variable X
 ORG 0x2016
 DW 0  ; Variable Y
 
-ORG 0x1000
+ORG 0x8000
 
 ; String concatenation subroutine
 str_concat:

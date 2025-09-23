@@ -7,7 +7,7 @@ display_as_number 0x111B
 display_num_loop 0x112C
 display_value_done 0x1147
 halt 0x1147
-str_concat 0x1000
-str_cat_copy_left 0x1012
-str_cat_copy_right 0x102C
-str_cat_done 0x1046
+str_concat 0x8000
+str_cat_copy_left 0x8012
+str_cat_copy_right 0x802C
+str_cat_done 0x8046

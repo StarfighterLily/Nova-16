@@ -327,7 +327,7 @@ DW 0  ; Variable STR
 ORG 0x2004
 DW 0  ; Variable NUMBERS
 
-ORG 0x1000
+ORG 0x8000
 
 ; String concatenation subroutine
 str_concat:

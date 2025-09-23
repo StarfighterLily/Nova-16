@@ -244,7 +244,7 @@ JMP halt
 ORG 0x2000
 DW 0  ; Variable A
 
-ORG 0x1000
+ORG 0x8000
 
 ; String concatenation subroutine
 str_concat:

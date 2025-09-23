@@ -73,6 +73,9 @@ class NoBasicCompiler:
         self.cursor_x = 0
         self.cursor_y = 0
 
+        # SELECT CASE state
+        self.select_stack = []
+
         # Color constants mapping - Nova-16 has 16 ramps × 16 shades = 256 colors
         # Each ramp has 16 shades from darkest (0) to brightest (15)
         self.color_constants = {
@@ -305,11 +308,15 @@ class NoBasicCompiler:
                     lines = self._compile_pause()
                     self.assembly_lines.extend(lines)
                     i += 1
+                    # Check if we need to add jump after SELECT CASE statement
+                    self._add_select_jump_if_needed(tokens, i)
 
                 elif token == "END":
                     lines = self._compile_end()
                     self.assembly_lines.extend(lines)
                     i += 1
+                    # Check if we need to add jump after SELECT CASE statement
+                    self._add_select_jump_if_needed(tokens, i)
 
                 elif token == "GOTO":
                     lines, new_i = self._compile_goto(tokens, i)
@@ -406,6 +413,53 @@ class NoBasicCompiler:
                     self.assembly_lines.extend(lines)
                     i = new_i
 
+                elif token == "SELECT":
+                    lines, new_i = self._compile_select(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "CASE":
+                    # If we were in a case body, add jump to end before starting new case
+                    if self.select_stack and self.select_stack[-1]['in_case_body']:
+                        select_info = self.select_stack[-1]
+                        end_label = select_info['end_label']
+                        self.assembly_lines.append(f"    JMP {end_label}")
+                        self.select_stack[-1]['in_case_body'] = False
+                    
+                    lines, new_i = self._compile_case(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+                    # Mark that we're now in a case body
+                    if self.select_stack:
+                        self.select_stack[-1]['in_case_body'] = True
+
+                elif token == "CASEELSE":
+                    # If we were in a case body, add jump to end before starting case else
+                    if self.select_stack and self.select_stack[-1]['in_case_body']:
+                        select_info = self.select_stack[-1]
+                        end_label = select_info['end_label']
+                        self.assembly_lines.append(f"    JMP {end_label}")
+                        self.select_stack[-1]['in_case_body'] = False
+                    
+                    lines, new_i = self._compile_case_else(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+                    # Mark that we're now in a case body
+                    if self.select_stack:
+                        self.select_stack[-1]['in_case_body'] = True
+
+                elif token.upper() == "END" and i + 1 < len(tokens) and tokens[i + 1].upper() == "SELECT":
+                    # If we were in a case body, add jump to end before ending select
+                    if self.select_stack and self.select_stack[-1]['in_case_body']:
+                        select_info = self.select_stack[-1]
+                        end_label = select_info['end_label']
+                        self.assembly_lines.append(f"    JMP {end_label}")
+                        self.select_stack[-1]['in_case_body'] = False
+                    
+                    lines = self._compile_end_select()
+                    self.assembly_lines.extend(lines)
+                    i += 2  # Skip END SELECT
+
                 elif ((re.match(r'[A-Za-z_][A-Za-z0-9_]*', token) or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit())) and i + 1 < len(tokens) and 
                       tokens[i + 1] == "="):
                     # Variable or list assignment
@@ -452,7 +506,7 @@ class NoBasicCompiler:
         # Add final ORG back to program area
         self.assembly_lines.extend([
             "",
-            "ORG 0x1000",
+            "ORG 0x8000",
             "",
             "; String concatenation subroutine",
             "str_concat:",
@@ -560,6 +614,12 @@ class NoBasicCompiler:
         if self.cursor_y >= 256:  # Wrap around if we reach bottom
             self.cursor_y = 0
         self.cursor_x = 0  # Reset X for next line
+
+        # If we're in a SELECT CASE case body, add jump to end after the DISP
+        if self.select_stack and self.select_stack[-1]['in_case_body']:
+            select_info = self.select_stack[-1]
+            end_label = select_info['end_label']
+            lines.append(f"    JMP {end_label}")
 
         return lines, i
 
@@ -2033,6 +2093,121 @@ class NoBasicCompiler:
 
         return lines, i
 
+    def _compile_select(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Select Case statement - simplified implementation"""
+        lines = []
+        i += 1  # Skip SELECT
+
+        if i >= len(tokens) or tokens[i].upper() != "CASE":
+            raise ValueError("Expected CASE after SELECT")
+
+        i += 1  # Skip CASE
+
+        # Parse the select expression
+        expr_lines, i = self._parse_expression(tokens, i)
+        lines.extend(expr_lines)
+
+        # Store the select value register
+        select_reg = self._get_current_register()
+        
+        # Generate end label for the select
+        end_label = self._generate_label("select_end")
+        
+        # Store select info for nested CASE statements
+        if not hasattr(self, 'select_stack'):
+            self.select_stack = []
+        
+        self.select_stack.append({
+            'reg': select_reg,
+            'end_label': end_label,
+            'next_case_label': None,
+            'in_case_body': False
+        })
+
+        lines.extend([
+            f"    ; Select Case {select_reg}",
+        ])
+
+        return lines, i
+
+    def _compile_case(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Case value statement - simplified"""
+        lines = []
+        i += 1  # Skip CASE
+
+        if not self.select_stack:
+            raise ValueError("CASE without SELECT")
+
+        select_info = self.select_stack[-1]
+        select_reg = select_info['reg']
+        end_label = select_info['end_label']
+
+        # If there's a previous case, add the jump to next case
+        if select_info['next_case_label']:
+            lines.append(f"{select_info['next_case_label']}:")
+
+        # Generate label for next case
+        next_case_label = self._generate_label("case_next")
+        select_info['next_case_label'] = next_case_label
+
+        # Parse case value
+        value_lines, i = self._parse_expression(tokens, i)
+        lines.extend(value_lines)
+        value_reg = self._get_current_register()
+        
+        lines.extend([
+            f"    ; Case {value_reg}",
+            f"    CMP {select_reg},{value_reg}",
+            f"    JNZ {next_case_label}",
+        ])
+        
+        self._free_register(value_reg)
+
+        return lines, i
+
+    def _compile_case_else(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Case Else statement"""
+        lines = []
+        i += 1  # Skip CASEELSE
+
+        if not self.select_stack:
+            raise ValueError("CASE ELSE without SELECT")
+
+        select_info = self.select_stack[-1]
+
+        # If there's a previous case, add the jump to next case
+        if select_info['next_case_label']:
+            lines.append(f"{select_info['next_case_label']}:")
+
+        lines.extend([
+            f"    ; Case Else",
+        ])
+
+        return lines, i
+
+    def _compile_end_select(self) -> List[str]:
+        """Compile End Select statement"""
+        if not self.select_stack:
+            raise ValueError("END SELECT without SELECT")
+
+        select_info = self.select_stack.pop()
+        select_reg = select_info['reg']
+        end_label = select_info['end_label']
+
+        # Add the final next case label if it exists
+        lines = []
+        if select_info['next_case_label']:
+            lines.append(f"{select_info['next_case_label']}:")
+        
+        lines.extend([
+            f"{end_label}:",
+        ])
+
+        # Free the select register
+        self._free_register(select_reg)
+
+        return lines
+
     def _optimize_assembly(self):
         """Optimize the generated assembly code with advanced techniques"""
         optimized_lines = []
@@ -2069,7 +2244,7 @@ class NoBasicCompiler:
                         elif op_parts[0].endswith("MUL"):
                             new_val = imm_val * op_val
                         elif op_parts[0].endswith("DIV") and op_val != 0:
-                            new_val = imm_val // op_val
+                            new_val = imm_val // op_val  # Integer division
                         else:
                             raise ValueError("Invalid operation")
                         optimized_lines.append(f"    MOV {parts[1]},{new_val}")
@@ -2125,35 +2300,66 @@ class NoBasicCompiler:
             
             # If this is an unconditional jump, skip until next label
             if line.strip().startswith("JMP "):
-                i += 1
-                # Skip lines until we find a label or end
-                while i < len(optimized_lines):
-                    next_line = optimized_lines[i]
-                    if next_line.strip().endswith(":") or not next_line.strip():
-                        break
-                    i += 1
-                continue
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    target = parts[1]
+                    # Don't optimize away jumps to SELECT CASE end labels
+                    if not target.startswith("select_end_"):
+                        i += 1
+                        # Skip lines until we find a label or end
+                        while i < len(optimized_lines):
+                            next_line = optimized_lines[i]
+                            if next_line.strip().endswith(":") or not next_line.strip():
+                                break
+                            i += 1
+                        continue
             
             i += 1
         
         self.assembly_lines = final_lines
-        
-        self.assembly_lines = optimized_lines
 
-def main():
-    if len(sys.argv) != 3:
-        print("Usage: python nobasic_compiler.py <input.nob> <output.asm>")
-        sys.exit(1)
+    def _add_select_jump_if_needed(self, tokens: List[str], current_i: int):
+        """Add jump to end of SELECT CASE if next statement doesn't start a new case"""
+        if not self.select_stack:
+            return
 
-    input_file = sys.argv[1]
-    output_file = sys.argv[2]
-
-    with open(input_file, 'r', encoding='utf-8') as f:
-        nobasic_source = f.read()
-
-    compiler = NoBasicCompiler()
-    compiler.compile_program(nobasic_source, output_file)
+        # Find the next statement start
+        i = current_i
+        while i < len(tokens):
+            token = tokens[i].upper()
+            if token == '\n':
+                i += 1
+                continue
+            # Check if this is a statement start
+            if i == 0 or tokens[i-1] == '\n':
+                # If next statement is CASE, CASEELSE, or END SELECT, don't add jump
+                if token in ["CASE", "CASEELSE"] or (token == "END" and i + 1 < len(tokens) and tokens[i + 1].upper() == "SELECT"):
+                    return
+                else:
+                    # Add jump to end of SELECT CASE
+                    select_info = self.select_stack[-1]
+                    end_label = select_info['end_label']
+                    self.assembly_lines.append(f"    JMP {end_label}")
+                    return
+            i += 1
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 3:
+        print("Usage: python nobasic_compiler.py <input.nob> <output>")
+        sys.exit(1)
+    
+    input_file = sys.argv[1]
+    output_file = sys.argv[2]
+    
+    try:
+        with open(input_file, 'r') as f:
+            nobasic_source = f.read()
+        
+        compiler = NoBasicCompiler()
+        compiler.compile_program(nobasic_source, output_file)
+        print(f"Compiled {input_file} to {output_file}")
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)

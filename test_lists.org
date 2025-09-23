@@ -2,4 +2,4 @@
 # Format: <start_address> <length> <binary_offset>
 0x1000 731 0
 0x2000 2 731
-0x1000 75 733
+0x8000 75 733

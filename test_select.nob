@@ -1,0 +1,19 @@
+ClrHome
+Disp "SELECT CASE Test"
+
+A = 2
+
+Select Case A
+Case 1
+  Disp "ONE"
+Case 2
+  Disp "TWO"
+Case 3
+  Disp "THREE"
+Case Else
+  Disp "OTHER"
+End Select
+
+Disp "Test completed"
+Pause
+End

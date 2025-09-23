@@ -1160,7 +1160,7 @@ DW 0  ; Variable RAINBOW_COLOR
 ORG 0x200C
 DW 0  ; Variable BASE_COLOR
 
-ORG 0x1000
+ORG 0x8000
 
 ; String concatenation subroutine
 str_concat:
