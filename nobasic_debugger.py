@@ -19,6 +19,12 @@ class NoBasicDebugger:
         self.disassembler = self.test_dir / "nova_disassembler.py"
         self.memory_profiler = self.test_dir / "nova_memory_profiler.py"
         self.cpu_profiler = self.test_dir / "nova_profiler.py"
+        self.compiler = self.test_dir / "nobasic_compiler.py"
+        
+        # Source mapping data
+        self.source_lines: List[str] = []
+        self.address_to_line: Dict[int, int] = {}  # Assembly address -> NoBASIC line number
+        self.line_to_addresses: Dict[int, List[int]] = {}  # NoBASIC line -> list of assembly addresses
 
     def disassemble_program(self, bin_file: Path) -> Optional[str]:
         """Disassemble a binary program back to assembly"""
@@ -102,8 +108,8 @@ class NoBasicDebugger:
             time = perf_profile.get('execution_time', 0)
             ips = perf_profile.get('instructions_per_second', 0)
             print(f"   Cycles executed: {cycles}")
-            print(".2f")
-            print(".0f")
+            print(f"   Execution time: {time:.2f} seconds")
+            print(f"   Instructions/second: {ips:.0f}")
 
             # Instruction frequency analysis
             if 'cpu_profile' in perf_profile:
@@ -134,6 +140,9 @@ class NoBasicDebugger:
                 'Input': 0,
                 'Prompt': 0,
                 'Pause': 0,
+                'End': 0,
+                'Goto': 0,
+                'Lbl': 0,
                 'assignments': 0
             }
 
@@ -153,6 +162,12 @@ class NoBasicDebugger:
                     statements['Prompt'] += 1
                 elif upper_line.startswith('PAUSE'):
                     statements['Pause'] += 1
+                elif upper_line.startswith('END'):
+                    statements['End'] += 1
+                elif upper_line.startswith('GOTO'):
+                    statements['Goto'] += 1
+                elif 'LBL' in upper_line:
+                    statements['Lbl'] += 1
                 elif '=' in line and not any(keyword in upper_line for keyword in ['FOR', 'IF', 'DISP']):
                     statements['assignments'] += 1
 
@@ -163,6 +178,107 @@ class NoBasicDebugger:
 
         except Exception as e:
             print(f"❌ NoBASIC analysis failed: {e}")
+
+        # 5. Source-level debugging
+        print("\n5. 📝 Source-Level Analysis:")
+        self.debug_source_level(nob_file)
+
+        print("\n" + "=" * 60)
+        print("🔍 Debugging complete")
+
+    def build_source_mapping(self, nob_file: Path) -> bool:
+        """Build mapping between NoBASIC source lines and assembly addresses"""
+        try:
+            # Read NoBASIC source
+            with open(nob_file, 'r') as f:
+                self.source_lines = [line.rstrip() for line in f.readlines()]
+            
+            # Compile to assembly to get the mapping
+            asm_file = nob_file.with_suffix('.asm')
+            cmd = [sys.executable, str(self.compiler), str(nob_file), str(asm_file)]
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=self.test_dir)
+            
+            if result.returncode != 0:
+                print(f"Failed to compile {nob_file}: {result.stderr}")
+                return False
+            
+            # Parse assembly to build address mapping
+            current_line = 0
+            current_address = 0x1000  # Program start address
+            
+            with open(asm_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith(';'):
+                        continue
+                    
+                    # Check for NoBASIC source comments
+                    if line.startswith('; ') and not line.startswith('; NoBASIC') and not line.startswith('; Generated'):
+                        # Extract the NoBASIC statement
+                        nobasic_stmt = line[2:].strip()
+                        # Find which source line this corresponds to
+                        for i, source_line in enumerate(self.source_lines):
+                            if source_line.strip() == nobasic_stmt:
+                                current_line = i
+                                break
+                    
+                    # Track addresses for each instruction
+                    if ':' in line and not line.startswith('ORG'):
+                        # Label
+                        label_name = line[:-1]  # Remove colon
+                        self.address_to_line[current_address] = current_line
+                        if current_line not in self.line_to_addresses:
+                            self.line_to_addresses[current_line] = []
+                        self.line_to_addresses[current_line].append(current_address)
+                    elif not line.startswith('ORG') and not line.startswith('DW') and not line.startswith('DB'):
+                        # Instruction - estimate 2 bytes per instruction
+                        self.address_to_line[current_address] = current_line
+                        if current_line not in self.line_to_addresses:
+                            self.line_to_addresses[current_line] = []
+                        self.line_to_addresses[current_line].append(current_address)
+                        current_address += 2
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error building source mapping: {e}")
+            return False
+
+    def get_current_nobasic_line(self, pc: int) -> Optional[int]:
+        """Get the NoBASIC source line number for a given PC address"""
+        # Find the closest address <= pc
+        closest_addr = max((addr for addr in self.address_to_line.keys() if addr <= pc), default=None)
+        if closest_addr is not None:
+            return self.address_to_line[closest_addr]
+        return None
+
+    def get_nobasic_source_line(self, line_num: int) -> str:
+        """Get the NoBASIC source line for a given line number"""
+        if 0 <= line_num < len(self.source_lines):
+            return self.source_lines[line_num]
+        return ""
+
+    def debug_source_level(self, nob_file: Path):
+        """Interactive source-level debugging"""
+        print(f"🔍 Source-Level NoBASIC Debugger")
+        print(f"Program: {nob_file.name}")
+        print("=" * 60)
+        
+        if not self.build_source_mapping(nob_file):
+            print("Failed to build source mapping")
+            return
+        
+        # Show source
+        print("NoBASIC Source:")
+        for i, line in enumerate(self.source_lines):
+            marker = "->" if i == 0 else "  "
+            print(f"{marker} {i+1:2d}: {line}")
+        
+        print("\nSource mapping built successfully!")
+        print(f"Lines mapped: {len(self.line_to_addresses)}")
+        print(f"Addresses mapped: {len(self.address_to_line)}")
+        
+        # Could extend this to interactive debugging with breakpoints, etc.
 
         print("\n" + "=" * 60)
         print("🔍 Debugging complete")

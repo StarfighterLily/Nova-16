@@ -33,13 +33,6 @@ End
 Pause
 ```
 
-## Files
-
-- `nova_tibasic_proposal.md` - Complete language specification
-- `hello_tibasic.bas` - Simple hello world
-- `rainbow.bas` - Graphics demo
-- `guess.bas` - Number guessing game
-- `sound_demo.bas` - Sound demonstration
 
 ## Why This Language?
 
@@ -63,7 +56,7 @@ This is currently a **proposal**. The existing BASIC interpreter implements trad
 
 To experiment with the concept:
 
-1. Read `nova_tibasic_proposal.md` for full specification
+1. Read `nobasic_proposal.md` for full specification
 2. Look at the example programs
 3. Imagine the community that could build around this!
 

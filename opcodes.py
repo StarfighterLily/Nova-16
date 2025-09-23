@@ -189,7 +189,11 @@ opcodes = [
     ("SREVERB",            "0x81", 2), # Reverb channel, amount # unimplemented
     ("SFILTER",            "0x82", 2), # Filter channel, type # unimplemented
 
-    # 
+    # Type conversion
+    ("ITOB",               "0x83", 2), # Integer to binary
+    ("BTOI",               "0x84", 2), # Binary to integer
+    ("ITOS",               "0x85", 2), # Integer to string
+    ("STOI",               "0x86", 2), # String to integer
 
     # Register/special references (for direct access)
     ("SA",                 "0xDD", 1), # Sound Address

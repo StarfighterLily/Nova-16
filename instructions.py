@@ -515,9 +515,16 @@ class Push(BaseInstruction):
         value = cpu.get_operand_value(operands[0])
         
         # Push to stack (stack grows downward)
+        # Size depends on register type: P registers are 16-bit, R registers are 8-bit
         sp = int(cpu.Pregisters[8])
-        cpu.memory.write_byte(sp, value & 0xFF)
-        sp = (sp - 1) & 0xFFFF
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'P':
+            # Push 16-bit value for P registers
+            sp = (sp - 2) & 0xFFFF
+            cpu.memory.write_word(sp, value)
+        else:
+            # Push 8-bit value for R registers and other types
+            sp = (sp - 1) & 0xFFFF
+            cpu.memory.write_byte(sp, value & 0xFF)
         cpu.Pregisters[8] = sp
 
 class Pop(BaseInstruction):
@@ -531,11 +538,18 @@ class Pop(BaseInstruction):
         
         # Check stack bounds
         sp = int(cpu.Pregisters[8])
-        if sp >= 0xFFFF:
-            raise RuntimeError(f"Stack underflow: SP=0x{sp:04X}")
-        
-        sp = (sp + 1) & 0xFFFF
-        value = cpu.memory.read_byte(sp)
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'P':
+            # Pop 16-bit value for P registers
+            if sp >= 0xFFFE:
+                raise RuntimeError(f"Stack underflow: SP=0x{sp:04X}, need 2 bytes for P register")
+            value = cpu.memory.read_word(sp)
+            sp = (sp + 2) & 0xFFFF
+        else:
+            # Pop 8-bit value for R registers and other types
+            if sp >= 0xFFFF:
+                raise RuntimeError(f"Stack underflow: SP=0x{sp:04X}")
+            value = cpu.memory.read_byte(sp)
+            sp = (sp + 1) & 0xFFFF
         cpu.Pregisters[8] = sp
         
         cpu.set_operand_value(operands[0], value)
@@ -1731,6 +1745,120 @@ class Strfindi(BaseInstruction):
         
         cpu.Rregisters[0] = 1 if found else 0
 
+# Type conversion operations
+class Itob(BaseInstruction):
+    """ITOB instruction - integer to binary string"""
+    def __init__(self):
+        opcode_val = 0x83  # ITOB
+        super().__init__("ITOB", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_addr = cpu.get_operand_value(operands[0])
+        value = cpu.get_operand_value(operands[1])
+        
+        # Convert integer to binary string
+        if value == 0:
+            binary_str = "0"
+        else:
+            binary_str = ""
+            temp = value
+            while temp > 0:
+                binary_str = str(temp & 1) + binary_str
+                temp >>= 1
+        
+        # Write binary string to destination address
+        for i, char in enumerate(binary_str):
+            cpu.write_memory((dest_addr + i) & 0xFFFF, ord(char), 1)
+        # Null terminate
+        cpu.write_memory((dest_addr + len(binary_str)) & 0xFFFF, 0, 1)
+
+class Btoi(BaseInstruction):
+    """BTOI instruction - binary string to integer"""
+    def __init__(self):
+        opcode_val = 0x84  # BTOI
+        super().__init__("BTOI", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_operand = operands[0]
+        source_addr = cpu.get_operand_value(operands[1])
+        
+        # Read binary string from source address
+        binary_str = ""
+        i = 0
+        while True:
+            char = cpu.memory.read((source_addr + i) & 0xFFFF, 1)[0]
+            if char == 0 or char not in (48, 49):  # '0' or '1'
+                break
+            binary_str += chr(char)
+            i += 1
+        
+        # Convert binary string to integer
+        result = 0
+        for char in binary_str:
+            result = (result << 1) | (1 if char == '1' else 0)
+        
+        cpu.set_operand_value(dest_operand, result)
+
+class Itos(BaseInstruction):
+    """ITOS instruction - integer to decimal string"""
+    def __init__(self):
+        opcode_val = 0x85  # ITOS
+        super().__init__("ITOS", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_addr = cpu.get_operand_value(operands[0])
+        value = cpu.get_operand_value(operands[1])
+        
+        # Convert integer to decimal string
+        if value == 0:
+            decimal_str = "0"
+        else:
+            decimal_str = ""
+            temp = abs(value)
+            while temp > 0:
+                decimal_str = str(temp % 10) + decimal_str
+                temp //= 10
+            if value < 0:
+                decimal_str = "-" + decimal_str
+        
+        # Write decimal string to destination address
+        for i, char in enumerate(decimal_str):
+            cpu.write_memory((dest_addr + i) & 0xFFFF, ord(char), 1)
+        # Null terminate
+        cpu.write_memory((dest_addr + len(decimal_str)) & 0xFFFF, 0, 1)
+
+class Stoi(BaseInstruction):
+    """STOI instruction - decimal string to integer"""
+    def __init__(self):
+        opcode_val = 0x86  # STOI
+        super().__init__("STOI", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_operand = operands[0]
+        source_addr = cpu.get_operand_value(operands[1])
+        
+        # Read decimal string from source address
+        decimal_str = ""
+        i = 0
+        while True:
+            char = cpu.memory.read((source_addr + i) & 0xFFFF, 1)[0]
+            if char == 0:
+                break
+            decimal_str += chr(char)
+            i += 1
+        
+        # Convert decimal string to integer
+        try:
+            result = int(decimal_str)
+        except ValueError:
+            result = 0  # Invalid string defaults to 0
+        
+        cpu.set_operand_value(dest_operand, result)
+
 # BCD operations
 class Sed(BaseInstruction):
     """SED instruction - set BCD mode"""
@@ -2441,6 +2569,12 @@ def create_instruction_table():
         Strrev(),   # 0x79
         Strfind(),  # 0x7A
         Strfindi(), # 0x7B
+
+        # Type conversion operations
+        Itob(),     # 0x83
+        Btoi(),     # 0x84
+        Itos(),     # 0x85
+        Stoi(),     # 0x86
 
         Memset(),   # 0x7C
 

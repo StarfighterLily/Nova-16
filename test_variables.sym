@@ -1,12 +1,4 @@
 # Symbol table
 # Format: <symbol> <value>
-display_string 0x1009
-display_string_loop 0x1012
-display_string_end 0x1032
-display_number 0x103C
-display_number_convert 0x106C
-display_number_loop 0x1070
-display_number_output 0x108A
-display_number_end 0x10AC
-start 0x10B9
-halt 0x1136
+start 0x1011
+halt 0x10C4

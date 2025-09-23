@@ -6,74 +6,10 @@ ORG 0x1000
 ; Initialize stack pointer
 MOV P8,0xF000
 
-; Jump to main program
-JMP start
-
-; String display subroutine
-; Input: P0 = string address, P1 = color
-; Uses: P2, P3, R0
-display_string:
-    PUSH P2
-    PUSH P3
-    PUSH R0
-display_string_loop:
-    MOV R0,P0
-    MOV P2,[R0+0]
-    CMP P2,0
-    JZ display_string_end
-    CHAR P2,P1
-    ADD VX,8
-    INC P0
-    JMP display_string_loop
-display_string_end:
-    POP R0
-    POP P3
-    POP P2
-    RET
-
-; Number display subroutine
-; Input: P0 = number to display
-; Uses: P2, P3, R0, R1
-display_number:
-    PUSH P2
-    PUSH P3
-    PUSH R0
-    PUSH R1
-    MOV P2,P0
-    MOV R0,0
-    CMP P2,0
-    JNZ display_number_convert
-    MOV P0,48
-    MOV P1,7
-    CHAR P0,P1
-    ADD VX,8
-    JMP display_number_end
-display_number_convert:
-    MOV R1,10
-display_number_loop:
-    MOV P3,P2
-    DIV P3,R1
-    PUSH P2
-    INC R0
-    MOV P2,P3
-    CMP P2,0
-    JNZ display_number_loop
-display_number_output:
-    POP P2
-    ADD P2,48
-    MOV P0,P2
-    MOV P1,7
-    CHAR P0,P1
-    ADD VX,8
-    DEC R0
-    CMP R0,0
-    JNZ display_number_output
-display_number_end:
-    POP R1
-    POP R0
-    POP P3
-    POP P2
-    RET
+; Initialize text cursor position
+MOV VX,0
+MOV VY,0
+MOV VL,0
 
 ; Program start
 start:
@@ -88,48 +24,128 @@ start:
     MOV VX,0
     MOV VY,0
     MOV VL,0
-    ; Display string: Hello World
-    MOV P0,0x8000
+    ; Display 'H'
+    MOV P0,72
     MOV P1,7
-    CALL display_string
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'e'
+    MOV P0,101
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'l'
+    MOV P0,108
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'l'
+    MOV P0,108
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'o'
+    MOV P0,111
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display ' '
+    MOV P0,32
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'W'
+    MOV P0,87
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'o'
+    MOV P0,111
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'r'
+    MOV P0,114
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'l'
+    MOV P0,108
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'd'
+    MOV P0,100
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
     ; Disp
     MOV VX,0
-    MOV VY,0
+    MOV VY,8
     MOV VL,0
-    ; Display string: NoBASIC Test
-    MOV P0,0x8064
+    ; Display 'N'
+    MOV P0,78
     MOV P1,7
-    CALL display_string
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'o'
+    MOV P0,111
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'B'
+    MOV P0,66
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'A'
+    MOV P0,65
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'S'
+    MOV P0,83
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'I'
+    MOV P0,73
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'C'
+    MOV P0,67
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display ' '
+    MOV P0,32
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'T'
+    MOV P0,84
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'e'
+    MOV P0,101
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 's'
+    MOV P0,115
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 't'
+    MOV P0,116
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
 
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
-ORG 0x8000
-DB 72
-DB 101
-DB 108
-DB 108
-DB 111
-DB 32
-DB 87
-DB 111
-DB 114
-DB 108
-DB 100
-DB 0  ; Null terminator
-ORG 0x8064
-DB 78
-DB 111
-DB 66
-DB 65
-DB 83
-DB 73
-DB 67
-DB 32
-DB 84
-DB 101
-DB 115
-DB 116
-DB 0  ; Null terminator
 
 ORG 0x1000

@@ -1,18 +1,17 @@
 {
-  "cycle": 28,
+  "cycle": 10000,
   "timestamp": "Final Report",
   "statistics": {
-    "total_pixel_writes": 0,
-    "layers_used": [],
-    "colors_used": [],
+    "total_pixel_writes": 62,
+    "layers_used": [
+      0
+    ],
+    "colors_used": [
+      7
+    ],
     "instruction_counts": {
-      "SFILL": 1
+      "SFILL": 1,
+      "CHAR": 6
     },
     "memory_regions_accessed": [],
-    "max_x": 0,
-    "max_y": 0,
-    "min_x": 255,
-    "min_y": 255
-  },
-  "video_registers": {
-    "VX": 
+    "max_x": 

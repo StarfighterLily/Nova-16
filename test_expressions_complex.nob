@@ -1,0 +1,9 @@
+ClrHome
+A = 5
+B = 10
+C = A + B * 2 - 3
+D = (A + B) * (C - 1)
+Disp "A:", A
+Disp "B:", B
+Disp "C (A+B*2-3):", C
+Disp "D ((A+B)*(C-1)):", D

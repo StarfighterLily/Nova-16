@@ -764,7 +764,7 @@ class CPU:
         elif type == 'FP':
             self.fp = int(value) & 0xFFFF
         elif type == 'V': 
-            self.gfx.Vregisters[ idx ] = int(value) & 0xFFFF
+            self.gfx.Vregisters[ idx ] = int(value) & 0xFF
             # Invalidate instruction cache when graphics registers change
             # This prevents stale cached instructions that might access graphics registers as memory
             self.invalidate_instruction_cache()

@@ -6,6 +6,11 @@ ORG 0x1000
 ; Initialize stack pointer
 MOV P8,0xF000
 
+; Initialize text cursor position
+MOV VX,0
+MOV VY,0
+MOV VL,0
+
 ; Program start
 start:
     ; ClrHome
@@ -15,14 +20,10 @@ start:
     MOV VY,0
     MOV P0,0
     SFILL P0
-    ; A = 
-    MOV P0,10
-    ; Store P0 into A
-    MOV [0x2000],P0
-    ; B = 
-    MOV P0,5
-    ; Store P0 into B
-    MOV [0x2002],P0
+    ; A = 10 (optimized)
+    MOV [0x2000],10
+    ; B = 5 (optimized)
+    MOV [0x2002],5
     ; Load A into P0
     MOV P0,[0x2000]
     ; Load B into P1
@@ -94,6 +95,8 @@ if_else_1:
     MOV P1,7
     CHAR P0,P1
     ADD VX,8
+    ; End - terminate program
+    JMP halt
 
 ; Program end - infinite loop to keep display visible
 halt:

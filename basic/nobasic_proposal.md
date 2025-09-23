@@ -13,7 +13,7 @@ NoBASIC is a TI-83+ TI-BASIC inspired programming language for the Nova-16 fanta
 ## Language Syntax
 
 ### Program Structure
-Programs are plain text files with `.bas` extension. Statements are executed sequentially unless control flow changes execution.
+Programs are plain text files with `.nob` extension. Statements are executed sequentially unless control flow changes execution.
 
 ### Variables
 - **Numeric Variables**: `A` through `Z` (16-bit signed integers, -32768 to 32767)

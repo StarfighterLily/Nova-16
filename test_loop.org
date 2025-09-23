@@ -1,5 +1,4 @@
 # ORG segment information
 # Format: <start_address> <length> <binary_offset>
-0x1000 260 0
-0x2000 2 260
-0x8000 6 262
+0x1000 174 0
+0x2000 2 174

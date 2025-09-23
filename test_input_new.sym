@@ -1,0 +1,8 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+prompt_loop 0x1037
+prompt_convert 0x1059
+dn_display_loop 0x115C
+dn_done 0x117C
+halt 0x1185

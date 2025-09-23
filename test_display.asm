@@ -6,6 +6,11 @@ ORG 0x1000
 ; Initialize stack pointer
 MOV P8,0xF000
 
+; Initialize text cursor position
+MOV VX,0
+MOV VY,0
+MOV VL,0
+
 ; Program start
 start:
     ; ClrHome
@@ -76,7 +81,7 @@ start:
     ADD VX,8
     ; Disp
     MOV VX,0
-    MOV VY,0
+    MOV VY,8
     MOV VL,0
     ; Display 'T'
     MOV P0,84

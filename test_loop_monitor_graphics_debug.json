@@ -1,25 +1,6 @@
 {
-  "pixels_written": [],
-  "register_changes": [],
-  "memory_operations": [],
-  "instruction_log": [
+  "pixels_written": [
     [
-      8,
-      4304,
-      "SFILL"
-    ]
-  ],
-  "statistics": {
-    "total_pixel_writes": 0,
-    "layers_used": [],
-    "colors_used": [],
-    "instruction_counts": {
-      "SFILL": 1
-    },
-    "memory_regions_accessed": [],
-    "max_x": 0,
-    "max_y": 0,
-    "min_x": 255,
-    "min_y": 255
-  }
-}
+      50,
+      0,
+      

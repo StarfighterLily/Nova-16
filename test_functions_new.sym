@@ -1,0 +1,6 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+dn_display_loop 0x1132
+dn_done 0x1152
+halt 0x13D7

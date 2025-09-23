@@ -1,0 +1,18 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+halt 0x10BC
+number_to_string 0x10C0
+nts_not_zero 0x10ED
+nts_positive 0x10FF
+nts_loop 0x10FF
+nts_reverse 0x111D
+nts_done 0x1136
+display_string 0x1140
+ds_loop 0x114E
+ds_done 0x116D
+read_number 0x1177
+rn_loop 0x1188
+rn_not_minus 0x11B6
+rn_done 0x11DE
+rn_positive 0x11E9

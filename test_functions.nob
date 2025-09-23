@@ -1,0 +1,5 @@
+ClrHome
+A = INT("123")
+B = STR(456)
+Disp "INT result:", A
+Disp "STR result would be displayed as string"

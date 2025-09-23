@@ -153,10 +153,25 @@ class NoBasicCompiler:
                     self.assembly_lines.extend(lines)
                     i = new_i
 
-                elif token == "WEND":
-                    lines = self._compile_wend()
+                elif token == "PAUSE":
+                    lines = self._compile_pause()
                     self.assembly_lines.extend(lines)
                     i += 1
+
+                elif token == "END":
+                    lines = self._compile_end()
+                    self.assembly_lines.extend(lines)
+                    i += 1
+
+                elif token == "GOTO":
+                    lines, new_i = self._compile_goto(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "LBL":
+                    lines, new_i = self._compile_lbl(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
 
                 elif token.isalpha() and i + 1 < len(tokens) and tokens[i + 1] == "=":
                     # Variable assignment
@@ -402,19 +417,25 @@ class NoBasicCompiler:
         ]
 
     def _compile_assignment(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
-        """Compile variable assignment"""
+        """Compile variable assignment with optimizations"""
         var_name = tokens[i]
         var_addr = self._get_variable_address(var_name)
 
         lines = [f"    ; {var_name} = "]
         i += 2  # Skip variable and =
 
-        # Parse expression
-        expr_lines, i = self._parse_expression(tokens, i)
-        lines.extend(expr_lines)
-
-        # Store result
-        lines.extend(self._store_variable(var_name))
+        # Check if this is a simple constant assignment
+        if i < len(tokens) and tokens[i].isdigit() and (i + 1 >= len(tokens) or tokens[i + 1] in ['\n', ';']):
+            # Simple constant assignment: optimize to direct memory write
+            value = int(tokens[i])
+            lines = [f"    ; {var_name} = {value} (optimized)"]
+            lines.append(f"    MOV [0x{var_addr:04X}],{value}")
+            i += 1
+        else:
+            # Complex expression
+            expr_lines, i = self._parse_expression(tokens, i)
+            lines.extend(expr_lines)
+            lines.extend(self._store_variable(var_name))
 
         return lines, i
 
@@ -446,44 +467,155 @@ class NoBasicCompiler:
         return lines, i
 
     def _parse_expression(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
-        """Parse a simple arithmetic expression"""
-        lines = []
+        """Parse an arithmetic expression with proper precedence"""
+        return self._parse_additive_expression(tokens, i)
 
-        # For now, support: number, variable, variable + number, variable - number
-        token = tokens[i]
+    def _parse_additive_expression(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Parse additive expressions (+, -) - lowest precedence"""
+        lines, i = self._parse_multiplicative_expression(tokens, i)
 
-        if token.isdigit():
-            # Number literal
-            lines.append(f"    MOV P0,{token}")
-            i += 1
-        elif token.isalpha():
-            # Variable
-            lines.extend(self._load_variable(token))
+        while i < len(tokens) and tokens[i] in ['+', '-']:
+            op = tokens[i]
             i += 1
 
-            # Check for + or - operation
-            if i < len(tokens) and tokens[i] in ['+', '-']:
-                op = tokens[i]
-                i += 1
+            # Push current result to stack
+            lines.append("    PUSH P0")
 
-                if i < len(tokens):
-                    right_token = tokens[i]
-                    if right_token.isdigit():
-                        # Variable + number
-                        if op == '+':
-                            lines.append(f"    ADD P0,{right_token}")
-                        else:  # op == '-'
-                            lines.append(f"    SUB P0,{right_token}")
-                    elif right_token.isalpha():
-                        # Variable + variable
-                        lines.extend(self._load_variable(right_token, "P1"))
-                        if op == '+':
-                            lines.append("    ADD P0,P1")
-                        else:  # op == '-'
-                            lines.append("    SUB P0,P1")
-                    i += 1
+            # Parse right operand
+            right_lines, i = self._parse_multiplicative_expression(tokens, i)
+            lines.extend(right_lines)
+
+            # Pop left operand and perform operation
+            lines.append("    POP P1")
+            if op == '+':
+                lines.append("    ADD P0,P1")
+            else:  # op == '-'
+                lines.append("    SUB P1,P0")
+                lines.append("    MOV P0,P1")
 
         return lines, i
+
+    def _parse_multiplicative_expression(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Parse multiplicative expressions (*, /, MOD)"""
+        lines, i = self._parse_primary_expression(tokens, i)
+
+        while i < len(tokens) and tokens[i] in ['*', '/', 'MOD']:
+            op = tokens[i]
+            i += 1
+
+            # Push current result to stack
+            lines.append("    PUSH P0")
+
+            # Parse right operand
+            right_lines, i = self._parse_primary_expression(tokens, i)
+            lines.extend(right_lines)
+
+            # Pop left operand and perform operation
+            lines.append("    POP P1")
+            if op == '*':
+                lines.append("    MUL P0,P1")
+            elif op == '/':
+                lines.append("    DIV P1,P0")
+                lines.append("    MOV P0,P1")
+            else:  # op == 'MOD'
+                lines.append("    MOD P1,P0")
+                lines.append("    MOV P0,P1")
+
+        return lines, i
+
+    def _parse_primary_expression(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Parse primary expressions (numbers, variables, parentheses, strings, functions)"""
+        lines = []
+        token = tokens[i]
+
+        if token == '(':
+            # Parenthesized expression
+            i += 1
+            lines, i = self._parse_additive_expression(tokens, i)
+            if i < len(tokens) and tokens[i] == ')':
+                i += 1
+            else:
+                raise ValueError("Missing closing parenthesis")
+        elif token.startswith('"') and token.endswith('"'):
+            # String literal - for now, just return 0 (strings in expressions not fully supported)
+            lines.append("    MOV P0,0")
+            i += 1
+        elif token.isdigit():
+            # Number literal - check for constant folding
+            folded_val, new_i = self._fold_constants(tokens, i)
+            if folded_val is not None:
+                lines.append(f"    MOV P0,{folded_val}")
+                i = new_i
+            else:
+                lines.append(f"    MOV P0,{token}")
+                i += 1
+        elif token.isalpha() or '$' in token:
+            # Check if this is a function call
+            if i + 1 < len(tokens) and tokens[i + 1] == '(':
+                # Function call
+                func_name = token.upper()
+                i += 2  # Skip function name and '('
+                
+                if func_name == 'INT':
+                    # INT(string) - convert string to number
+                    lines, i = self._parse_additive_expression(tokens, i)  # Parse string argument
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in INT()")
+                    # Assume P0 contains string address, convert with STOI
+                    lines.append("    STOI P0,P0")  # Convert string at P0 to integer in P0
+                elif func_name == 'STR':
+                    # STR(number) - convert number to string address
+                    lines, i = self._parse_additive_expression(tokens, i)  # Parse number argument
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in STR()")
+                    # Convert number in P0 to string at temporary buffer
+                    lines.extend([
+                        "    PUSH P1",
+                        "    MOV P1,0x6000",  # Temporary string buffer
+                        "    ITOS P1,P0",     # Convert P0 to string at 0x6000
+                        "    MOV P0,P1",      # Return string address
+                        "    POP P1",
+                    ])
+                else:
+                    raise ValueError(f"Unknown function: {func_name}")
+            else:
+                # Variable
+                lines.extend(self._load_variable(token))
+                i += 1
+        else:
+            raise ValueError(f"Unexpected token in expression: {token}")
+
+        return lines, i
+
+    def _fold_constants(self, tokens: List[str], i: int) -> Tuple[int, int]:
+        """Try to fold constants in an expression. Returns (folded_value, new_i) or (None, original_i)"""
+        # Simple constant folding for basic arithmetic
+        if tokens[i].isdigit():
+            left_val = int(tokens[i])
+            i += 1
+            
+            if i < len(tokens) and tokens[i] in ['+', '-', '*', '/']:
+                op = tokens[i]
+                i += 1
+                
+                if i < len(tokens) and tokens[i].isdigit():
+                    right_val = int(tokens[i])
+                    i += 1
+                    
+                    if op == '+':
+                        return left_val + right_val, i
+                    elif op == '-':
+                        return left_val - right_val, i
+                    elif op == '*':
+                        return left_val * right_val, i
+                    elif op == '/' and right_val != 0:
+                        return left_val // right_val, i  # Integer division
+        
+        return None, i  # No folding possible
 
     def _store_string_in_memory(self, string: str) -> int:
         """Store a string in memory and return its address"""
@@ -536,6 +668,48 @@ class NoBasicCompiler:
             "    CHAR P0,P1",    # Display character in P0
             "    ADD VX,8",      # Move right
         ]
+
+    def _compile_pause(self) -> List[str]:
+        """Compile Pause statement - wait for key press"""
+        return [
+            "    ; Pause - wait for key press",
+            "pause_loop:",
+            "    KEYSTAT P0",     # Check if key available
+            "    CMP P0,0",
+            "    JZ pause_loop",  # Wait for key
+            "    KEYIN P0",       # Read and discard the key
+        ]
+
+    def _compile_end(self) -> List[str]:
+        """Compile End statement - terminate program"""
+        return [
+            "    ; End - terminate program",
+            "    JMP halt",  # Jump to the halt loop
+        ]
+
+    def _compile_goto(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Goto statement"""
+        i += 1  # Skip GOTO
+        if i < len(tokens):
+            label_name = tokens[i]
+            i += 1
+            return [
+                f"    ; Goto {label_name}",
+                f"    JMP {label_name}",
+            ], i
+        return [], i
+
+    def _compile_lbl(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Lbl statement"""
+        i += 1  # Skip LBL
+        if i < len(tokens):
+            label_name = tokens[i]
+            i += 1
+            return [
+                f"    ; Lbl {label_name}",
+                f"{label_name}:",
+            ], i
+        return [], i
 
     def _load_variable(self, var_name: str, dest_register: str = "P0") -> List[str]:
         """Generate code to load a variable into a register"""

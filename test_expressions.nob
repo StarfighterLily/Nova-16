@@ -1,0 +1,5 @@
+﻿ClrHome
+A = 5
+B = 10
+C = A + B * 2
+Disp "Result:", C

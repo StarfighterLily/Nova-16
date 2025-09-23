@@ -6,74 +6,10 @@ ORG 0x1000
 ; Initialize stack pointer
 MOV P8,0xF000
 
-; Jump to main program
-JMP start
-
-; String display subroutine
-; Input: P0 = string address, P1 = color
-; Uses: P2, P3, R0
-display_string:
-    PUSH P2
-    PUSH P3
-    PUSH R0
-display_string_loop:
-    MOV R0,P0
-    MOV P2,[R0+0]
-    CMP P2,0
-    JZ display_string_end
-    CHAR P2,P1
-    ADD VX,8
-    INC P0
-    JMP display_string_loop
-display_string_end:
-    POP R0
-    POP P3
-    POP P2
-    RET
-
-; Number display subroutine
-; Input: P0 = number to display
-; Uses: P2, P3, R0, R1
-display_number:
-    PUSH P2
-    PUSH P3
-    PUSH R0
-    PUSH R1
-    MOV P2,P0
-    MOV R0,0
-    CMP P2,0
-    JNZ display_number_convert
-    MOV P0,48
-    MOV P1,7
-    CHAR P0,P1
-    ADD VX,8
-    JMP display_number_end
-display_number_convert:
-    MOV R1,10
-display_number_loop:
-    MOV P3,P2
-    DIV P3,R1
-    PUSH P2
-    INC R0
-    MOV P2,P3
-    CMP P2,0
-    JNZ display_number_loop
-display_number_output:
-    POP P2
-    ADD P2,48
-    MOV P0,P2
-    MOV P1,7
-    CHAR P0,P1
-    ADD VX,8
-    DEC R0
-    CMP R0,0
-    JNZ display_number_output
-display_number_end:
-    POP R1
-    POP R0
-    POP P3
-    POP P2
-    RET
+; Initialize text cursor position
+MOV VX,0
+MOV VY,0
+MOV VL,0
 
 ; Program start
 start:
@@ -92,30 +28,46 @@ for_loop_1:
     MOV VX,0
     MOV VY,0
     MOV VL,0
-    ; Display string: Loop:
-    MOV P0,0x8000
+    ; Display 'L'
+    MOV P0,76
     MOV P1,7
-    CALL display_string
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'o'
+    MOV P0,111
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'o'
+    MOV P0,111
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display 'p'
+    MOV P0,112
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; Display ':'
+    MOV P0,58
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
     ADD VY,8
     MOV VX,0
     ; Load I into P0
     MOV P0,[0x2000]
-    ; Display number
-    CALL display_number
+    ; Display number (simplified)
+    MOV P1,7
+    CHAR P0,P1
+    ADD VX,8
+    ; End - terminate program
+    JMP halt
 
-; Program end
+; Program end - infinite loop to keep display visible
 halt:
-HLT
-
-; Variable storage
+JMP halt
 ORG 0x2000
 DW 0  ; Variable I
-ORG 0x8000
-DB 76
-DB 111
-DB 111
-DB 112
-DB 58
-DB 0  ; Null terminator
 
 ORG 0x1000
