@@ -135,31 +135,41 @@ for_loop_1:
     MOV P0,0
     MOV [0x2002],P0
 for_loop_3:
+    ; COLOR_VAL = 
+    ; Load RAMP into P0
+    MOV P0,[0x2000]
+    ; Load SHADE into P1
+    MOV P1,[0x2002]
+    ; COLOR(P0, P1)
+    SHL P0,4
+    OR P0,P1
+    ; Store P0 into COLOR_VAL
+    MOV [0x2004],P0
     ; X = 
     ; Load SHADE into P0
     MOV P0,[0x2002]
-    MOV P2,4
+    MOV P1,4
     MUL P0,P1
-    ; Store P2 into X
-    MOV [0x2004],P2
+    ; Store P0 into X
+    MOV [0x2006],P0
     ; Y = 
-    ; Load RAMP into P2
-    MOV P2,[0x2000]
-    MOV P3,4
-    MUL P2,P1
-    ; Store P3 into Y
-    MOV [0x2006],P3
-    ; PXLON
-    ; Load X into P3
-    MOV P3,[0x2004]
+    ; Load RAMP into P0
+    MOV P0,[0x2000]
+    MOV P1,4
+    MUL P0,P1
+    ; Store P0 into Y
+    MOV [0x2008],P0
+    ; Pxl-On
+    ; Load X into P0
+    MOV P0,[0x2006]
     ; Load Y into P1
-    MOV P1,[0x2006]
-    ; Load COLOR_VAL into P4
-    MOV P4,[0x2008]
-    ; PXLON at (P3,P1)
-    MOV VX,P3
+    MOV P1,[0x2008]
+    ; Load COLOR_VAL into P2
+    MOV P2,[0x2004]
+    ; Pxl-On at (P0,P1)
+    MOV VX,P0
     MOV VY,P1
-    MOV P0,P4
+    MOV P0,P2
     SWRITE P0
     ; Next SHADE
     MOV P0,[0x2002]
@@ -330,10 +340,66 @@ for_end_2:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
+    ; TEST_COLORS = 
+    MOV P2,0
+    MOV P1,20
+    MOV P0,36
+    MOV P3,52
+    MOV P4,68
+    MOV P5,84
+    MOV P6,100
+    MOV P7,15
+    ; Store array element 0
+    MOV [0x7000],P2
+    ; Store array element 1
+    MOV [0x7002],P1
+    ; Store array element 2
+    MOV [0x7004],P0
+    ; Store array element 3
+    MOV [0x7006],P3
+    ; Store array element 4
+    MOV [0x7008],P4
+    ; Store array element 5
+    MOV [0x700A],P5
+    ; Store array element 6
+    MOV [0x700C],P6
+    ; Store array element 7
+    MOV [0x700E],P7
+    MOV P2,28672
+    ; Store P2 into TEST_COLORS
+    MOV [0x200A],P2
+    ; Y_POS = 
+    MOV P2,140
+    ; Store P2 into Y_POS
+    MOV [0x200C],P2
     ; For I = 0 To 7
     MOV P0,0
-    MOV [0x200A],P0
+    MOV [0x200E],P0
 for_loop_5:
+    ; TEST_COLOR = 
+    ; Load I into P2
+    MOV P2,[0x200E]
+    ; Load TEST_COLORS[P2] into P7
+    MOV P3,8202
+    ADD P3,P2
+    ADD P3,P2
+    MOV P7,[P3]
+    ; Store P7 into TEST_COLOR
+    MOV [0x2010],P7
+    ; EXTRACTED_RAMP = 
+    ; Load TEST_COLOR into P7
+    MOV P7,[0x2010]
+    ; RAMP(P7)
+    SHR P7,4
+    ; Store P7 into EXTRACTED_RAMP
+    MOV [0x2012],P7
+    ; EXTRACTED_SHADE = 
+    ; Load TEST_COLOR into P7
+    MOV P7,[0x2010]
+    ; SHADE(P7)
+    AND P7,15
+    ; Store P7 into EXTRACTED_SHADE
+    MOV [0x2014],P7
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -366,7 +432,7 @@ for_loop_5:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x2016]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -409,7 +475,7 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Load I into P0
-    MOV P0,[0x200A]
+    MOV P0,[0x200E]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -460,7 +526,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x2016]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -542,7 +608,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x2016]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -633,7 +699,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x2016]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -676,7 +742,7 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Load I into P0
-    MOV P0,[0x200A]
+    MOV P0,[0x200E]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -766,7 +832,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x2016]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -808,26 +874,33 @@ display_num_loop:
     INC P2
     JMP display_num_loop
 display_value_done:
-    ; PXLON
-    MOV P4,200
-    ; Load I into P3
-    MOV P3,[0x200A]
+    ; Pxl-On
+    MOV P7,200
+    ; Load I into P2
+    MOV P2,[0x200E]
     MOV P6,10
-    MUL P3,P5
-    ADD P4,P1
-    ; Load Y_POS into P1
-    MOV P1,[0x200E]
-    ; Load TEST_COLOR into P5
-    MOV P5,[0x2010]
-    ; PXLON at (P6,P1)
-    MOV VX,P6
-    MOV VY,P1
-    MOV P0,P5
+    MUL P2,P6
+    ADD P7,P2
+    ; Load Y_POS into P2
+    MOV P2,[0x200C]
+    ; Load TEST_COLOR into P6
+    MOV P6,[0x2010]
+    ; Pxl-On at (P7,P2)
+    MOV VX,P7
+    MOV VY,P2
+    MOV P0,P6
     SWRITE P0
+    ; Y_POS = 
+    ; Load Y_POS into P6
+    MOV P6,[0x200C]
+    MOV P2,20
+    ADD P6,P2
+    ; Store P6 into Y_POS
+    MOV [0x200C],P6
     ; Next I
-    MOV P0,[0x200A]
+    MOV P0,[0x200E]
     INC P0
-    MOV [0x200A],P0
+    MOV [0x200E],P0
     CMP P0,7
     JLE for_loop_5
 for_end_6:
@@ -959,23 +1032,37 @@ for_end_6:
     MOV P1,15
     CHAR P0,P1
     ; ORIGINAL = 
-    MOV P5,7
-    MOV P1,11
-    ; COLOR(P5, P1)
-    SHL P5,4
-    OR P5,P1
-    ; Store P5 into ORIGINAL
-    MOV [0x2012],P5
+    MOV P6,7
+    MOV P2,11
+    ; COLOR(P6, P2)
+    SHL P6,4
+    OR P6,P2
+    ; Store P6 into ORIGINAL
+    MOV [0x2018],P6
+    ; EX_RAMP = 
+    ; Load ORIGINAL into P6
+    MOV P6,[0x2018]
+    ; RAMP(P6)
+    SHR P6,4
+    ; Store P6 into EX_RAMP
+    MOV [0x201A],P6
+    ; EX_SHADE = 
+    ; Load ORIGINAL into P6
+    MOV P6,[0x2018]
+    ; SHADE(P6)
+    AND P6,15
+    ; Store P6 into EX_SHADE
+    MOV [0x201C],P6
     ; RECREATED = 
-    ; Load EX_RAMP into P5
-    MOV P5,[0x2014]
-    ; Load EX_SHADE into P1
-    MOV P1,[0x2016]
-    ; COLOR(P5, P1)
-    SHL P5,4
-    OR P5,P1
-    ; Store P5 into RECREATED
-    MOV [0x2018],P5
+    ; Load EX_RAMP into P6
+    MOV P6,[0x201A]
+    ; Load EX_SHADE into P2
+    MOV P2,[0x201C]
+    ; COLOR(P6, P2)
+    SHL P6,4
+    OR P6,P2
+    ; Store P6 into RECREATED
+    MOV [0x201E],P6
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -1024,7 +1111,7 @@ for_end_6:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x2016]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1067,7 +1154,7 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Load ORIGINAL into P0
-    MOV P0,[0x2012]
+    MOV P0,[0x2018]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1141,7 +1228,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x2016]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1220,7 +1307,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x2016]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1314,7 +1401,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x2016]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1357,7 +1444,7 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Load RECREATED into P0
-    MOV P0,[0x2018]
+    MOV P0,[0x201E]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1435,7 +1522,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x2016]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1478,49 +1565,6 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Load ORIGINAL into P0
-    MOV P0,[0x2012]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; Load RECREATED into P0
     MOV P0,[0x2018]
     ; Display value (number or string)
     MOV P1,P0
@@ -1563,25 +1607,68 @@ display_num_loop:
     INC P2
     JMP display_num_loop
 display_value_done:
-    ; PXLON
-    MOV P5,10
-    MOV P1,200
-    ; Load ORIGINAL into P6
-    MOV P6,[0x2012]
-    ; PXLON at (P5,P1)
-    MOV VX,P5
-    MOV VY,P1
-    MOV P0,P6
-    SWRITE P0
-    ; PXLON
-    MOV P6,20
-    MOV P1,200
-    ; Load RECREATED into P5
-    MOV P5,[0x2018]
-    ; PXLON at (P6,P1)
+    ; Load RECREATED into P0
+    MOV P0,[0x201E]
+    ; Display value (number or string)
+    MOV P1,P0
+    CMP P0,0x4000
+    JC display_as_number
+    CMP P0,0x8000
+    JNC display_as_number
+    ; Display as string
+    MOV P2,P0
+display_str_loop:
+    MOV P0,[P2]
+    CMP P0,0
+    JZ display_value_done
+    CMP P0,10
+    JZ display_str_newline
+    MOV P3,15
+    CHAR P0,P3
+    INC P2
+    JMP display_str_loop
+display_str_newline:
+    MOV P0,VY
+    ADD P0,8
+    MOV VY,P0
+    MOV P0,0
+    MOV VX,P0
+    INC P2
+    JMP display_str_loop
+display_as_number:
+    MOV P0,P1
+    ; Display as number
+    MOV P1,0x6000
+    ITOS P1,P0
+    MOV P2,P1
+display_num_loop:
+    MOV P0,[P2]
+    CMP P0,0
+    JZ display_value_done
+    MOV P3,15
+    CHAR P0,P3
+    INC P2
+    JMP display_num_loop
+display_value_done:
+    ; Pxl-On
+    MOV P6,10
+    MOV P2,200
+    ; Load ORIGINAL into P7
+    MOV P7,[0x2018]
+    ; Pxl-On at (P6,P2)
     MOV VX,P6
-    MOV VY,P1
-    MOV P0,P5
+    MOV VY,P2
+    MOV P0,P7
+    SWRITE P0
+    ; Pxl-On
+    MOV P7,20
+    MOV P2,200
+    ; Load RECREATED into P6
+    MOV P6,[0x201E]
+    ; Pxl-On at (P7,P2)
+    MOV VX,P7
+    MOV VY,P2
+    MOV P0,P6
     SWRITE P0
     ; Pause - wait for key press
 pause_loop:
@@ -1598,26 +1685,68 @@ DW 0  ; Variable RAMP
 ORG 0x2002
 DW 0  ; Variable SHADE
 ORG 0x2004
-DW 0  ; Variable X
-ORG 0x2006
-DW 0  ; Variable Y
-ORG 0x2008
 DW 0  ; Variable COLOR_VAL
+ORG 0x2006
+DW 0  ; Variable X
+ORG 0x2008
+DW 0  ; Variable Y
 ORG 0x200A
-DW 0  ; Variable I
+DW 0  ; Variable TEST_COLORS
 ORG 0x200C
-DW 0  ; Variable STR
-ORG 0x200E
 DW 0  ; Variable Y_POS
+ORG 0x200E
+DW 0  ; Variable I
 ORG 0x2010
 DW 0  ; Variable TEST_COLOR
 ORG 0x2012
-DW 0  ; Variable ORIGINAL
+DW 0  ; Variable EXTRACTED_RAMP
 ORG 0x2014
-DW 0  ; Variable EX_RAMP
+DW 0  ; Variable EXTRACTED_SHADE
 ORG 0x2016
-DW 0  ; Variable EX_SHADE
+DW 0  ; Variable STR
 ORG 0x2018
+DW 0  ; Variable ORIGINAL
+ORG 0x201A
+DW 0  ; Variable EX_RAMP
+ORG 0x201C
+DW 0  ; Variable EX_SHADE
+ORG 0x201E
 DW 0  ; Variable RECREATED
 
 ORG 0x1000
+
+; String concatenation subroutine
+str_concat:
+    ; P1 = left string address
+    ; Top of stack = right string address
+    ; Returns result address in P0
+    POP P2
+    POP P3
+    PUSH P2
+    
+    ; Allocate space for result string
+    MOV P0,0x6000
+    MOV P4,P0
+    
+    ; Copy left string
+str_cat_copy_left:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ str_cat_copy_right
+    MOV [P4],P5
+    INC P1
+    INC P4
+    JMP str_cat_copy_left
+    
+str_cat_copy_right:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ str_cat_done
+    MOV [P4],P5
+    INC P3
+    INC P4
+    JMP str_cat_copy_right
+    
+str_cat_done:
+    MOV [P4],0
+    RET

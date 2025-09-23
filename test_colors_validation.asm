@@ -135,17 +135,19 @@ start:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
+    ; Y_POS = 
+    MOV P0,10
+    ; Store P0 into Y_POS
+    MOV [0x2000],P0
     ; For I = 0 To 16
     MOV P0,0
-    MOV [0x2000],P0
+    MOV [0x2002],P0
 for_loop_1:
     ; Load I into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x2002]
     CMP P0,0
-    JZ if_else_3
-if_else_3:
-    ; End - terminate program
-    JMP halt
+    JZ if_end_3
+if_end_3:
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -178,7 +180,7 @@ if_else_3:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x2004]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -221,7 +223,7 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Load I into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x2002]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -320,7 +322,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x2004]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -367,111 +369,32 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load I into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x2002]
     CMP P0,0
-    JZ if_else_5
-if_else_5:
-    ; End - terminate program
-    JMP halt
+    JZ if_end_4
+if_end_4:
     MOV P0,ACTUAL_VALUE
     CMP P0,EXPECTED_VALUE
-    JZ if_else_7
-if_else_7:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,16
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'P'
-    MOV P0,80
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'A'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; PXLON
-    MOV P0,200
-    ; Load Y_POS into P1
-    MOV P1,[0x2004]
-    MOV P2,36
-    ; PXLON at (P0,P1)
-    MOV VX,P0
-    MOV VY,P1
-    MOV P0,P2
-    SWRITE P0
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,24
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'F'
-    MOV P0,70
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'A'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'I'
-    MOV P0,73
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'L'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    ; PXLON
-    MOV P2,200
-    ; Load Y_POS into P1
-    MOV P1,[0x2004]
-    MOV P0,20
-    ; PXLON at (P2,P1)
-    MOV VX,P2
-    MOV VY,P1
-    MOV P0,P0
-    SWRITE P0
-    ; End - terminate program
-    JMP halt
-    ; Next I
+    JZ if_end_5
+if_end_5:
+    ; Y_POS = 
+    ; Load Y_POS into P0
     MOV P0,[0x2000]
-    INC P0
+    MOV P1,10
+    ADD P0,P1
+    ; Store P0 into Y_POS
     MOV [0x2000],P0
+    ; Next I
+    MOV P0,[0x2002]
+    INC P0
+    MOV [0x2002],P0
     CMP P0,16
     JLE for_loop_1
 for_end_2:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,32
+    MOV P0,16
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
@@ -567,61 +490,63 @@ for_end_2:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
+    ; VALID_TESTS = 
+    MOV P0,0
+    ; Store P0 into VALID_TESTS
+    MOV [0x2006],P0
     ; For R = 0 To 15
     MOV P0,0
-    MOV [0x2006],P0
-for_loop_9:
+    MOV [0x2008],P0
+for_loop_6:
     ; For S = 0 To 15
     MOV P0,0
-    MOV [0x2008],P0
-for_loop_11:
+    MOV [0x200A],P0
+for_loop_8:
     ; C = 
     ; Load R into P0
-    MOV P0,[0x2006]
+    MOV P0,[0x2008]
     ; Load S into P1
-    MOV P1,[0x2008]
+    MOV P1,[0x200A]
     ; COLOR(P0, P1)
     SHL P0,4
     OR P0,P1
     ; Store P0 into C
-    MOV [0x200A],P0
+    MOV [0x200C],P0
     ; EXPECTED = 
     ; Load R into P0
-    MOV P0,[0x2006]
-    MOV P2,16
+    MOV P0,[0x2008]
+    MOV P1,16
     MUL P0,P1
-    ; Load S into P3
-    MOV P3,[0x2008]
-    ADD P2,P1
-    ; Store P3 into EXPECTED
-    MOV [0x200C],P3
-    ; Load C into P3
-    MOV P3,[0x200A]
+    ; Load S into P1
+    MOV P1,[0x200A]
+    ADD P0,P1
+    ; Store P0 into EXPECTED
+    MOV [0x200E],P0
+    ; Load C into P0
+    MOV P0,[0x200C]
     ; Load EXPECTED into P1
-    MOV P1,[0x200C]
-    CMP P3,P1
-    JZ if_else_13
-if_else_13:
-    ; End - terminate program
-    JMP halt
+    MOV P1,[0x200E]
+    CMP P0,P1
+    JZ if_end_10
+if_end_10:
     ; Next S
+    MOV P0,[0x200A]
+    INC P0
+    MOV [0x200A],P0
+    CMP P0,15
+    JLE for_loop_8
+for_end_9:
+    ; Next R
     MOV P0,[0x2008]
     INC P0
     MOV [0x2008],P0
     CMP P0,15
-    JLE for_loop_11
-for_end_12:
-    ; Next R
-    MOV P0,[0x2006]
-    INC P0
-    MOV [0x2006],P0
-    CMP P0,15
-    JLE for_loop_9
-for_end_10:
+    JLE for_loop_6
+for_end_7:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,40
+    MOV P0,24
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
@@ -738,7 +663,7 @@ for_end_10:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x2004]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -796,244 +721,14 @@ display_value_done:
     MOV P0,54
     MOV P1,15
     CHAR P0,P1
-    MOV P3,VALID_TESTS
-    CMP P3,256
-    JZ if_else_15
-if_else_15:
+    MOV P0,VALID_TESTS
+    CMP P0,256
+    JZ if_end_11
+if_end_11:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,48
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display 'A'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
     MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'C'
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'L'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'R'
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '('
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ')'
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; PXLON
-    MOV P3,10
-    MOV P1,200
-    MOV P4,36
-    ; PXLON at (P3,P1)
-    MOV VX,P3
-    MOV VY,P1
-    MOV P0,P4
-    SWRITE P0
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,56
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'C'
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'L'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'R'
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '('
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ')'
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'f'
-    MOV P0,102
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; PXLON
-    MOV P4,10
-    MOV P1,200
-    MOV P3,20
-    ; PXLON at (P4,P1)
-    MOV VX,P4
-    MOV VY,P1
-    MOV P0,P3
-    SWRITE P0
-    ; End - terminate program
-    JMP halt
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,64
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
@@ -1189,50 +884,66 @@ if_else_15:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
+    ; EXTRACTION_TESTS = 
+    MOV P0,0
+    ; Store P0 into EXTRACTION_TESTS
+    MOV [0x2010],P0
     ; For R = 0 To 15
     MOV P0,0
-    MOV [0x2006],P0
-for_loop_17:
+    MOV [0x2008],P0
+for_loop_12:
     ; For S = 0 To 15
     MOV P0,0
-    MOV [0x2008],P0
-for_loop_19:
+    MOV [0x200A],P0
+for_loop_14:
     ; ORIGINAL = 
-    ; Load R into P3
-    MOV P3,[0x2006]
-    MOV P4,16
-    MUL P3,P1
-    ; Load S into P5
-    MOV P5,[0x2008]
-    ADD P4,P1
-    ; Store P5 into ORIGINAL
-    MOV [0x200E],P5
-    MOV P5,EXTRACTED_R
+    ; Load R into P0
+    MOV P0,[0x2008]
+    MOV P1,16
+    MUL P0,P1
+    ; Load S into P1
+    MOV P1,[0x200A]
+    ADD P0,P1
+    ; Store P0 into ORIGINAL
+    MOV [0x2012],P0
+    ; EXTRACTED_R = 
+    ; Load ORIGINAL into P0
+    MOV P0,[0x2012]
+    ; RAMP(P0)
+    SHR P0,4
+    ; Store P0 into EXTRACTED_R
+    MOV [0x2014],P0
+    ; EXTRACTED_S = 
+    ; Load ORIGINAL into P0
+    MOV P0,[0x2012]
+    ; SHADE(P0)
+    AND P0,15
+    ; Store P0 into EXTRACTED_S
+    MOV [0x2016],P0
+    MOV P0,EXTRACTED_R
     ; Load R into P1
-    MOV P1,[0x2006]
-    CMP P5,P1
-    JZ if_else_21
-if_else_21:
-    ; End - terminate program
-    JMP halt
+    MOV P1,[0x2008]
+    CMP P0,P1
+    JZ if_end_16
+if_end_16:
     ; Next S
+    MOV P0,[0x200A]
+    INC P0
+    MOV [0x200A],P0
+    CMP P0,15
+    JLE for_loop_14
+for_end_15:
+    ; Next R
     MOV P0,[0x2008]
     INC P0
     MOV [0x2008],P0
     CMP P0,15
-    JLE for_loop_19
-for_end_20:
-    ; Next R
-    MOV P0,[0x2006]
-    INC P0
-    MOV [0x2006],P0
-    CMP P0,15
-    JLE for_loop_17
-for_end_18:
+    JLE for_loop_12
+for_end_13:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,72
+    MOV P0,40
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
@@ -1313,7 +1024,7 @@ for_end_18:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x2004]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1371,268 +1082,14 @@ display_value_done:
     MOV P0,54
     MOV P1,15
     CHAR P0,P1
-    MOV P5,EXTRACTION_TESTS
-    CMP P5,256
-    JZ if_else_23
-if_else_23:
+    MOV P0,EXTRACTION_TESTS
+    CMP P0,256
+    JZ if_end_17
+if_end_17:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,80
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display 'A'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'x'
-    MOV P0,120
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; PXLON
-    MOV P5,30
-    MOV P1,200
-    MOV P6,36
-    ; PXLON at (P5,P1)
-    MOV VX,P5
-    MOV VY,P1
-    MOV P0,P6
-    SWRITE P0
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,88
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'x'
-    MOV P0,120
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'f'
-    MOV P0,102
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; PXLON
-    MOV P6,30
-    MOV P1,200
-    MOV P5,20
-    ; PXLON at (P6,P1)
-    MOV VX,P6
-    MOV VY,P1
-    MOV P0,P5
-    SWRITE P0
-    ; End - terminate program
-    JMP halt
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,96
+    MOV P0,48
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
@@ -1756,54 +1213,56 @@ if_else_23:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
+    ; ROUND_TRIP_TESTS = 
+    MOV P0,0
+    ; Store P0 into ROUND_TRIP_TESTS
+    MOV [0x2018],P0
     ; For C = 0 To 255
     MOV P0,0
-    MOV [0x200A],P0
-for_loop_25:
+    MOV [0x200C],P0
+for_loop_18:
     ; R = 
-    ; Load C into P5
-    MOV P5,[0x200A]
-    ; RAMP(P5)
-    SHR P5,4
-    ; Store P5 into R
-    MOV [0x2006],P5
+    ; Load C into P0
+    MOV P0,[0x200C]
+    ; RAMP(P0)
+    SHR P0,4
+    ; Store P0 into R
+    MOV [0x2008],P0
     ; S = 
-    ; Load C into P5
-    MOV P5,[0x200A]
-    ; SHADE(P5)
-    AND P5,15
-    ; Store P5 into S
-    MOV [0x2008],P5
-    ; RECREATED = 
-    ; Load R into P5
-    MOV P5,[0x2006]
-    ; Load S into P1
-    MOV P1,[0x2008]
-    ; COLOR(P5, P1)
-    SHL P5,4
-    OR P5,P1
-    ; Store P5 into RECREATED
-    MOV [0x2010],P5
-    ; Load RECREATED into P5
-    MOV P5,[0x2010]
-    ; Load C into P1
-    MOV P1,[0x200A]
-    CMP P5,P1
-    JZ if_else_27
-if_else_27:
-    ; End - terminate program
-    JMP halt
-    ; Next C
-    MOV P0,[0x200A]
-    INC P0
+    ; Load C into P0
+    MOV P0,[0x200C]
+    ; SHADE(P0)
+    AND P0,15
+    ; Store P0 into S
     MOV [0x200A],P0
+    ; RECREATED = 
+    ; Load R into P0
+    MOV P0,[0x2008]
+    ; Load S into P1
+    MOV P1,[0x200A]
+    ; COLOR(P0, P1)
+    SHL P0,4
+    OR P0,P1
+    ; Store P0 into RECREATED
+    MOV [0x201A],P0
+    ; Load RECREATED into P0
+    MOV P0,[0x201A]
+    ; Load C into P1
+    MOV P1,[0x200C]
+    CMP P0,P1
+    JZ if_end_20
+if_end_20:
+    ; Next C
+    MOV P0,[0x200C]
+    INC P0
+    MOV [0x200C],P0
     CMP P0,255
-    JLE for_loop_25
-for_end_26:
+    JLE for_loop_18
+for_end_19:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,104
+    MOV P0,56
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
@@ -1904,7 +1363,7 @@ for_end_26:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x2004]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1962,268 +1421,14 @@ display_value_done:
     MOV P0,54
     MOV P1,15
     CHAR P0,P1
-    MOV P5,ROUND_TRIP_TESTS
-    CMP P5,256
-    JZ if_else_29
-if_else_29:
+    MOV P0,ROUND_TRIP_TESTS
+    CMP P0,256
+    JZ if_end_21
+if_end_21:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,112
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display 'A'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '-'
-    MOV P0,45
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; PXLON
-    MOV P5,50
-    MOV P1,200
-    MOV P6,36
-    ; PXLON at (P5,P1)
-    MOV VX,P5
-    MOV VY,P1
-    MOV P0,P6
-    SWRITE P0
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,120
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '-'
-    MOV P0,45
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'f'
-    MOV P0,102
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; PXLON
-    MOV P6,50
-    MOV P1,200
-    MOV P5,20
-    ; PXLON at (P6,P1)
-    MOV VX,P6
-    MOV VY,P1
-    MOV P0,P5
-    SWRITE P0
-    ; End - terminate program
-    JMP halt
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,128
+    MOV P0,64
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
@@ -2327,10 +1532,34 @@ if_else_29:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
+    ; RED_COL = 
+    MOV P0,20
+    ; Store P0 into RED_COL
+    MOV [0x201C],P0
+    ; BLUE_COL = 
+    MOV P0,52
+    ; Store P0 into BLUE_COL
+    MOV [0x201E],P0
+    ; SUM_COLOR = 
+    ; Load RED_COL into P0
+    MOV P0,[0x201C]
+    ; Load BLUE_COL into P1
+    MOV P1,[0x201E]
+    ADD P0,P1
+    ; Store P0 into SUM_COLOR
+    MOV [0x2020],P0
+    ; DIFF_COLOR = 
+    ; Load RED_COL into P0
+    MOV P0,[0x201C]
+    ; Load BLUE_COL into P1
+    MOV P1,[0x201E]
+    SUB P0,P1
+    ; Store P0 into DIFF_COLOR
+    MOV [0x2022],P0
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,136
+    MOV P0,72
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
@@ -2387,7 +1616,7 @@ if_else_29:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x2004]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -2432,7 +1661,7 @@ display_value_done:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,144
+    MOV P0,80
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
@@ -2489,7 +1718,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x2004]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -2531,45 +1760,45 @@ display_num_loop:
     INC P2
     JMP display_num_loop
 display_value_done:
-    ; PXLON
-    MOV P5,100
+    ; Pxl-On
+    MOV P0,100
     MOV P1,200
-    ; Load RED_COL into P6
-    MOV P6,[0x2012]
-    ; PXLON at (P5,P1)
-    MOV VX,P5
+    ; Load RED_COL into P2
+    MOV P2,[0x201C]
+    ; Pxl-On at (P0,P1)
+    MOV VX,P0
     MOV VY,P1
-    MOV P0,P6
+    MOV P0,P2
     SWRITE P0
-    ; PXLON
-    MOV P6,110
+    ; Pxl-On
+    MOV P2,110
     MOV P1,200
-    ; Load BLUE_COL into P5
-    MOV P5,[0x2014]
-    ; PXLON at (P6,P1)
-    MOV VX,P6
+    ; Load BLUE_COL into P0
+    MOV P0,[0x201E]
+    ; Pxl-On at (P2,P1)
+    MOV VX,P2
     MOV VY,P1
-    MOV P0,P5
+    MOV P0,P0
     SWRITE P0
-    ; PXLON
-    MOV P5,120
+    ; Pxl-On
+    MOV P0,120
     MOV P1,200
-    ; Load SUM_COLOR into P6
-    MOV P6,[0x2016]
-    ; PXLON at (P5,P1)
-    MOV VX,P5
+    ; Load SUM_COLOR into P2
+    MOV P2,[0x2020]
+    ; Pxl-On at (P0,P1)
+    MOV VX,P0
     MOV VY,P1
-    MOV P0,P6
+    MOV P0,P2
     SWRITE P0
-    ; PXLON
-    MOV P6,130
+    ; Pxl-On
+    MOV P2,130
     MOV P1,200
-    ; Load DIFF_COLOR into P5
-    MOV P5,[0x2018]
-    ; PXLON at (P6,P1)
-    MOV VX,P6
+    ; Load DIFF_COLOR into P0
+    MOV P0,[0x2022]
+    ; Pxl-On at (P2,P1)
+    MOV VX,P2
     MOV VY,P1
-    MOV P0,P5
+    MOV P0,P0
     SWRITE P0
     ; Pause - wait for key press
 pause_loop:
@@ -2582,30 +1811,76 @@ pause_loop:
 halt:
 JMP halt
 ORG 0x2000
-DW 0  ; Variable I
-ORG 0x2002
-DW 0  ; Variable STR
-ORG 0x2004
 DW 0  ; Variable Y_POS
+ORG 0x2002
+DW 0  ; Variable I
+ORG 0x2004
+DW 0  ; Variable STR
 ORG 0x2006
-DW 0  ; Variable R
+DW 0  ; Variable VALID_TESTS
 ORG 0x2008
-DW 0  ; Variable S
+DW 0  ; Variable R
 ORG 0x200A
-DW 0  ; Variable C
+DW 0  ; Variable S
 ORG 0x200C
-DW 0  ; Variable EXPECTED
+DW 0  ; Variable C
 ORG 0x200E
-DW 0  ; Variable ORIGINAL
+DW 0  ; Variable EXPECTED
 ORG 0x2010
-DW 0  ; Variable RECREATED
+DW 0  ; Variable EXTRACTION_TESTS
 ORG 0x2012
-DW 0  ; Variable RED_COL
+DW 0  ; Variable ORIGINAL
 ORG 0x2014
-DW 0  ; Variable BLUE_COL
+DW 0  ; Variable EXTRACTED_R
 ORG 0x2016
-DW 0  ; Variable SUM_COLOR
+DW 0  ; Variable EXTRACTED_S
 ORG 0x2018
+DW 0  ; Variable ROUND_TRIP_TESTS
+ORG 0x201A
+DW 0  ; Variable RECREATED
+ORG 0x201C
+DW 0  ; Variable RED_COL
+ORG 0x201E
+DW 0  ; Variable BLUE_COL
+ORG 0x2020
+DW 0  ; Variable SUM_COLOR
+ORG 0x2022
 DW 0  ; Variable DIFF_COLOR
 
 ORG 0x1000
+
+; String concatenation subroutine
+str_concat:
+    ; P1 = left string address
+    ; Top of stack = right string address
+    ; Returns result address in P0
+    POP P2
+    POP P3
+    PUSH P2
+    
+    ; Allocate space for result string
+    MOV P0,0x6000
+    MOV P4,P0
+    
+    ; Copy left string
+str_cat_copy_left:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ str_cat_copy_right
+    MOV [P4],P5
+    INC P1
+    INC P4
+    JMP str_cat_copy_left
+    
+str_cat_copy_right:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ str_cat_done
+    MOV [P4],P5
+    INC P3
+    INC P4
+    JMP str_cat_copy_right
+    
+str_cat_done:
+    MOV [P4],0
+    RET

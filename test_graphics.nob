@@ -7,6 +7,14 @@ B = 20
 C = A + B * 2
 Disp "Math Result:", C
 
+// Test subroutines
+Define DrawBox
+  Line(50,50,150,50,7)
+  Line(150,50,150,100,7)
+  Line(150,100,50,100,7)
+  Line(50,100,50,50,7)
+Return
+
 // Test graphics operations
 Line(10,10,100,50,7)
 Circle(160,120,30,4,1)
@@ -16,14 +24,6 @@ PxlChange(240,100)
 
 // Test sound
 Sound(440,1000,200,0)
-
-// Test subroutines
-Define DrawBox
-  Line(50,50,150,50,7)
-  Line(150,50,150,100,7)
-  Line(150,100,50,100,7)
-  Line(50,100,50,50,7)
-Return
 
 Call DrawBox
 

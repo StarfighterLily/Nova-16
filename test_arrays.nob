@@ -1,0 +1,9 @@
+﻿REM Array Test
+CLRHOME
+DIM NUMBERS(5)
+FOR I = 0 TO 4
+    NUMBERS[I] = I * 10
+NEXT I
+FOR I = 0 TO 4
+    DISP "NUMBERS[" + STR(I) + "] = " + STR(NUMBERS[I])
+NEXT I

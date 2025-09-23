@@ -15,117 +15,117 @@ MOV VL,0
 start:
     ; ClrHome
     MOV P0,0
-    MOV [0xF102],P0
-    MOV [0xF103],P0
-    MOV [0xF100],P0
-    MOV [0xF101],P0
+    MOV VM,P0
+    MOV VL,P0
+    MOV VX,P0
+    MOV VY,P0
     SFILL P0
     ; Disp
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     MOV P0,0
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF103],P0
+    MOV VL,P0
     ; Display 'P'
     MOV P0,80
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'r'
     MOV P0,114
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'a'
     MOV P0,97
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'n'
     MOV P0,110
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'y'
     MOV P0,121
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'k'
     MOV P0,107
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'y'
     MOV P0,121
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 't'
     MOV P0,116
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'o'
     MOV P0,111
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'c'
     MOV P0,99
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'o'
     MOV P0,111
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'n'
     MOV P0,110
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 't'
     MOV P0,116
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'i'
     MOV P0,105
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'n'
     MOV P0,110
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'u'
     MOV P0,117
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Pause - wait for key press
 pause_loop:
@@ -135,66 +135,66 @@ pause_loop:
     KEYIN P0
     ; Disp
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     MOV P0,8
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF103],P0
+    MOV VL,P0
     ; Display 'G'
     MOV P0,71
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'o'
     MOV P0,111
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'i'
     MOV P0,105
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'n'
     MOV P0,110
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'g'
     MOV P0,103
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 't'
     MOV P0,116
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'o'
     MOV P0,111
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'l'
     MOV P0,108
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'a'
     MOV P0,97
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'b'
     MOV P0,98
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'l'
     MOV P0,108
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Goto test_label
     JMP test_label
@@ -202,191 +202,191 @@ pause_loop:
 skip_this:
     ; Disp
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     MOV P0,16
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF103],P0
+    MOV VL,P0
     ; Display 'T'
     MOV P0,84
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'h'
     MOV P0,104
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'i'
     MOV P0,105
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'h'
     MOV P0,104
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'o'
     MOV P0,111
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'u'
     MOV P0,117
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'l'
     MOV P0,108
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'd'
     MOV P0,100
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'b'
     MOV P0,98
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'k'
     MOV P0,107
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'i'
     MOV P0,105
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'p'
     MOV P0,112
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'p'
     MOV P0,112
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'd'
     MOV P0,100
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Lbl test_label
 test_label:
     ; Disp
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     MOV P0,24
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF103],P0
+    MOV VL,P0
     ; Display 'M'
     MOV P0,77
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'a'
     MOV P0,97
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'd'
     MOV P0,100
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'i'
     MOV P0,105
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 't'
     MOV P0,116
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 't'
     MOV P0,116
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'o'
     MOV P0,111
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 't'
     MOV P0,116
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'h'
     MOV P0,104
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'l'
     MOV P0,108
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'a'
     MOV P0,97
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'b'
     MOV P0,98
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'l'
     MOV P0,108
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display '!'
     MOV P0,33
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; End - terminate program
     JMP halt
@@ -396,3 +396,39 @@ halt:
 JMP halt
 
 ORG 0x1000
+
+; String concatenation subroutine
+str_concat:
+    ; P1 = left string address
+    ; Top of stack = right string address
+    ; Returns result address in P0
+    POP P2
+    POP P3
+    PUSH P2
+    
+    ; Allocate space for result string
+    MOV P0,0x6000
+    MOV P4,P0
+    
+    ; Copy left string
+str_cat_copy_left:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ str_cat_copy_right
+    MOV [P4],P5
+    INC P1
+    INC P4
+    JMP str_cat_copy_left
+    
+str_cat_copy_right:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ str_cat_done
+    MOV [P4],P5
+    INC P3
+    INC P4
+    JMP str_cat_copy_right
+    
+str_cat_done:
+    MOV [P4],0
+    RET

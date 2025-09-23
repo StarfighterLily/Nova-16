@@ -24,13 +24,13 @@ start:
     ; C = 
     ; Load A into P0
     MOV P0,[0x2000]
-    ; Load B into P2
-    MOV P2,[0x2002]
-    MOV P4,2
-    MUL P2,P3
+    ; Load B into P1
+    MOV P1,[0x2002]
+    MOV P2,2
+    MUL P1,P2
     ADD P0,P1
-    ; Store P4 into C
-    MOV [0x2004],P4
+    ; Store P0 into C
+    MOV [0x2004],P0
 
 ; Program end - infinite loop to keep display visible
 halt:
@@ -43,3 +43,39 @@ ORG 0x2004
 DW 0  ; Variable C
 
 ORG 0x1000
+
+; String concatenation subroutine
+str_concat:
+    ; P1 = left string address
+    ; Top of stack = right string address
+    ; Returns result address in P0
+    POP P2
+    POP P3
+    PUSH P2
+    
+    ; Allocate space for result string
+    MOV P0,0x6000
+    MOV P4,P0
+    
+    ; Copy left string
+str_cat_copy_left:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ str_cat_copy_right
+    MOV [P4],P5
+    INC P1
+    INC P4
+    JMP str_cat_copy_left
+    
+str_cat_copy_right:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ str_cat_done
+    MOV [P4],P5
+    INC P3
+    INC P4
+    JMP str_cat_copy_right
+    
+str_cat_done:
+    MOV [P4],0
+    RET

@@ -19,11 +19,11 @@ start:
     MOV [0x2000],P0
     ; Disp
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     MOV P0,0
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF103],P0
+    MOV VL,P0
     ; Load A into P0
     MOV P0,[0x2000]
     ; Display value (number or string)
@@ -40,16 +40,16 @@ display_str_loop:
     JZ display_value_done
     CMP P0,10
     JZ display_str_newline
-    MOV P3,7
+    MOV P3,15
     CHAR P0,P3
     INC P2
     JMP display_str_loop
 display_str_newline:
-    MOV P0,[0xF101]
+    MOV P0,VY
     ADD P0,8
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     INC P2
     JMP display_str_loop
 display_as_number:
@@ -62,7 +62,7 @@ display_num_loop:
     MOV P0,[P2]
     CMP P0,0
     JZ display_value_done
-    MOV P3,7
+    MOV P3,15
     CHAR P0,P3
     INC P2
     JMP display_num_loop
@@ -75,3 +75,39 @@ ORG 0x2000
 DW 0  ; Variable A
 
 ORG 0x1000
+
+; String concatenation subroutine
+str_concat:
+    ; P1 = left string address
+    ; Top of stack = right string address
+    ; Returns result address in P0
+    POP P2
+    POP P3
+    PUSH P2
+    
+    ; Allocate space for result string
+    MOV P0,0x6000
+    MOV P4,P0
+    
+    ; Copy left string
+str_cat_copy_left:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ str_cat_copy_right
+    MOV [P4],P5
+    INC P1
+    INC P4
+    JMP str_cat_copy_left
+    
+str_cat_copy_right:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ str_cat_done
+    MOV [P4],P5
+    INC P3
+    INC P4
+    JMP str_cat_copy_right
+    
+str_cat_done:
+    MOV [P4],0
+    RET

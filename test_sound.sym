@@ -1,6 +1,10 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-pause_loop 0x11C3
-sound_wait_loop 0x11BB
-halt 0x12ED
+pause_loop 0x11BC
+sound_wait_loop 0x11B4
+halt 0x12E3
+str_concat 0x1000
+str_cat_copy_left 0x1012
+str_cat_copy_right 0x102C
+str_cat_done 0x1046

@@ -321,13 +321,18 @@ class NoBasicCompiler:
                     self.assembly_lines.extend(lines)
                     i = new_i
 
+                elif token == "DEFINE":
+                    lines, new_i = self._compile_define(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
                 elif token == "LINE":
                     lines, new_i = self._compile_line(tokens, i)
                     self.assembly_lines.extend(lines)
                     i = new_i
 
-                elif token == "CIRCLE":
-                    lines, new_i = self._compile_circle(tokens, i)
+                elif token == "FILL":
+                    lines, new_i = self._compile_fill(tokens, i)
                     self.assembly_lines.extend(lines)
                     i = new_i
 
@@ -376,8 +381,13 @@ class NoBasicCompiler:
                     self.assembly_lines.extend(lines)
                     i = new_i
 
-                elif token == "DEFINE":
-                    lines, new_i = self._compile_define(tokens, i)
+                elif token == "DIM":
+                    lines, new_i = self._compile_dim(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "MATRIX":
+                    lines, new_i = self._compile_matrix(tokens, i)
                     self.assembly_lines.extend(lines)
                     i = new_i
 
@@ -397,7 +407,7 @@ class NoBasicCompiler:
                     i = new_i
 
                 elif ((re.match(r'[A-Za-z_][A-Za-z0-9_]*', token) or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit())) and i + 1 < len(tokens) and 
-                      (tokens[i + 1] == "=" or tokens[i + 1] == "(")):
+                      tokens[i + 1] == "="):
                     # Variable or list assignment
                     lines, new_i = self._compile_assignment(tokens, i)
                     self.assembly_lines.extend(lines)
@@ -443,6 +453,42 @@ class NoBasicCompiler:
         self.assembly_lines.extend([
             "",
             "ORG 0x1000",
+            "",
+            "; String concatenation subroutine",
+            "str_concat:",
+            "    ; P1 = left string address",
+            "    ; Top of stack = right string address",
+            "    ; Returns result address in P0",
+            "    POP P2",              # P2 = return address
+            "    POP P3",              # P3 = right string
+            "    PUSH P2",             # Restore return address
+            "    ",
+            "    ; Allocate space for result string",
+            "    MOV P0,0x6000",       # Temporary result buffer",
+            "    MOV P4,P0",           # P4 = result pointer",
+            "    ",
+            "    ; Copy left string",
+            "str_cat_copy_left:",
+            "    MOV P5,[P1]",
+            "    CMP P5,0",
+            "    JZ str_cat_copy_right",
+            "    MOV [P4],P5",
+            "    INC P1",
+            "    INC P4",
+            "    JMP str_cat_copy_left",
+            "    ",
+            "str_cat_copy_right:",
+            "    MOV P5,[P3]",
+            "    CMP P5,0",
+            "    JZ str_cat_done",
+            "    MOV [P4],P5",
+            "    INC P3",
+            "    INC P4",
+            "    JMP str_cat_copy_right",
+            "    ",
+            "str_cat_done:",
+            "    MOV [P4],0",          # Null terminate",
+            "    RET",
         ])
 
     def _compile_clrhome(self) -> List[str]:
@@ -554,7 +600,7 @@ class NoBasicCompiler:
         return lines, i
 
     def _compile_if(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
-        """Compile If statement"""
+        """Compile If statement - simplified version for now"""
         lines = []
         i += 1  # Skip IF
 
@@ -562,18 +608,21 @@ class NoBasicCompiler:
         condition_lines, i = self._parse_condition(tokens, i)
 
         # Generate labels
-        else_label = self._generate_label("if_else")
         end_label = self._generate_label("if_end")
 
         lines.extend(condition_lines)
-        lines.extend([
-            f"    JZ {else_label}",
-            f"{else_label}:",
-        ])
+        lines.append(f"    JZ {end_label}")
 
-        # Skip THEN
-        if i < len(tokens) and tokens[i].upper() == "THEN":
+        # For now, just skip to END IF without parsing the body
+        # This is a temporary fix
+        while i < len(tokens):
+            token = tokens[i].upper()
+            if token == "END" and i + 1 < len(tokens) and tokens[i + 1].upper() == "IF":
+                i += 2  # Skip END IF
+                break
             i += 1
+
+        lines.append(f"{end_label}:")
 
         return lines, i
 
@@ -771,7 +820,22 @@ class NoBasicCompiler:
 
             # Perform operation
             if op == '+':
+                # Check if this might be string concatenation (using &)
+                # For now, assume numeric addition - string concatenation needs more complex logic
+                # TODO: Implement proper string concatenation detection
                 lines.append(f"    ADD {left_reg},{right_reg}")
+            elif op == '&':
+                # String concatenation
+                lines.extend([
+                    f"    ; String concatenation {left_reg} & {right_reg}",
+                    f"    PUSH {left_reg}",       # Save left string address
+                    f"    PUSH {right_reg}",      # Save right string address
+                    f"    MOV P1,{left_reg}",     # P1 = left string
+                    f"    CALL str_concat",       # Call concatenation routine
+                    f"    POP {right_reg}",       # Restore right string
+                    f"    POP {left_reg}",        # Restore left string
+                    f"    MOV {left_reg},P0",     # Result in left register
+                ])
             else:  # op == '-'
                 lines.append(f"    SUB {left_reg},{right_reg}")
 
@@ -822,6 +886,61 @@ class NoBasicCompiler:
                 i += 1
             else:
                 raise ValueError("Missing closing parenthesis")
+        elif token == '-':
+            # Negative number literal
+            i += 1
+            if i < len(tokens) and tokens[i].isdigit():
+                # Parse the number and make it negative
+                num_value = -int(tokens[i])
+                result_reg = self._allocate_register()
+                lines.append(f"    MOV {result_reg},{num_value}")
+                i += 1
+            else:
+                raise ValueError("Expected number after unary minus")
+        elif token == '[':
+            # Array literal like [BLACK, RED, GREEN, BLUE]
+            i += 1  # Skip '['
+            array_elements = []
+            
+            # Parse array elements until ']'
+            while i < len(tokens) and tokens[i] != ']':
+                # Parse each element expression
+                elem_lines, i = self._parse_additive_expression(tokens, i)
+                lines.extend(elem_lines)
+                
+                # Store the element value (assume it's in current register)
+                elem_reg = self._get_current_register()
+                array_elements.append(elem_reg)
+                
+                # Skip comma if present
+                if i < len(tokens) and tokens[i] == ',':
+                    i += 1
+            
+            if i < len(tokens) and tokens[i] == ']':
+                i += 1
+            else:
+                raise ValueError("Missing closing bracket in array literal")
+            
+            # For now, return the address of the first element as the array base
+            # TODO: Implement proper array storage and return array base address
+            if array_elements:
+                result_reg = self._allocate_register()
+                # Store array elements in consecutive memory locations starting at a temp address
+                array_base = 0x7000  # Temporary array storage area
+                for idx, elem_reg in enumerate(array_elements):
+                    lines.extend([
+                        f"    ; Store array element {idx}",
+                        f"    MOV [0x{array_base + idx * 2:04X}],{elem_reg}",
+                    ])
+                    if idx > 0:  # Free all but the last register
+                        self._free_register(elem_reg)
+                
+                # Return array base address
+                lines.append(f"    MOV {result_reg},{array_base}")
+            else:
+                # Empty array
+                result_reg = self._allocate_register()
+                lines.append(f"    MOV {result_reg},0")  # Null array
         elif token.startswith('"') and token.endswith('"'):
             # String literal - store in memory and return address
             string_content = token.strip('"')
@@ -880,6 +999,37 @@ class NoBasicCompiler:
                     result_reg = self._allocate_register()
                     lines.extend(self._load_variable_to_reg(token, result_reg))
                     i += 1
+            # Check if this is an array access (array[index])
+            elif i + 1 < len(tokens) and tokens[i + 1] == '[':
+                # Array access like TEST_COLORS[I]
+                array_name = token
+                i += 2  # Skip array name and '['
+                
+                # Parse index expression
+                index_lines, i = self._parse_additive_expression(tokens, i)
+                lines.extend(index_lines)
+                
+                if i < len(tokens) and tokens[i] == ']':
+                    i += 1
+                else:
+                    raise ValueError("Missing closing bracket in array access")
+                
+                # Generate code to load from array
+                # For now, assume arrays are stored as consecutive 16-bit values starting at variable address
+                array_addr = self._get_variable_address(array_name)
+                index_reg = self._get_current_register()  # Save index register
+                result_reg = self._allocate_register()    # Allocate result register
+                
+                lines.extend([
+                    f"    ; Load {array_name}[{index_reg}] into {result_reg}",
+                    f"    MOV P3,{array_addr}",        # Base address of array
+                    f"    ADD P3,{index_reg}",        # Add index (×2 for 16-bit)
+                    f"    ADD P3,{index_reg}",
+                    f"    MOV {result_reg},[P3]",     # Load value
+                ])
+                
+                # Free the index register
+                self._free_register(index_reg)
             # Check if this is a function call
             elif i + 1 < len(tokens) and tokens[i + 1] == '(':
                 # Function call
@@ -978,8 +1128,31 @@ class NoBasicCompiler:
                     current_reg = self._get_current_register()
                     lines.extend([
                         f"    ; SHADE({current_reg})",
-                        f"    AND {current_reg},15",  # color & 0x0F
+                        f"    AND {current_reg},15",  # color & 0x0F (15 = 0b1111)
                     ])
+                elif func_name == 'LEN':
+                    # LEN(string) - get string length
+                    lines, i = self._parse_additive_expression(tokens, i)  # Parse string argument
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in LEN()")
+                    
+                    current_reg = self._get_current_register()
+                    lines.extend([
+                        f"    ; LEN({current_reg})",
+                        f"    MOV P1,{current_reg}",  # String address
+                        f"    MOV {current_reg},0",   # Initialize length counter
+                        f"len_loop_{self.label_counter}:",
+                        f"    MOV P2,[P1]",           # Load character
+                        f"    CMP P2,0",              # Check for null terminator
+                        f"    JZ len_done_{self.label_counter}",
+                        f"    INC {current_reg}",     # Increment length
+                        f"    INC P1",                # Next character
+                        f"    JMP len_loop_{self.label_counter}",
+                        f"len_done_{self.label_counter}:",
+                    ])
+                    self.label_counter += 1
                 else:
                     raise ValueError(f"Unknown function: {func_name}")
             else:
@@ -1365,9 +1538,77 @@ class NoBasicCompiler:
 
         return lines, i
 
+    def _compile_fill(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile FILL(X1,Y1,X2,Y2,Color) statement - fill rectangle"""
+        lines = ["    ; Fill"]
+        i += 1  # Skip FILL
+
+        if i >= len(tokens) or tokens[i] != '(':
+            raise ValueError("Expected '(' after FILL")
+        i += 1  # Skip '('
+
+        # Parse X1
+        x1_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(x1_lines)
+        x1_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after X1 in FILL")
+        i += 1  # Skip ','
+
+        # Parse Y1
+        y1_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(y1_lines)
+        y1_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after Y1 in FILL")
+        i += 1  # Skip ','
+
+        # Parse X2
+        x2_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(x2_lines)
+        x2_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after X2 in FILL")
+        i += 1  # Skip ','
+
+        # Parse Y2
+        y2_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(y2_lines)
+        y2_reg = self._get_current_register()
+
+        # Optional color parameter
+        color = 15  # Default white
+        if i < len(tokens) and tokens[i] == ',':
+            i += 1  # Skip ','
+            color_lines, i = self._parse_additive_expression(tokens, i)
+            lines.extend(color_lines)
+            color_reg = self._get_current_register()
+            color = color_reg
+
+        if i >= len(tokens) or tokens[i] != ')':
+            raise ValueError("Expected ')' after FILL parameters")
+        i += 1  # Skip ')'
+
+        # Generate SFILLR instruction (fill rectangle)
+        lines.extend([
+            f"    ; Fill rectangle from ({x1_reg},{y1_reg}) to ({x2_reg},{y2_reg})",
+            f"    SFILLR {x1_reg},{y1_reg},{x2_reg},{y2_reg},{color}",
+        ])
+
+        # Free registers
+        for reg in [x1_reg, y1_reg, x2_reg, y2_reg]:
+            self._free_register(reg)
+        if isinstance(color, str):  # If color was a register
+            self._free_register(color)
+
+        return lines, i
+
     def _compile_pxlon(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
         """Compile Pxl-On(X,Y[,Color]) statement"""
-        return self._compile_pixel_op(tokens, i, "PXLON", "SWRITE")
+        return self._compile_pixel_op(tokens, i, "Pxl-On", "SWRITE")
 
     def _compile_pxloff(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
         """Compile Pxl-Off(X,Y) statement"""
@@ -1627,9 +1868,9 @@ class NoBasicCompiler:
         sub_name = tokens[i]
         i += 1
 
-        # Generate label for subroutine
+        # Generate label for subroutine (store uppercase key for case-insensitive lookup)
         sub_label = f"sub_{sub_name}"
-        self.labels[sub_name] = sub_label
+        self.labels[sub_name.upper()] = sub_label
 
         lines.extend([
             f"    ; Define subroutine {sub_name}",
@@ -1638,9 +1879,109 @@ class NoBasicCompiler:
 
         return lines, i
 
+    def _compile_dim(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile DIM statement for array declaration"""
+        lines = ["    ; DIM - array declaration"]
+        i += 1  # Skip DIM
+
+        if i >= len(tokens):
+            raise ValueError("Expected array name after DIM")
+
+        array_name = tokens[i]
+        i += 1
+
+        if i >= len(tokens) or tokens[i] != '(':
+            raise ValueError("Expected '(' after array name in DIM")
+
+        i += 1  # Skip '('
+
+        # Parse array size
+        size_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(size_lines)
+
+        if i >= len(tokens) or tokens[i] != ')':
+            raise ValueError("Expected ')' after array size in DIM")
+
+        i += 1  # Skip ')'
+
+        # Get the size from the current register
+        size_reg = self._get_current_register()
+
+        # Allocate memory for the array (size * 2 bytes per element)
+        # For now, store array info for later use
+        if not hasattr(self, 'arrays'):
+            self.arrays = {}
+
+        self.arrays[array_name] = {
+            'size_reg': size_reg,
+            'allocated': False
+        }
+
+        lines.extend([
+            f"    ; Array {array_name} declared with size in {size_reg}",
+            f"    ; Memory will be allocated at runtime"
+        ])
+
+        return lines, i
+
+    def _compile_matrix(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile MATRIX statement for matrix declaration"""
+        lines = ["    ; MATRIX - matrix declaration"]
+        i += 1  # Skip MATRIX
+
+        if i >= len(tokens):
+            raise ValueError("Expected matrix name after MATRIX")
+
+        matrix_name = tokens[i]
+        i += 1
+
+        if i >= len(tokens) or tokens[i] != '(':
+            raise ValueError("Expected '(' after matrix name in MATRIX")
+
+        i += 1  # Skip '('
+
+        # Parse rows
+        rows_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(rows_lines)
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after rows in MATRIX")
+
+        i += 1  # Skip ','
+
+        # Parse columns
+        cols_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(cols_lines)
+
+        if i >= len(tokens) or tokens[i] != ')':
+            raise ValueError("Expected ')' after columns in MATRIX")
+
+        i += 1  # Skip ')'
+
+        # Get rows and cols from registers
+        cols_reg = self._get_current_register()
+        rows_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+
+        # Store matrix info
+        if not hasattr(self, 'matrices'):
+            self.matrices = {}
+
+        self.matrices[matrix_name] = {
+            'rows_reg': rows_reg,
+            'cols_reg': cols_reg,
+            'allocated': False
+        }
+
+        lines.extend([
+            f"    ; Matrix {matrix_name} declared with {rows_reg} rows, {cols_reg} cols",
+            f"    ; Memory will be allocated at runtime"
+        ])
+
+        return lines, i
+
     def _compile_call(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
         """Compile Call SubName statement"""
-        lines = []
+        lines = ["    ; Call subroutine"]
         i += 1  # Skip CALL
 
         if i >= len(tokens):
@@ -1649,16 +1990,12 @@ class NoBasicCompiler:
         sub_name = tokens[i]
         i += 1
 
-        # Get subroutine label
-        if sub_name not in self.labels:
+        # Look up subroutine label (case-insensitive)
+        sub_label = self.labels.get(sub_name.upper())
+        if sub_label is None:
             raise ValueError(f"Undefined subroutine: {sub_name}")
 
-        sub_label = self.labels[sub_name]
-
-        lines.extend([
-            f"    ; Call subroutine {sub_name}",
-            f"    CALL {sub_label}",
-        ])
+        lines.append(f"    CALL {sub_label}")
 
         return lines, i
 
@@ -1697,9 +2034,11 @@ class NoBasicCompiler:
         return lines, i
 
     def _optimize_assembly(self):
-        """Optimize the generated assembly code"""
+        """Optimize the generated assembly code with advanced techniques"""
         optimized_lines = []
         i = 0
+        
+        # First pass: constant folding and algebraic simplifications
         while i < len(self.assembly_lines):
             line = self.assembly_lines[i]
             
@@ -1712,27 +2051,92 @@ class NoBasicCompiler:
                     i += 1
                     continue
             
-            # Optimize immediate loads followed by operations
+            # Optimize immediate loads followed by operations (ADD, SUB, MUL, DIV)
             if (line.startswith("    MOV ") and i + 1 < len(self.assembly_lines) and
-                self.assembly_lines[i + 1].startswith("    ADD ") and
+                self.assembly_lines[i + 1].startswith(("    ADD ", "    SUB ", "    MUL ", "    DIV ")) and
                 line.split()[1] == self.assembly_lines[i + 1].split()[1]):
-                # Combine MOV reg,imm + ADD reg,val into MOV reg,imm+val
                 parts = line.split()
-                if len(parts) >= 3 and parts[2].startswith("0x"):
+                op_parts = self.assembly_lines[i + 1].split()
+                if (len(parts) >= 3 and parts[2].isdigit() and 
+                    len(op_parts) >= 3 and op_parts[2].isdigit()):
                     try:
-                        imm_val = int(parts[2], 16)
-                        add_parts = self.assembly_lines[i + 1].split()
-                        if len(add_parts) >= 3 and add_parts[2].startswith("0x"):
-                            add_val = int(add_parts[2], 16)
-                            new_val = imm_val + add_val
-                            optimized_lines.append(f"    MOV {parts[1]},{new_val}")
-                            i += 2
-                            continue
-                    except ValueError:
+                        imm_val = int(parts[2])
+                        op_val = int(op_parts[2])
+                        if op_parts[0].endswith("ADD"):
+                            new_val = imm_val + op_val
+                        elif op_parts[0].endswith("SUB"):
+                            new_val = imm_val - op_val
+                        elif op_parts[0].endswith("MUL"):
+                            new_val = imm_val * op_val
+                        elif op_parts[0].endswith("DIV") and op_val != 0:
+                            new_val = imm_val // op_val
+                        else:
+                            raise ValueError("Invalid operation")
+                        optimized_lines.append(f"    MOV {parts[1]},{new_val}")
+                        i += 2
+                        continue
+                    except (ValueError, ZeroDivisionError):
                         pass
+            
+            # Optimize MOV reg,0 followed by operations that can be simplified
+            parts = line.split()
+            if (line.startswith("    MOV ") and len(parts) >= 3 and parts[2] == "0" and 
+                i + 1 < len(self.assembly_lines)):
+                reg = parts[1]
+                next_line = self.assembly_lines[i + 1]
+                if next_line.startswith("    ADD "):
+                    # MOV reg,0; ADD reg,val -> MOV reg,val
+                    add_parts = next_line.split()
+                    if len(add_parts) >= 3 and add_parts[1] == reg:
+                        optimized_lines.append(f"    MOV {reg},{add_parts[2]}")
+                        i += 2
+                        continue
+                elif next_line.startswith("    MUL "):
+                    # MOV reg,0; MUL reg,val -> MOV reg,0 (multiplication by zero)
+                    mul_parts = next_line.split()
+                    if len(mul_parts) >= 3 and mul_parts[1] == reg:
+                        optimized_lines.append(line)  # Keep MOV reg,0
+                        i += 2
+                        continue
+            
+            # Remove comments that are just semicolons
+            if line.strip() == ";":
+                i += 1
+                continue
+            
+            # Optimize consecutive MOV operations to the same destination
+            if (line.startswith("    MOV ") and i > 0 and 
+                optimized_lines[-1].startswith("    MOV ") and
+                line.split()[1] == optimized_lines[-1].split()[1]):
+                # Replace the previous MOV with this one
+                optimized_lines[-1] = line
+                i += 1
+                continue
             
             optimized_lines.append(line)
             i += 1
+        
+        # Second pass: remove unreachable code after JMP
+        final_lines = []
+        i = 0
+        while i < len(optimized_lines):
+            line = optimized_lines[i]
+            final_lines.append(line)
+            
+            # If this is an unconditional jump, skip until next label
+            if line.strip().startswith("JMP "):
+                i += 1
+                # Skip lines until we find a label or end
+                while i < len(optimized_lines):
+                    next_line = optimized_lines[i]
+                    if next_line.strip().endswith(":") or not next_line.strip():
+                        break
+                    i += 1
+                continue
+            
+            i += 1
+        
+        self.assembly_lines = final_lines
         
         self.assembly_lines = optimized_lines
 

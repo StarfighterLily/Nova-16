@@ -1,0 +1,5 @@
+REM Advanced NoBASIC Features Test
+CLRHOME
+DIM COLORS(4)
+COLORS[0] = RED
+PAUSE

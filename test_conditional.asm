@@ -15,10 +15,10 @@ MOV VL,0
 start:
     ; ClrHome
     MOV P0,0
-    MOV [0xF102],P0
-    MOV [0xF103],P0
-    MOV [0xF100],P0
-    MOV [0xF101],P0
+    MOV VM,P0
+    MOV VL,P0
+    MOV VX,P0
+    MOV VY,P0
     SFILL P0
     ; A = 
     MOV P0,10
@@ -33,65 +33,8 @@ start:
     ; Load B into P1
     MOV P1,[0x2002]
     CMP P0,P1
-    JZ if_else_1
-if_else_1:
-    ; Disp
-    MOV P0,0
-    MOV [0xF100],P0
-    MOV P0,0
-    MOV [0xF101],P0
-    MOV P0,0
-    MOV [0xF103],P0
-    ; Display 'A'
-    MOV P0,65
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'g'
-    MOV P0,103
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,7
-    CHAR P0,P1
-    ; End - terminate program
-    JMP halt
+    JZ if_end_1
+if_end_1:
 
 ; Program end - infinite loop to keep display visible
 halt:
@@ -102,3 +45,39 @@ ORG 0x2002
 DW 0  ; Variable B
 
 ORG 0x1000
+
+; String concatenation subroutine
+str_concat:
+    ; P1 = left string address
+    ; Top of stack = right string address
+    ; Returns result address in P0
+    POP P2
+    POP P3
+    PUSH P2
+    
+    ; Allocate space for result string
+    MOV P0,0x6000
+    MOV P4,P0
+    
+    ; Copy left string
+str_cat_copy_left:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ str_cat_copy_right
+    MOV [P4],P5
+    INC P1
+    INC P4
+    JMP str_cat_copy_left
+    
+str_cat_copy_right:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ str_cat_done
+    MOV [P4],P5
+    INC P3
+    INC P4
+    JMP str_cat_copy_right
+    
+str_cat_done:
+    MOV [P4],0
+    RET

@@ -15,121 +15,121 @@ MOV VL,0
 start:
     ; ClrHome
     MOV P0,0
-    MOV [0xF102],P0
-    MOV [0xF103],P0
-    MOV [0xF100],P0
-    MOV [0xF101],P0
+    MOV VM,P0
+    MOV VL,P0
+    MOV VX,P0
+    MOV VY,P0
     SFILL P0
     ; Disp
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     MOV P0,0
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF103],P0
+    MOV VL,P0
     ; Display 'N'
     MOV P0,78
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'o'
     MOV P0,111
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'B'
     MOV P0,66
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'A'
     MOV P0,65
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'S'
     MOV P0,83
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'I'
     MOV P0,73
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'C'
     MOV P0,67
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'C'
     MOV P0,67
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'o'
     MOV P0,111
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'm'
     MOV P0,109
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'p'
     MOV P0,112
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'r'
     MOV P0,114
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'h'
     MOV P0,104
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'n'
     MOV P0,110
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'i'
     MOV P0,105
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'v'
     MOV P0,118
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'T'
     MOV P0,84
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 't'
     MOV P0,116
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; A = 
     MOV P0,5
@@ -142,104 +142,104 @@ start:
     ; C = 
     ; Load A into P0
     MOV P0,[0x2000]
-    ; Load B into P2
-    MOV P2,[0x2002]
-    MOV P4,2
-    MUL P2,P3
+    ; Load B into P1
+    MOV P1,[0x2002]
+    MOV P2,2
+    MUL P1,P2
     ADD P0,P1
-    ; Store P4 into C
-    MOV [0x2004],P4
+    ; Store P0 into C
+    MOV [0x2004],P0
     ; D = 
-    ; Load C into P4
-    MOV P4,[0x2004]
-    MOV P3,3
-    DIV P4,P1
-    ; Store P3 into D
-    MOV [0x2006],P3
+    ; Load C into P0
+    MOV P0,[0x2004]
+    MOV P1,3
+    DIV P0,P1
+    ; Store P0 into D
+    MOV [0x2006],P0
     ; Disp
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     MOV P0,8
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF103],P0
+    MOV VL,P0
     ; Display 'E'
     MOV P0,69
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'x'
     MOV P0,120
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'p'
     MOV P0,112
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'r'
     MOV P0,114
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'i'
     MOV P0,105
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'o'
     MOV P0,111
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'n'
     MOV P0,110
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'r'
     MOV P0,114
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'u'
     MOV P0,117
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'l'
     MOV P0,108
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 't'
     MOV P0,116
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ':'
     MOV P0,58
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
-    MOV P0,[0xF101]
+    MOV P0,VY
     ADD P0,8
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     ; Load D into P0
     MOV P0,[0x2006]
     ; Display value (number or string)
@@ -256,16 +256,16 @@ display_str_loop:
     JZ display_value_done
     CMP P0,10
     JZ display_str_newline
-    MOV P3,7
+    MOV P3,15
     CHAR P0,P3
     INC P2
     JMP display_str_loop
 display_str_newline:
-    MOV P0,[0xF101]
+    MOV P0,VY
     ADD P0,8
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     INC P2
     JMP display_str_loop
 display_as_number:
@@ -278,99 +278,75 @@ display_num_loop:
     MOV P0,[P2]
     CMP P0,0
     JZ display_value_done
-    MOV P3,7
+    MOV P3,15
     CHAR P0,P3
     INC P2
     JMP display_num_loop
 display_value_done:
-    ; L1 = 
-    MOV P3,100
-    ; Store to L1(1)
-    MOV [0x3002],P3
-    ; L1 = 
-    MOV P3,200
-    ; Store to L1(2)
-    MOV [0x3004],P3
-    ; L1 = 
-    MOV P3,1
-    ; Load L1(P3) into P1
-    MOV P2,12288
-    ADD P2,P3
-    ADD P2,P3
-    MOV P1,[P2]
-    MOV P6,2
-    ; Load L1(P6) into P7
-    MOV P2,12288
-    ADD P2,P6
-    ADD P2,P6
-    MOV P7,[P2]
-    ADD P1,P5
-    ; Store to L1(3)
-    MOV [0x3006],P7
     ; Disp
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     MOV P0,24
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF103],P0
+    MOV VL,P0
     ; Display 'L'
     MOV P0,76
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'i'
     MOV P0,105
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 's'
     MOV P0,115
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 't'
     MOV P0,116
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ' '
     MOV P0,32
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'l'
     MOV P0,108
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'm'
     MOV P0,109
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'e'
     MOV P0,101
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 'n'
     MOV P0,110
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display 't'
     MOV P0,116
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
     ; Display ':'
     MOV P0,58
-    MOV P1,7
+    MOV P1,15
     CHAR P0,P1
-    MOV P0,[0xF101]
+    MOV P0,VY
     ADD P0,8
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     MOV P0,3
     ; Display value (number or string)
     MOV P1,P0
@@ -386,16 +362,16 @@ display_str_loop:
     JZ display_value_done
     CMP P0,10
     JZ display_str_newline
-    MOV P3,7
+    MOV P3,15
     CHAR P0,P3
     INC P2
     JMP display_str_loop
 display_str_newline:
-    MOV P0,[0xF101]
+    MOV P0,VY
     ADD P0,8
-    MOV [0xF101],P0
+    MOV VY,P0
     MOV P0,0
-    MOV [0xF100],P0
+    MOV VX,P0
     INC P2
     JMP display_str_loop
 display_as_number:
@@ -408,515 +384,18 @@ display_num_loop:
     MOV P0,[P2]
     CMP P0,0
     JZ display_value_done
-    MOV P3,7
+    MOV P3,15
     CHAR P0,P3
     INC P2
     JMP display_num_loop
 display_value_done:
-    ; Load A into P7
-    MOV P7,[0x2000]
-    ; Load B into P5
-    MOV P5,[0x2002]
-    CMP P7,P5
-    JZ if_else_1
-if_else_1:
-    ; Disp
-    MOV P0,0
-    MOV [0xF100],P0
-    MOV P0,40
-    MOV [0xF101],P0
-    MOV P0,0
-    MOV [0xF103],P0
-    ; Display 'A'
-    MOV P0,65
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'h'
-    MOV P0,104
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'B'
-    MOV P0,66
-    MOV P1,7
-    CHAR P0,P1
-    ; End - terminate program
-    JMP halt
-    ; For I = 1 To 5
-    MOV P0,1
-    MOV [0x2008],P0
-for_loop_3:
-    ; Disp
-    MOV P0,0
-    MOV [0xF100],P0
-    MOV P0,48
-    MOV [0xF101],P0
-    MOV P0,0
-    MOV [0xF103],P0
-    ; Display 'L'
-    MOV P0,76
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,7
-    CHAR P0,P1
-    MOV P0,[0xF101]
-    ADD P0,8
-    MOV [0xF101],P0
-    MOV P0,0
-    MOV [0xF100],P0
-    ; Load I into P0
-    MOV P0,[0x2008]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,7
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,[0xF101]
-    ADD P0,8
-    MOV [0xF101],P0
-    MOV P0,0
-    MOV [0xF100],P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,7
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; End - terminate program
-    JMP halt
-    ; X = 
-    MOV P7,0
-    ; Store P7 into X
-    MOV [0x200A],P7
-    ; While loop
-while_loop_5:
-    ; Load X into P7
-    MOV P7,[0x200A]
-    CMP P7,3
-    JZ while_end_6
-    ; Disp
-    MOV P0,0
-    MOV [0xF100],P0
-    MOV P0,64
-    MOV [0xF101],P0
-    MOV P0,0
-    MOV [0xF103],P0
-    ; Display 'W'
-    MOV P0,87
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'h'
-    MOV P0,104
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,7
-    CHAR P0,P1
-    MOV P0,[0xF101]
-    ADD P0,8
-    MOV [0xF101],P0
-    MOV P0,0
-    MOV [0xF100],P0
-    ; Load X into P0
-    MOV P0,[0x200A]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,7
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,[0xF101]
-    ADD P0,8
-    MOV [0xF101],P0
-    MOV P0,0
-    MOV [0xF100],P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,7
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; X = 
-    ; Load X into P7
-    MOV P7,[0x200A]
-    MOV P0,1
-    ADD P7,P5
-    ; Store P7 into X
-    MOV [0x200A],P7
-    JMP while_loop_5
-while_end_6:
-    ; Define subroutine DrawShape
-sub_DrawShape:
-    ; Line
-    MOV P7,50
-    MOV P5,150
-    MOV P0,3
-    ; Draw line from (P7,P5) to (P5,P5)
-    SLINE P7,P5,P5,P5,P5
-    ; Circle
-    MOV P5,100
-    MOV P7,120
-    MOV P0,1
-    ; Draw circle at (P5,P7) radius P7
-    SCIRC P5,P7,P7,P7,P7
-    ; Return from subroutine
-    RET
-    ; Call subroutine DrawShape
-    CALL sub_DrawShape
-    ; Sound
-    MOV P7,440
-    MOV P5,300
-    MOV P0,0
-    ; Sound freq=P7, duration=P5, vol=P5, wave=P5
-    MOV SA,0x2000
-    MOV SF,P7
-    MOV SV,P5
-    MOV SW,P5
-    SPLAY
-    ; Wait for duration
-    MOV P2,P5
-sound_wait_loop:
-    DEC P2
-    JNZ sound_wait_loop
-    SSTOP
-    ; Disp
-    MOV P0,0
-    MOV [0xF100],P0
-    MOV P0,80
-    MOV [0xF101],P0
-    MOV P0,0
-    MOV [0xF103],P0
-    ; Display 'A'
-    MOV P0,65
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,7
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'f'
-    MOV P0,102
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,7
-    CHAR P0,P1
-    ; Display 'y'
-    MOV P0,121
-    MOV P1,7
-    CHAR P0,P1
-    ; Display '!'
-    MOV P0,33
-    MOV P1,7
-    CHAR P0,P1
-    ; Pause - wait for key press
-pause_loop:
-    KEYSTAT P0
-    CMP P0,0
-    JZ pause_loop
-    KEYIN P0
-    ; End - terminate program
-    JMP halt
+    ; Load A into P0
+    MOV P0,[0x2000]
+    ; Load B into P1
+    MOV P1,[0x2002]
+    CMP P0,P1
+    JZ if_end_1
+if_end_1:
 
 ; Program end - infinite loop to keep display visible
 halt:
@@ -929,9 +408,41 @@ ORG 0x2004
 DW 0  ; Variable C
 ORG 0x2006
 DW 0  ; Variable D
-ORG 0x2008
-DW 0  ; Variable I
-ORG 0x200A
-DW 0  ; Variable X
 
 ORG 0x1000
+
+; String concatenation subroutine
+str_concat:
+    ; P1 = left string address
+    ; Top of stack = right string address
+    ; Returns result address in P0
+    POP P2
+    POP P3
+    PUSH P2
+    
+    ; Allocate space for result string
+    MOV P0,0x6000
+    MOV P4,P0
+    
+    ; Copy left string
+str_cat_copy_left:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ str_cat_copy_right
+    MOV [P4],P5
+    INC P1
+    INC P4
+    JMP str_cat_copy_left
+    
+str_cat_copy_right:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ str_cat_done
+    MOV [P4],P5
+    INC P3
+    INC P4
+    JMP str_cat_copy_right
+    
+str_cat_done:
+    MOV [P4],0
+    RET

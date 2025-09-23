@@ -1,0 +1,73 @@
+REM Complex Expressions and Arrays Test
+REM Tests advanced expression evaluation, array operations, and complex logic
+
+CLRHOME
+
+REM Test complex mathematical expressions
+DISP "Testing complex expressions:"
+
+A = 5
+B = 3
+C = 2
+
+RESULT1 = A * B + C * 2
+DISP "A * B + C * 2 = " + STR(RESULT1)
+
+RESULT2 = (A + B) * C - A / 2
+DISP " (A + B) * C - A / 2 = " + STR(RESULT2)
+
+REM Test array operations
+DISP "Testing array operations:"
+
+NUMBERS = [10, 20, 30, 40, 50]
+SUM = 0
+
+FOR I = 0 TO 4
+    SUM = SUM + NUMBERS[I]
+    DISP "Element " + STR(I) + ": " + STR(NUMBERS[I])
+NEXT I
+
+DISP "Sum of array: " + STR(SUM)
+DISP "Average: " + STR(SUM / 5)
+
+REM Test color array and graphics
+DISP "Testing color arrays and graphics:"
+
+COLORS = [RED, GREEN, BLUE, YELLOW, MAGENTA, CYAN]
+Y_POS = 50
+
+FOR I = 0 TO 5
+    X = I * 40 + 10
+    PXLON(X, Y_POS, COLORS[I])
+    PXLON(X + 1, Y_POS, COLORS[I])
+    PXLON(X, Y_POS + 1, COLORS[I])
+    PXLON(X + 1, Y_POS + 1, COLORS[I])
+NEXT I
+
+REM Test nested loops with complex conditions
+DISP "Testing nested loops:"
+
+FOR X = 0 TO 10 STEP 2
+    FOR Y = 0 TO 10 STEP 2
+        IF X + Y <= 10 AND X * Y >= 0
+            COLOR_VAL = (X + Y) * 256 / 20  REM Scale to color range
+            PXLON(200 + X, 100 + Y, COLOR_VAL)
+        END IF
+    NEXT Y
+NEXT X
+
+REM Test string-like operations (simulated with numbers)
+DISP "Testing complex logic:"
+
+SCORE = 0
+FOR I = 1 TO 10
+    IF I MOD 2 = 0
+        SCORE = SCORE + I * 2
+    ELSE
+        SCORE = SCORE + I
+    END IF
+NEXT I
+
+DISP "Final score: " + STR(SCORE)
+
+PAUSE

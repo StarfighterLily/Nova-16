@@ -1,5 +1,5 @@
 {
-  "cycle": 10000,
+  "cycle": 0,
   "timestamp": "Final Report",
   "statistics": {
     "total_pixel_writes": 0,
@@ -13,4 +13,13 @@
     "min_y": 255
   },
   "video_registers": {
-    "VX": 
+    "VX": 0,
+    "VY": 0,
+    "VM": 0,
+    "VL": 0
+  },
+  "layers_changed": [],
+  "recent_pixels": [],
+  "recent_register_changes": [],
+  "instruction_summary": {}
+}

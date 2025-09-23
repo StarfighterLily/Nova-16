@@ -135,18 +135,27 @@ start:
     MOV P0,0
     MOV [0x2000],P0
 for_loop_1:
-    ; PXLON
+    ; COLOR_VAL = 
     ; Load I into P0
     MOV P0,[0x2000]
-    MOV P2,8
+    MOV P1,8
+    ; COLOR(P0, P1)
+    SHL P0,4
+    OR P0,P1
+    ; Store P0 into COLOR_VAL
+    MOV [0x2002],P0
+    ; Pxl-On
+    ; Load I into P0
+    MOV P0,[0x2000]
+    MOV P1,8
     MUL P0,P1
     MOV P1,10
-    ; Load COLOR_VAL into P3
-    MOV P3,[0x2002]
-    ; PXLON at (P2,P1)
-    MOV VX,P2
+    ; Load COLOR_VAL into P2
+    MOV P2,[0x2002]
+    ; Pxl-On at (P0,P1)
+    MOV VX,P0
     MOV VY,P1
-    MOV P0,P3
+    MOV P0,P2
     SWRITE P0
     ; Next I
     MOV P0,[0x2000]
@@ -222,20 +231,20 @@ for_end_2:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
-    ; PXLON
-    MOV P3,50
-    MOV P1,30
-    MOV P2,20
-    ; PXLON at (P3,P1)
-    MOV VX,P3
-    MOV VY,P1
-    MOV P0,P2
-    SWRITE P0
-    ; Pxl-Off
+    ; Pxl-On
     MOV P2,50
     MOV P1,30
-    ; Turn off pixel at (P2,P1)
-    MOV [0xF100],P2
+    MOV P0,20
+    ; Pxl-On at (P2,P1)
+    MOV VX,P2
+    MOV VY,P1
+    MOV P0,P0
+    SWRITE P0
+    ; Pxl-Off
+    MOV P0,50
+    MOV P1,30
+    ; Turn off pixel at (P0,P1)
+    MOV [0xF100],P0
     MOV [0xF101],P1
     MOV P0,0
     SWRITE P0
@@ -318,21 +327,21 @@ for_end_2:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
-    ; PXLON
+    ; Pxl-On
     MOV P1,60
-    MOV P2,30
-    MOV P3,36
-    ; PXLON at (P1,P2)
+    MOV P0,30
+    MOV P2,36
+    ; Pxl-On at (P1,P0)
     MOV VX,P1
-    MOV VY,P2
-    MOV P0,P3
+    MOV VY,P0
+    MOV P0,P2
     SWRITE P0
     ; Pxl-Change
-    MOV P3,60
-    MOV P2,30
-    ; Toggle pixel at (P3,P2)
-    MOV VX,P3
-    MOV VY,P2
+    MOV P2,60
+    MOV P0,30
+    ; Toggle pixel at (P2,P0)
+    MOV VX,P2
+    MOV VY,P0
     SREAD P0
     XOR P0,15
     SWRITE P0
@@ -444,29 +453,29 @@ for_end_2:
     MOV P1,15
     CHAR P0,P1
     ; Line
-    MOV P2,10
+    MOV P0,10
+    MOV P2,50
+    MOV P1,100
     MOV P3,50
-    MOV P1,100
-    MOV P4,50
-    MOV P5,52
-    ; Draw line from (P2,P3) to (P1,P4)
-    SLINE P2,P3,P1,P4,P5
+    MOV P4,52
+    ; Draw line from (P0,P2) to (P1,P3)
+    SLINE P0,P2,P1,P3,P4
     ; Line
-    MOV P5,10
-    MOV P4,60
-    MOV P1,100
+    MOV P4,10
     MOV P3,60
-    MOV P2,68
-    ; Draw line from (P5,P4) to (P1,P3)
-    SLINE P5,P4,P1,P3,P2
-    ; Line
-    MOV P2,10
-    MOV P3,70
     MOV P1,100
-    MOV P4,70
-    MOV P5,84
-    ; Draw line from (P2,P3) to (P1,P4)
-    SLINE P2,P3,P1,P4,P5
+    MOV P2,60
+    MOV P0,68
+    ; Draw line from (P4,P3) to (P1,P2)
+    SLINE P4,P3,P1,P2,P0
+    ; Line
+    MOV P0,10
+    MOV P2,70
+    MOV P1,100
+    MOV P3,70
+    MOV P4,84
+    ; Draw line from (P0,P2) to (P1,P3)
+    SLINE P0,P2,P1,P3,P4
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -582,20 +591,6 @@ for_end_2:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
-    ; Circle
-    MOV P5,50
-    MOV P4,100
-    MOV P1,15
-    MOV P3,100
-    ; Draw circle at (P5,P4) radius P1
-    SCIRC P5,P4,P1,P3,1
-    ; Circle
-    MOV P3,50
-    MOV P1,100
-    MOV P4,10
-    MOV P5,116
-    ; Draw circle at (P3,P1) radius P4
-    SCIRC P3,P1,P4,P5,1
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -691,14 +686,6 @@ for_end_2:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
-    ; Circle
-    MOV P5,150
-    MOV P4,100
-    MOV P1,12
-    MOV P3,132
-    MOV P2,1
-    ; Draw circle at (P5,P4) radius P1
-    SCIRC P5,P4,P1,P3,P2
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -795,21 +782,21 @@ for_end_2:
     MOV P1,15
     CHAR P0,P1
     ; Line
-    MOV P2,200
+    MOV P4,200
     MOV P3,50
     MOV P1,250
-    MOV P4,100
-    MOV P5,148
-    ; Draw line from (P2,P3) to (P1,P4)
-    SLINE P2,P3,P1,P4,P5
+    MOV P2,100
+    MOV P0,148
+    ; Draw line from (P4,P3) to (P1,P2)
+    SLINE P4,P3,P1,P2,P0
     ; Line
-    MOV P5,200
-    MOV P4,100
+    MOV P0,200
+    MOV P2,100
     MOV P1,250
     MOV P3,50
-    MOV P2,164
-    ; Draw line from (P5,P4) to (P1,P3)
-    SLINE P5,P4,P1,P3,P2
+    MOV P4,164
+    ; Draw line from (P0,P2) to (P1,P3)
+    SLINE P0,P2,P1,P3,P4
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -917,18 +904,29 @@ for_end_2:
     MOV P0,0
     MOV [0x2004],P0
 for_loop_3:
-    ; PXLON
-    MOV P2,100
-    ; Load X into P1
-    MOV P1,[0x2004]
-    ADD P2,P3
+    ; GRADIENT_COLOR = 
+    MOV P4,0
+    ; Load X into P3
+    MOV P3,[0x2004]
+    MOV P1,0
+    MUL P3,P1
+    ; COLOR(P4, P3)
+    SHL P4,4
+    OR P4,P3
+    ; Store P4 into GRADIENT_COLOR
+    MOV [0x2006],P4
+    ; Pxl-On
+    MOV P4,100
+    ; Load X into P3
+    MOV P3,[0x2004]
+    ADD P4,P3
     MOV P3,150
-    ; Load GRADIENT_COLOR into P4
-    MOV P4,[0x2006]
-    ; PXLON at (P1,P3)
-    MOV VX,P1
+    ; Load GRADIENT_COLOR into P1
+    MOV P1,[0x2006]
+    ; Pxl-On at (P4,P3)
+    MOV VX,P4
     MOV VY,P3
-    MOV P0,P4
+    MOV P0,P1
     SWRITE P0
     ; Next X
     MOV P0,[0x2004]
@@ -941,21 +939,32 @@ for_end_4:
     MOV P0,0
     MOV [0x2008],P0
 for_loop_5:
+    ; RAINBOW_COLOR = 
+    ; Load Y into P1
+    MOV P1,[0x2008]
+    MOV P3,0
+    MUL P1,P3
+    MOV P3,12
+    ; COLOR(P1, P3)
+    SHL P1,4
+    OR P1,P3
+    ; Store P1 into RAINBOW_COLOR
+    MOV [0x200A],P1
     ; Line
-    MOV P4,160
+    MOV P1,160
     MOV P3,170
-    ; Load Y into P5
-    MOV P5,[0x2008]
-    ADD P3,P1
-    MOV P1,200
-    MOV P6,170
+    ; Load Y into P4
+    MOV P4,[0x2008]
+    ADD P3,P4
+    MOV P4,200
+    MOV P2,170
     ; Load Y into P0
     MOV P0,[0x2008]
-    ADD P6,P7
-    ; Load RAINBOW_COLOR into P7
-    MOV P7,[0x200A]
-    ; Draw line from (P4,P5) to (P1,P6)
-    SLINE P4,P5,P1,P6,P7
+    ADD P2,P0
+    ; Load RAINBOW_COLOR into P0
+    MOV P0,[0x200A]
+    ; Draw line from (P1,P3) to (P4,P2)
+    SLINE P1,P3,P4,P2,P0
     ; Next Y
     MOV P0,[0x2008]
     INC P0
@@ -1070,56 +1079,60 @@ for_end_6:
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
-    ; PXLON
-    MOV P7,10
-    MOV P6,200
-    ; Load BASE_COLOR into P1
-    MOV P1,[0x200C]
-    ; PXLON at (P7,P6)
-    MOV VX,P7
-    MOV VY,P6
-    MOV P0,P1
+    ; BASE_COLOR = 
+    MOV P0,36
+    ; Store P0 into BASE_COLOR
+    MOV [0x200C],P0
+    ; Pxl-On
+    MOV P0,10
+    MOV P2,200
+    ; Load BASE_COLOR into P4
+    MOV P4,[0x200C]
+    ; Pxl-On at (P0,P2)
+    MOV VX,P0
+    MOV VY,P2
+    MOV P0,P4
     SWRITE P0
-    ; PXLON
-    MOV P1,20
-    MOV P6,200
-    ; Load BASE_COLOR into P7
-    MOV P7,[0x200C]
-    ; RAMP(P7)
-    SHR P7,4
-    ; Load BASE_COLOR into P5
-    MOV P5,[0x200C]
-    ; SHADE(P5)
-    AND P5,15
-    MOV P0,2
-    ADD P5,P4
-    ; COLOR(P7, P5)
-    SHL P7,4
-    OR P7,P5
-    ; PXLON at (P1,P6)
-    MOV VX,P1
-    MOV VY,P6
-    MOV P0,P7
+    ; Pxl-On
+    MOV P4,20
+    MOV P2,200
+    ; Load BASE_COLOR into P0
+    MOV P0,[0x200C]
+    ; RAMP(P0)
+    SHR P0,4
+    ; Load BASE_COLOR into P3
+    MOV P3,[0x200C]
+    ; SHADE(P3)
+    AND P3,15
+    MOV P1,2
+    ADD P3,P1
+    ; COLOR(P0, P3)
+    SHL P0,4
+    OR P0,P3
+    ; Pxl-On at (P4,P2)
+    MOV VX,P4
+    MOV VY,P2
+    MOV P0,P0
     SWRITE P0
-    ; PXLON
-    MOV P7,30
-    MOV P6,200
-    ; Load BASE_COLOR into P1
-    MOV P1,[0x200C]
-    ; RAMP(P1)
-    SHR P1,4
-    MOV P4,1
-    ADD P1,P5
-    ; Load BASE_COLOR into P5
-    MOV P5,[0x200C]
-    ; SHADE(P5)
-    AND P5,15
-    ; COLOR(P4, P5)
+    ; Pxl-On
+    MOV P0,30
+    MOV P2,200
+    ; Load BASE_COLOR into P4
+    MOV P4,[0x200C]
+    ; RAMP(P4)
+    SHR P4,4
+    MOV P3,1
+    ADD P4,P3
+    ; Load BASE_COLOR into P3
+    MOV P3,[0x200C]
+    ; SHADE(P3)
+    AND P3,15
+    ; COLOR(P4, P3)
     SHL P4,4
-    OR P4,P5
-    ; PXLON at (P7,P6)
-    MOV VX,P7
-    MOV VY,P6
+    OR P4,P3
+    ; Pxl-On at (P0,P2)
+    MOV VX,P0
+    MOV VY,P2
     MOV P0,P4
     SWRITE P0
     ; Pause - wait for key press
@@ -1148,3 +1161,39 @@ ORG 0x200C
 DW 0  ; Variable BASE_COLOR
 
 ORG 0x1000
+
+; String concatenation subroutine
+str_concat:
+    ; P1 = left string address
+    ; Top of stack = right string address
+    ; Returns result address in P0
+    POP P2
+    POP P3
+    PUSH P2
+    
+    ; Allocate space for result string
+    MOV P0,0x6000
+    MOV P4,P0
+    
+    ; Copy left string
+str_cat_copy_left:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ str_cat_copy_right
+    MOV [P4],P5
+    INC P1
+    INC P4
+    JMP str_cat_copy_left
+    
+str_cat_copy_right:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ str_cat_done
+    MOV [P4],P5
+    INC P3
+    INC P4
+    JMP str_cat_copy_right
+    
+str_cat_done:
+    MOV [P4],0
+    RET

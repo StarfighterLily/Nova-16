@@ -2,10 +2,14 @@
 # Format: <symbol> <value>
 start 0x1011
 for_loop_1 0x1181
-for_end_2 0x11BB
-for_loop_3 0x1AD9
-for_end_4 0x1B14
-for_loop_5 0x1B1D
-for_end_6 0x1B64
-pause_loop 0x1D39
-halt 0x1D47
+for_end_2 0x11D1
+for_loop_3 0x1AA4
+for_end_4 0x1AFD
+for_loop_5 0x1B06
+for_end_6 0x1B6B
+pause_loop 0x1D49
+halt 0x1D57
+str_concat 0x1000
+str_cat_copy_left 0x1012
+str_cat_copy_right 0x102C
+str_cat_done 0x1046

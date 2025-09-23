@@ -75,27 +75,27 @@ class NoBasicTestRunner:
         print("1. Compiling...")
         success, stdout, stderr = self.compile_program(nob_file)
         if not success:
-            print(f"❌ Compilation failed: {stderr}")
+            print(f"[FAIL] Compilation failed: {stderr}")
             return False
-        print("✅ Compilation successful")
+        print("[OK] Compilation successful")
 
         # Assemble
         asm_file = nob_file.with_suffix('.asm')
         print("2. Assembling...")
         success, stdout, stderr = self.assemble_program(asm_file)
         if not success:
-            print(f"❌ Assembly failed: {stderr}")
+            print(f"[FAIL] Assembly failed: {stderr}")
             return False
-        print("✅ Assembly successful")
+        print("[OK] Assembly successful")
 
         # Run headlessly
         bin_file = nob_file.with_suffix('.bin')
         print("3. Running headlessly...")
         success, stdout, stderr = self.run_program_headless(bin_file)
         if not success:
-            print(f"❌ Execution failed: {stderr}")
+            print(f"[FAIL] Execution failed: {stderr}")
             return False
-        print("✅ Execution successful")
+        print("[OK] Execution successful")
 
         # Extract final PC and cycle count
         lines = stdout.split('\n')
@@ -122,7 +122,7 @@ class NoBasicTestRunner:
         print("4. Running graphics monitor...")
         success, stdout, stderr = self.run_graphics_monitor(bin_file)
         if success:
-            print("✅ Graphics monitor successful")
+            print("[OK] Graphics monitor successful")
             # Extract pixel count
             lines = stdout.split('\n')
             for line in lines:
@@ -132,29 +132,29 @@ class NoBasicTestRunner:
                     print(f"   Graphics: {pixels} pixels drawn")
                     break
         else:
-            print(f"❌ Graphics monitor failed: {stderr}")
+            print(f"[FAIL] Graphics monitor failed: {stderr}")
 
         # Run profiler
         print("5. Running CPU profiler...")
         success, stdout, stderr = self.run_profiler(bin_file)
         if success:
-            print("✅ CPU profiler successful")
+            print("[OK] CPU profiler successful")
             # Could extract more detailed metrics here
         else:
-            print(f"❌ CPU profiler failed: {stderr}")
+            print(f"[FAIL] CPU profiler failed: {stderr}")
 
         # Run disassembler for code analysis
         print("6. Running disassembler...")
         success, stdout, stderr = self.run_disassembler(bin_file)
         if success:
-            print("✅ Disassembler successful")
+            print("[OK] Disassembler successful")
             # Count instructions
             lines = stdout.split('\n')
             code_lines = [line for line in lines if line.strip() and not line.startswith(';') and not line.startswith('ORG')]
             analysis_results['instruction_count'] = len(code_lines)
             print(f"   Instructions: {len(code_lines)}")
         else:
-            print(f"❌ Disassembler failed: {stderr}")
+            print(f"[FAIL] Disassembler failed: {stderr}")
 
         return analysis_results
 
