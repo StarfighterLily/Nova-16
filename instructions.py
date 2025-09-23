@@ -1220,7 +1220,9 @@ class Char(BaseInstruction):
         color = cpu.get_operand_value(operands[1])
         x = cpu.gfx.Vregisters[0]
         y = cpu.gfx.Vregisters[1]
-        cpu.gfx.draw_char(x, y, char_code, color)
+        cpu.gfx.draw_char(char_code, x, y, color)
+        # Advance cursor by 8 pixels
+        cpu.gfx.Vregisters[0] = int(x + 8) % 256
 
 class Text(BaseInstruction):
     """TEXT instruction - draw text"""
@@ -1234,7 +1236,9 @@ class Text(BaseInstruction):
         color = cpu.get_operand_value(operands[1])
         x = cpu.gfx.Vregisters[0]
         y = cpu.gfx.Vregisters[1]
-        cpu.gfx.draw_text(x, y, text_addr, color, cpu.memory)
+        final_x, final_y = cpu.gfx.draw_text(x, y, color, text_addr, cpu.memory)
+        cpu.gfx.Vregisters[0] = int(final_x) % 256
+        cpu.gfx.Vregisters[1] = int(final_y) % 256
 
 # Keyboard operations
 class Keyin(BaseInstruction):

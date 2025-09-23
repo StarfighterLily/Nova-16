@@ -808,14 +808,14 @@ class GFX:
         if self.VL != 0:
             self.layers_dirty = True
     
-    def draw_string(self, text, x, y, color=0xFF, background=None, char_spacing=9):
+    def draw_string(self, text, x, y, color=0xFF, background=None, char_spacing=8):
         """Draw a string at the specified position (8x8 characters)"""
         current_x = x
         
         for char in text:
             if char == '\n':
                 # Handle newline
-                current_x = x
+                current_x = 0  # Reset to left margin, not original x
                 y += 8  # Move down by character height (8 pixels)
             elif char == '\t':
                 # Handle tab (4 characters)
@@ -827,10 +827,12 @@ class GFX:
                 
                 # Wrap to next line if we exceed screen width
                 if current_x + char_spacing > self.width:
-                    current_x = x
+                    current_x = 0  # Reset to left margin
                     y += 8  # Move down by character height (8 pixels)
 
-    def draw_string_to_screen(self, text, x, y, color=0xFF, background=None, char_spacing=9):
+        return current_x, y
+
+    def draw_string_to_screen(self, text, x, y, color=0xFF, background=None, char_spacing=8):
         """Draw a string to screen instead of VRAM (8x8 characters)"""
         # Ensure coordinates are valid integers and not overflowed
         x = int(x) & 0xFFFF  # Mask to 16-bit to prevent overflow
@@ -846,7 +848,7 @@ class GFX:
         
         for char in text:
             if char == '\n':
-                current_x = x
+                current_x = 0  # Reset to left margin
                 y += 8  # Move down by character height (8 pixels)
             elif char == '\t':
                 current_x += char_spacing * 4
@@ -856,8 +858,10 @@ class GFX:
                 current_x += char_spacing
                 
                 if current_x + char_spacing > self.width:
-                    current_x = x
+                    current_x = 0  # Reset to left margin
                     y += 8  # Move down by character height (8 pixels)
+
+        return current_x, y
 
     def draw_char_to_screen(self, char, x, y, color=0xFF, background=None):
         """Draw a single character to screen - optimized version (8x8 characters)"""
@@ -935,7 +939,7 @@ class GFX:
         else:
             return self.screen  # Fallback to screen for invalid layers    
     
-    def draw_text(self, x, y, text_addr, color, memory):
+    def draw_text(self, x, y, color, text_addr, memory):
         """Draw null-terminated string from memory at text_addr"""
         # Convert coordinates to int to prevent numpy overflow warnings
         x = int(x)
@@ -948,7 +952,7 @@ class GFX:
                 break
             text += chr(byte)
             addr += 1
-        self.draw_string(text, x, y, color)
+        return self.draw_string(text, x, y, color)
     
     # ========================================
     # SPRITE SYSTEM IMPLEMENTATION

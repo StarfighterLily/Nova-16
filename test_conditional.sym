@@ -1,0 +1,5 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1005
+if_else_1 0x1040
+halt 0x110C

@@ -1,0 +1,70 @@
+{
+  "session_start": 1758584748.7425632,
+  "total_cycles": 49999,
+  "total_reads": 1,
+  "total_writes": 1,
+  "read_accesses": {
+    "4112": 1,
+    "61438": 0
+  },
+  "write_accesses": {
+    "61438": 1,
+    "4112": 0
+  },
+  "access_timestamps": {
+    "4112": [
+      3
+    ],
+    "61438": [
+      3
+    ]
+  },
+  "memory_regions": {
+    "zero_page": [
+      0,
+      255
+    ],
+    "interrupt_vectors": [
+      256,
+      287
+    ],
+    "general_memory": [
+      288,
+      61439
+    ],
+    "sprite_control": [
+      61440,
+      61695
+    ],
+    "stack_area": [
+      65280,
+      65535
+    ]
+  },
+  "region_stats": {
+    "General Memory": {
+      "reads": 1,
+      "writes": 1
+    }
+  },
+  "hotspots": [
+    {
+      "address": 4112,
+      "total_accesses": 1,
+      "reads": 1,
+      "writes": 0,
+      "region": "General Memory"
+    },
+    {
+      "address": 61438,
+      "total_accesses": 1,
+      "reads": 0,
+      "writes": 1,
+      "region": "General Memory"
+    }
+  ],
+  "access_patterns": [],
+  "memory_bandwidth": 3,
+  "peak_memory_usage": 263,
+  "average_access_rate": 4.000080001600032e-05
+}
