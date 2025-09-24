@@ -1,0 +1,8 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+halt 0x1287
+str_concat 0x8000
+str_cat_copy_left 0x8012
+str_cat_copy_right 0x802C
+str_cat_done 0x8046

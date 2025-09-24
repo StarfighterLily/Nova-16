@@ -198,7 +198,6 @@ pause_loop:
     CHAR P0,P1
     ; Goto test_label
     JMP test_label
-    ; Lbl skip_this
 skip_this:
     ; Disp
     MOV P0,0

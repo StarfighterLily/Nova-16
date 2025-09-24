@@ -115,6 +115,33 @@ class Sti(BaseInstruction):
     def execute(self, cpu):
         cpu.flags[5] = 1  # Set interrupt flag
 
+class Stc(BaseInstruction):
+    """STC instruction - set carry flag"""
+    def __init__(self):
+        opcode_val = 0x9F  # STC
+        super().__init__("STC", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.carry_flag = True
+
+class Clc(BaseInstruction):
+    """CLC instruction - clear carry flag"""
+    def __init__(self):
+        opcode_val = 0xA0  # CLC
+        super().__init__("CLC", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.carry_flag = False
+
+class Cmc(BaseInstruction):
+    """CMC instruction - complement carry flag"""
+    def __init__(self):
+        opcode_val = 0xA1  # CMC
+        super().__init__("CMC", opcode_val)
+    
+    def execute(self, cpu):
+        cpu.carry_flag = not cpu.carry_flag
+
 # Data movement
 class Mov(BaseInstruction):
     """MOV instruction for prefixed operand system"""
@@ -276,6 +303,246 @@ class Abs(BaseInstruction):
         result = abs(value)
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
+
+# Enhanced arithmetic operations
+class Adc(BaseInstruction):
+    """ADC instruction for prefixed operand system - Add with Carry"""
+    def __init__(self):
+        opcode_val = 0x87  # ADC
+        super().__init__("ADC", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        carry = 1 if cpu.carry_flag else 0
+        result = dest_value + source_value + carry
+        cpu.set_operand_value(operands[0], result)
+        # Set flags based on destination operand type and masked result
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
+            masked_result = result & 0xFF
+            cpu._set_overflow_flag_8bit(dest_value, source_value + carry, result, is_subtraction=False)
+            cpu._set_flags_8bit(masked_result, result)
+        else:
+            masked_result = result & 0xFFFF
+            cpu._set_overflow_flag_16bit(dest_value, source_value + carry, result, is_subtraction=False)
+            cpu._set_flags_16bit(masked_result, result)
+
+class Sbc(BaseInstruction):
+    """SBC instruction for prefixed operand system - Subtract with Carry"""
+    def __init__(self):
+        opcode_val = 0x88  # SBC
+        super().__init__("SBC", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        carry = 1 if cpu.carry_flag else 0
+        result = dest_value - source_value - carry
+        cpu.set_operand_value(operands[0], result)
+        # Set flags based on destination operand type and masked result
+        if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
+            masked_result = result & 0xFF
+            cpu._set_overflow_flag_8bit(dest_value, source_value + carry, result, is_subtraction=True)
+            cpu._set_flags_8bit(masked_result, result)
+        else:
+            masked_result = result & 0xFFFF
+            cpu._set_overflow_flag_16bit(dest_value, source_value + carry, result, is_subtraction=True)
+            cpu._set_flags_16bit(masked_result, result)
+
+class Mulh(BaseInstruction):
+    """MULH instruction for prefixed operand system - Multiply High"""
+    def __init__(self):
+        opcode_val = 0x89  # MULH
+        super().__init__("MULH", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        result = dest_value * source_value
+        # Store high 16 bits of 32-bit result
+        high_result = (result >> 16) & 0xFFFF
+        cpu.set_operand_value(operands[0], high_result)
+        cpu._set_flags_16bit(high_result, result)
+
+class Divh(BaseInstruction):
+    """DIVH instruction for prefixed operand system - Divide High"""
+    def __init__(self):
+        opcode_val = 0x8A  # DIVH
+        super().__init__("DIVH", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        
+        if source_value == 0:
+            raise RuntimeError("Division by zero")
+        
+        # Combine dest (high) and P3 (low) for 32-bit dividend
+        dividend = (dest_value << 16) | (cpu.Pregisters[3] & 0xFFFF)
+        quotient = dividend // source_value
+        remainder = dividend % source_value
+        
+        cpu.set_operand_value(operands[0], quotient & 0xFFFF)
+        # Store remainder in P3
+        cpu.Pregisters[3] = remainder & 0xFFFF
+
+class Min(BaseInstruction):
+    """MIN instruction for prefixed operand system - Minimum"""
+    def __init__(self):
+        opcode_val = 0x8B  # MIN
+        super().__init__("MIN", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        result = min(dest_value, source_value)
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Max(BaseInstruction):
+    """MAX instruction for prefixed operand system - Maximum"""
+    def __init__(self):
+        opcode_val = 0x8C  # MAX
+        super().__init__("MAX", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1])
+        result = max(dest_value, source_value)
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Clz(BaseInstruction):
+    """CLZ instruction for prefixed operand system - Count Leading Zeros"""
+    def __init__(self):
+        opcode_val = 0x8D  # CLZ
+        super().__init__("CLZ", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        if value == 0:
+            result = 16  # 16 bits for 16-bit values
+        else:
+            result = 0
+            while (value & 0x8000) == 0 and result < 16:
+                value <<= 1
+                result += 1
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Ctz(BaseInstruction):
+    """CTZ instruction for prefixed operand system - Count Trailing Zeros"""
+    def __init__(self):
+        opcode_val = 0x8E  # CTZ
+        super().__init__("CTZ", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        if value == 0:
+            result = 16  # 16 bits for 16-bit values
+        else:
+            result = 0
+            while (value & 0x0001) == 0 and result < 16:
+                value >>= 1
+                result += 1
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Popcnt(BaseInstruction):
+    """POPCNT instruction for prefixed operand system - Population Count"""
+    def __init__(self):
+        opcode_val = 0x8F  # POPCNT
+        super().__init__("POPCNT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        result = bin(value).count('1')
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+# Enhanced bitwise operations
+class Sar(BaseInstruction):
+    """SAR instruction for prefixed operand system - Shift Arithmetic Right"""
+    def __init__(self):
+        opcode_val = 0x90  # SAR
+        super().__init__("SAR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        shift_amount = cpu.get_operand_value(operands[1]) & 0x0F  # Limit to 0-15
+        if shift_amount > 0:
+            # Check if sign bit is set
+            sign_bit = (dest_value & 0x8000) != 0
+            result = dest_value >> shift_amount
+            if sign_bit:
+                # Fill the leftmost bits with 1s
+                mask = ((1 << shift_amount) - 1) << (16 - shift_amount)
+                result |= mask
+            result &= 0xFFFF
+        else:
+            result = dest_value
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Sal(BaseInstruction):
+    """SAL instruction for prefixed operand system - Shift Arithmetic Left"""
+    def __init__(self):
+        opcode_val = 0x91  # SAL
+        super().__init__("SAL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        shift_amount = cpu.get_operand_value(operands[1]) & 0x0F  # Limit to 0-15
+        result = (dest_value << shift_amount) & 0xFFFF
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Rcl(BaseInstruction):
+    """RCL instruction for prefixed operand system - Rotate through Carry Left"""
+    def __init__(self):
+        opcode_val = 0x92  # RCL
+        super().__init__("RCL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        rotate_amount = cpu.get_operand_value(operands[1]) & 0x0F  # Limit to 0-15
+        result = dest_value
+        for _ in range(rotate_amount):
+            carry_out = (result & 0x8000) != 0
+            result = ((result << 1) & 0xFFFF) | (1 if cpu.carry_flag else 0)
+            cpu.carry_flag = carry_out
+        cpu.set_operand_value(operands[0], result)
+        # Don't call _set_flags_16bit as it would override the carry flag we just set
+
+class Rcr(BaseInstruction):
+    """RCR instruction for prefixed operand system - Rotate through Carry Right"""
+    def __init__(self):
+        opcode_val = 0x93  # RCR
+        super().__init__("RCR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        rotate_amount = cpu.get_operand_value(operands[1]) & 0x0F  # Limit to 0-15
+        result = dest_value
+        for _ in range(rotate_amount):
+            carry_out = (result & 0x0001) != 0
+            result = (result >> 1) | (0x8000 if cpu.carry_flag else 0)
+            cpu.carry_flag = carry_out
+        cpu.set_operand_value(operands[0], result)
+        # Don't call _set_flags_16bit as it would override the carry flag we just set
 
 # Bitwise operations
 class And(BaseInstruction):
@@ -503,6 +770,89 @@ class Bflip(BaseInstruction):
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
 
+# Enhanced data movement
+class Swap(BaseInstruction):
+    """SWAP instruction for prefixed operand system - Swap nibbles"""
+    def __init__(self):
+        opcode_val = 0x94  # SWAP
+        super().__init__("SWAP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        # Swap high and low nibbles (4 bits each)
+        # For 16-bit: ABCD EFGH -> EFGH ABCD
+        high_nibble = (value >> 8) & 0xFF
+        low_nibble = value & 0xFF
+        result = (low_nibble << 8) | high_nibble
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result)
+
+class Xchng(BaseInstruction):
+    """XCHNG instruction for prefixed operand system - Exchange operands"""
+    def __init__(self):
+        opcode_val = 0x95  # XCHNG
+        super().__init__("XCHNG", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        value1 = cpu.get_operand_value(operands[0])
+        value2 = cpu.get_operand_value(operands[1])
+        cpu.set_operand_value(operands[0], value2)
+        cpu.set_operand_value(operands[1], value1)
+        # Set flags based on the first operand after exchange
+        cpu._set_flags_16bit(value2, value2)
+
+class Movz(BaseInstruction):
+    """MOVZ instruction for prefixed operand system - Move if zero"""
+    def __init__(self):
+        opcode_val = 0x96  # MOVZ
+        super().__init__("MOVZ", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        if cpu.zero_flag:
+            source_value = cpu.get_operand_value(operands[1])
+            cpu.set_operand_value(operands[0], source_value)
+            cpu._set_flags_16bit(source_value, source_value)
+        # If not zero, do nothing and don't change flags
+
+class Movnz(BaseInstruction):
+    """MOVNZ instruction for prefixed operand system - Move if not zero"""
+    def __init__(self):
+        opcode_val = 0x97  # MOVNZ
+        super().__init__("MOVNZ", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        if not cpu.zero_flag:
+            source_value = cpu.get_operand_value(operands[1])
+            cpu.set_operand_value(operands[0], source_value)
+            cpu._set_flags_16bit(source_value, source_value)
+        # If zero, do nothing and don't change flags
+
+class Lea(BaseInstruction):
+    """LEA instruction for prefixed operand system - Load effective address"""
+    def __init__(self):
+        opcode_val = 0x98  # LEA
+        super().__init__("LEA", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        # Calculate effective address from the source operand
+        # This is typically used with memory operands that have displacement/offset
+        # For now, treat it like a MOV that loads the address instead of the value
+        if operands[1]['type'] == 'memory':
+            # If source is memory, load the address
+            address = cpu.calculate_memory_address(operands[1])
+            cpu.set_operand_value(operands[0], address)
+            cpu._set_flags_16bit(address, address)
+        else:
+            # If source is not memory, treat like MOV
+            source_value = cpu.get_operand_value(operands[1])
+            cpu.set_operand_value(operands[0], source_value)
+            cpu._set_flags_16bit(source_value, source_value)
+
 # Stack operations
 class Push(BaseInstruction):
     """PUSH instruction for prefixed operand system"""
@@ -634,6 +984,46 @@ class Popa(BaseInstruction):
             cpu.Pregisters[8] = sp
             
             cpu.set_register_value(reg_num, value)
+
+class Enter(BaseInstruction):
+    """ENTER instruction - enter subroutine (stack frame)"""
+    def __init__(self):
+        opcode_val = 0x9D  # ENTER
+        super().__init__("ENTER", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        frame_size = cpu.get_operand_value(operands[0])
+        
+        # Push old frame pointer (FP/P9)
+        sp = int(cpu.Pregisters[8])
+        sp = (sp - 2) & 0xFFFF
+        cpu.memory.write_word(sp, cpu.Pregisters[9])
+        cpu.Pregisters[8] = sp
+        
+        # Set new frame pointer to current stack pointer
+        cpu.Pregisters[9] = sp
+        
+        # Allocate space for local variables
+        sp = (sp - frame_size) & 0xFFFF
+        cpu.Pregisters[8] = sp
+
+class Leave(BaseInstruction):
+    """LEAVE instruction - leave subroutine (stack frame)"""
+    def __init__(self):
+        opcode_val = 0x9E  # LEAVE
+        super().__init__("LEAVE", opcode_val)
+    
+    def execute(self, cpu):
+        # Restore stack pointer from frame pointer
+        cpu.Pregisters[8] = cpu.Pregisters[9]
+        
+        # Pop old frame pointer
+        sp = int(cpu.Pregisters[8])
+        old_fp = cpu.memory.read_word(sp)
+        sp = (sp + 2) & 0xFFFF
+        cpu.Pregisters[8] = sp
+        cpu.Pregisters[9] = old_fp
 
 # Control flow - jumps
 class Jmp(BaseInstruction):
@@ -934,6 +1324,44 @@ class Call(BaseInstruction):
         sp = (sp - 2) & 0xFFFF
         cpu.Pregisters[8] = sp
         cpu.memory.write_word(sp, cpu.pc)
+        
+        # Jump to target
+        cpu.pc = target_address
+        cpu.invalidate_prefetch()
+        cpu.invalidate_instruction_cache()
+
+class Calli(BaseInstruction):
+    """CALLI instruction - call indirect"""
+    def __init__(self):
+        opcode_val = 0x9B  # CALLI
+        super().__init__("CALLI", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        # Get address from register/memory
+        target_address = cpu.get_operand_value(operands[0])
+        
+        # Push return address to stack
+        sp = int(cpu.Pregisters[8])
+        sp = (sp - 2) & 0xFFFF
+        cpu.Pregisters[8] = sp
+        cpu.memory.write_word(sp, cpu.pc)
+        
+        # Jump to target
+        cpu.pc = target_address
+        cpu.invalidate_prefetch()
+        cpu.invalidate_instruction_cache()
+
+class Jmpi(BaseInstruction):
+    """JMPI instruction - jump indirect"""
+    def __init__(self):
+        opcode_val = 0x9C  # JMPI
+        super().__init__("JMPI", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        # Get address from register/memory
+        target_address = cpu.get_operand_value(operands[0])
         
         # Jump to target
         cpu.pc = target_address
@@ -1425,8 +1853,186 @@ class Memmove(BaseInstruction):
         else:
             # Copy backward to handle overlap
             for i in range(length - 1, -1, -1):
-                data = cpu.memory.read((source_addr + i) & 0xFFFF, 1)[0]
+                data = cpu.memory.read((source_addr + i) &  0xFFFF, 1)[0]
                 cpu.write_memory((dest_addr + i) & 0xFFFF, data, 1)
+
+class Memcmp(BaseInstruction):
+    """MEMCMP instruction - memory compare"""
+    def __init__(self):
+        opcode_val = 0x99  # MEMCMP
+        super().__init__("MEMCMP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(4)
+        dest_operand = operands[0]
+        addr1 = cpu.get_operand_value(operands[1])
+        addr2 = cpu.get_operand_value(operands[2])
+        length = cpu.get_operand_value(operands[3])
+        
+        # Compare memory regions and return result in destination
+        result = 0  # Default: equal
+        for i in range(length):
+            byte1 = cpu.memory.read_byte((addr1 + i) & 0xFFFF)
+            byte2 = cpu.memory.read_byte((addr2 + i) & 0xFFFF)
+            if byte1 != byte2:
+                result = 1 if byte1 > byte2 else -1  # 1 if addr1 > addr2, -1 if addr1 < addr2
+                break
+        
+        # Store result in destination operand
+        cpu.set_operand_value(dest_operand, result & 0xFFFF)
+        cpu._set_flags_16bit(result & 0xFFFF, result & 0xFFFF)
+
+class Memswap(BaseInstruction):
+    """MEMSWAP instruction - memory swap"""
+    def __init__(self):
+        opcode_val = 0x9A  # MEMSWAP
+        super().__init__("MEMSWAP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(3)
+        addr1 = cpu.get_operand_value(operands[0])
+        addr2 = cpu.get_operand_value(operands[1])
+        length = cpu.get_operand_value(operands[2])
+        
+        # Swap memory regions
+        for i in range(length):
+            byte1 = cpu.memory.read_byte((addr1 + i) & 0xFFFF)
+            byte2 = cpu.memory.read_byte((addr2 + i) & 0xFFFF)
+            cpu.write_memory((addr1 + i) & 0xFFFF, byte2, 1)
+            cpu.write_memory((addr2 + i) & 0xFFFF, byte1, 1)
+
+# Special register access instructions
+class Sa(BaseInstruction):
+    """SA instruction - access sound address register"""
+    def __init__(self):
+        opcode_val = 0xDD  # SA
+        super().__init__("SA", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.sound.SA = value & 0xFFFF
+
+class Sf(BaseInstruction):
+    """SF instruction - access sound frequency register"""
+    def __init__(self):
+        opcode_val = 0xDE  # SF
+        super().__init__("SF", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.sound.SF = value & 0xFFFF
+
+class Sv(BaseInstruction):
+    """SV instruction - access sound volume register"""
+    def __init__(self):
+        opcode_val = 0xDF  # SV
+        super().__init__("SV", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.sound.SV = value & 0xFF
+
+class Sw(BaseInstruction):
+    """SW instruction - access sound waveform register"""
+    def __init__(self):
+        opcode_val = 0xE0  # SW
+        super().__init__("SW", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.sound.SW = value & 0xFF
+
+class Vm(BaseInstruction):
+    """VM instruction - access video mode register"""
+    def __init__(self):
+        opcode_val = 0xE1  # VM
+        super().__init__("VM", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.gfx.VM = value & 0xFF
+
+class Vl(BaseInstruction):
+    """VL instruction - access video layer register"""
+    def __init__(self):
+        opcode_val = 0xE2  # VL
+        super().__init__("VL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.gfx.VL = value & 0xFF
+
+class Tt(BaseInstruction):
+    """TT instruction - access timer register"""
+    def __init__(self):
+        opcode_val = 0xE3  # TT
+        super().__init__("TT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.timer[0] = value & 0xFFFF
+
+class Tm(BaseInstruction):
+    """TM instruction - access timer match register"""
+    def __init__(self):
+        opcode_val = 0xE4  # TM
+        super().__init__("TM", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.timer[1] = value & 0xFFFF
+
+class Tc(BaseInstruction):
+    """TC instruction - access timer control register"""
+    def __init__(self):
+        opcode_val = 0xE5  # TC
+        super().__init__("TC", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.timer[2] = value & 0xFF
+
+class Ts(BaseInstruction):
+    """TS instruction - access timer speed register"""
+    def __init__(self):
+        opcode_val = 0xE6  # TS
+        super().__init__("TS", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.timer[3] = value & 0xFF
+
+class Vx(BaseInstruction):
+    """VX instruction - access video X coordinate register"""
+    def __init__(self):
+        opcode_val = 0xFD  # VX
+        super().__init__("VX", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.gfx.Vregisters[0] = value & 0xFF
+
+class Vy(BaseInstruction):
+    """VY instruction - access video Y coordinate register"""
+    def __init__(self):
+        opcode_val = 0xFE  # VY
+        super().__init__("VY", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        cpu.gfx.Vregisters[1] = value & 0xFF
 
 # String operations
 class Strcpy(BaseInstruction):
@@ -1987,14 +2593,18 @@ class Bcds(BaseInstruction):
         # Perform subtraction first
         result = dest_value - source_value
         
+        # In binary mode, subtract borrow if aux_carry is set
+        if not cpu.decimal_flag and hasattr(cpu, 'aux_carry') and cpu.aux_carry:
+            result -= 1
+        
         # Adjust for BCD subtraction
         if cpu.decimal_flag:
             # Check if adjustment is needed for low digit
-            if result & 0x0F > 9:
+            if (result & 0x0F) > 9:
                 result -= 0x06
             
             # Check if adjustment is needed for high digit
-            if (result >> 4) & 0x0F > 9:
+            if ((result >> 4) & 0x0F) > 9:
                 result -= 0x60
             
             # Handle borrow
@@ -2430,8 +3040,8 @@ class Sstop(BaseInstruction):
         super().__init__("SSTOP", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        channel = cpu.get_operand_value(operands[0])
+        # Use channel from SW register (sound waveform/control register)
+        channel = cpu.sound.SW & 0x07  # Lower 3 bits for channel
         success = cpu.sound.sstop(channel)
         # Could set flags based on success, but for now just execute
 
@@ -2447,6 +3057,25 @@ class Strig(BaseInstruction):
         success = cpu.sound.strig(effect_type)
         # Could set flags based on success, but for now just execute
 
+class Loop(BaseInstruction):
+    """LOOP instruction - decrement register and jump if not zero"""
+    def __init__(self):
+        opcode_val = 0x5A  # LOOP
+        super().__init__("LOOP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        # First operand is the counter register
+        counter_value = cpu.get_operand_value(operands[0])
+        # Decrement the counter
+        new_value = (counter_value - 1) & 0xFFFF
+        cpu.set_operand_value(operands[0], new_value)
+        # If not zero, jump to the target address
+        if new_value != 0:
+            target_address = cpu.get_operand_value(operands[1])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+
 # Instruction table creation
 
 def create_instruction_table():
@@ -2458,6 +3087,9 @@ def create_instruction_table():
         IRet(),  # 0x02
         Cli(),   # 0x03
         Sti(),   # 0x04
+        Stc(),   # 0x9F
+        Clc(),   # 0xA0
+        Cmc(),   # 0xA1
         Nop(),   # 0xFF
 
         # Data movement
@@ -2473,6 +3105,30 @@ def create_instruction_table():
         Mod(),     # 0x0D
         Neg(),     # 0x0E
         Abs(),     # 0x0F
+
+        # Enhanced arithmetic operations
+        Adc(),     # 0x87
+        Sbc(),     # 0x88
+        Mulh(),    # 0x89
+        Divh(),    # 0x8A
+        Min(),     # 0x8B
+        Max(),     # 0x8C
+        Clz(),     # 0x8D
+        Ctz(),     # 0x8E
+        Popcnt(),  # 0x8F
+
+        # Enhanced bitwise operations
+        Sar(),     # 0x90
+        Sal(),     # 0x91
+        Rcl(),     # 0x92
+        Rcr(),     # 0x93
+
+        # Enhanced data movement
+        Swap(),    # 0x94
+        Xchng(),   # 0x95
+        Movz(),    # 0x96
+        Movnz(),   # 0x97
+        Lea(),     # 0x98
 
         # Bitwise operations
         And(),      # 0x10
@@ -2497,6 +3153,11 @@ def create_instruction_table():
         Popf(),     # 0x1B
         Pusha(),    # 0x1C
         Popa(),     # 0x1D
+        Enter(),    # 0x9D
+        Leave(),    # 0x9E
+        Stc(),      # 0x9F
+        Clc(),      # 0xA0
+        Cmc(),      # 0xA1
 
         # Control flow - jumps
         Jmp(),      # 0x1E
@@ -2523,6 +3184,8 @@ def create_instruction_table():
 
         # Call
         Call(),     # 0x2F
+        Calli(),    # 0x9B
+        Jmpi(),     # 0x9C
 
         # Interrupt
         Int(),      # 0x30
@@ -2587,7 +3250,7 @@ def create_instruction_table():
         Strig(),    # 0x59
 
         # Loop operation
-        # Loop(),     # 0x5A
+        Loop(),     # 0x5A
 
         # Math functions
         Powr(),     # 0x5B
@@ -2631,6 +3294,22 @@ def create_instruction_table():
         Memset(),   # 0x7C
         Memtest(),  # 0x7D
         Memmove(),  # 0x7E
+        Memcmp(),   # 0x99
+        Memswap(),  # 0x9A
+
+        # Special register access instructions
+        Sa(),       # 0xDD
+        Sf(),       # 0xDE
+        Sv(),       # 0xDF
+        Sw(),       # 0xE0
+        Vm(),       # 0xE1
+        Vl(),       # 0xE2
+        Tt(),       # 0xE3
+        Tm(),       # 0xE4
+        Tc(),       # 0xE5
+        Ts(),       # 0xE6
+        Vx(),       # 0xFD
+        Vy(),       # 0xFE
 
     ]
     

@@ -1,5 +1,5 @@
 {
-  "cycle": 528,
+  "cycle": 595,
   "timestamp": "Final Report",
   "statistics": {
     "total_pixel_writes": 1489,
@@ -11,7 +11,7 @@
     ],
     "instruction_counts": {
       "SFILL": 1,
-      "CHAR": 134
+      "CHAR": 150
     },
     "memory_regions_accessed": [],
     "max_x": 

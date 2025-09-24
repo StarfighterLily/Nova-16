@@ -1148,53 +1148,6 @@ for_end_9:
 if_end_11:
     ; End - terminate program
     JMP halt
-    ; End - terminate program
-    JMP halt
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,72
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Load STR into P0
-    MOV P0,[0x200A]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
 display_str_loop:
     MOV P0,[P2]
     CMP P0,0
@@ -1617,30 +1570,6 @@ pause_loop:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
-ORG 0x2000
-DW 0  ; Variable A
-ORG 0x2002
-DW 0  ; Variable B
-ORG 0x2004
-DW 0  ; Variable TEST_ARRAY
-ORG 0x2006
-DW 0  ; Variable I
-ORG 0x2008
-DW 0  ; Variable BIG_NUM
-ORG 0x200A
-DW 0  ; Variable STR
-ORG 0x200C
-DW 0  ; Variable NEG_NUM
-ORG 0x200E
-DW 0  ; Variable C
-ORG 0x2010
-DW 0  ; Variable SCORE
-ORG 0x2012
-DW 0  ; Variable GRADE
-ORG 0x2014
-DW 0  ; Variable X
-ORG 0x2016
-DW 0  ; Variable Y
 
 ORG 0x8000
 

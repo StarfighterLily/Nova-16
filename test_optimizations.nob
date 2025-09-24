@@ -1,0 +1,35 @@
+REM Test new instruction optimizations
+REM This program tests LEA, MIN/MAX, MEMCMP, and MEMSWAP optimizations
+
+CLRHOME
+
+REM Test LEA optimization with array/list access
+DIM TEST_ARRAY(10)
+FOR I = 0 TO 9
+    TEST_ARRAY[I] = I * 2
+NEXT I
+
+REM Test list access with LEA
+L1(5) = 42
+A = L1(5)
+
+REM Test MIN/MAX functions
+X = MIN(10, 20)
+Y = MAX(10, 20)
+
+REM Test string comparison with MEMCMP
+S1 = "HELLO"
+S2 = "WORLD"
+REM RESULT = STRCMP(S1, S2)  // Skip for now
+
+REM Test memory swap
+MEMSWAP(0x2000, 0x2100, 16)
+
+REM Display results
+DISP "ARRAY[5] = ", TEST_ARRAY[5]
+DISP "L1[5] = ", A
+DISP "MIN(10,20) = ", X
+DISP "MAX(10,20) = ", Y
+REM DISP "STRCMP RESULT = ", RESULT
+
+END

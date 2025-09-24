@@ -39,10 +39,6 @@ if_end_1:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
-ORG 0x2000
-DW 0  ; Variable A
-ORG 0x2002
-DW 0  ; Variable B
 
 ORG 0x8000
 

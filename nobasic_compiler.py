@@ -59,6 +59,11 @@ class NoBasicCompiler:
         self.string_counter = 0
         self.strings: Dict[str, int] = {}    # String content -> memory address
 
+        # Pre-allocate variables A-Z
+        for i in range(26):
+            var_name = chr(65 + i)  # A-Z
+            self.variables[var_name] = self.VARIABLE_START + i * 2
+
         # Loop tracking for For/Next
         self.loop_start_labels: Dict[str, str] = {}  # Variable name -> loop start label
         self.loop_end_values: Dict[str, int] = {}    # Variable name -> end value
@@ -461,7 +466,7 @@ class NoBasicCompiler:
                     i += 2  # Skip END SELECT
 
                 elif ((re.match(r'[A-Za-z_][A-Za-z0-9_]*', token) or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit())) and i + 1 < len(tokens) and 
-                      tokens[i + 1] == "="):
+                      (tokens[i + 1] == "=" or tokens[i + 1] == "(")):
                     # Variable or list assignment
                     lines, new_i = self._compile_assignment(tokens, i)
                     self.assembly_lines.extend(lines)
@@ -548,7 +553,7 @@ class NoBasicCompiler:
     def _compile_clrhome(self) -> List[str]:
         """Compile ClrHome statement"""
         return [
-            "    ; ClrHome",
+            "    ; ClrHome - clear screen (optimized)",
             "    MOV P0,0",
             "    MOV VM,P0",  # VM = 0 (coordinate mode)
             "    MOV VL,P0",  # VL = 0 (layer 0)
@@ -809,7 +814,8 @@ class NoBasicCompiler:
                 
                 lines.extend([
                     f"    ; Store to {list_name}({index})",
-                    f"    MOV [0x{list_addr + index * 2:04X}],{value_reg}",  # Direct address calculation
+                    f"    LEA P2,[{list_addr} + {index}*2]",  # Calculate address with LEA
+                    f"    MOV [P2],{value_reg}",  # Direct address calculation
                 ])
             else:
                 raise ValueError(f"Complex list indices not yet supported: {index_tokens}")
@@ -1049,10 +1055,8 @@ class NoBasicCompiler:
                     
                     lines.extend([
                         f"    ; Load {list_name}({index_reg}) into {result_reg}",
-                        f"    MOV P2,{list_addr}",        # Base address of list
-                        f"    ADD P2,{index_reg}",        # Add index (×2 for 16-bit)
-                        f"    ADD P2,{index_reg}",
-                        f"    MOV {result_reg},[P2]",     # Load value
+                        f"    LEA {result_reg},[{list_addr} + {index_reg}*2]",  # Calculate address with LEA
+                        f"    MOV {result_reg},[{result_reg}]",     # Load value
                     ])
                 else:
                     # Regular variable
@@ -1082,10 +1086,8 @@ class NoBasicCompiler:
                 
                 lines.extend([
                     f"    ; Load {array_name}[{index_reg}] into {result_reg}",
-                    f"    MOV P3,{array_addr}",        # Base address of array
-                    f"    ADD P3,{index_reg}",        # Add index (×2 for 16-bit)
-                    f"    ADD P3,{index_reg}",
-                    f"    MOV {result_reg},[P3]",     # Load value
+                    f"    LEA {result_reg},[{array_addr} + {index_reg}*2]",  # Calculate address with LEA
+                    f"    MOV {result_reg},[{result_reg}]",     # Load value
                 ])
                 
                 # Free the index register
@@ -1122,6 +1124,34 @@ class NoBasicCompiler:
                         f"    MOV {current_reg},P1",      # Return string address
                         f"    POP {current_reg}",
                     ])
+                elif func_name in ['MIN', 'MAX']:
+                    # MIN/MAX functions take two arguments
+                    arg1_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(arg1_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError(f"Expected comma in {func_name}(arg1, arg2)")
+                    
+                    arg2_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(arg2_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError(f"Missing closing parenthesis in {func_name}()")
+                    
+                    # Get the two argument registers
+                    arg2_reg = self._get_current_register()
+                    arg1_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; {func_name}({arg1_reg}, {arg2_reg})",
+                        f"    {func_name} {arg1_reg},{arg2_reg}",  # MIN/MAX instruction
+                    ])
+                    
+                    # Free arg2 register, keep arg1 as result
+                    self._free_register(arg2_reg)
                 elif func_name in ['SIN', 'COS', 'TAN', 'ASIN', 'ACOS', 'ATAN', 'SQRT', 'LOG', 'EXP', 'ABS', 'FLOOR', 'CEIL', 'ROUND']:
                     # Math functions
                     lines, i = self._parse_additive_expression(tokens, i)  # Parse argument
@@ -1133,7 +1163,6 @@ class NoBasicCompiler:
                     current_reg = self._get_current_register()
                     opcode = func_name.lower()
                     lines.append(f"    {opcode.upper()} {current_reg},{current_reg}")  # Apply function to register
-                elif func_name == 'COLOR':
                     # COLOR(ramp, shade) - create color from ramp (0-15) and shade (0-15)
                     # Parse ramp argument
                     ramp_lines, i = self._parse_additive_expression(tokens, i)
@@ -1341,11 +1370,76 @@ class NoBasicCompiler:
                         f"    MOV {dest_reg},0",  # Return 0 to indicate success
                     ])
                     
+                elif func_name == 'STRCMP':
+                    # STRCMP(str1, str2) - compare two strings, return -1, 0, or 1
+                    str1_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(str1_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in STRCMP(str1, str2)")
+                    
+                    str2_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(str2_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in STRCMP()")
+                    
+                    # Get the two string registers
+                    str2_reg = self._get_current_register()
+                    str1_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; STRCMP({str1_reg}, {str2_reg})",
+                        f"    MOV P1,{str1_reg}",        # String 1 address
+                        f"    MOV P2,{str2_reg}",        # String 2 address
+                        f"    MOV P3,255",               # Maximum length to compare
+                        f"    MEMCMP P1,P2,P3",          # Compare strings
+                        f"    MOV {str1_reg},P1",        # Result in str1_reg
+                    ])
+                    
+                elif func_name == 'MEMSWAP':
+                    # MEMSWAP(addr1, addr2, length) - swap memory blocks
+                    addr1_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(addr1_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MEMSWAP(addr1, addr2, length)")
+                    
+                    addr2_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(addr2_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MEMSWAP(addr1, addr2, length)")
+                    
+                    length_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(length_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in MEMSWAP()")
+                    
+                    # Get registers for the three arguments
+                    length_reg = self._get_current_register()
+                    addr2_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    addr1_reg = self.register_stack[-3] if len(self.register_stack) >= 3 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; MEMSWAP({addr1_reg}, {addr2_reg}, {length_reg})",
+                        f"    MEMSWAP {addr1_reg},{addr2_reg},{length_reg}",
+                        f"    MOV {addr1_reg},0",  # Return 0 to indicate success
+                    ])
+                    
                     # Free registers we don't need
                     self._free_register(length_reg)
-                    self._free_register(src_reg)
+                    self._free_register(addr2_reg)
                     
-                    # Keep dest_reg as result register (contains 0)
+                    # Keep addr1_reg as result register (contains 0)
                 else:
                     raise ValueError(f"Unknown function: {func_name}")
             else:
@@ -2476,7 +2570,6 @@ class NoBasicCompiler:
                     return
             i += 1
 
-
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python nobasic_compiler.py <input.nob> <output>")
@@ -2491,7 +2584,7 @@ if __name__ == "__main__":
         
         compiler = NoBasicCompiler()
         compiler.compile_program(nobasic_source, output_file)
-        print(f"Compiled {input_file} to {output_file}")
+        #print(f"Compiled {input_file} to {output_file}")
         
     except Exception as e:
         print(f"Error: {e}")

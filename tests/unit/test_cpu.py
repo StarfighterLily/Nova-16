@@ -353,8 +353,8 @@ class TestCPUErrorHandling:
 
     def test_invalid_opcodes(self, cpu):
         """Test handling of invalid opcodes."""
-        # Test various invalid opcodes (removed 0x5B-0x5D as they're now math functions)
-        invalid_opcodes = [0x9D, 0xA5, 0xB7]
+        # Test various invalid opcodes
+        invalid_opcodes = [0xB7, 0xC0, 0xFE]
 
         for opcode in invalid_opcodes:
             cpu.memory.write_byte(0, opcode)
@@ -411,7 +411,7 @@ class TestCPUErrorHandling:
         cpu.step()  # PUSH
 
         assert cpu.Pregisters[8] == 0xFFFE  # SP decremented
-        assert cpu.memory.read_byte(0xFFFF) == 0x42  # Value pushed
+        assert cpu.memory.read_byte(0xFFFE) == 0x42  # Value pushed
 
         # Test POP
         cpu.write_byte(4, 0x19)  # POP opcode
@@ -1661,7 +1661,7 @@ class TestCPUEdgeCases:
         # For now, test that invalid operations are handled
 
         # Test with invalid opcode
-        cpu.memory.write_byte(0x0000, 0x9D)  # Invalid opcode
+        cpu.memory.write_byte(0x0000, 0xB7)  # Invalid opcode
         cpu.pc = 0
 
         # Should raise exception for unknown opcode
@@ -2785,3 +2785,263 @@ class TestConditionalJumpsAndComparisons:
         cpu.step()  # JS
 
         assert cpu.pc == 0x1000  # Should have jumped (result is negative)
+
+
+class TestEnhancedArithmeticInstructions:
+    """Test enhanced arithmetic instructions."""
+
+    def test_adc_without_carry(self, cpu):
+        """Test ADC instruction without carry."""
+        cpu.Pregisters[0] = 5
+        cpu.Pregisters[1] = 3
+        cpu.flags[6] = 0  # Clear carry flag
+
+        # ADC P0, P1
+        cpu.memory.write_byte(0x0000, 0x87)  # ADC
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 8)  # 5 + 3 + 0 = 8
+        assert cpu.flags[6] == 0  # No carry
+
+    def test_adc_with_carry(self, cpu):
+        """Test ADC instruction with carry."""
+        cpu.Pregisters[0] = 5
+        cpu.Pregisters[1] = 3
+        cpu.flags[6] = 1  # Set carry flag
+
+        # ADC P0, P1
+        cpu.memory.write_byte(0x0000, 0x87)  # ADC
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 9)  # 5 + 3 + 1 = 9
+        assert cpu.flags[6] == 0  # No carry
+
+    def test_sbc_without_carry(self, cpu):
+        """Test SBC instruction without carry."""
+        cpu.Pregisters[0] = 10
+        cpu.Pregisters[1] = 3
+        cpu.flags[6] = 0  # Clear carry flag
+
+        # SBC P0, P1
+        cpu.memory.write_byte(0x0000, 0x88)  # SBC
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 7)  # 10 - 3 - 0 = 7
+        assert cpu.flags[6] == 0  # No borrow
+
+    def test_sbc_with_carry(self, cpu):
+        """Test SBC instruction with carry."""
+        cpu.Pregisters[0] = 10
+        cpu.Pregisters[1] = 3
+        cpu.flags[6] = 1  # Set carry flag
+
+        # SBC P0, P1
+        cpu.memory.write_byte(0x0000, 0x88)  # SBC
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 6)  # 10 - 3 - 1 = 6
+        assert cpu.flags[6] == 0  # No borrow
+
+    def test_mulh(self, cpu):
+        """Test MULH instruction."""
+        cpu.Pregisters[0] = 0x1000  # 4096
+        cpu.Pregisters[1] = 0x1000  # 4096
+
+        # MULH P0, P1 (4096 * 4096 = 16777216 = 0x01000000)
+        cpu.memory.write_byte(0x0000, 0x89)  # MULH
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 0x0100)  # High 16 bits of 0x01000000
+
+    def test_divh(self, cpu):
+        """Test DIVH instruction."""
+        cpu.Pregisters[0] = 0x0001  # High 16 bits
+        cpu.Pregisters[3] = 0x0000  # Low 16 bits (dividend = 0x00010000 = 65536)
+        cpu.Pregisters[1] = 0x0002  # Divisor = 2
+
+        # DIVH P0, P1 (65536 / 2 = 32768)
+        cpu.memory.write_byte(0x0000, 0x8A)  # DIVH
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 0x8000)  # 32768
+        assert cpu.Pregisters[3] == 0  # Remainder
+
+    def test_min(self, cpu):
+        """Test MIN instruction."""
+        cpu.Pregisters[0] = 10
+        cpu.Pregisters[1] = 5
+
+        # MIN P0, P1
+        cpu.memory.write_byte(0x0000, 0x8B)  # MIN
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 5)
+
+    def test_max(self, cpu):
+        """Test MAX instruction."""
+        cpu.Pregisters[0] = 10
+        cpu.Pregisters[1] = 15
+
+        # MAX P0, P1
+        cpu.memory.write_byte(0x0000, 0x8C)  # MAX
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 15)
+
+    def test_clz_zero(self, cpu):
+        """Test CLZ instruction with zero."""
+        cpu.Pregisters[0] = 0
+
+        # CLZ P0
+        cpu.memory.write_byte(0x0000, 0x8D)  # CLZ
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: register direct
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 16)
+
+    def test_clz_value(self, cpu):
+        """Test CLZ instruction with value."""
+        cpu.Pregisters[0] = 0x00FF  # 0000000011111111
+
+        # CLZ P0
+        cpu.memory.write_byte(0x0000, 0x8D)  # CLZ
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: register direct
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 8)  # 8 leading zeros
+
+    def test_ctz_zero(self, cpu):
+        """Test CTZ instruction with zero."""
+        cpu.Pregisters[0] = 0
+
+        # CTZ P0
+        cpu.memory.write_byte(0x0000, 0x8E)  # CTZ
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: register direct
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 16)
+
+    def test_ctz_value(self, cpu):
+        """Test CTZ instruction with value."""
+        cpu.Pregisters[0] = 0xFF00  # 1111111100000000
+
+        # CTZ P0
+        cpu.memory.write_byte(0x0000, 0x8E)  # CTZ
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: register direct
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 8)  # 8 trailing zeros
+
+    def test_popcnt(self, cpu):
+        """Test POPCNT instruction."""
+        cpu.Pregisters[0] = 0xAAAA  # 1010101010101010
+
+        # POPCNT P0
+        cpu.memory.write_byte(0x0000, 0x8F)  # POPCNT
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: register direct
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 8)  # 8 ones in 0xAAAA
+
+    def test_sar_positive(self, cpu):
+        """Test SAR instruction with positive value."""
+        cpu.Pregisters[0] = 0x0008  # 8
+        cpu.Pregisters[1] = 1       # Shift by 1
+
+        # SAR P0, P1
+        cpu.memory.write_byte(0x0000, 0x90)  # SAR
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 4)  # 8 >> 1 = 4
+
+    def test_sar_negative(self, cpu):
+        """Test SAR instruction with negative value."""
+        cpu.Pregisters[0] = 0xFFF8  # -8 (two's complement)
+        cpu.Pregisters[1] = 1       # Shift by 1
+
+        # SAR P0, P1
+        cpu.memory.write_byte(0x0000, 0x90)  # SAR
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 0xFFFC)  # -8 >> 1 = -4
+
+    def test_sal(self, cpu):
+        """Test SAL instruction."""
+        cpu.Pregisters[0] = 0x0008  # 8
+        cpu.Pregisters[1] = 1       # Shift by 1
+
+        # SAL P0, P1
+        cpu.memory.write_byte(0x0000, 0x91)  # SAL
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 16)  # 8 << 1 = 16
+
+    def test_rcl_without_carry(self, cpu):
+        """Test RCL instruction without initial carry."""
+        cpu.Pregisters[0] = 0x8000  # 1000000000000000
+        cpu.Pregisters[1] = 1       # Rotate by 1
+        cpu.flags[6] = 0            # Clear carry
+
+        # RCL P0, P1
+        cpu.memory.write_byte(0x0000, 0x92)  # RCL
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 0x0000)  # Bit 15 moves to carry, 0 shifts in
+        assert cpu.carry_flag == 1  # Carry set from bit 15
+
+    def test_rcr_without_carry(self, cpu):
+        """Test RCR instruction without initial carry."""
+        cpu.Pregisters[0] = 0x0001  # 0000000000000001
+        cpu.Pregisters[1] = 1       # Rotate by 1
+        cpu.flags[6] = 0            # Clear carry
+
+        # RCR P0, P1
+        cpu.memory.write_byte(0x0000, 0x93)  # RCR
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 0x0000)  # Bit 0 moves to carry, 0 shifts in
+        assert cpu.carry_flag == 1  # Carry set from bit 0

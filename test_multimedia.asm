@@ -812,12 +812,6 @@ for_loop_24:
 if_end_26:
     ; End - terminate program
     JMP halt
-    ; Next DY
-    MOV P0,[0x201E]
-    INC P0
-    MOV [0x201E],P0
-    CMP P0,TO
-    JLE for_loop_24
 for_end_25:
     ; Next DX
     MOV P0,[0x201C]
@@ -1354,52 +1348,6 @@ pause_loop:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
-ORG 0x2000
-DW 0  ; Variable NOTE
-ORG 0x2002
-DW 0  ; Variable X
-ORG 0x2004
-DW 0  ; Variable Y
-ORG 0x2006
-DW 0  ; Variable BX
-ORG 0x2008
-DW 0  ; Variable BY
-ORG 0x200A
-DW 0  ; Variable COLOR
-ORG 0x200C
-DW 0  ; Variable CENTERS
-ORG 0x200E
-DW 0  ; Variable RADII
-ORG 0x2010
-DW 0  ; Variable CIRCLE_COLORS
-ORG 0x2012
-DW 0  ; Variable I
-ORG 0x2014
-DW 0  ; Variable CX
-ORG 0x2016
-DW 0  ; Variable CY
-ORG 0x2018
-DW 0  ; Variable R
-ORG 0x201A
-DW 0  ; Variable CC
-ORG 0x201C
-DW 0  ; Variable DX
-ORG 0x201E
-DW 0  ; Variable DY
-ORG 0x2020
-DW 0  ; Variable DIST_SQ
-ORG 0x2022
-DW 0  ; Variable FREQ
-ORG 0x2024
-DW 0  ; Variable BAR_HEIGHT
-ORG 0x2026
-DW 0  ; Variable SPRITE_X
-ORG 0x2028
-DW 0  ; Variable SPRITE_Y
-ORG 0x202A
-DW 0  ; Variable SPRITE_SIZE
-ORG 0x202C
-DW 0  ; Variable FRAME
 
 ORG 0x8000
 

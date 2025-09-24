@@ -1810,42 +1810,6 @@ pause_loop:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
-ORG 0x2000
-DW 0  ; Variable Y_POS
-ORG 0x2002
-DW 0  ; Variable I
-ORG 0x2004
-DW 0  ; Variable STR
-ORG 0x2006
-DW 0  ; Variable VALID_TESTS
-ORG 0x2008
-DW 0  ; Variable R
-ORG 0x200A
-DW 0  ; Variable S
-ORG 0x200C
-DW 0  ; Variable C
-ORG 0x200E
-DW 0  ; Variable EXPECTED
-ORG 0x2010
-DW 0  ; Variable EXTRACTION_TESTS
-ORG 0x2012
-DW 0  ; Variable ORIGINAL
-ORG 0x2014
-DW 0  ; Variable EXTRACTED_R
-ORG 0x2016
-DW 0  ; Variable EXTRACTED_S
-ORG 0x2018
-DW 0  ; Variable ROUND_TRIP_TESTS
-ORG 0x201A
-DW 0  ; Variable RECREATED
-ORG 0x201C
-DW 0  ; Variable RED_COL
-ORG 0x201E
-DW 0  ; Variable BLUE_COL
-ORG 0x2020
-DW 0  ; Variable SUM_COLOR
-ORG 0x2022
-DW 0  ; Variable DIFF_COLOR
 
 ORG 0x8000
 

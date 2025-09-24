@@ -1825,34 +1825,6 @@ pause_loop:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
-ORG 0x2000
-DW 0  ; Variable A
-ORG 0x2002
-DW 0  ; Variable B
-ORG 0x2004
-DW 0  ; Variable C
-ORG 0x2006
-DW 0  ; Variable RESULT1
-ORG 0x2008
-DW 0  ; Variable STR
-ORG 0x200A
-DW 0  ; Variable RESULT2
-ORG 0x200C
-DW 0  ; Variable NUMBERS
-ORG 0x200E
-DW 0  ; Variable SUM
-ORG 0x2010
-DW 0  ; Variable I
-ORG 0x2012
-DW 0  ; Variable COLORS
-ORG 0x2014
-DW 0  ; Variable Y_POS
-ORG 0x2016
-DW 0  ; Variable X
-ORG 0x2018
-DW 0  ; Variable Y
-ORG 0x201A
-DW 0  ; Variable SCORE
 
 ORG 0x8000
 

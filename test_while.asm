@@ -216,8 +216,6 @@ while_end_2:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
-ORG 0x2000
-DW 0  ; Variable I
 
 ORG 0x8000
 

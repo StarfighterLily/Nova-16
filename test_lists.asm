@@ -241,8 +241,6 @@ display_value_done:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
-ORG 0x2000
-DW 0  ; Variable A
 
 ORG 0x8000
 

@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -22,45 +22,45 @@ start:
     SFILL P0
     ; For X = 0 To 255
     MOV P0,0
-    MOV [0x2000],P0
+    MOV [0x202E],P0
 for_loop_1:
     ; For Y = 0 To 255
     MOV P0,0
-    MOV [0x2002],P0
+    MOV [0x2030],P0
 for_loop_3:
     ; COLOR_VAL = 
     ; Load X into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2002]
+    MOV P1,[0x2030]
     ADD P0,P1
     MOV P1,256
     MOD P0,P1
     ; Store P0 into COLOR_VAL
-    MOV [0x2004],P0
-    ; PXLON
+    MOV [0x2034],P0
+    ; Pxl-On
     ; Load Y into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x2030]
     ; Load X into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x202E]
     ; Load COLOR_VAL into P2
-    MOV P2,[0x2004]
-    ; PXLON at (P0,P1)
+    MOV P2,[0x2034]
+    ; Pxl-On at (P0,P1)
     MOV VX,P0
     MOV VY,P1
     MOV P0,P2
     SWRITE P0
     ; Next Y
-    MOV P0,[0x2002]
+    MOV P0,[0x2030]
     INC P0
-    MOV [0x2002],P0
+    MOV [0x2030],P0
     CMP P0,255
     JLE for_loop_3
 for_end_4:
     ; Next X
-    MOV P0,[0x2000]
+    MOV P0,[0x202E]
     INC P0
-    MOV [0x2000],P0
+    MOV [0x202E],P0
     CMP P0,255
     JLE for_loop_1
 for_end_2:
@@ -179,11 +179,41 @@ for_end_2:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
-ORG 0x2000
-DW 0  ; Variable X
-ORG 0x2002
-DW 0  ; Variable Y
-ORG 0x2004
-DW 0  ; Variable COLOR_VAL
 
-ORG 0x1000
+ORG 0x8000
+
+; String concatenation subroutine
+str_concat:
+    ; P1 = left string address
+    ; Top of stack = right string address
+    ; Returns result address in P0
+    POP P2
+    POP P3
+    PUSH P2
+    
+    ; Allocate space for result string
+    MOV P0,0x6000
+    MOV P4,P0
+    
+    ; Copy left string
+str_cat_copy_left:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ str_cat_copy_right
+    MOV [P4],P5
+    INC P1
+    INC P4
+    JMP str_cat_copy_left
+    
+str_cat_copy_right:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ str_cat_done
+    MOV [P4],P5
+    INC P3
+    INC P4
+    JMP str_cat_copy_right
+    
+str_cat_done:
+    MOV [P4],0
+    RET

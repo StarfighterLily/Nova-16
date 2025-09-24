@@ -1145,20 +1145,6 @@ pause_loop:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
-ORG 0x2000
-DW 0  ; Variable I
-ORG 0x2002
-DW 0  ; Variable COLOR_VAL
-ORG 0x2004
-DW 0  ; Variable X
-ORG 0x2006
-DW 0  ; Variable GRADIENT_COLOR
-ORG 0x2008
-DW 0  ; Variable Y
-ORG 0x200A
-DW 0  ; Variable RAINBOW_COLOR
-ORG 0x200C
-DW 0  ; Variable BASE_COLOR
 
 ORG 0x8000
 
