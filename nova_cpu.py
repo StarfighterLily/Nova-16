@@ -1277,9 +1277,15 @@ class CPU:
         lookup[0xDF] = (0, 'SV')  # Sound Volume
         lookup[0xE0] = (0, 'SW')  # Sound Waveform/Control
         
+        # P register byte access (0xC9-0xD2 for high bytes, 0xD3-0xDC for low bytes)
+        for i in range(10):
+            lookup[0xC9 + i] = (i, 'P_high')  # P0: to P9: (high bytes)
+            lookup[0xD3 + i] = (i, 'P_low')   # :P0 to :P9 (low bytes)
+        
         # Video registers
         lookup[0xE1] = (2, 'V')   # VM register - Vregisters[2]
         lookup[0xE2] = (0, 'VL')  # Video Layer register
+        lookup[0xC8] = (3, 'V')   # VC register - Vregisters[3] - moved to 0xC8
         
         # Timer registers
         lookup[0xE3] = (0, 'TT')  # Timer Time/Counter
@@ -1302,11 +1308,6 @@ class CPU:
         # V registers (0xFD-0xFE) - VX, VY
         lookup[0xFD] = (0, 'V')  # VX
         lookup[0xFE] = (1, 'V')  # VY
-        
-        # P register byte access (0xC9-0xD2 for high bytes, 0xD3-0xDC for low bytes)
-        for i in range(10):
-            lookup[0xC9 + i] = (i, 'P_high')  # P0: to P9: (high bytes)
-            lookup[0xD3 + i] = (i, 'P_low')   # :P0 to :P9 (low bytes)
         
         return lookup
 
@@ -1704,7 +1705,7 @@ class CPU:
             raise Exception(f"Cannot set value for operand type: {operand['type']}")
 
     def get_register_value(self, reg_num):
-        """Get register value by number (0-19)"""
+        """Get register value by number (0-22)"""
         if 0 <= reg_num <= 9:  # R0-R9
             return self.Rregisters[reg_num]
         elif 10 <= reg_num <= 19:  # P0-P9
@@ -1713,6 +1714,8 @@ class CPU:
             return self.gfx.Vregisters[0]
         elif reg_num == 21:  # VY
             return self.gfx.Vregisters[1]
+        elif reg_num == 22:  # VC
+            return self.gfx.Vregisters[3]
         else:
             raise Exception(f"Invalid register number: {reg_num}")
     
@@ -1728,6 +1731,10 @@ class CPU:
             self.invalidate_instruction_cache()
         elif reg_num == 21:  # VY
             self.gfx.Vregisters[1] = value & 0xFFFF
+            # Invalidate instruction cache when graphics registers change
+            self.invalidate_instruction_cache()
+        elif reg_num == 22:  # VC
+            self.gfx.Vregisters[3] = value & 0xFFFF
             # Invalidate instruction cache when graphics registers change
             self.invalidate_instruction_cache()
         else:

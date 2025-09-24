@@ -54,9 +54,9 @@ class GPUProfiler:
             0x35: 'SROT',     # Rotate screen by direction, amount
             0x36: 'SSHFT',    # Shift screen by axis, amount
             0x37: 'SFLIP',    # Flip screen by axis, amount
-            0x38: 'SLINE',    # Line x1, y1, x2, y2, color
-            0x39: 'SRECT',    # Rectangle x1, y1, x2, y2, color, un/filled
-            0x3A: 'SCIRC',    # Circle x, y, radius, color, un/filled
+            0x38: 'SLINE',    # Line from (VX,VY) to end x, end y (uses VC)
+            0x39: 'SRECT',    # Rectangle from (VX,VY) to end x, end y, filled (uses VC)
+            0x3A: 'SCIRC',    # Circle at (VX,VY) with radius, filled (uses VC)
             0x3B: 'SINV',     # Invert screen colors
             0x3C: 'SBLIT',    # Blit screen
             0x3D: 'SFILL',    # Fill screen

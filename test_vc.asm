@@ -1,0 +1,3 @@
+ORG 0x1000
+MOV VC, 0x1F
+HLT

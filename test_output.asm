@@ -739,21 +739,21 @@ while_end_6:
     ; Define subroutine DrawShape
 sub_DrawShape:
     ; Line
-    MOV P2,50
+    MOV VX,50
+    MOV VY,150
+    MOV P2,150
     MOV P3,150
-    MOV P4,150
-    MOV P5,150
-    MOV P6,3
-    ; Draw line from (P2,P3) to (P4,P5)
-    SLINE P2,P3,P4,P5,P6
+    MOV VC,3
+    ; Draw line from (VX,VY) to (P2,P3)
+    SLINE P2,P3
     ; Circle
-    MOV P6,100
-    MOV P5,120
-    MOV P4,20
-    MOV P3,5
-    MOV P2,1
-    ; Draw circle at (P6,P5) radius P4
-    SCIRC P6,P5,P4,P3,P2
+    MOV VX,100
+    MOV VY,120
+    MOV P2,20
+    MOV VC,5
+    MOV P3,1
+    ; Draw circle at (VX,VY) radius P2
+    SCIRC P2,P3
     ; Return
     RET
     ; Call subroutine DrawShape

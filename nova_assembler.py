@@ -26,7 +26,7 @@ class InstructionSet:
     
     def _build_lookup_tables(self):
         """Build lookup tables from opcodes.py"""
-        reg_names = {f"R{i}" for i in range(10)} | {f"P{i}" for i in range(10)} | {"VX", "VY", "VM"} | {"TT", "TM", "TC", "TS"} | {"VL"} | {"SP", "FP"} | {"SA", "SF", "SV", "SW"}
+        reg_names = {f"R{i}" for i in range(10)} | {f"P{i}" for i in range(10)} | {"VX", "VY", "VM", "VC"} | {"TT", "TM", "TC", "TS"} | {"VL"} | {"SP", "FP"} | {"SA", "SF", "SV", "SW"}
         
         for mnemonic, opcode_str, size in opcodes:
             opcode_val = int(opcode_str, 16)
@@ -292,7 +292,7 @@ class OperandClassifier:
             'P0:', 'P1:', 'P2:', 'P3:', 'P4:', 'P5:', 'P6:', 'P7:', 'P8:', 'P9:',
             ':P0', ':P1', ':P2', ':P3', ':P4', ':P5', ':P6', ':P7', ':P8', ':P9',
             # Special registers
-            'VX', 'VY', 'VM', 'VL', 'TT', 'TM', 'TC', 'TS', 'SP', 'FP',
+            'VX', 'VY', 'VM', 'VC', 'VL', 'TT', 'TM', 'TC', 'TS', 'SP', 'FP',
             # Sound registers
             'SA', 'SF', 'SV', 'SW'
         }

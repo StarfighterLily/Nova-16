@@ -34,45 +34,45 @@ start:
     ; Define subroutine DrawStar
 sub_DrawStar:
     ; Line
-    MOV P0,100
-    MOV P1,50
-    MOV P2,120
-    MOV P3,90
-    MOV P4,7
-    ; Draw line from (P0,P1) to (P2,P3)
-    SLINE P0,P1,P2,P3,P4
+    MOV VX,100
+    MOV VY,50
+    MOV P0,120
+    MOV P1,90
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P0,P1)
+    SLINE P0,P1
     ; Line
-    MOV P4,120
-    MOV P3,90
-    MOV P2,80
-    MOV P1,70
-    MOV P0,7
-    ; Draw line from (P4,P3) to (P2,P1)
-    SLINE P4,P3,P2,P1,P0
-    ; Line
+    MOV VX,120
+    MOV VY,90
     MOV P0,80
     MOV P1,70
-    MOV P2,140
-    MOV P3,70
-    MOV P4,7
-    ; Draw line from (P0,P1) to (P2,P3)
-    SLINE P0,P1,P2,P3,P4
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P0,P1)
+    SLINE P0,P1
     ; Line
-    MOV P4,140
-    MOV P3,70
-    MOV P2,100
-    MOV P1,50
-    MOV P0,7
-    ; Draw line from (P4,P3) to (P2,P1)
-    SLINE P4,P3,P2,P1,P0
+    MOV VX,80
+    MOV VY,70
+    MOV P0,140
+    MOV P1,70
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P0,P1)
+    SLINE P0,P1
     ; Line
+    MOV VX,140
+    MOV VY,70
     MOV P0,100
     MOV P1,50
-    MOV P2,100
-    MOV P3,110
-    MOV P4,7
-    ; Draw line from (P0,P1) to (P2,P3)
-    SLINE P0,P1,P2,P3,P4
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P0,P1)
+    SLINE P0,P1
+    ; Line
+    MOV VX,100
+    MOV VY,50
+    MOV P0,100
+    MOV P1,110
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P0,P1)
+    SLINE P0,P1
     ; Return
     RET
     ; Define subroutine PlayMelody

@@ -37,13 +37,13 @@ start:
     ; Fill rectangle from (P4,P3) to (P2,P1)
     SFILLR P4,P3,P2,P1,P0
     ; Line
-    MOV P0,50
-    MOV P1,150
+    MOV VX,50
+    MOV VY,150
     MOV P2,200
     MOV P3,150
-    MOV P4,68
-    ; Draw line from (P0,P1) to (P2,P3)
-    SLINE P0,P1,P2,P3,P4
+    MOV VC,68
+    ; Draw line from (VX,VY) to (P2,P3)
+    SLINE P2,P3
 
 ; Program end - infinite loop to keep display visible
 halt:

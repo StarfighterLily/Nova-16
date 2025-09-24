@@ -320,9 +320,9 @@ class AdvancedGraphicsMonitor:
             0x35: "SROT",      # Rotate screen by direction, amount
             0x36: "SSHFT",     # Shift screen by axis, amount
             0x37: "SFLIP",     # Flip screen by axis, amount
-            0x38: "SLINE",     # Line x1, y1, x2, y2, color
-            0x39: "SRECT",     # Rectangle x1, y1, x2, y2, color, un/filled
-            0x3A: "SCIRC",     # Circle x, y, radius, color, un/filled
+            0x38: "SLINE",     # Line from (VX,VY) to end x, end y (uses VC)
+            0x39: "SRECT",     # Rectangle from (VX,VY) to end x, end y, filled (uses VC)
+            0x3A: "SCIRC",     # Circle at (VX,VY) with radius, filled (uses VC)
             0x3B: "SINV",      # Invert screen colors
             0x3C: "SBLIT",     # Blit screen
             0x3D: "SFILL",     # Fill screen
@@ -339,14 +339,6 @@ class AdvancedGraphicsMonitor:
             # Sprite operations
             0x55: "SPBLIT",    # Blit sprite
             0x56: "SPBLITALL", # Blit all sprites
-            
-            # Layer operations
-            0x83: "LCPY",      # Copy contents of layer dest, source
-            0x84: "LCLR",      # Clear layer to color
-            0x86: "LSHFT",     # Shift layer by axis, amount
-            0x87: "LROT",      # Rotate layer by direction, amount
-            0x88: "LFLIP",     # Flip layer by axis, amount
-            0x89: "LSWAP"      # Swap two layers dest, source
         }
         return graphics_opcodes.get(opcode, None)
             

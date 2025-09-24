@@ -1,8 +1,8 @@
 # Symbol table
 # Format: <symbol> <value>
-delay_loop 0x007C
-delay_loop2 0x0088
-delay_loop3 0x00A0
-delay_loop4 0x00C5
-delay_loop5 0x00DD
-main_loop 0x00F9
+delay_loop 0x0070
+delay_loop2 0x007C
+delay_loop3 0x0094
+delay_loop4 0x00B9
+delay_loop5 0x00D1
+main_loop 0x00ED

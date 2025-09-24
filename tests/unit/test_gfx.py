@@ -40,10 +40,11 @@ class TestGraphicsInitialization:
 
     def test_graphics_registers_initialization(self, graphics):
         """Test that video registers are initialized."""
-        assert len(graphics.Vregisters) == 3
+        assert len(graphics.Vregisters) == 4
         assert graphics.Vregisters[0] == 0  # VX
         assert graphics.Vregisters[1] == 0  # VY
         assert graphics.Vregisters[2] == 0  # VM
+        assert graphics.Vregisters[3] == 0  # VC
 
     def test_graphics_flags_initialization(self, graphics):
         """Test that graphics flags are initialized."""

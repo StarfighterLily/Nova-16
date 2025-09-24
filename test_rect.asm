@@ -32,36 +32,21 @@ start:
     MOV P1,15
     TEXT P0,P1
     ; Rect
-    MOV P0,50
-    MOV P1,50
-    MOV P2,100
-    MOV P3,50
-    MOV P7,15
-    ; Calculate rectangle coordinates
-    MOV P5,P0
-    ADD P5,P2
-    DEC P5
-    MOV P6,P1
-    ADD P6,P3
-    DEC P6
-    ; Draw rectangle from (P0,P1) to (P5,P6)
-    SRECT P0,P1,P5,P6,P7,0
+    MOV VX,50
+    MOV VY,50
+    MOV P0,149  ; end x = start x + width - 1 = 50 + 100 - 1 = 149
+    MOV P1,99   ; end y = start y + height - 1 = 50 + 50 - 1 = 99
+    MOV VC,15
+    ; Draw rectangle from (VX,VY) to (P0,P1)
+    SRECT P0,P1,0
     ; Rect
-    MOV P0,20
-    MOV P1,20
-    MOV P2,100
-    MOV P3,50
-    MOV P7,15
-    MOV P4,15
-    ; Calculate rectangle coordinates
-    MOV P5,P0
-    ADD P5,P2
-    DEC P5
-    MOV P6,P1
-    ADD P6,P3
-    DEC P6
-    ; Draw rectangle from (P0,P1) to (P5,P6)
-    SRECT P0,P1,P5,P6,P4,0
+    MOV VX,20
+    MOV VY,20
+    MOV P0,119  ; end x = 20 + 100 - 1 = 119
+    MOV P1,69   ; end y = 20 + 50 - 1 = 69
+    MOV VC,15
+    ; Draw rectangle from (VX,VY) to (P0,P1)
+    SRECT P0,P1,0
     ; Disp
     MOV P0,0
     MOV VX,P0

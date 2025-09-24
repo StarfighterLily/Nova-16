@@ -233,21 +233,21 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Line
-    MOV P4,10
-    MOV P1,10
+    MOV VX,10
+    MOV VY,10
     MOV P3,100
     MOV P5,50
-    MOV P6,7
-    ; Draw line from (P4,P1) to (P3,P5)
-    SLINE P4,P1,P3,P5,P6
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P3,P5)
+    SLINE P3,P5
     ; Circle
-    MOV P6,160
-    MOV P5,120
+    MOV VX,160
+    MOV VY,120
     MOV P3,30
-    MOV P1,4
-    MOV P4,1
-    ; Draw circle at (P6,P5) radius P3
-    SCIRC P6,P5,P3,P1,P4
+    MOV VC,4
+    MOV P5,1
+    ; Draw circle at (VX,VY) radius P3
+    SCIRC P3,P5
     ; PXLON
     MOV P4,200
     MOV P1,100
@@ -294,37 +294,37 @@ sound_wait_loop:
     ; Define subroutine DrawBox
 sub_DrawBox:
     ; Line
-    MOV P5,50
-    MOV P4,50
+    MOV VX,50
+    MOV VY,50
     MOV P1,150
     MOV P3,50
-    MOV P6,7
-    ; Draw line from (P5,P4) to (P1,P3)
-    SLINE P5,P4,P1,P3,P6
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P1,P3)
+    SLINE P1,P3
     ; Line
-    MOV P6,150
-    MOV P3,50
+    MOV VX,150
+    MOV VY,50
     MOV P1,150
-    MOV P4,100
-    MOV P5,7
-    ; Draw line from (P6,P3) to (P1,P4)
-    SLINE P6,P3,P1,P4,P5
+    MOV P3,100
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P1,P3)
+    SLINE P1,P3
     ; Line
-    MOV P5,150
-    MOV P4,100
+    MOV VX,150
+    MOV VY,100
     MOV P1,50
     MOV P3,100
-    MOV P6,7
-    ; Draw line from (P5,P4) to (P1,P3)
-    SLINE P5,P4,P1,P3,P6
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P1,P3)
+    SLINE P1,P3
     ; Line
-    MOV P6,50
-    MOV P3,100
+    MOV VX,50
+    MOV VY,100
     MOV P1,50
-    MOV P4,50
-    MOV P5,7
-    ; Draw line from (P6,P3) to (P1,P4)
-    SLINE P6,P3,P1,P4,P5
+    MOV P3,50
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P1,P3)
+    SLINE P1,P3
     ; Return from subroutine
     RET
     ; Call subroutine DrawBox

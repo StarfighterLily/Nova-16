@@ -73,9 +73,9 @@ REPEAT/UNTIL loops
 BREAK/CONTINUE statements
 
 Enhanced Data Types
-
 Boolean type
 User-defined structures
+
 Math Library Expansion
 Random number generation
 Bitwise operations

@@ -6,7 +6,7 @@ class GFX:
         self.width = width
         self.height = height
         self.screen = np.zeros( ( self.height, self.width ), dtype=np.uint8 )
-        self.Vregisters = np.zeros( 3, dtype=np.uint8 )  # VX, VY, VM (video mode)
+        self.Vregisters = np.zeros( 4, dtype=np.uint8 )  # VX, VY, VM (video mode), VC (video color)
         # Keep vmode for backward compatibility, but it will sync with Vregisters[2]
         self.vmode = 0
         self.vram = np.zeros( ( self.height, self.width ), dtype=np.uint8 )
@@ -931,13 +931,13 @@ class GFX:
     def _get_layer_buffer(self):
         """Get the numpy array for the current layer specified by VL register"""
         if self.VL == 0:
-            return self.screen
+            return self.layer_0  # Use layer_0 buffer so compositing works correctly
         elif 1 <= self.VL <= 4:
             return self.background_layers[self.VL - 1]
         elif 5 <= self.VL <= 8:
             return self.sprite_layers[self.VL - 5]
         else:
-            return self.screen  # Fallback to screen for invalid layers    
+            return self.layer_0  # Fallback to layer_0 for invalid layers    
     
     def draw_text(self, x, y, color, text_addr, memory):
         """Draw null-terminated string from memory at text_addr"""
@@ -1055,6 +1055,9 @@ class GFX:
         """Draw a line from (x1,y1) to (x2,y2) with the specified color"""
         target_buffer = self._get_layer_buffer()
         
+        # Convert to int to avoid numpy uint8 overflow issues
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        
         # Bresenham's line algorithm
         dx = abs(x2 - x1)
         dy = abs(y2 - y1)
@@ -1108,6 +1111,9 @@ class GFX:
     def draw_circle(self, center_x, center_y, radius, color, filled=True):
         """Draw a circle centered at (center_x, center_y) with the specified radius and color"""
         target_buffer = self._get_layer_buffer()
+        
+        # Convert to int to avoid numpy uint8 overflow issues
+        center_x, center_y, radius = int(center_x), int(center_y), int(radius)
         
         if filled:
             # Filled circle using midpoint circle algorithm

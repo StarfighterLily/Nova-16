@@ -80,14 +80,14 @@ opcodes = [
     # Graphics operations
     ("SBLEND",             "0x31", 1), # Set blend mode # implemented
     ("SREAD",              "0x32", 1), # Read screen pixel # implemented
-    ("SWRITE",             "0x33", 1), # Write screen pixel # implemented
-    ("SROL",                "0x34", 2), # Roll screen by axis, amount # implemented
+    ("SWRITE",             "0x33", 0), # Write screen pixel # implemented
+    ("SROL",               "0x34", 2), # Roll screen by axis, amount # implemented
     ("SROT",               "0x35", 2), # Rotate screen by direction, amount # implemented
     ("SSHFT",              "0x36", 2), # Shift screen by axis, amount # implemented
     ("SFLIP",              "0x37", 2), # Flip screen by axis, amount # implemented
-    ("SLINE",              "0x38", 5), # Line x1, y1, x2, y2, color # implemented
-    ("SRECT",              "0x39", 6), # Rectangle x1, y1, x2, y2, color, un/filled # implemented
-    ("SCIRC",              "0x3A", 5), # Circle x, y, radius, color, un/filled # implemented
+    ("SLINE",              "0x38", 2), # Line end x, end y # implemented
+    ("SRECT",              "0x39", 3), # Rectangle end x, end y, filled
+    ("SCIRC",              "0x3A", 2), # Circle radius, filled # implemented
     ("SINV",               "0x3B", 0), # Invert screen colors # implemented
     ("SBLIT",              "0x3C", 1), # Blit screen # implemented
     ("SFILL",              "0x3D", 1), # Fill screen # implemented
@@ -229,14 +229,30 @@ opcodes = [
     ("ENTER",              "0x9D", 1), # Enter subroutine (stack frame) # implemented
     ("LEAVE",              "0x9E", 0), # Leave subroutine (stack frame) # implemented
 
-    # Flags operations
-    ("STC",                "0x9F", 0), # Set carry flag # implemented
-    ("CLC",                "0xA0", 0), # Clear carry flag # implemented
-    ("CMC",                "0xA1", 0), # Complement carry flag # implemented
-
-
 
     # Register/special references (for direct access)
+
+    ("VC",                 "0xC8", 1), # Video Color
+    ("P0:",                "0xC9", 1), # P0 high byte
+    ("P1:",                "0xCA", 1), # P1 high byte
+    ("P2:",                "0xCB", 1), # P2 high byte
+    ("P3:",                "0xCC", 1), # P3 high byte
+    ("P4:",                "0xCD", 1), # P4 high byte
+    ("P5:",                "0xCE", 1), # P5 high byte
+    ("P6:",                "0xCF", 1), # P6 high byte
+    ("P7:",                "0xD0", 1), # P7 high byte
+    ("P8:",                "0xD1", 1), # P8 high byte
+    ("P9:",                "0xD2", 1), # P9 high byte
+    (":P0",                "0xD3", 1), # P0 low byte
+    (":P1",                "0xD4", 1), # P1 low byte
+    (":P2",                "0xD5", 1), # P2 low byte
+    (":P3",                "0xD6", 1), # P3 low byte
+    (":P4",                "0xD7", 1), # P4 low byte
+    (":P5",                "0xD8", 1), # P5 low byte
+    (":P6",                "0xD9", 1), # P6 low byte
+    (":P7",                "0xDA", 1), # P7 low byte
+    (":P8",                "0xDB", 1), # P8 low byte
+    (":P9",                "0xDC", 1), # P9 low byte
     ("SA",                 "0xDD", 1), # Sound Address
     ("SF",                 "0xDE", 1), # Sound Frequency
     ("SV",                 "0xDF", 1), # Sound Volume
@@ -267,29 +283,8 @@ opcodes = [
     ("P7",                 "0xF8", 1),
     ("P8",                 "0xF9", 1),
     ("P9",                 "0xFA", 1),
-    ("SP",                 "0xFB", 1),  # SP is P8
-    ("FP",                 "0xFC", 1),  # FP is P9
+    ("SP",                 "0xFB", 1),
+    ("FP",                 "0xFC", 1),
     ("VX",                 "0xFD", 1),
     ("VY",                 "0xFE", 1),
-    # P regi
-    ("P0:",                "0xC9", 1), # P0 high byte
-    ("P1:",                "0xCA", 1), # P1 high byte
-    ("P2:",                "0xCB", 1), # P2 high byte
-    ("P3:",                "0xCC", 1), # P3 high byte
-    ("P4:",                "0xCD", 1), # P4 high byte
-    ("P5:",                "0xCE", 1), # P5 high byte
-    ("P6:",                "0xCF", 1), # P6 high byte
-    ("P7:",                "0xD0", 1), # P7 high byte
-    ("P8:",                "0xD1", 1), # P8 high byte
-    ("P9:",                "0xD2", 1), # P9 high byte
-    (":P0",                "0xD3", 1), # P0 low byte
-    (":P1",                "0xD4", 1), # P1 low byte
-    (":P2",                "0xD5", 1), # P2 low byte
-    (":P3",                "0xD6", 1), # P3 low byte
-    (":P4",                "0xD7", 1), # P4 low byte
-    (":P5",                "0xD8", 1), # P5 low byte
-    (":P6",                "0xD9", 1), # P6 low byte
-    (":P7",                "0xDA", 1), # P7 low byte
-    (":P8",                "0xDB", 1), # P8 low byte
-    (":P9",                "0xDC", 1), # P9 low byte
 ]

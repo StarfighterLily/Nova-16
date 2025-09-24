@@ -110,37 +110,37 @@ display_value_done:
     ; Define subroutine DrawBox
 sub_DrawBox:
     ; Line
-    MOV P0,50
-    MOV P1,50
+    MOV VX,50
+    MOV VY,50
     MOV P2,150
     MOV P3,50
-    MOV P4,7
-    ; Draw line from (P0,P1) to (P2,P3)
-    SLINE P0,P1,P2,P3,P4
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P2,P3)
+    SLINE P2,P3
     ; Line
-    MOV P4,150
-    MOV P3,50
+    MOV VX,150
+    MOV VY,50
     MOV P2,150
-    MOV P1,100
-    MOV P0,7
-    ; Draw line from (P4,P3) to (P2,P1)
-    SLINE P4,P3,P2,P1,P0
+    MOV P3,100
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P2,P3)
+    SLINE P2,P3
     ; Line
-    MOV P0,150
-    MOV P1,100
+    MOV VX,150
+    MOV VY,100
     MOV P2,50
     MOV P3,100
-    MOV P4,7
-    ; Draw line from (P0,P1) to (P2,P3)
-    SLINE P0,P1,P2,P3,P4
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P2,P3)
+    SLINE P2,P3
     ; Line
-    MOV P4,50
-    MOV P3,100
+    MOV VX,50
+    MOV VY,100
     MOV P2,50
-    MOV P1,50
-    MOV P0,7
-    ; Draw line from (P4,P3) to (P2,P1)
-    SLINE P4,P3,P2,P1,P0
+    MOV P3,50
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P2,P3)
+    SLINE P2,P3
     ; Return
     RET
     ; Line

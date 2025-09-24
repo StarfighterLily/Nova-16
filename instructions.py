@@ -952,11 +952,11 @@ class Pusha(BaseInstruction):
         super().__init__("PUSHA", opcode_val)
     
     def execute(self, cpu):
-        # Push all registers (R0-R9, P0-P9, VX, VY) to stack
+        # Push all registers (R0-R9, P0-P9, VX, VY, VC) to stack
         registers = []
         registers.extend(cpu.Rregisters)  # R0-R9
         registers.extend(cpu.Pregisters)  # P0-P9
-        registers.extend(cpu.gfx.Vregisters[:2])  # VX, VY
+        registers.extend(cpu.gfx.Vregisters[:3])  # VX, VY, VC
         
         for reg_value in reversed(registers):  # Push in reverse order
             sp = int(cpu.Pregisters[8])
@@ -971,8 +971,8 @@ class Popa(BaseInstruction):
         super().__init__("POPA", opcode_val)
     
     def execute(self, cpu):
-        # Pop all registers from stack (R0-R9, P0-P9, VX, VY)
-        registers_order = list(range(21))  # 0-20 (R0-R9, P0-P9, VX, VY)
+        # Pop all registers from stack (R0-R9, P0-P9, VX, VY, VC)
+        registers_order = list(range(22))  # 0-21 (R0-R9, P0-P9, VX, VY, VC)
         
         for reg_num in registers_order:
             sp = int(cpu.Pregisters[8])
@@ -1541,49 +1541,49 @@ class Sfill(BaseInstruction):
         cpu.gfx.fill_layer(color)
 
 class Sline(BaseInstruction):
-    """SLINE instruction - draw line x1, y1, x2, y2, color"""
+    """SLINE instruction - draw line from (VX,VY) to end x, end y (uses VC)"""
     def __init__(self):
         opcode_val = 0x38  # SLINE
         super().__init__("SLINE", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(5)
-        x1 = cpu.get_operand_value(operands[0])
-        y1 = cpu.get_operand_value(operands[1])
-        x2 = cpu.get_operand_value(operands[2])
-        y2 = cpu.get_operand_value(operands[3])
-        color = cpu.get_operand_value(operands[4])
+        operands = cpu.parse_operands(2)
+        x2 = cpu.get_operand_value(operands[0])
+        y2 = cpu.get_operand_value(operands[1])
+        x1 = cpu.gfx.Vregisters[0]  # VX register
+        y1 = cpu.gfx.Vregisters[1]  # VY register
+        color = cpu.gfx.Vregisters[3]  # VC register
         cpu.gfx.draw_line(x1, y1, x2, y2, color)
 
 class Srect(BaseInstruction):
-    """SRECT instruction - draw rectangle x1, y1, x2, y2, color, filled"""
+    """SRECT instruction - draw rectangle from (VX,VY) to end x, end y, filled (uses VC)"""
     def __init__(self):
         opcode_val = 0x39  # SRECT
         super().__init__("SRECT", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(6)
-        x1 = cpu.get_operand_value(operands[0])
-        y1 = cpu.get_operand_value(operands[1])
-        x2 = cpu.get_operand_value(operands[2])
-        y2 = cpu.get_operand_value(operands[3])
-        color = cpu.get_operand_value(operands[4])
-        filled = cpu.get_operand_value(operands[5]) != 0
+        operands = cpu.parse_operands(3)
+        x2 = cpu.get_operand_value(operands[0])
+        y2 = cpu.get_operand_value(operands[1])
+        filled = cpu.get_operand_value(operands[2]) != 0
+        x1 = cpu.gfx.Vregisters[0]  # VX register
+        y1 = cpu.gfx.Vregisters[1]  # VY register
+        color = cpu.gfx.Vregisters[3]  # VC register
         cpu.gfx.draw_rectangle(x1, y1, x2, y2, color, filled)
 
 class Scirc(BaseInstruction):
-    """SCIRC instruction - draw circle x, y, radius, color, filled"""
+    """SCIRC instruction - draw circle at (VX,VY) with radius, filled (uses VC)"""
     def __init__(self):
         opcode_val = 0x3A  # SCIRC
         super().__init__("SCIRC", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(5)
-        x = cpu.get_operand_value(operands[0])
-        y = cpu.get_operand_value(operands[1])
-        radius = cpu.get_operand_value(operands[2])
-        color = cpu.get_operand_value(operands[3])
-        filled = cpu.get_operand_value(operands[4]) != 0
+        operands = cpu.parse_operands(2)
+        radius = cpu.get_operand_value(operands[0])
+        filled = cpu.get_operand_value(operands[1]) != 0
+        x = cpu.gfx.Vregisters[0]  # VX register
+        y = cpu.gfx.Vregisters[1]  # VY register
+        color = cpu.gfx.Vregisters[3]  # VC register
         cpu.gfx.draw_circle(x, y, radius, color, filled)
 
 class Sinv(BaseInstruction):

@@ -5,45 +5,45 @@
 MOV VM, 0
 
 ; Set up coordinates in registers
-MOV R0, 10   ; x1
-MOV R1, 10   ; y1
-MOV R2, 100  ; x2
-MOV R3, 50   ; y2
-MOV R4, 1    ; color
+MOV VX, 10   ; start x
+MOV VY, 10   ; start y
+MOV R0, 100  ; end x
+MOV R1, 50   ; end y
+MOV VC, 1    ; color
 
 ; Draw a line from (10,10) to (100,50) in red (color 1)
-SLINE R0, R1, R2, R3, R4
+SLINE R0, R1
 
 ; Set up rectangle coordinates
-MOV R0, 20   ; x1
-MOV R1, 20   ; y1
-MOV R2, 80   ; x2
-MOV R3, 40   ; y2
-MOV R4, 2    ; color
-MOV R5, 1    ; filled
+MOV VX, 20   ; start x
+MOV VY, 20   ; start y
+MOV R0, 80   ; end x
+MOV R1, 40   ; end y
+MOV VC, 2    ; color
+MOV R2, 1    ; filled
 
 ; Draw a filled rectangle from (20,20) to (80,40) in blue (color 2)
-SRECT R0, R1, R2, R3, R4, R5
+SRECT R0, R1, R2
 
 ; Set up circle parameters
-MOV R0, 150  ; x
-MOV R1, 100  ; y
-MOV R2, 30   ; radius
-MOV R3, 3    ; color
-MOV R4, 0    ; outline
+MOV VX, 150  ; center x
+MOV VY, 100  ; center y
+MOV R0, 30   ; radius
+MOV VC, 3    ; color
+MOV R1, 0    ; outline
 
 ; Draw an outline circle at (150,100) with radius 30 in green (color 3)
-SCIRC R0, R1, R2, R3, R4
+SCIRC R0, R1
 
 ; Set up filled circle
-MOV R0, 200  ; x
-MOV R1, 150  ; y
-MOV R2, 20   ; radius
-MOV R3, 4    ; color
-MOV R4, 1    ; filled
+MOV VX, 200  ; center x
+MOV VY, 150  ; center y
+MOV R0, 20   ; radius
+MOV VC, 4    ; color
+MOV R1, 1    ; filled
 
 ; Draw a filled circle at (200,150) with radius 20 in yellow (color 4)
-SCIRC R0, R1, R2, R3, R4
+SCIRC R0, R1
 
 ; Wait a bit (simple delay loop)
 MOV R0, 100  ; Use smaller value

@@ -32,21 +32,21 @@ start:
     MOV P1,15
     TEXT P0,P1
     ; Line
-    MOV P0,10
-    MOV P1,10
+    MOV VX,10
+    MOV VY,10
     MOV P2,100
     MOV P3,50
-    MOV P4,7
-    ; Draw line from (P0,P1) to (P2,P3)
-    SLINE P0,P1,P2,P3,P4
+    MOV VC,7
+    ; Draw line from (VX,VY) to (P2,P3)
+    SLINE P2,P3
     ; Line
-    MOV P4,110
-    MOV P3,10
+    MOV VX,110
+    MOV VY,10
     MOV P2,200
-    MOV P1,50
-    MOV P0,4
-    ; Draw line from (P4,P3) to (P2,P1)
-    SLINE P4,P3,P2,P1,P0
+    MOV P3,50
+    MOV VC,4
+    ; Draw line from (VX,VY) to (P2,P3)
+    SLINE P2,P3
     ; Pxl-On
     MOV P0,250
     MOV P1,20

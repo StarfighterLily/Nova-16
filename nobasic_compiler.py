@@ -2341,7 +2341,10 @@ class NoBasicCompiler:
         # Generate SLINE instruction
         lines.extend([
             f"    ; Draw line from ({x1_reg},{y1_reg}) to ({x2_reg},{y2_reg})",
-            f"    SLINE {x1_reg},{y1_reg},{x2_reg},{y2_reg},{color}",
+            f"    MOV VX,{x1_reg}",
+            f"    MOV VY,{y1_reg}",
+            f"    MOV VC,{color}",
+            f"    SLINE {x2_reg},{y2_reg}",
         ])
 
         # Free registers
@@ -2411,7 +2414,10 @@ class NoBasicCompiler:
         # Generate SCIRC instruction
         lines.extend([
             f"    ; Draw circle at ({x_reg},{y_reg}) radius {radius_reg}",
-            f"    SCIRC {x_reg},{y_reg},{radius_reg},{color},{filled}",
+            f"    MOV VX,{x_reg}",
+            f"    MOV VY,{y_reg}",
+            f"    MOV VC,{color}",
+            f"    SCIRC {radius_reg},{filled}",
         ])
 
         # Free registers
@@ -2560,7 +2566,10 @@ class NoBasicCompiler:
         # Generate SRECT instruction (unfilled rectangle)
         lines.extend([
             f"    ; Draw rectangle from ({x_reg},{y_reg}) to (P5,P6)",
-            f"    SRECT {x_reg},{y_reg},P5,P6,{color_reg},0",  # 0 = unfilled
+            f"    MOV VX,{x_reg}",
+            f"    MOV VY,{y_reg}",
+            f"    MOV VC,{color_reg}",
+            f"    SRECT P5,P6,0",  # 0 = unfilled
         ])
 
         # Free registers in reverse order to maintain allocation order
