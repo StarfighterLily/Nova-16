@@ -72,9 +72,76 @@ class TestNoBasicCompiler(unittest.TestCase):
         tokens = ['Disp', '"Hello World"', '\n']
         lines, new_i = self.compiler._compile_disp(tokens, 0)
 
-        # Should generate CHAR instruction for each character
+        # Should generate TEXT instruction for longer strings
+        text_lines = [line for line in lines if 'TEXT' in line]
+        self.assertTrue(len(text_lines) > 0)
+        
+        # Should also store the string in memory
+        string_lines = [line for line in lines if 'Hello World' in line and 'string' in line.lower()]
+        self.assertTrue(len(string_lines) > 0)
+
+    def test_compile_disp_short_string(self):
+        """Test Disp with short string still uses CHAR instructions"""
+        tokens = ['Disp', '"Hi"', '\n']
+        lines, new_i = self.compiler._compile_disp(tokens, 0)
+
+        # Should generate CHAR instructions for short strings
         char_lines = [line for line in lines if 'CHAR' in line]
-        self.assertTrue(len(char_lines) > 0)
+        self.assertEqual(len(char_lines), 2)  # 'H' and 'i'
+
+    def test_compile_len_function(self):
+        """Test LEN() function compilation"""
+        tokens = ['LEN', '(', '"Hello"', ')']
+        lines, new_i = self.compiler._parse_primary_expression(tokens, 0)
+
+        # Should generate STRLEN instruction
+        strlen_lines = [line for line in lines if 'STRLEN' in line]
+        self.assertTrue(len(strlen_lines) > 0)
+
+    def test_compile_upper_function(self):
+        """Test UPPER() function compilation"""
+        tokens = ['UPPER', '(', '"hello"', ')']
+        lines, new_i = self.compiler._parse_primary_expression(tokens, 0)
+
+        # Should generate STRUPR instruction
+        strupr_lines = [line for line in lines if 'STRUPR' in line]
+        self.assertTrue(len(strupr_lines) > 0)
+
+    def test_compile_left_function(self):
+        """Test LEFT() function compilation"""
+        tokens = ['LEFT', '(', '"Hello"', ',', '3', ')']
+        lines, new_i = self.compiler._parse_primary_expression(tokens, 0)
+
+        # Should generate CALL to left_substr
+        call_lines = [line for line in lines if 'CALL left_substr' in line]
+        self.assertTrue(len(call_lines) > 0)
+
+    def test_compile_right_function(self):
+        """Test RIGHT() function compilation"""
+        tokens = ['RIGHT', '(', '"Hello"', ',', '2', ')']
+        lines, new_i = self.compiler._parse_primary_expression(tokens, 0)
+
+        # Should generate CALL to right_substr
+        call_lines = [line for line in lines if 'CALL right_substr' in line]
+        self.assertTrue(len(call_lines) > 0)
+
+    def test_compile_mid_function(self):
+        """Test MID() function compilation"""
+        tokens = ['MID', '(', '"Hello"', ',', '1', ',', '3', ')']
+        lines, new_i = self.compiler._parse_primary_expression(tokens, 0)
+
+        # Should generate CALL to mid_substr
+        call_lines = [line for line in lines if 'CALL mid_substr' in line]
+        self.assertTrue(len(call_lines) > 0)
+
+    def test_compile_instr_function(self):
+        """Test INSTR() function compilation"""
+        tokens = ['INSTR', '(', '"Hello"', ',', '"ll"', ')']
+        lines, new_i = self.compiler._parse_primary_expression(tokens, 0)
+
+        # Should generate STREXT instruction
+        strext_lines = [line for line in lines if 'STREXT' in line]
+        self.assertTrue(len(strext_lines) > 0)
 
     def test_compile_assignment_simple(self):
         """Test simple variable assignment"""

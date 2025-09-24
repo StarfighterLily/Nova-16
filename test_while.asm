@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -90,11 +90,11 @@ start:
     ; I = 
     MOV P0,0
     ; Store P0 into I
-    MOV [0x2000],P0
+    MOV [0x2010],P0
     ; While loop
 while_loop_1:
     ; Load I into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x2010]
     CMP P0,5
     JZ while_end_2
     ; Disp
@@ -134,7 +134,7 @@ while_loop_1:
     MOV P0,0
     MOV VX,P0
     ; Load I into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x2010]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -178,11 +178,10 @@ display_num_loop:
 display_value_done:
     ; I = 
     ; Load I into P0
-    MOV P0,[0x2000]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x2010]
+    ADD P0,1
     ; Store P0 into I
-    MOV [0x2000],P0
+    MOV [0x2010],P0
     JMP while_loop_1
 while_end_2:
     ; Disp

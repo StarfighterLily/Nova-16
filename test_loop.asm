@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -22,7 +22,7 @@ start:
     SFILL P0
     ; For I = 1 To 5
     MOV P0,1
-    MOV [0x2000],P0
+    MOV [0x2010],P0
 for_loop_1:
     ; Disp
     MOV P0,0
@@ -57,7 +57,7 @@ for_loop_1:
     MOV P0,0
     MOV VX,P0
     ; Load I into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x2010]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000

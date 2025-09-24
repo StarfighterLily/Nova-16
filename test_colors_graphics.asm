@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -133,34 +133,33 @@ start:
     CHAR P0,P1
     ; For I = 0 To 15
     MOV P0,0
-    MOV [0x2000],P0
+    MOV [0x2010],P0
 for_loop_1:
     ; COLOR_VAL = 
     ; Load I into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x2010]
     MOV P1,8
     ; COLOR(P0, P1)
     SHL P0,4
     OR P0,P1
     ; Store P0 into COLOR_VAL
-    MOV [0x2002],P0
+    MOV [0x2034],P0
     ; Pxl-On
     ; Load I into P0
-    MOV P0,[0x2000]
-    MOV P1,8
-    MUL P0,P1
+    MOV P0,[0x2010]
+    MUL P0,8
     MOV P1,10
     ; Load COLOR_VAL into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x2034]
     ; Pxl-On at (P0,P1)
     MOV VX,P0
     MOV VY,P1
     MOV P0,P2
     SWRITE P0
     ; Next I
-    MOV P0,[0x2000]
+    MOV P0,[0x2010]
     INC P0
-    MOV [0x2000],P0
+    MOV [0x2010],P0
     CMP P0,15
     JLE for_loop_1
 for_end_2:
@@ -902,73 +901,69 @@ for_end_2:
     CHAR P0,P1
     ; For X = 0 To 50
     MOV P0,0
-    MOV [0x2004],P0
+    MOV [0x202E],P0
 for_loop_3:
     ; GRADIENT_COLOR = 
     MOV P4,0
     ; Load X into P3
-    MOV P3,[0x2004]
-    MOV P1,0
-    MUL P3,P1
+    MOV P3,0
     ; COLOR(P4, P3)
     SHL P4,4
     OR P4,P3
     ; Store P4 into GRADIENT_COLOR
-    MOV [0x2006],P4
+    MOV [0x2036],P4
     ; Pxl-On
     MOV P4,100
     ; Load X into P3
-    MOV P3,[0x2004]
+    MOV P3,[0x202E]
     ADD P4,P3
     MOV P3,150
     ; Load GRADIENT_COLOR into P1
-    MOV P1,[0x2006]
+    MOV P1,[0x2036]
     ; Pxl-On at (P4,P3)
     MOV VX,P4
     MOV VY,P3
     MOV P0,P1
     SWRITE P0
     ; Next X
-    MOV P0,[0x2004]
+    MOV P0,[0x202E]
     INC P0
-    MOV [0x2004],P0
+    MOV [0x202E],P0
     CMP P0,50
     JLE for_loop_3
 for_end_4:
     ; For Y = 0 To 20
     MOV P0,0
-    MOV [0x2008],P0
+    MOV [0x2030],P0
 for_loop_5:
     ; RAINBOW_COLOR = 
     ; Load Y into P1
-    MOV P1,[0x2008]
-    MOV P3,0
-    MUL P1,P3
+    MOV P1,0
     MOV P3,12
     ; COLOR(P1, P3)
     SHL P1,4
     OR P1,P3
     ; Store P1 into RAINBOW_COLOR
-    MOV [0x200A],P1
+    MOV [0x2038],P1
     ; Line
     MOV P1,160
     MOV P3,170
     ; Load Y into P4
-    MOV P4,[0x2008]
+    MOV P4,[0x2030]
     ADD P3,P4
     MOV P4,200
     MOV P2,170
     ; Load Y into P0
-    MOV P0,[0x2008]
+    MOV P0,[0x2030]
     ADD P2,P0
     ; Load RAINBOW_COLOR into P0
-    MOV P0,[0x200A]
+    MOV P0,[0x2038]
     ; Draw line from (P1,P3) to (P4,P2)
     SLINE P1,P3,P4,P2,P0
     ; Next Y
-    MOV P0,[0x2008]
+    MOV P0,[0x2030]
     INC P0
-    MOV [0x2008],P0
+    MOV [0x2030],P0
     CMP P0,20
     JLE for_loop_5
 for_end_6:
@@ -1082,12 +1077,12 @@ for_end_6:
     ; BASE_COLOR = 
     MOV P0,36
     ; Store P0 into BASE_COLOR
-    MOV [0x200C],P0
+    MOV [0x203A],P0
     ; Pxl-On
     MOV P0,10
     MOV P2,200
     ; Load BASE_COLOR into P4
-    MOV P4,[0x200C]
+    MOV P4,[0x203A]
     ; Pxl-On at (P0,P2)
     MOV VX,P0
     MOV VY,P2
@@ -1097,15 +1092,14 @@ for_end_6:
     MOV P4,20
     MOV P2,200
     ; Load BASE_COLOR into P0
-    MOV P0,[0x200C]
+    MOV P0,[0x203A]
     ; RAMP(P0)
     SHR P0,4
     ; Load BASE_COLOR into P3
-    MOV P3,[0x200C]
+    MOV P3,[0x203A]
     ; SHADE(P3)
     AND P3,15
-    MOV P1,2
-    ADD P3,P1
+    ADD P3,2
     ; COLOR(P0, P3)
     SHL P0,4
     OR P0,P3
@@ -1118,13 +1112,12 @@ for_end_6:
     MOV P0,30
     MOV P2,200
     ; Load BASE_COLOR into P4
-    MOV P4,[0x200C]
+    MOV P4,[0x203A]
     ; RAMP(P4)
     SHR P4,4
-    MOV P3,1
-    ADD P4,P3
+    ADD P4,1
     ; Load BASE_COLOR into P3
-    MOV P3,[0x200C]
+    MOV P3,[0x203A]
     ; SHADE(P3)
     AND P3,15
     ; COLOR(P4, P3)

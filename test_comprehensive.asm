@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -144,16 +144,14 @@ start:
     MOV P0,[0x2000]
     ; Load B into P1
     MOV P1,[0x2002]
-    MOV P2,2
-    MUL P1,P2
+    MUL P1,2
     ADD P0,P1
     ; Store P0 into C
     MOV [0x2004],P0
     ; D = 
     ; Load C into P0
     MOV P0,[0x2004]
-    MOV P1,3
-    DIV P0,P1
+    DIV P0,3
     ; Store P0 into D
     MOV [0x2006],P0
     ; Disp
@@ -283,6 +281,29 @@ display_num_loop:
     INC P2
     JMP display_num_loop
 display_value_done:
+    ; L1 = 
+    MOV P0,100
+    ; Store to L1(1)
+    LEA P2,[12288 + 1*2]
+    MOV [P2],P0
+    ; L1 = 
+    MOV P0,200
+    ; Store to L1(2)
+    LEA P2,[12288 + 2*2]
+    MOV [P2],P0
+    ; L1 = 
+    MOV P0,1
+    ; Load L1(P0) into P1
+    LEA P1,[12288 + P0*2]
+    MOV P1,[P1]
+    MOV P2,2
+    ; Load L1(P2) into P3
+    LEA P3,[12288 + P2*2]
+    MOV P3,[P3]
+    ADD P1,P3
+    ; Store to L1(3)
+    LEA P2,[12288 + 3*2]
+    MOV [P2],P2
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -389,11 +410,11 @@ display_num_loop:
     INC P2
     JMP display_num_loop
 display_value_done:
-    ; Load A into P0
-    MOV P0,[0x2000]
-    ; Load B into P1
-    MOV P1,[0x2002]
-    CMP P0,P1
+    ; Load A into P2
+    MOV P2,[0x2000]
+    ; Load B into P3
+    MOV P3,[0x2002]
+    CMP P2,P3
     JZ if_end_1
 if_end_1:
 

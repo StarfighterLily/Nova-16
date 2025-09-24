@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -124,8 +124,7 @@ start:
     MOV P0,[0x2000]
     ; Load B into P1
     MOV P1,[0x2002]
-    MOV P2,2
-    MUL P1,P2
+    MUL P1,2
     ADD P0,P1
     ; Store P0 into C
     MOV [0x2004],P0

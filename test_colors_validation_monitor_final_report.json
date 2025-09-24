@@ -12,7 +12,7 @@
     ],
     "instruction_counts": {
       "SFILL": 1,
-      "CHAR": 37,
+      "CHAR": 38,
       "SWRITE": 4
     },
     "memory_regions_accessed": [],

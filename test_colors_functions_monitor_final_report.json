@@ -266,7 +266,7 @@
     ],
     "instruction_counts": {
       "SFILL": 1,
-      "CHAR": 68,
+      "CHAR": 73,
       "SWRITE": 258
     },
     "memory_regions_accessed": [],

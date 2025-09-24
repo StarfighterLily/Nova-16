@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -468,20 +468,20 @@ if_end_1:
     MOV [0x7008],P4
     MOV P5,28672
     ; Store P5 into TEST_ARRAY
-    MOV [0x2004],P5
+    MOV [0x2034],P5
     ; For I = 0 To 4
     MOV P0,0
-    MOV [0x2006],P0
+    MOV [0x2010],P0
 for_loop_2:
     ; Load I into P5
-    MOV P5,[0x2006]
+    MOV P5,[0x2010]
     CMP P5,0
     JZ if_end_4
 if_end_4:
     ; Next I
-    MOV P0,[0x2006]
+    MOV P0,[0x2010]
     INC P0
-    MOV [0x2006],P0
+    MOV [0x2010],P0
     CMP P0,4
     JLE for_loop_2
 for_end_3:
@@ -583,7 +583,7 @@ for_end_3:
     ; BIG_NUM = 
     MOV P5,32767
     ; Store P5 into BIG_NUM
-    MOV [0x2008],P5
+    MOV [0x2036],P5
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -640,7 +640,7 @@ for_end_3:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200A]
+    MOV P0,[0x2038]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -685,7 +685,7 @@ display_value_done:
     ; NEG_NUM = 
     MOV P5,-32768
     ; Store P5 into NEG_NUM
-    MOV [0x200C],P5
+    MOV [0x203A],P5
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -762,7 +762,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x200A]
+    MOV P0,[0x2038]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -897,17 +897,17 @@ display_value_done:
     CHAR P0,P1
     ; For C = 0 To 255
     MOV P0,0
-    MOV [0x200E],P0
+    MOV [0x2004],P0
 for_loop_5:
     ; Load C into P5
-    MOV P5,[0x200E]
+    MOV P5,[0x2004]
     CMP P5,0
     JZ if_end_7
 if_end_7:
     ; Next C
-    MOV P0,[0x200E]
+    MOV P0,[0x2004]
     INC P0
-    MOV [0x200E],P0
+    MOV [0x2004],P0
     CMP P0,255
     JLE for_loop_5
 for_end_6:
@@ -1000,17 +1000,17 @@ for_end_6:
     CHAR P0,P1
     ; For I = 10 To 0
     MOV P0,10
-    MOV [0x2006],P0
+    MOV [0x2010],P0
 for_loop_8:
     ; Load I into P5
-    MOV P5,[0x2006]
+    MOV P5,[0x2010]
     CMP P5,0
     JZ if_end_10
 if_end_10:
     ; Next I
-    MOV P0,[0x2006]
+    MOV P0,[0x2010]
     INC P0
-    MOV [0x2006],P0
+    MOV [0x2010],P0
     CMP P0,0
     JLE for_loop_8
 for_end_9:
@@ -1140,9 +1140,9 @@ for_end_9:
     ; SCORE = 
     MOV P5,75
     ; Store P5 into SCORE
-    MOV [0x2010],P5
+    MOV [0x203C],P5
     ; Load SCORE into P5
-    MOV P5,[0x2010]
+    MOV P5,[0x203C]
     CMP P5,90
     JZ if_end_11
 if_end_11:
@@ -1182,7 +1182,7 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Load SCORE into P0
-    MOV P0,[0x2010]
+    MOV P0,[0x203C]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1261,7 +1261,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load GRADE into P0
-    MOV P0,[0x2012]
+    MOV P0,[0x203E]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -1408,28 +1408,28 @@ display_value_done:
     CHAR P0,P1
     ; For X = - To TO
     MOV P0,-
-    MOV [0x2014],P0
+    MOV [0x202E],P0
 for_loop_12:
     ; For Y = - To TO
     MOV P0,-
-    MOV [0x2016],P0
+    MOV [0x2030],P0
 for_loop_14:
     ; Load X into P5
-    MOV P5,[0x2014]
+    MOV P5,[0x202E]
     CMP P5,0
     JZ if_end_16
 if_end_16:
     ; Next Y
-    MOV P0,[0x2016]
+    MOV P0,[0x2030]
     INC P0
-    MOV [0x2016],P0
+    MOV [0x2030],P0
     CMP P0,TO
     JLE for_loop_14
 for_end_15:
     ; Next X
-    MOV P0,[0x2014]
+    MOV P0,[0x202E]
     INC P0
-    MOV [0x2014],P0
+    MOV [0x202E],P0
     CMP P0,TO
     JLE for_loop_12
 for_end_13:

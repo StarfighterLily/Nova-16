@@ -1,0 +1,26 @@
+ClrHome
+Disp "String Functions Demo"
+
+A = LEN("Hello World")
+Disp "LEN('Hello World') = "
+Disp A
+
+B = UPPER("hello world")
+Disp "UPPER('hello world') = "
+Disp B
+
+C$ = LEFT("Hello World", 5)
+Disp "LEFT('Hello World', 5) = "
+Disp C$
+
+D = RIGHT("Hello World", 5)
+Disp "RIGHT('Hello World', 5) = "
+Disp D
+
+E$ = MID("Hello World", 6, 5)
+Disp "MID('Hello World', 6, 5) = "
+Disp E$
+
+F = INSTR("Hello World", "World")
+Disp "INSTR('Hello World', 'World') = "
+Disp F

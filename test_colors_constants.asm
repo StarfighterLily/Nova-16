@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -23,16 +23,16 @@ start:
     ; Y = 
     MOV P0,0
     ; Store P0 into Y
-    MOV [0x2000],P0
+    MOV [0x2030],P0
     ; X = 
     MOV P0,0
     ; Store P0 into X
-    MOV [0x2002],P0
+    MOV [0x202E],P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,0
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -41,11 +41,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,4
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -54,11 +53,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,2
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,8
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -67,11 +65,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,3
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,12
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -80,11 +77,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,4
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,4
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,15
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -93,16 +89,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,16
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -111,11 +106,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,20
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -124,11 +118,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,24
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -137,11 +130,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,244
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -150,16 +142,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,32
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -168,11 +159,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,36
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -181,11 +171,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,40
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -194,11 +183,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,228
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -207,16 +195,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,48
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -225,11 +212,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,52
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -238,11 +224,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,56
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -251,11 +236,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,212
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -264,16 +248,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,64
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -282,11 +265,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,68
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -295,11 +277,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,72
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -308,11 +289,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,76
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -321,16 +301,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,80
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -339,11 +318,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,84
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -352,11 +330,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,88
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -365,11 +342,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,92
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -378,16 +354,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,96
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -396,11 +371,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,100
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -409,11 +383,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,104
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -422,11 +395,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,108
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -435,16 +407,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,112
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -453,11 +424,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,116
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -466,11 +436,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,120
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -479,11 +448,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,124
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -492,16 +460,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,128
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -510,11 +477,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,132
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -523,11 +489,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,136
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -536,11 +501,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,140
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -549,16 +513,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,144
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -567,11 +530,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,148
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -580,11 +542,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,152
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -593,11 +554,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,156
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -606,16 +566,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,160
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -624,11 +583,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,164
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -637,11 +595,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,168
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -650,11 +607,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,172
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -663,16 +619,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,176
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -681,11 +636,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,180
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -694,11 +648,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,184
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -707,11 +660,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,188
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -720,16 +672,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,192
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -738,11 +689,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,196
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -751,11 +701,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,200
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -764,11 +713,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,204
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -777,16 +725,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,208
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -795,11 +742,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,212
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -808,11 +754,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,216
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -821,11 +766,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,220
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -834,16 +778,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,224
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -852,11 +795,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,228
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -865,11 +807,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,232
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -878,11 +819,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,236
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -891,16 +831,15 @@ start:
     SWRITE P0
     ; Y = 
     ; Load Y into P2
-    MOV P2,[0x2000]
-    MOV P1,1
-    ADD P2,P1
+    MOV P2,[0x2030]
+    ADD P2,1
     ; Store P2 into Y
-    MOV [0x2000],P2
+    MOV [0x2030],P2
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
+    MOV P2,[0x202E]
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,240
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -909,11 +848,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,1
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,1
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,244
     ; Pxl-On at (P0,P1)
     MOV VX,P0
@@ -922,11 +860,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P2
-    MOV P2,[0x2002]
-    MOV P1,2
-    ADD P2,P1
+    MOV P2,[0x202E]
+    ADD P2,2
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P0,248
     ; Pxl-On at (P2,P1)
     MOV VX,P2
@@ -935,11 +872,10 @@ start:
     SWRITE P0
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
-    MOV P1,3
-    ADD P0,P1
+    MOV P0,[0x202E]
+    ADD P0,3
     ; Load Y into P1
-    MOV P1,[0x2000]
+    MOV P1,[0x2030]
     MOV P2,252
     ; Pxl-On at (P0,P1)
     MOV VX,P0

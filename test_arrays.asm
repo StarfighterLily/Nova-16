@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -26,18 +26,18 @@ start:
     ; Memory will be allocated at runtime
     ; For I = 0 To 4
     MOV P0,0
-    MOV [0x2000],P0
+    MOV [0x2010],P0
 for_loop_1:
     ; Next I
-    MOV P0,[0x2000]
+    MOV P0,[0x2010]
     INC P0
-    MOV [0x2000],P0
+    MOV [0x2010],P0
     CMP P0,4
     JLE for_loop_1
 for_end_2:
     ; For I = 0 To 4
     MOV P0,0
-    MOV [0x2000],P0
+    MOV [0x2010],P0
 for_loop_3:
     ; Disp
     MOV P0,0
@@ -79,7 +79,7 @@ for_loop_3:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x2034]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -122,7 +122,7 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Load I into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x2010]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -181,7 +181,7 @@ display_value_done:
     MOV P1,15
     CHAR P0,P1
     ; Load STR into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x2034]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -224,7 +224,7 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Load NUMBERS into P0
-    MOV P0,[0x2004]
+    MOV P0,[0x2036]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -267,7 +267,7 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Load I into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x2010]
     ; Display value (number or string)
     MOV P1,P0
     CMP P0,0x4000
@@ -310,9 +310,9 @@ display_num_loop:
     JMP display_num_loop
 display_value_done:
     ; Next I
-    MOV P0,[0x2000]
+    MOV P0,[0x2010]
     INC P0
-    MOV [0x2000],P0
+    MOV [0x2010],P0
     CMP P0,4
     JLE for_loop_3
 for_end_4:

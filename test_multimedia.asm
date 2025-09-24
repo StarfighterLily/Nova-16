@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -272,11 +272,11 @@ start:
     CHAR P0,P1
     ; For NOTE = 220 To 880
     MOV P0,220
-    MOV [0x2000],P0
+    MOV [0x2034],P0
 for_loop_1:
     ; Sound
     ; Load NOTE into P0
-    MOV P0,[0x2000]
+    MOV P0,[0x2034]
     MOV P1,100
     MOV P2,64
     MOV P3,0
@@ -299,9 +299,9 @@ pause_loop:
     JZ pause_loop
     KEYIN P0
     ; Next NOTE
-    MOV P0,[0x2000]
+    MOV P0,[0x2034]
     INC P0
-    MOV [0x2000],P0
+    MOV [0x2034],P0
     CMP P0,880
     JLE for_loop_1
 for_end_2:
@@ -420,11 +420,11 @@ for_end_2:
     CHAR P0,P1
     ; For X = 0 To 255
     MOV P0,0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
 for_loop_3:
     ; For Y = 0 To 255
     MOV P0,0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
 for_loop_5:
     MOV P3,(
     CMP P3,/
@@ -432,55 +432,55 @@ for_loop_5:
 if_end_7:
     ; For BX = 0 To 7
     MOV P0,0
-    MOV [0x2006],P0
+    MOV [0x2036],P0
 for_loop_8:
     ; For BY = 0 To 7
     MOV P0,0
-    MOV [0x2008],P0
+    MOV [0x2038],P0
 for_loop_10:
     ; Pxl-On
     ; Load X into P3
-    MOV P3,[0x2002]
+    MOV P3,[0x202E]
     ; Load BX into P2
-    MOV P2,[0x2006]
+    MOV P2,[0x2036]
     ADD P3,P2
     ; Load Y into P2
-    MOV P2,[0x2004]
+    MOV P2,[0x2030]
     ; Load BY into P1
-    MOV P1,[0x2008]
+    MOV P1,[0x2038]
     ADD P2,P1
     ; Load COLOR into P1
-    MOV P1,[0x200A]
+    MOV P1,[0x203A]
     ; Pxl-On at (P3,P2)
     MOV VX,P3
     MOV VY,P2
     MOV P0,P1
     SWRITE P0
     ; Next BY
-    MOV P0,[0x2008]
+    MOV P0,[0x2038]
     INC P0
-    MOV [0x2008],P0
+    MOV [0x2038],P0
     CMP P0,7
     JLE for_loop_10
 for_end_11:
     ; Next BX
-    MOV P0,[0x2006]
+    MOV P0,[0x2036]
     INC P0
-    MOV [0x2006],P0
+    MOV [0x2036],P0
     CMP P0,7
     JLE for_loop_8
 for_end_9:
     ; Next Y
-    MOV P0,[0x2004]
+    MOV P0,[0x2030]
     INC P0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
     CMP P0,255
     JLE for_loop_5
 for_end_6:
     ; Next X
-    MOV P0,[0x2002]
+    MOV P0,[0x202E]
     INC P0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
     CMP P0,255
     JLE for_loop_3
 for_end_4:
@@ -555,17 +555,17 @@ pause_loop:
     CHAR P0,P1
     ; For Y = 0 To 255
     MOV P0,0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
 for_loop_12:
     ; For X = 0 To 255
     MOV P0,0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
 for_loop_14:
     ; Pxl-On
     ; Load X into P1
-    MOV P1,[0x2002]
+    MOV P1,[0x202E]
     ; Load Y into P2
-    MOV P2,[0x2004]
+    MOV P2,[0x2030]
     MOV P3,20
     ; Pxl-On at (P1,P2)
     MOV VX,P1
@@ -573,32 +573,32 @@ for_loop_14:
     MOV P0,P3
     SWRITE P0
     ; Next X
-    MOV P0,[0x2002]
+    MOV P0,[0x202E]
     INC P0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
     CMP P0,255
     JLE for_loop_14
 for_end_15:
     ; Next Y
-    MOV P0,[0x2004]
+    MOV P0,[0x2030]
     INC P0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
     CMP P0,255
     JLE for_loop_12
 for_end_13:
     ; For X = 0 To 255
     MOV P0,0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
 for_loop_16:
     ; For Y = 0 To 255
     MOV P0,0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
 for_loop_18:
     ; Pxl-On
     ; Load X into P3
-    MOV P3,[0x2002]
+    MOV P3,[0x202E]
     ; Load Y into P2
-    MOV P2,[0x2004]
+    MOV P2,[0x2030]
     MOV P1,52
     ; Pxl-On at (P3,P2)
     MOV VX,P3
@@ -606,16 +606,16 @@ for_loop_18:
     MOV P0,P1
     SWRITE P0
     ; Next Y
-    MOV P0,[0x2004]
+    MOV P0,[0x2030]
     INC P0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
     CMP P0,255
     JLE for_loop_18
 for_end_19:
     ; Next X
-    MOV P0,[0x2002]
+    MOV P0,[0x202E]
     INC P0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
     CMP P0,255
     JLE for_loop_16
 for_end_17:
@@ -711,7 +711,7 @@ pause_loop:
     MOV [0x7006],P0
     MOV P4,28672
     ; Store P4 into CENTERS
-    MOV [0x200C],P4
+    MOV [0x203C],P4
     ; RADII = 
     MOV P4,10
     MOV P0,20
@@ -727,7 +727,7 @@ pause_loop:
     MOV [0x7006],P2
     MOV P5,28672
     ; Store P5 into RADII
-    MOV [0x200E],P5
+    MOV [0x203E],P5
     ; CIRCLE_COLORS = 
     MOV P5,36
     MOV P2,68
@@ -743,70 +743,64 @@ pause_loop:
     MOV [0x7006],P0
     MOV P6,28672
     ; Store P6 into CIRCLE_COLORS
-    MOV [0x2010],P6
+    MOV [0x2040],P6
     ; For I = 0 To 3
     MOV P0,0
-    MOV [0x2012],P0
+    MOV [0x2010],P0
 for_loop_20:
     ; CX = 
     ; Load I into P6
-    MOV P6,[0x2012]
+    MOV P6,[0x2010]
     ; Load CENTERS[P6] into P0
-    MOV P3,8204
-    ADD P3,P6
-    ADD P3,P6
-    MOV P0,[P3]
+    LEA P0,[8252 + P6*2]
+    MOV P0,[P0]
     ; Store P0 into CX
-    MOV [0x2014],P0
+    MOV [0x2042],P0
     ; CY = 
     MOV P0,128
     ; Store P0 into CY
-    MOV [0x2016],P0
+    MOV [0x2044],P0
     ; R = 
     ; Load I into P0
-    MOV P0,[0x2012]
+    MOV P0,[0x2010]
     ; Load RADII[P0] into P6
-    MOV P3,8206
-    ADD P3,P0
-    ADD P3,P0
-    MOV P6,[P3]
+    LEA P6,[8254 + P0*2]
+    MOV P6,[P6]
     ; Store P6 into R
-    MOV [0x2018],P6
+    MOV [0x2022],P6
     ; CC = 
     ; Load I into P6
-    MOV P6,[0x2012]
+    MOV P6,[0x2010]
     ; Load CIRCLE_COLORS[P6] into P0
-    MOV P3,8208
-    ADD P3,P6
-    ADD P3,P6
-    MOV P0,[P3]
+    LEA P0,[8256 + P6*2]
+    MOV P0,[P0]
     ; Store P0 into CC
-    MOV [0x201A],P0
+    MOV [0x2046],P0
     ; For DX = - To TO
     MOV P0,-
-    MOV [0x201C],P0
+    MOV [0x2048],P0
 for_loop_22:
     ; For DY = - To TO
     MOV P0,-
-    MOV [0x201E],P0
+    MOV [0x204A],P0
 for_loop_24:
     ; DIST_SQ = 
     ; Load DX into P0
-    MOV P0,[0x201C]
+    MOV P0,[0x2048]
     ; Load DX into P6
-    MOV P6,[0x201C]
+    MOV P6,[0x2048]
     MUL P0,P6
     ; Load DY into P6
-    MOV P6,[0x201E]
+    MOV P6,[0x204A]
     ; Load DY into P3
-    MOV P3,[0x201E]
+    MOV P3,[0x204A]
     MUL P6,P3
     ADD P0,P6
     ; Store P0 into DIST_SQ
-    MOV [0x2020],P0
+    MOV [0x204C],P0
     MOV P0,DIST_SQ
     ; Load R into P6
-    MOV P6,[0x2018]
+    MOV P6,[0x2022]
     CMP P0,P6
     JZ if_end_26
 if_end_26:
@@ -814,16 +808,16 @@ if_end_26:
     JMP halt
 for_end_25:
     ; Next DX
-    MOV P0,[0x201C]
+    MOV P0,[0x2048]
     INC P0
-    MOV [0x201C],P0
+    MOV [0x2048],P0
     CMP P0,TO
     JLE for_loop_22
 for_end_23:
     ; Next I
-    MOV P0,[0x2012]
+    MOV P0,[0x2010]
     INC P0
-    MOV [0x2012],P0
+    MOV [0x2010],P0
     CMP P0,3
     JLE for_loop_20
 for_end_21:
@@ -946,36 +940,33 @@ pause_loop:
     CHAR P0,P1
     ; For FREQ = 200 To 800
     MOV P0,200
-    MOV [0x2022],P0
+    MOV [0x204E],P0
 for_loop_27:
     ; Play - start sound playback
     SPLAY
     ; BAR_HEIGHT = 
     ; Load FREQ into P0
-    MOV P0,[0x2022]
-    MOV P6,200
-    SUB P0,P6
-    MOV P6,0
-    MUL P0,P6
+    MOV P0,[0x204E]
+    SUB P0,200
+    MOV P0,0
     ; Store P0 into BAR_HEIGHT
-    MOV [0x2024],P0
+    MOV [0x2050],P0
     ; For Y = 256 To BAR_HEIGHT
     MOV P0,256
-    MOV [0x2004],P0
+    MOV [0x2030],P0
 for_loop_29:
     ; For X = 0 To 255
     MOV P0,0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
 for_loop_31:
     ; Pxl-On
     ; Load X into P0
-    MOV P0,[0x2002]
+    MOV P0,[0x202E]
     ; Load Y into P6
-    MOV P6,[0x2004]
+    MOV P6,[0x2030]
     ; Load FREQ into P3
-    MOV P3,[0x2022]
-    MOV P2,256
-    MOD P3,P2
+    MOV P3,[0x204E]
+    MOD P3,256
     ; RAMP(P3)
     SHR P3,4
     ; Pxl-On at (P0,P6)
@@ -984,16 +975,16 @@ for_loop_31:
     MOV P0,P3
     SWRITE P0
     ; Next X
-    MOV P0,[0x2002]
+    MOV P0,[0x202E]
     INC P0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
     CMP P0,255
     JLE for_loop_31
 for_end_32:
     ; Next Y
-    MOV P0,[0x2004]
+    MOV P0,[0x2030]
     INC P0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
     CMP P0,BAR_HEIGHT
     JLE for_loop_29
 for_end_30:
@@ -1004,9 +995,9 @@ pause_loop:
     JZ pause_loop
     KEYIN P0
     ; Next FREQ
-    MOV P0,[0x2022]
+    MOV P0,[0x204E]
     INC P0
-    MOV [0x2022],P0
+    MOV [0x204E],P0
     CMP P0,800
     JLE for_loop_27
 for_end_28:
@@ -1090,37 +1081,37 @@ for_end_28:
     ; SPRITE_X = 
     MOV P3,0
     ; Store P3 into SPRITE_X
-    MOV [0x2026],P3
+    MOV [0x2052],P3
     ; SPRITE_Y = 
     MOV P3,100
     ; Store P3 into SPRITE_Y
-    MOV [0x2028],P3
+    MOV [0x2054],P3
     ; SPRITE_SIZE = 
     MOV P3,8
     ; Store P3 into SPRITE_SIZE
-    MOV [0x202A],P3
+    MOV [0x2056],P3
     ; For FRAME = 0 To 50
     MOV P0,0
-    MOV [0x202C],P0
+    MOV [0x2058],P0
 for_loop_33:
     ; For X = 0 To SPRITE_SIZE
     MOV P0,0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
 for_loop_35:
     ; For Y = 0 To SPRITE_SIZE
     MOV P0,0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
 for_loop_37:
     ; Pxl-Off
     ; Load SPRITE_X into P3
-    MOV P3,[0x2026]
+    MOV P3,[0x2052]
     ; Load X into P6
-    MOV P6,[0x2002]
+    MOV P6,[0x202E]
     ADD P3,P6
     ; Load SPRITE_Y into P6
-    MOV P6,[0x2028]
+    MOV P6,[0x2054]
     ; Load Y into P0
-    MOV P0,[0x2004]
+    MOV P0,[0x2030]
     ADD P6,P0
     ; Turn off pixel at (P3,P6)
     MOV [0xF100],P3
@@ -1128,53 +1119,52 @@ for_loop_37:
     MOV P0,0
     SWRITE P0
     ; Next Y
-    MOV P0,[0x2004]
+    MOV P0,[0x2030]
     INC P0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
     CMP P0,SPRITE_SIZE
     JLE for_loop_37
 for_end_38:
     ; Next X
-    MOV P0,[0x2002]
+    MOV P0,[0x202E]
     INC P0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
     CMP P0,SPRITE_SIZE
     JLE for_loop_35
 for_end_36:
     ; SPRITE_X = 
     ; Load SPRITE_X into P6
-    MOV P6,[0x2026]
-    MOV P3,2
-    ADD P6,P3
+    MOV P6,[0x2052]
+    ADD P6,2
     ; Store P6 into SPRITE_X
-    MOV [0x2026],P6
+    MOV [0x2052],P6
     MOV P6,SPRITE_X
     CMP P6,256
     JZ if_end_39
 if_end_39:
     ; For X = 0 To SPRITE_SIZE
     MOV P0,0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
 for_loop_40:
     ; For Y = 0 To SPRITE_SIZE
     MOV P0,0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
 for_loop_42:
     MOV P6,(
     CMP P6,+
     JZ if_end_44
 if_end_44:
     ; Next Y
-    MOV P0,[0x2004]
+    MOV P0,[0x2030]
     INC P0
-    MOV [0x2004],P0
+    MOV [0x2030],P0
     CMP P0,SPRITE_SIZE
     JLE for_loop_42
 for_end_43:
     ; Next X
-    MOV P0,[0x2002]
+    MOV P0,[0x202E]
     INC P0
-    MOV [0x2002],P0
+    MOV [0x202E],P0
     CMP P0,SPRITE_SIZE
     JLE for_loop_40
 for_end_41:
@@ -1185,9 +1175,9 @@ pause_loop:
     JZ pause_loop
     KEYIN P0
     ; Next FRAME
-    MOV P0,[0x202C]
+    MOV P0,[0x2058]
     INC P0
-    MOV [0x202C],P0
+    MOV [0x2058],P0
     CMP P0,50
     JLE for_loop_33
 for_end_34:

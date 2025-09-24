@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -185,7 +185,7 @@ case_next_3:
     JMP select_end_1
 case_next_4:
     ; Load Else into P1
-    MOV P1,[0x2002]
+    MOV P1,[0x2034]
     ; Case P1
     CMP P0,P1
     JNZ case_next_5

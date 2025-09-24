@@ -13,7 +13,7 @@ MOV VL,0
 
 ; Program start
 start:
-    ; ClrHome
+    ; ClrHome - clear screen (optimized)
     MOV P0,0
     MOV VM,P0
     MOV VL,P0
@@ -63,13 +63,26 @@ start:
     MOV P0,116
     MOV P1,15
     CHAR P0,P1
+    ; L1 = 
+    MOV P0,10
+    ; Store to L1(1)
+    LEA P2,[12288 + 1*2]
+    MOV [P2],P0
+    ; L1 = 
+    MOV P0,20
+    ; Store to L1(2)
+    LEA P2,[12288 + 2*2]
+    MOV [P2],P0
+    ; L1 = 
+    MOV P0,30
+    ; Store to L1(3)
+    LEA P2,[12288 + 3*2]
+    MOV [P2],P0
     ; A = 
     MOV P0,2
     ; Load L1(P0) into P1
-    MOV P2,12288
-    ADD P2,P0
-    ADD P2,P0
-    MOV P1,[P2]
+    LEA P1,[12288 + P0*2]
+    MOV P1,[P1]
     ; Store P1 into A
     MOV [0x2000],P1
     ; Disp
@@ -155,6 +168,13 @@ display_num_loop:
     INC P2
     JMP display_num_loop
 display_value_done:
+    ; L1 = 
+    ; Load A into P1
+    MOV P1,[0x2000]
+    ADD P1,5
+    ; Store to L1(4)
+    LEA P2,[12288 + 4*2]
+    MOV [P2],P1
     ; Disp
     MOV P0,0
     MOV VX,P0

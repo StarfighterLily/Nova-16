@@ -249,7 +249,8 @@ class NoBasicCompiler:
     def _tokenize(self, source: str) -> List[str]:
         """Tokenize NoBASIC source code"""
         # Split on whitespace and special characters, preserving newlines
-        tokens = re.findall(r'[A-Za-z_][A-Za-z0-9_]*|:=|<=|>=|<>|[0-9]+(?:\.[0-9]+)?|"[^"]*"|\n|\S', source)
+        # Include $ in variable names for string variables
+        tokens = re.findall(r'[A-Za-z_][A-Za-z0-9_$]*|:=|<=|>=|<>|[0-9]+(?:\.[0-9]+)?|"[^"]*"|\n|\S', source)
 
         # Filter out empty tokens
         filtered_tokens = []
@@ -466,8 +467,14 @@ class NoBasicCompiler:
                     i += 2  # Skip END SELECT
 
                 elif ((re.match(r'[A-Za-z_][A-Za-z0-9_]*', token) or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit())) and i + 1 < len(tokens) and 
-                      (tokens[i + 1] == "=" or tokens[i + 1] == "(")):
-                    # Variable or list assignment
+                      tokens[i + 1] == "="):
+                    # Variable assignment: VAR = expression
+                    lines, new_i = self._compile_assignment(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit()) and i + 1 < len(tokens) and tokens[i + 1] == "(":
+                    # List assignment: L1(index) = expression
                     lines, new_i = self._compile_assignment(tokens, i)
                     self.assembly_lines.extend(lines)
                     i = new_i
@@ -516,7 +523,7 @@ class NoBasicCompiler:
             "; String concatenation subroutine",
             "str_concat:",
             "    ; P1 = left string address",
-            "    ; Top of stack = right string address",
+            "    ; Top of stack = right string address", 
             "    ; Returns result address in P0",
             "    POP P2",              # P2 = return address
             "    POP P3",              # P3 = right string
@@ -524,29 +531,86 @@ class NoBasicCompiler:
             "    ",
             "    ; Allocate space for result string",
             "    MOV P0,0x6000",       # Temporary result buffer",
+            "    STRCPY P0,P1",        # Copy left string to result buffer
+            "    STRCAT P0,P3",        # Append right string to result buffer
+            "    RET",
+            "",
+            "; LEFT(string, count) - extract left count characters",
+            "left_substr:",
+            "    ; P0 = result buffer, P1 = source string, P2 = count",
+            "    MOV P3,P0",           # P3 = result pointer",
+            "    MOV P4,0",            # P4 = character counter",
+            "left_loop:",
+            "    CMP P4,P2",           # Check if we've copied enough",
+            "    JZ left_done",
+            "    MOV P5,[P1]",         # Load character from source",
+            "    CMP P5,0",            # Check for null terminator",
+            "    JZ left_done",
+            "    MOV [P3],P5",         # Store character in result",
+            "    INC P1",              # Next source character",
+            "    INC P3",              # Next result position",
+            "    INC P4",              # Increment counter",
+            "    JMP left_loop",
+            "left_done:",
+            "    MOV [P3],0",          # Null terminate result",
+            "    RET",
+            "",
+            "; RIGHT(string, count) - extract right count characters",
+            "right_substr:",
+            "    ; P0 = result buffer, P1 = source string, P2 = count",
+            "    MOV P3,P1",           # P3 = string pointer for length calculation",
+            "    MOV P4,0",            # P4 = string length counter",
+            "right_len_loop:",
+            "    MOV P5,[P3]",         # Load character",
+            "    CMP P5,0",            # Check for null terminator",
+            "    JZ right_len_done",
+            "    INC P3",              # Next character",
+            "    INC P4",              # Increment length",
+            "    JMP right_len_loop",
+            "right_len_done:",
+            "    ; P4 now contains string length",
+            "    ; Calculate start position: max(0, length - count)",
+            "    CMP P4,P2",           # Compare length with count",
+            "    JC right_use_all",   # If length < count, use all characters",
+            "    MOV P3,P4",           # P3 = length",
+            "    SUB P3,P2",           # P3 = length - count (start position)",
+            "    JMP right_copy",
+            "right_use_all:",
+            "    MOV P3,0",            # Start from beginning",
+            "right_copy:",
+            "    ADD P1,P3",           # P1 = source + start position",
+            "    MOV P3,P0",           # P3 = result pointer",
+            "right_copy_loop:",
+            "    MOV P5,[P1]",         # Load character from source",
+            "    CMP P5,0",            # Check for null terminator",
+            "    JZ right_copy_done",
+            "    MOV [P3],P5",         # Store character in result",
+            "    INC P1",              # Next source character",
+            "    INC P3",              # Next result position",
+            "    JMP right_copy_loop",
+            "right_copy_done:",
+            "    MOV [P3],0",          # Null terminate result",
+            "    RET",
+            "",
+            "; MID(string, start, count) - extract substring",
+            "mid_substr:",
+            "    ; P0 = result buffer, P1 = source string, P2 = start position, P3 = count",
+            "    ADD P1,P2",           # P1 = source + start position",
             "    MOV P4,P0",           # P4 = result pointer",
-            "    ",
-            "    ; Copy left string",
-            "str_cat_copy_left:",
-            "    MOV P5,[P1]",
-            "    CMP P5,0",
-            "    JZ str_cat_copy_right",
-            "    MOV [P4],P5",
-            "    INC P1",
-            "    INC P4",
-            "    JMP str_cat_copy_left",
-            "    ",
-            "str_cat_copy_right:",
-            "    MOV P5,[P3]",
-            "    CMP P5,0",
-            "    JZ str_cat_done",
-            "    MOV [P4],P5",
-            "    INC P3",
-            "    INC P4",
-            "    JMP str_cat_copy_right",
-            "    ",
-            "str_cat_done:",
-            "    MOV [P4],0",          # Null terminate",
+            "    MOV P5,0",            # P5 = character counter",
+            "mid_loop:",
+            "    CMP P5,P3",           # Check if we've copied enough",
+            "    JZ mid_done",
+            "    MOV P6,[P1]",         # Load character from source",
+            "    CMP P6,0",            # Check for null terminator",
+            "    JZ mid_done",
+            "    MOV [P4],P6",         # Store character in result",
+            "    INC P1",              # Next source character",
+            "    INC P4",              # Next result position",
+            "    INC P5",              # Increment counter",
+            "    JMP mid_loop",
+            "mid_done:",
+            "    MOV [P4],0",          # Null terminate result",
             "    RET",
         ])
 
@@ -884,26 +948,26 @@ class NoBasicCompiler:
             lines.extend(right_lines)
             right_reg = self._get_current_register()
 
-            # Perform operation
-            if op == '+':
-                # Check if this might be string concatenation (using &)
-                # For now, assume numeric addition - string concatenation needs more complex logic
-                # TODO: Implement proper string concatenation detection
-                lines.append(f"    ADD {left_reg},{right_reg}")
-            elif op == '&':
-                # String concatenation
-                lines.extend([
-                    f"    ; String concatenation {left_reg} & {right_reg}",
-                    f"    PUSH {left_reg}",       # Save left string address
-                    f"    PUSH {right_reg}",      # Save right string address
-                    f"    MOV P1,{left_reg}",     # P1 = left string
-                    f"    CALL str_concat",       # Call concatenation routine
-                    f"    POP {right_reg}",       # Restore right string
-                    f"    POP {left_reg}",        # Restore left string
-                    f"    MOV {left_reg},P0",     # Result in left register
-                ])
-            else:  # op == '-'
-                lines.append(f"    SUB {left_reg},{right_reg}")
+            # Check if right operand is a constant for algebraic simplification
+            right_is_constant = len(right_lines) == 1 and right_lines[0].startswith(f"    MOV {right_reg},")
+            if right_is_constant:
+                constant_val = right_lines[0].split(',')[1].strip()
+                # Apply algebraic simplification
+                simplified_lines = self._apply_algebraic_simplification(left_reg, op, constant_val)
+                if simplified_lines:
+                    lines[-1:] = simplified_lines  # Replace the MOV with simplified operations
+                else:
+                    # No simplification needed, but we still need to handle the operation
+                    if op == '+':
+                        lines.append(f"    ADD {left_reg},{right_reg}")
+                    elif op == '-':
+                        lines.append(f"    SUB {left_reg},{right_reg}")
+            else:
+                # Right operand is not a constant, perform normal operation
+                if op == '+':
+                    lines.append(f"    ADD {left_reg},{right_reg}")
+                elif op == '-':
+                    lines.append(f"    SUB {left_reg},{right_reg}")
 
             # Free the right register
             self._free_register(right_reg)
@@ -926,13 +990,30 @@ class NoBasicCompiler:
             lines.extend(right_lines)
             right_reg = self._get_current_register()
 
-            # Perform operation
-            if op == '*':
-                lines.append(f"    MUL {left_reg},{right_reg}")
-            elif op == '/':
-                lines.append(f"    DIV {left_reg},{right_reg}")
-            else:  # op == 'MOD'
-                lines.append(f"    MOD {left_reg},{right_reg}")
+            # Check if right operand is a constant for algebraic simplification
+            right_is_constant = len(right_lines) == 1 and right_lines[0].startswith(f"    MOV {right_reg},")
+            if right_is_constant:
+                constant_val = right_lines[0].split(',')[1].strip()
+                # Apply algebraic simplification
+                simplified_lines = self._apply_algebraic_simplification(left_reg, op, constant_val)
+                if simplified_lines:
+                    lines[-1:] = simplified_lines  # Replace the MOV with simplified operations
+                else:
+                    # No simplification needed, but we still need to handle the operation
+                    if op == '*':
+                        lines.append(f"    MUL {left_reg},{right_reg}")
+                    elif op == '/':
+                        lines.append(f"    DIV {left_reg},{right_reg}")
+                    else:  # op == 'MOD'
+                        lines.append(f"    MOD {left_reg},{right_reg}")
+            else:
+                # Right operand is not a constant, perform normal operation
+                if op == '*':
+                    lines.append(f"    MUL {left_reg},{right_reg}")
+                elif op == '/':
+                    lines.append(f"    DIV {left_reg},{right_reg}")
+                else:  # op == 'MOD'
+                    lines.append(f"    MOD {left_reg},{right_reg}")
 
             # Free the right register
             self._free_register(right_reg)
@@ -1163,6 +1244,7 @@ class NoBasicCompiler:
                     current_reg = self._get_current_register()
                     opcode = func_name.lower()
                     lines.append(f"    {opcode.upper()} {current_reg},{current_reg}")  # Apply function to register
+                elif func_name == 'COLOR':
                     # COLOR(ramp, shade) - create color from ramp (0-15) and shade (0-15)
                     # Parse ramp argument
                     ramp_lines, i = self._parse_additive_expression(tokens, i)
@@ -1220,7 +1302,7 @@ class NoBasicCompiler:
                         f"    AND {current_reg},15",  # color & 0x0F (15 = 0b1111)
                     ])
                 elif func_name == 'LEN':
-                    # LEN(string) - get string length
+                    # LEN(string) - get string length using STRLEN
                     lines, i = self._parse_additive_expression(tokens, i)  # Parse string argument
                     if i < len(tokens) and tokens[i] == ')':
                         i += 1
@@ -1230,18 +1312,173 @@ class NoBasicCompiler:
                     current_reg = self._get_current_register()
                     lines.extend([
                         f"    ; LEN({current_reg})",
-                        f"    MOV P1,{current_reg}",  # String address
-                        f"    MOV {current_reg},0",   # Initialize length counter
-                        f"len_loop_{self.label_counter}:",
-                        f"    MOV P2,[P1]",           # Load character
-                        f"    CMP P2,0",              # Check for null terminator
-                        f"    JZ len_done_{self.label_counter}",
-                        f"    INC {current_reg}",     # Increment length
-                        f"    INC P1",                # Next character
-                        f"    JMP len_loop_{self.label_counter}",
-                        f"len_done_{self.label_counter}:",
+                        f"    STRLEN {current_reg},{current_reg}",  # STRLEN result,string_addr
                     ])
-                    self.label_counter += 1
+                elif func_name == 'UPPER':
+                    # UPPER(string) - convert string to uppercase using STRUPR
+                    lines, i = self._parse_additive_expression(tokens, i)  # Parse string argument
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in UPPER()")
+                    
+                    current_reg = self._get_current_register()
+                    lines.extend([
+                        f"    ; UPPER({current_reg})",
+                        f"    STRUPR {current_reg}",  # STRUPR string_addr
+                    ])
+                    # STRUPR modifies the string in place and returns the address
+                elif func_name == 'LEFT':
+                    # LEFT(string, count) - extract left count characters
+                    # Parse string argument
+                    str_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(str_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in LEFT(string, count)")
+                    
+                    # Parse count argument
+                    count_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(count_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in LEFT()")
+                    
+                    # Get registers
+                    count_reg = self._get_current_register()
+                    str_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    
+                    # Allocate temp buffer for result
+                    lines.extend([
+                        f"    ; LEFT({str_reg}, {count_reg})",
+                        f"    MOV P0,0x6000",        # Temp buffer
+                        f"    MOV P1,{str_reg}",     # Source string
+                        f"    MOV P2,{count_reg}",   # Character count
+                        f"    CALL left_substr",
+                        f"    MOV {str_reg},P0",     # Return temp buffer address
+                    ])
+                    
+                    # Free count register, keep str_reg as result
+                    self._free_register(count_reg)
+                elif func_name == 'RIGHT':
+                    # RIGHT(string, count) - extract right count characters
+                    # Parse string argument
+                    str_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(str_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in RIGHT(string, count)")
+                    
+                    # Parse count argument
+                    count_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(count_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in RIGHT()")
+                    
+                    # Get registers
+                    count_reg = self._get_current_register()
+                    str_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    
+                    # Allocate temp buffer for result
+                    lines.extend([
+                        f"    ; RIGHT({str_reg}, {count_reg})",
+                        f"    MOV P0,0x6000",        # Temp buffer
+                        f"    MOV P1,{str_reg}",     # Source string
+                        f"    MOV P2,{count_reg}",   # Character count
+                        f"    CALL right_substr",
+                        f"    MOV {str_reg},P0",     # Return temp buffer address
+                    ])
+                    
+                    # Free count register, keep str_reg as result
+                    self._free_register(count_reg)
+                elif func_name == 'MID':
+                    # MID(string, start, count) - extract substring starting at position start for count characters
+                    # Parse string argument
+                    str_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(str_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MID(string, start, count)")
+                    
+                    # Parse start argument
+                    start_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(start_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MID(string, start, count)")
+                    
+                    # Parse count argument
+                    count_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(count_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in MID()")
+                    
+                    # Get registers
+                    count_reg = self._get_current_register()
+                    start_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    str_reg = self.register_stack[-3] if len(self.register_stack) >= 3 else self._allocate_register()
+                    
+                    # Allocate temp buffer for result
+                    lines.extend([
+                        f"    ; MID({str_reg}, {start_reg}, {count_reg})",
+                        f"    MOV P0,0x6000",        # Temp buffer
+                        f"    MOV P1,{str_reg}",     # Source string
+                        f"    MOV P2,{start_reg}",   # Start position (0-based)
+                        f"    MOV P3,{count_reg}",   # Character count
+                        f"    CALL mid_substr",
+                        f"    MOV {str_reg},P0",     # Return temp buffer address
+                    ])
+                    
+                    # Free registers, keep str_reg as result
+                    self._free_register(count_reg)
+                    self._free_register(start_reg)
+                elif func_name == 'INSTR':
+                    # INSTR(haystack, needle) - find position of needle in haystack (1-based, 0 if not found)
+                    # Parse haystack argument
+                    haystack_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(haystack_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in INSTR(haystack, needle)")
+                    
+                    # Parse needle argument
+                    needle_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(needle_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in INSTR()")
+                    
+                    # Get registers
+                    needle_reg = self._get_current_register()
+                    haystack_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; INSTR({haystack_reg}, {needle_reg})",
+                        f"    MOV P0,0x6000",        # Temp buffer for result
+                        f"    MOV P1,{haystack_reg}", # Haystack
+                        f"    MOV P2,{needle_reg}",  # Needle
+                        f"    MOV P3,255",           # Max search length
+                        f"    STREXT P0,P1,P2,P3",   # Find needle in haystack
+                        f"    MOV {haystack_reg},P0", # Return position (0 if not found)
+                    ])
+                    
+                    # Free needle register, keep haystack_reg as result
+                    self._free_register(needle_reg)
                 elif func_name == 'MEMSET':
                     # MEMSET(address, value, length) - set memory block to value
                     # Parse address argument
@@ -1400,6 +1637,39 @@ class NoBasicCompiler:
                         f"    MOV {str1_reg},P1",        # Result in str1_reg
                     ])
                     
+                elif func_name == 'STRCPY':
+                    # STRCPY(destination, source) - copy string
+                    dest_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(dest_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in STRCPY(destination, source)")
+                    
+                    src_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(src_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in STRCPY()")
+                    
+                    # Get the two string registers
+                    src_reg = self._get_current_register()
+                    dest_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; STRCPY({dest_reg}, {src_reg})",
+                        f"    MOV P1,{dest_reg}",  # Destination
+                        f"    MOV P2,{src_reg}",   # Source
+                        f"    MOV P3,255",         # Maximum length
+                        f"    MEMCPY P1,P2,P3",    # Copy string
+                        f"    MOV {dest_reg},P1",  # Return destination address
+                    ])
+                    
+                    # Free source register, keep destination as result
+                    self._free_register(src_reg)
+                    
                 elif func_name == 'MEMSWAP':
                     # MEMSWAP(addr1, addr2, length) - swap memory blocks
                     addr1_lines, i = self._parse_additive_expression(tokens, i)
@@ -1452,53 +1722,89 @@ class NoBasicCompiler:
 
         return lines, i
 
-    def _fold_constants(self, tokens: List[str], i: int) -> Tuple[int, int]:
-        """Try to fold constants in an expression. Returns (folded_value, new_i) or (None, original_i)"""
-        # Enhanced constant folding for arithmetic expressions
-        if not tokens[i].isdigit():
+    def _fold_constants(self, tokens: List[str], i: int) -> Tuple[Optional[int], int]:
+        """Attempt to fold constants in expressions at compile time"""
+        if i >= len(tokens):
             return None, i
         
-        original_i = i
-        result = int(tokens[i])
-        i += 1
-        
-        # Process a chain of operations
-        while i < len(tokens) and tokens[i] in ['+', '-', '*', '/']:
-            op = tokens[i]
+        # Look for simple constant expressions: number op number
+        if tokens[i].isdigit():
+            left_val = int(tokens[i])
             i += 1
             
-            if i >= len(tokens) or not tokens[i].isdigit():
-                return None, original_i
-            
-            right_val = int(tokens[i])
-            i += 1
-            
-            try:
-                if op == '+':
-                    result += right_val
-                elif op == '-':
-                    result -= right_val
-                elif op == '*':
-                    result *= right_val
-                elif op == '/' and right_val != 0:
-                    result = result // right_val  # Integer division
-                else:
-                    return None, original_i
-            except:
-                return None, original_i
+            # Check for binary operation
+            if i < len(tokens) and tokens[i] in ['+', '-', '*', '/', 'MOD']:
+                op = tokens[i]
+                i += 1
+                
+                # Check for right operand
+                if i < len(tokens) and tokens[i].isdigit():
+                    right_val = int(tokens[i])
+                    i += 1
+                    
+                    # Perform the operation
+                    try:
+                        if op == '+':
+                            result = left_val + right_val
+                        elif op == '-':
+                            result = left_val - right_val
+                        elif op == '*':
+                            result = left_val * right_val
+                        elif op == '/':
+                            if right_val == 0:
+                                return None, i - 2  # Division by zero, don't fold
+                            result = left_val // right_val  # Integer division
+                        elif op == 'MOD':
+                            if right_val == 0:
+                                return None, i - 2  # Modulo by zero, don't fold
+                            result = left_val % right_val
+                        else:
+                            return None, i - 2
+                        
+                        return result, i
+                    except (OverflowError, ZeroDivisionError):
+                        return None, i - 2
         
-        return result, i
+        return None, i
 
-    def _store_string_in_memory(self, string: str) -> int:
-        """Store a string in memory and return its address"""
-        if string in self.strings:
-            return self.strings[string]
-
-        # Allocate new string (add null terminator)
-        addr = 0x8000 + self.string_counter * 100  # Simple allocation
-        self.strings[string] = addr
-        self.string_counter += 1
-        return addr
+    def _apply_algebraic_simplification(self, left_reg: str, op: str, right_reg: str) -> List[str]:
+        """Apply algebraic simplifications to reduce instruction count"""
+        lines = []
+        
+        # Multiplication by zero: x * 0 = 0
+        if op == '*' and right_reg == '0':
+            lines.append(f"    MOV {left_reg},0")
+            return lines
+        
+        # Multiplication by one: x * 1 = x (no change needed)
+        if op == '*' and right_reg == '1':
+            return lines  # No operation needed
+        
+        # Addition with zero: x + 0 = x (no change needed)
+        if op == '+' and right_reg == '0':
+            return lines  # No operation needed
+        
+        # Subtraction of zero: x - 0 = x (no change needed)
+        if op == '-' and right_reg == '0':
+            return lines  # No operation needed
+        
+        # Division by one: x / 1 = x (no change needed)
+        if op == '/' and right_reg == '1':
+            return lines  # No operation needed
+        
+        # Default: perform the operation
+        if op == '+':
+            lines.append(f"    ADD {left_reg},{right_reg}")
+        elif op == '-':
+            lines.append(f"    SUB {left_reg},{right_reg}")
+        elif op == '*':
+            lines.append(f"    MUL {left_reg},{right_reg}")
+        elif op == '/':
+            lines.append(f"    DIV {left_reg},{right_reg}")
+        elif op == 'MOD':
+            lines.append(f"    MOD {left_reg},{right_reg}")
+        
+        return lines
 
     def compile_program(self, nobasic_source: str, output_file: str):
         """Compile NoBASIC source code to assembly"""
@@ -1520,27 +1826,49 @@ class NoBasicCompiler:
         return self.assembly_lines
 
     def _compile_display_string(self, string: str) -> List[str]:
-        """Generate code to display a string by inlining character display"""
+        """Generate code to display a string - optimized for longer strings"""
         lines = []
-        for char in string:
-            if char == '\n':
-                # Newline
-                lines.extend([
-                    f"    ; Newline",
-                    "    MOV P0,VY",  # Get current VY
-                    "    ADD P0,8",
-                    "    MOV VY,P0",  # Set new VY
-                    "    MOV P0,0",
-                    "    MOV VX,P0",  # Reset VX
-                ])
-            else:
-                ascii_val = ord(char)
-                lines.extend([
-                    f"    ; Display '{char}'",
-                    f"    MOV P0,{ascii_val}",  # Character code
-                    "    MOV P1,15",            # White color
-                    "    CHAR P0,P1",          # Display character
-                ])
+        
+        # For strings longer than 2 characters, use TEXT instruction for efficiency
+        if len(string) > 2:
+            # Store string in memory and use TEXT instruction
+            string_addr = self._store_string_in_memory(string)
+            lines.extend([
+                f"    ; Display string '{string}' using TEXT",
+                f"    MOV P0,0x{string_addr:04X}",  # String address
+                "    MOV P1,15",                   # White color
+                "    TEXT P0,P1",                  # Display entire string
+            ])
+            # TEXT automatically updates VX/VY, so update compiler cursor tracking
+            text_width = len(string) * 8  # Assuming 8 pixels per character
+            self.cursor_x = (self.cursor_x + text_width) % 256
+        else:
+            # For short strings, use individual CHAR instructions for efficiency
+            for char in string:
+                if char == '\n':
+                    # Newline
+                    lines.extend([
+                        f"    ; Newline",
+                        "    MOV P0,VY",  # Get current VY
+                        "    ADD P0,8",
+                        "    MOV VY,P0",  # Set new VY
+                        "    MOV P0,0",
+                        "    MOV VX,P0",  # Reset VX
+                    ])
+                    # Update compiler cursor tracking
+                    self.cursor_y = (self.cursor_y + 8) % 256
+                    self.cursor_x = 0
+                else:
+                    ascii_val = ord(char)
+                    lines.extend([
+                        f"    ; Display '{char}'",
+                        f"    MOV P0,{ascii_val}",  # Character code
+                        "    MOV P1,15",            # White color
+                        "    CHAR P0,P1",          # Display character
+                    ])
+                    # Update compiler cursor tracking (CHAR advances VX by 8)
+                    self.cursor_x = (self.cursor_x + 8) % 256
+        
         return lines
 
     def _compile_display_value(self) -> List[str]:
@@ -1666,7 +1994,8 @@ class NoBasicCompiler:
 
     def _get_variable_address(self, var_name: str) -> int:
         """Get or allocate memory address for a variable"""
-        var_name = var_name.upper()
+        # Normalize variable name by removing $ suffix (make it optional)
+        var_name = var_name.upper().rstrip('$')
         if var_name not in self.variables:
             # Allocate new variable address (2 bytes per variable)
             addr = self.VARIABLE_START + len(self.variables) * 2
@@ -1778,7 +2107,7 @@ class NoBasicCompiler:
 
         if i >= len(tokens) or tokens[i] != ',':
             raise ValueError("Expected ',' after Y in CIRCLE")
-        i += 1  # Skip ','
+        i += 1 # Skip ','
 
         # Parse Radius
         radius_lines, i = self._parse_additive_expression(tokens, i)
@@ -2533,10 +2862,13 @@ class NoBasicCompiler:
                     # Don't optimize away jumps to SELECT CASE end labels
                     if not target.startswith("select_end_"):
                         i += 1
-                        # Skip lines until we find a label or end
+                        # Skip lines until we find a label, empty line, or assembler directive
                         while i < len(optimized_lines):
                             next_line = optimized_lines[i]
-                            if next_line.strip().endswith(":") or not next_line.strip():
+                            stripped = next_line.strip()
+                            if (stripped.endswith(":") or not stripped or 
+                                (stripped and stripped[0].isalpha() and not stripped.startswith("    "))):
+                                # Label, empty line, or assembler directive (ORG, DW, DB, etc.)
                                 break
                             i += 1
                         continue
@@ -2569,6 +2901,19 @@ class NoBasicCompiler:
                     self.assembly_lines.append(f"    JMP {end_label}")
                     return
             i += 1
+
+    def _store_string_in_memory(self, string_content: str) -> int:
+        """Store a string in memory and return its address"""
+        # Check if we've already stored this string
+        if string_content in self.strings:
+            return self.strings[string_content]
+        
+        # Allocate new address for the string
+        string_addr = self.STRING_START + self.string_counter * 256  # 256 bytes per string
+        self.strings[string_content] = string_addr
+        self.string_counter += 1
+        
+        return string_addr
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:

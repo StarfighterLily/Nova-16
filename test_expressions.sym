@@ -1,12 +1,12 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-display_str_loop 0x10DD
-display_str_newline 0x1100
-display_as_number 0x111B
-display_num_loop 0x112C
-display_value_done 0x1147
-halt 0x1147
+display_str_loop 0x10D9
+display_str_newline 0x10FC
+display_as_number 0x1117
+display_num_loop 0x1128
+display_value_done 0x1143
+halt 0x1143
 str_concat 0x8000
 str_cat_copy_left 0x8012
 str_cat_copy_right 0x802C
