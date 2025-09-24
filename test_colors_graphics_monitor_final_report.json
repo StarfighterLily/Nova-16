@@ -2,7 +2,7 @@
   "cycle": 10000,
   "timestamp": "Final Report",
   "statistics": {
-    "total_pixel_writes": 3789,
+    "total_pixel_writes": 3790,
     "layers_used": [
       0
     ],
@@ -14,8 +14,8 @@
       148,
       24,
       152,
-      164,
       36,
+      164,
       38,
       40,
       168,
@@ -36,7 +36,7 @@
     ],
     "instruction_counts": {
       "SFILL": 1,
-      "CHAR": 204,
+      "TEXT": 9,
       "SWRITE": 74,
       "SREAD": 1
     },

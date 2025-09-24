@@ -27,114 +27,10 @@ start:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'V'
-    MOV P0,86
+    ; Display string 'Validating color constants:' using TEXT
+    MOV P0,0x4000
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'g'
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Y_POS = 
     MOV P0,10
     ; Store P0 into Y_POS
@@ -146,8 +42,105 @@ for_loop_1:
     ; Load I into P0
     MOV P0,[0x2010]
     CMP P0,0
-    JZ if_end_3
-if_end_3:
+    JZ if_else_3
+    JMP if_end_4
+if_else_3:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,1
+    JZ if_else_5
+    JMP if_end_4
+if_else_5:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,2
+    JZ if_else_6
+    JMP if_end_4
+if_else_6:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,3
+    JZ if_else_7
+    JMP if_end_4
+if_else_7:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,4
+    JZ if_else_8
+    JMP if_end_4
+if_else_8:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,5
+    JZ if_else_9
+    JMP if_end_4
+if_else_9:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,6
+    JZ if_else_10
+    JMP if_end_4
+if_else_10:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,7
+    JZ if_else_11
+    JMP if_end_4
+if_else_11:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,8
+    JZ if_else_12
+    JMP if_end_4
+if_else_12:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,9
+    JZ if_else_13
+    JMP if_end_4
+if_else_13:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,10
+    JZ if_else_14
+    JMP if_end_4
+if_else_14:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,11
+    JZ if_else_15
+    JMP if_end_4
+if_else_15:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,12
+    JZ if_else_16
+    JMP if_end_4
+if_else_16:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,13
+    JZ if_else_17
+    JMP if_end_4
+if_else_17:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,14
+    JZ if_else_18
+    JMP if_end_4
+if_else_18:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,15
+    JZ if_else_19
+    JMP if_end_4
+if_else_19:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,16
+    JZ if_else_20
+if_else_3:
+if_end_4:
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -155,30 +148,10 @@ if_end_3:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'C'
-    MOV P0,67
+    ; Display string 'Color ' using TEXT
+    MOV P0,0x4100
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Load STR into P0
     MOV P0,[0x2036]
     ; Display value (number or string)
@@ -273,54 +246,10 @@ display_value_done:
     MOV P0,32
     MOV P1,15
     CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
+    ; Display string ' (expected: ' using TEXT
+    MOV P0,0x4200
     MOV P1,15
-    CHAR P0,P1
-    ; Display '('
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'x'
-    MOV P0,120
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Load STR into P0
     MOV P0,[0x2036]
     ; Display value (number or string)
@@ -371,12 +300,154 @@ display_value_done:
     ; Load I into P0
     MOV P0,[0x2010]
     CMP P0,0
-    JZ if_end_4
-if_end_4:
+    JZ if_else_21
+    JMP if_end_22
+if_else_21:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,1
+    JZ if_else_23
+    JMP if_end_22
+if_else_23:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,2
+    JZ if_else_24
+    JMP if_end_22
+if_else_24:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,3
+    JZ if_else_25
+    JMP if_end_22
+if_else_25:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,4
+    JZ if_else_26
+    JMP if_end_22
+if_else_26:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,5
+    JZ if_else_27
+    JMP if_end_22
+if_else_27:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,6
+    JZ if_else_28
+    JMP if_end_22
+if_else_28:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,7
+    JZ if_else_29
+    JMP if_end_22
+if_else_29:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,8
+    JZ if_else_30
+    JMP if_end_22
+if_else_30:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,9
+    JZ if_else_31
+    JMP if_end_22
+if_else_31:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,10
+    JZ if_else_32
+    JMP if_end_22
+if_else_32:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,11
+    JZ if_else_33
+    JMP if_end_22
+if_else_33:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,12
+    JZ if_else_34
+    JMP if_end_22
+if_else_34:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,13
+    JZ if_else_35
+    JMP if_end_22
+if_else_35:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,14
+    JZ if_else_36
+    JMP if_end_22
+if_else_36:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,15
+    JZ if_else_37
+    JMP if_end_22
+if_else_37:
+    ; Load I into P0
+    MOV P0,[0x2010]
+    CMP P0,16
+    JZ if_else_38
+if_else_21:
+if_end_22:
     MOV P0,ACTUAL_VALUE
     CMP P0,EXPECTED_VALUE
-    JZ if_end_5
-if_end_5:
+    JZ if_else_39
+    ; Disp
+    MOV P0,0
+    MOV VX,P0
+    MOV P0,16
+    MOV VY,P0
+    MOV P0,0
+    MOV VL,P0
+    ; Display string '  PASS' using TEXT
+    MOV P0,0x4300
+    MOV P1,15
+    TEXT P0,P1
+    ; Pxl-On
+    MOV P0,200
+    ; Load Y_POS into P1
+    MOV P1,[0x2034]
+    MOV P2,36
+    ; Pxl-On at (P0,P1)
+    MOV VX,P0
+    MOV VY,P1
+    MOV P0,P2
+    SWRITE P0
+    JMP if_end_40
+if_else_39:
+    ; Disp
+    MOV P0,0
+    MOV VX,P0
+    MOV P0,24
+    MOV VY,P0
+    MOV P0,0
+    MOV VL,P0
+    ; Display string '  FAIL' using TEXT
+    MOV P0,0x4400
+    MOV P1,15
+    TEXT P0,P1
+    ; Pxl-On
+    MOV P2,200
+    ; Load Y_POS into P1
+    MOV P1,[0x2034]
+    MOV P0,20
+    ; Pxl-On at (P2,P1)
+    MOV VX,P2
+    MOV VY,P1
+    MOV P0,P0
+    SWRITE P0
+if_else_39:
+if_end_40:
     ; Y_POS = 
     ; Load Y_POS into P0
     MOV P0,[0x2034]
@@ -393,102 +464,14 @@ for_end_2:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,16
+    MOV P0,32
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'T'
-    MOV P0,84
+    ; Display string 'Testing COLOR() bounds:' using TEXT
+    MOV P0,0x4500
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'g'
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'C'
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'L'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'R'
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '('
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ')'
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'b'
-    MOV P0,98
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; VALID_TESTS = 
     MOV P0,0
     ; Store P0 into VALID_TESTS
@@ -496,11 +479,11 @@ for_end_2:
     ; For R = 0 To 15
     MOV P0,0
     MOV [0x2022],P0
-for_loop_6:
+for_loop_41:
     ; For S = 0 To 15
     MOV P0,0
     MOV [0x2024],P0
-for_loop_8:
+for_loop_43:
     ; C = 
     ; Load R into P0
     MOV P0,[0x2022]
@@ -525,141 +508,33 @@ for_loop_8:
     ; Load EXPECTED into P1
     MOV P1,[0x203A]
     CMP P0,P1
-    JZ if_end_10
-if_end_10:
+    JZ if_end_45
+if_end_45:
     ; Next S
     MOV P0,[0x2024]
     INC P0
     MOV [0x2024],P0
     CMP P0,15
-    JLE for_loop_8
-for_end_9:
+    JLE for_loop_43
+for_end_44:
     ; Next R
     MOV P0,[0x2022]
     INC P0
     MOV [0x2022],P0
     CMP P0,15
-    JLE for_loop_6
-for_end_7:
+    JLE for_loop_41
+for_end_42:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,24
+    MOV P0,40
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'V'
-    MOV P0,86
+    ; Display string 'Valid COLOR() combinations: ' using TEXT
+    MOV P0,0x4600
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'C'
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'L'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'R'
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '('
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ')'
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'b'
-    MOV P0,98
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Load STR into P0
     MOV P0,[0x2036]
     ; Display value (number or string)
@@ -703,185 +578,68 @@ display_num_loop:
     INC P2
     JMP display_num_loop
 display_value_done:
-    ; Display '/'
-    MOV P0,47
+    ; Display string '/256' using TEXT
+    MOV P0,0x4700
     MOV P1,15
-    CHAR P0,P1
-    ; Display '2'
-    MOV P0,50
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '5'
-    MOV P0,53
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '6'
-    MOV P0,54
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     MOV P0,VALID_TESTS
     CMP P0,256
-    JZ if_end_11
-if_end_11:
+    JZ if_else_46
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,32
+    MOV P0,48
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'T'
-    MOV P0,84
+    ; Display string 'All COLOR() tests passed' using TEXT
+    MOV P0,0x4800
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
+    TEXT P0,P1
+    ; Pxl-On
+    MOV P0,10
+    MOV P1,200
+    MOV P2,36
+    ; Pxl-On at (P0,P1)
+    MOV VX,P0
+    MOV VY,P1
+    MOV P0,P2
+    SWRITE P0
+    JMP if_end_47
+if_else_46:
+    ; Disp
+    MOV P0,0
+    MOV VX,P0
+    MOV P0,56
+    MOV VY,P0
+    MOV P0,0
+    MOV VL,P0
+    ; Display string 'Some COLOR() tests failed' using TEXT
+    MOV P0,0x4900
     MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
+    TEXT P0,P1
+    ; Pxl-On
+    MOV P2,10
+    MOV P1,200
+    MOV P0,20
+    ; Pxl-On at (P2,P1)
+    MOV VX,P2
+    MOV VY,P1
+    MOV P0,P0
+    SWRITE P0
+if_else_46:
+if_end_47:
+    ; Disp
+    MOV P0,0
+    MOV VX,P0
+    MOV P0,64
+    MOV VY,P0
+    MOV P0,0
+    MOV VL,P0
+    ; Display string 'Testing RAMP() and SHADE() extraction:' using TEXT
+    MOV P0,0x4A00
     MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'g'
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'R'
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'A'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'P'
-    MOV P0,80
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '('
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ')'
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'H'
-    MOV P0,72
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'A'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'D'
-    MOV P0,68
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '('
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ')'
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'x'
-    MOV P0,120
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; EXTRACTION_TESTS = 
     MOV P0,0
     ; Store P0 into EXTRACTION_TESTS
@@ -889,11 +647,11 @@ if_end_11:
     ; For R = 0 To 15
     MOV P0,0
     MOV [0x2022],P0
-for_loop_12:
+for_loop_48:
     ; For S = 0 To 15
     MOV P0,0
     MOV [0x2024],P0
-for_loop_14:
+for_loop_50:
     ; ORIGINAL = 
     ; Load R into P0
     MOV P0,[0x2022]
@@ -921,105 +679,33 @@ for_loop_14:
     ; Load R into P1
     MOV P1,[0x2022]
     CMP P0,P1
-    JZ if_end_16
-if_end_16:
+    JZ if_end_52
+if_end_52:
     ; Next S
     MOV P0,[0x2024]
     INC P0
     MOV [0x2024],P0
     CMP P0,15
-    JLE for_loop_14
-for_end_15:
+    JLE for_loop_50
+for_end_51:
     ; Next R
     MOV P0,[0x2022]
     INC P0
     MOV [0x2022],P0
     CMP P0,15
-    JLE for_loop_12
-for_end_13:
+    JLE for_loop_48
+for_end_49:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,40
+    MOV P0,72
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'V'
-    MOV P0,86
+    ; Display string 'Valid extractions: ' using TEXT
+    MOV P0,0x4B00
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'x'
-    MOV P0,120
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Load STR into P0
     MOV P0,[0x2036]
     ; Display value (number or string)
@@ -1063,153 +749,68 @@ display_num_loop:
     INC P2
     JMP display_num_loop
 display_value_done:
-    ; Display '/'
-    MOV P0,47
+    ; Display string '/256' using TEXT
+    MOV P0,0x4700
     MOV P1,15
-    CHAR P0,P1
-    ; Display '2'
-    MOV P0,50
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '5'
-    MOV P0,53
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '6'
-    MOV P0,54
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     MOV P0,EXTRACTION_TESTS
     CMP P0,256
-    JZ if_end_17
-if_end_17:
+    JZ if_else_53
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,48
+    MOV P0,80
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'T'
-    MOV P0,84
+    ; Display string 'All extraction tests passed' using TEXT
+    MOV P0,0x4C00
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
+    TEXT P0,P1
+    ; Pxl-On
+    MOV P0,30
+    MOV P1,200
+    MOV P2,36
+    ; Pxl-On at (P0,P1)
+    MOV VX,P0
+    MOV VY,P1
+    MOV P0,P2
+    SWRITE P0
+    JMP if_end_54
+if_else_53:
+    ; Disp
+    MOV P0,0
+    MOV VX,P0
+    MOV P0,88
+    MOV VY,P0
+    MOV P0,0
+    MOV VL,P0
+    ; Display string 'Some extraction tests failed' using TEXT
+    MOV P0,0x4D00
     MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
+    TEXT P0,P1
+    ; Pxl-On
+    MOV P2,30
+    MOV P1,200
+    MOV P0,20
+    ; Pxl-On at (P2,P1)
+    MOV VX,P2
+    MOV VY,P1
+    MOV P0,P0
+    SWRITE P0
+if_else_53:
+if_end_54:
+    ; Disp
+    MOV P0,0
+    MOV VX,P0
+    MOV P0,96
+    MOV VY,P0
+    MOV P0,0
+    MOV VL,P0
+    ; Display string 'Testing round-trip conversion:' using TEXT
+    MOV P0,0x4E00
     MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'g'
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '-'
-    MOV P0,45
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'v'
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; ROUND_TRIP_TESTS = 
     MOV P0,0
     ; Store P0 into ROUND_TRIP_TESTS
@@ -1217,7 +818,7 @@ if_end_17:
     ; For C = 0 To 255
     MOV P0,0
     MOV [0x2004],P0
-for_loop_18:
+for_loop_55:
     ; R = 
     ; Load C into P0
     MOV P0,[0x2004]
@@ -1247,118 +848,26 @@ for_loop_18:
     ; Load C into P1
     MOV P1,[0x2004]
     CMP P0,P1
-    JZ if_end_20
-if_end_20:
+    JZ if_end_57
+if_end_57:
     ; Next C
     MOV P0,[0x2004]
     INC P0
     MOV [0x2004],P0
     CMP P0,255
-    JLE for_loop_18
-for_end_19:
+    JLE for_loop_55
+for_end_56:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,56
+    MOV P0,104
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'R'
-    MOV P0,82
+    ; Display string 'Round-trip conversions: ' using TEXT
+    MOV P0,0x4F00
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '-'
-    MOV P0,45
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'v'
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Load STR into P0
     MOV P0,[0x2036]
     ; Display value (number or string)
@@ -1402,133 +911,68 @@ display_num_loop:
     INC P2
     JMP display_num_loop
 display_value_done:
-    ; Display '/'
-    MOV P0,47
+    ; Display string '/256' using TEXT
+    MOV P0,0x4700
     MOV P1,15
-    CHAR P0,P1
-    ; Display '2'
-    MOV P0,50
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '5'
-    MOV P0,53
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '6'
-    MOV P0,54
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     MOV P0,ROUND_TRIP_TESTS
     CMP P0,256
-    JZ if_end_21
-if_end_21:
+    JZ if_else_58
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,64
+    MOV P0,112
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'T'
-    MOV P0,84
+    ; Display string 'All round-trip tests passed' using TEXT
+    MOV P0,0x5000
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
+    TEXT P0,P1
+    ; Pxl-On
+    MOV P0,50
+    MOV P1,200
+    MOV P2,36
+    ; Pxl-On at (P0,P1)
+    MOV VX,P0
+    MOV VY,P1
+    MOV P0,P2
+    SWRITE P0
+    JMP if_end_59
+if_else_58:
+    ; Disp
+    MOV P0,0
+    MOV VX,P0
+    MOV P0,120
+    MOV VY,P0
+    MOV P0,0
+    MOV VL,P0
+    ; Display string 'Some round-trip tests failed' using TEXT
+    MOV P0,0x5100
     MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
+    TEXT P0,P1
+    ; Pxl-On
+    MOV P2,50
+    MOV P1,200
+    MOV P0,20
+    ; Pxl-On at (P2,P1)
+    MOV VX,P2
+    MOV VY,P1
+    MOV P0,P0
+    SWRITE P0
+if_else_58:
+if_end_59:
+    ; Disp
+    MOV P0,0
+    MOV VX,P0
+    MOV P0,128
+    MOV VY,P0
+    MOV P0,0
+    MOV VL,P0
+    ; Display string 'Testing color arithmetic:' using TEXT
+    MOV P0,0x5200
     MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'g'
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'h'
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; RED_COL = 
     MOV P0,20
     ; Store P0 into RED_COL
@@ -1556,62 +1000,14 @@ if_end_21:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,72
+    MOV P0,136
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'R'
-    MOV P0,82
+    ; Display string 'RED + BLUE = ' using TEXT
+    MOV P0,0x5300
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'D'
-    MOV P0,68
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '+'
-    MOV P0,43
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'B'
-    MOV P0,66
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'L'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'U'
-    MOV P0,85
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '='
-    MOV P0,61
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Load STR into P0
     MOV P0,[0x2036]
     ; Display value (number or string)
@@ -1658,62 +1054,14 @@ display_value_done:
     ; Disp
     MOV P0,0
     MOV VX,P0
-    MOV P0,80
+    MOV P0,144
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'R'
-    MOV P0,82
+    ; Display string 'RED - BLUE = ' using TEXT
+    MOV P0,0x5400
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'D'
-    MOV P0,68
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '-'
-    MOV P0,45
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'B'
-    MOV P0,66
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'L'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'U'
-    MOV P0,85
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '='
-    MOV P0,61
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Load STR into P0
     MOV P0,[0x2036]
     ; Display value (number or string)
@@ -1807,6 +1155,561 @@ pause_loop:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
+ORG 0x2000
+DW 0  ; Variable A
+ORG 0x2002
+DW 0  ; Variable B
+ORG 0x2004
+DW 0  ; Variable C
+ORG 0x2006
+DW 0  ; Variable D
+ORG 0x2008
+DW 0  ; Variable E
+ORG 0x200A
+DW 0  ; Variable F
+ORG 0x200C
+DW 0  ; Variable G
+ORG 0x200E
+DW 0  ; Variable H
+ORG 0x2010
+DW 0  ; Variable I
+ORG 0x2012
+DW 0  ; Variable J
+ORG 0x2014
+DW 0  ; Variable K
+ORG 0x2016
+DW 0  ; Variable L
+ORG 0x2018
+DW 0  ; Variable M
+ORG 0x201A
+DW 0  ; Variable N
+ORG 0x201C
+DW 0  ; Variable O
+ORG 0x201E
+DW 0  ; Variable P
+ORG 0x2020
+DW 0  ; Variable Q
+ORG 0x2022
+DW 0  ; Variable R
+ORG 0x2024
+DW 0  ; Variable S
+ORG 0x2026
+DW 0  ; Variable T
+ORG 0x2028
+DW 0  ; Variable U
+ORG 0x202A
+DW 0  ; Variable V
+ORG 0x202C
+DW 0  ; Variable W
+ORG 0x202E
+DW 0  ; Variable X
+ORG 0x2030
+DW 0  ; Variable Y
+ORG 0x2032
+DW 0  ; Variable Z
+ORG 0x2034
+DW 0  ; Variable Y_POS
+ORG 0x2036
+DW 0  ; Variable STR
+ORG 0x2038
+DW 0  ; Variable VALID_TESTS
+ORG 0x203A
+DW 0  ; Variable EXPECTED
+ORG 0x203C
+DW 0  ; Variable EXTRACTION_TESTS
+ORG 0x203E
+DW 0  ; Variable ORIGINAL
+ORG 0x2040
+DW 0  ; Variable EXTRACTED_R
+ORG 0x2042
+DW 0  ; Variable EXTRACTED_S
+ORG 0x2044
+DW 0  ; Variable ROUND_TRIP_TESTS
+ORG 0x2046
+DW 0  ; Variable RECREATED
+ORG 0x2048
+DW 0  ; Variable RED_COL
+ORG 0x204A
+DW 0  ; Variable BLUE_COL
+ORG 0x204C
+DW 0  ; Variable SUM_COLOR
+ORG 0x204E
+DW 0  ; Variable DIFF_COLOR
+ORG 0x4000
+DB 86
+DB 97
+DB 108
+DB 105
+DB 100
+DB 97
+DB 116
+DB 105
+DB 110
+DB 103
+DB 32
+DB 99
+DB 111
+DB 108
+DB 111
+DB 114
+DB 32
+DB 99
+DB 111
+DB 110
+DB 115
+DB 116
+DB 97
+DB 110
+DB 116
+DB 115
+DB 58
+DB 0  ; Null terminator
+ORG 0x4100
+DB 67
+DB 111
+DB 108
+DB 111
+DB 114
+DB 32
+DB 0  ; Null terminator
+ORG 0x4200
+DB 32
+DB 40
+DB 101
+DB 120
+DB 112
+DB 101
+DB 99
+DB 116
+DB 101
+DB 100
+DB 58
+DB 32
+DB 0  ; Null terminator
+ORG 0x4300
+DB 32
+DB 32
+DB 80
+DB 65
+DB 83
+DB 83
+DB 0  ; Null terminator
+ORG 0x4400
+DB 32
+DB 32
+DB 70
+DB 65
+DB 73
+DB 76
+DB 0  ; Null terminator
+ORG 0x4500
+DB 84
+DB 101
+DB 115
+DB 116
+DB 105
+DB 110
+DB 103
+DB 32
+DB 67
+DB 79
+DB 76
+DB 79
+DB 82
+DB 40
+DB 41
+DB 32
+DB 98
+DB 111
+DB 117
+DB 110
+DB 100
+DB 115
+DB 58
+DB 0  ; Null terminator
+ORG 0x4600
+DB 86
+DB 97
+DB 108
+DB 105
+DB 100
+DB 32
+DB 67
+DB 79
+DB 76
+DB 79
+DB 82
+DB 40
+DB 41
+DB 32
+DB 99
+DB 111
+DB 109
+DB 98
+DB 105
+DB 110
+DB 97
+DB 116
+DB 105
+DB 111
+DB 110
+DB 115
+DB 58
+DB 32
+DB 0  ; Null terminator
+ORG 0x4700
+DB 47
+DB 50
+DB 53
+DB 54
+DB 0  ; Null terminator
+ORG 0x4800
+DB 65
+DB 108
+DB 108
+DB 32
+DB 67
+DB 79
+DB 76
+DB 79
+DB 82
+DB 40
+DB 41
+DB 32
+DB 116
+DB 101
+DB 115
+DB 116
+DB 115
+DB 32
+DB 112
+DB 97
+DB 115
+DB 115
+DB 101
+DB 100
+DB 0  ; Null terminator
+ORG 0x4900
+DB 83
+DB 111
+DB 109
+DB 101
+DB 32
+DB 67
+DB 79
+DB 76
+DB 79
+DB 82
+DB 40
+DB 41
+DB 32
+DB 116
+DB 101
+DB 115
+DB 116
+DB 115
+DB 32
+DB 102
+DB 97
+DB 105
+DB 108
+DB 101
+DB 100
+DB 0  ; Null terminator
+ORG 0x4A00
+DB 84
+DB 101
+DB 115
+DB 116
+DB 105
+DB 110
+DB 103
+DB 32
+DB 82
+DB 65
+DB 77
+DB 80
+DB 40
+DB 41
+DB 32
+DB 97
+DB 110
+DB 100
+DB 32
+DB 83
+DB 72
+DB 65
+DB 68
+DB 69
+DB 40
+DB 41
+DB 32
+DB 101
+DB 120
+DB 116
+DB 114
+DB 97
+DB 99
+DB 116
+DB 105
+DB 111
+DB 110
+DB 58
+DB 0  ; Null terminator
+ORG 0x4B00
+DB 86
+DB 97
+DB 108
+DB 105
+DB 100
+DB 32
+DB 101
+DB 120
+DB 116
+DB 114
+DB 97
+DB 99
+DB 116
+DB 105
+DB 111
+DB 110
+DB 115
+DB 58
+DB 32
+DB 0  ; Null terminator
+ORG 0x4C00
+DB 65
+DB 108
+DB 108
+DB 32
+DB 101
+DB 120
+DB 116
+DB 114
+DB 97
+DB 99
+DB 116
+DB 105
+DB 111
+DB 110
+DB 32
+DB 116
+DB 101
+DB 115
+DB 116
+DB 115
+DB 32
+DB 112
+DB 97
+DB 115
+DB 115
+DB 101
+DB 100
+DB 0  ; Null terminator
+ORG 0x4D00
+DB 83
+DB 111
+DB 109
+DB 101
+DB 32
+DB 101
+DB 120
+DB 116
+DB 114
+DB 97
+DB 99
+DB 116
+DB 105
+DB 111
+DB 110
+DB 32
+DB 116
+DB 101
+DB 115
+DB 116
+DB 115
+DB 32
+DB 102
+DB 97
+DB 105
+DB 108
+DB 101
+DB 100
+DB 0  ; Null terminator
+ORG 0x4E00
+DB 84
+DB 101
+DB 115
+DB 116
+DB 105
+DB 110
+DB 103
+DB 32
+DB 114
+DB 111
+DB 117
+DB 110
+DB 100
+DB 45
+DB 116
+DB 114
+DB 105
+DB 112
+DB 32
+DB 99
+DB 111
+DB 110
+DB 118
+DB 101
+DB 114
+DB 115
+DB 105
+DB 111
+DB 110
+DB 58
+DB 0  ; Null terminator
+ORG 0x4F00
+DB 82
+DB 111
+DB 117
+DB 110
+DB 100
+DB 45
+DB 116
+DB 114
+DB 105
+DB 112
+DB 32
+DB 99
+DB 111
+DB 110
+DB 118
+DB 101
+DB 114
+DB 115
+DB 105
+DB 111
+DB 110
+DB 115
+DB 58
+DB 32
+DB 0  ; Null terminator
+ORG 0x5000
+DB 65
+DB 108
+DB 108
+DB 32
+DB 114
+DB 111
+DB 117
+DB 110
+DB 100
+DB 45
+DB 116
+DB 114
+DB 105
+DB 112
+DB 32
+DB 116
+DB 101
+DB 115
+DB 116
+DB 115
+DB 32
+DB 112
+DB 97
+DB 115
+DB 115
+DB 101
+DB 100
+DB 0  ; Null terminator
+ORG 0x5100
+DB 83
+DB 111
+DB 109
+DB 101
+DB 32
+DB 114
+DB 111
+DB 117
+DB 110
+DB 100
+DB 45
+DB 116
+DB 114
+DB 105
+DB 112
+DB 32
+DB 116
+DB 101
+DB 115
+DB 116
+DB 115
+DB 32
+DB 102
+DB 97
+DB 105
+DB 108
+DB 101
+DB 100
+DB 0  ; Null terminator
+ORG 0x5200
+DB 84
+DB 101
+DB 115
+DB 116
+DB 105
+DB 110
+DB 103
+DB 32
+DB 99
+DB 111
+DB 108
+DB 111
+DB 114
+DB 32
+DB 97
+DB 114
+DB 105
+DB 116
+DB 104
+DB 109
+DB 101
+DB 116
+DB 105
+DB 99
+DB 58
+DB 0  ; Null terminator
+ORG 0x5300
+DB 82
+DB 69
+DB 68
+DB 32
+DB 43
+DB 32
+DB 66
+DB 76
+DB 85
+DB 69
+DB 32
+DB 61
+DB 32
+DB 0  ; Null terminator
+ORG 0x5400
+DB 82
+DB 69
+DB 68
+DB 32
+DB 45
+DB 32
+DB 66
+DB 76
+DB 85
+DB 69
+DB 32
+DB 61
+DB 32
+DB 0  ; Null terminator
 
 ORG 0x8000
 
@@ -1821,27 +1724,84 @@ str_concat:
     
     ; Allocate space for result string
     MOV P0,0x6000
-    MOV P4,P0
-    
-    ; Copy left string
-str_cat_copy_left:
+    STRCPY P0,P1
+    STRCAT P0,P3
+    RET
+
+; LEFT(string, count) - extract left count characters
+left_substr:
+    ; P0 = result buffer, P1 = source string, P2 = count
+    MOV P3,P0
+    MOV P4,0
+left_loop:
+    CMP P4,P2
+    JZ left_done
     MOV P5,[P1]
     CMP P5,0
-    JZ str_cat_copy_right
-    MOV [P4],P5
+    JZ left_done
+    MOV [P3],P5
     INC P1
-    INC P4
-    JMP str_cat_copy_left
-    
-str_cat_copy_right:
-    MOV P5,[P3]
-    CMP P5,0
-    JZ str_cat_done
-    MOV [P4],P5
     INC P3
     INC P4
-    JMP str_cat_copy_right
-    
-str_cat_done:
+    JMP left_loop
+left_done:
+    MOV [P3],0
+    RET
+
+; RIGHT(string, count) - extract right count characters
+right_substr:
+    ; P0 = result buffer, P1 = source string, P2 = count
+    MOV P3,P1
+    MOV P4,0
+right_len_loop:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ right_len_done
+    INC P3
+    INC P4
+    JMP right_len_loop
+right_len_done:
+    ; P4 now contains string length
+    ; Calculate start position: max(0, length - count)
+    CMP P4,P2
+    JC right_use_all
+    MOV P3,P4
+    SUB P3,P2
+    JMP right_copy
+right_use_all:
+    MOV P3,0
+right_copy:
+    ADD P1,P3
+    MOV P3,P0
+right_copy_loop:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ right_copy_done
+    MOV [P3],P5
+    INC P1
+    INC P3
+    JMP right_copy_loop
+right_copy_done:
+    MOV [P3],0
+    RET
+
+; MID(string, start, count) - extract substring
+mid_substr:
+    ; P0 = result buffer, P1 = source string, P2 = start position, P3 = count
+    ADD P1,P2
+    MOV P4,P0
+    MOV P5,0
+mid_loop:
+    CMP P5,P3
+    JZ mid_done
+    MOV P6,[P1]
+    CMP P6,0
+    JZ mid_done
+    MOV [P4],P6
+    INC P1
+    INC P4
+    INC P5
+    JMP mid_loop
+mid_done:
     MOV [P4],0
     RET

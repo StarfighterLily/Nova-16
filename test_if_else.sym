@@ -1,0 +1,23 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+if_else_1 0x1158
+if_else_3 0x1158
+if_else_5 0x110A
+if_end_4 0x1158
+if_end_2 0x1158
+halt 0x1158
+str_concat 0x8000
+left_substr 0x8017
+left_loop 0x801F
+left_done 0x8044
+right_substr 0x8049
+right_len_loop 0x8051
+right_len_done 0x8067
+right_use_all 0x807B
+right_copy 0x807F
+right_copy_loop 0x8087
+right_copy_done 0x80A1
+mid_substr 0x80A6
+mid_loop 0x80B2
+mid_done 0x80D7

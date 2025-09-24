@@ -1,0 +1,8 @@
+ClrHome
+Disp "Testing RECT function"
+
+Rect(50,50,100,50)
+
+Rect(20,20,100,50,WHITE)
+
+Disp "RECT test complete"

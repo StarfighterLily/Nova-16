@@ -27,90 +27,10 @@ start:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'M'
-    MOV P0,77
+    ; Display string 'Memory Functions Test' using TEXT
+    MOV P0,0x4000
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'y'
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'F'
-    MOV P0,70
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'T'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -118,74 +38,10 @@ start:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'T'
-    MOV P0,84
+    ; Display string 'Testing MEMSET...' using TEXT
+    MOV P0,0x4100
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'g'
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'T'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '.'
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '.'
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '.'
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; A = 
     MOV P0,8192
     MOV P1,170
@@ -202,70 +58,10 @@ start:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'M'
-    MOV P0,77
+    ; Display string 'MEMSET completed' using TEXT
+    MOV P0,0x4200
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'T'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Disp
     MOV P0,0
     MOV VX,P0
@@ -273,78 +69,10 @@ start:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'T'
-    MOV P0,84
+    ; Display string 'Testing MEMTEST...' using TEXT
+    MOV P0,0x4300
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'g'
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'T'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'T'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '.'
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '.'
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '.'
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; B = 
     MOV P0,8192
     MOV P1,8448
@@ -364,78 +92,10 @@ memtest_done_0:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'M'
-    MOV P0,77
+    ; Display string 'MEMTEST not equal:' using TEXT
+    MOV P0,0x4400
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'T'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'T'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'q'
-    MOV P0,113
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     MOV P0,VY
     ADD P0,8
     MOV VY,P0
@@ -503,62 +163,10 @@ memtest_done_1:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'M'
-    MOV P0,77
+    ; Display string 'MEMTEST equal:' using TEXT
+    MOV P0,0x4500
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'T'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'T'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'q'
-    MOV P0,113
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'a'
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     MOV P0,VY
     ADD P0,8
     MOV VY,P0
@@ -614,78 +222,10 @@ display_value_done:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'T'
-    MOV P0,84
+    ; Display string 'Testing MEMMOVE...' using TEXT
+    MOV P0,0x4600
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'i'
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'n'
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'g'
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'V'
-    MOV P0,86
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '.'
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '.'
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '.'
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; D = 
     MOV P0,8960
     MOV P1,8704
@@ -714,66 +254,10 @@ memtest_done_2:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'M'
-    MOV P0,77
+    ; Display string 'MEMMOVE result:' using TEXT
+    MOV P0,0x4700
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'M'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'V'
-    MOV P0,86
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'u'
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ':'
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     MOV P0,VY
     ADD P0,8
     MOV VY,P0
@@ -829,114 +313,10 @@ display_value_done:
     MOV VY,P0
     MOV P0,0
     MOV VL,P0
-    ; Display 'A'
-    MOV P0,65
+    ; Display string 'All memory tests completed!' using TEXT
+    MOV P0,0x4800
     MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'r'
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'y'
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 's'
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'c'
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'o'
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'm'
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'p'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'l'
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 't'
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'e'
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'd'
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '!'
-    MOV P0,33
-    MOV P1,15
-    CHAR P0,P1
+    TEXT P0,P1
     ; Pause - wait for key press
 pause_loop:
     KEYSTAT P0
@@ -949,6 +329,240 @@ pause_loop:
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
+ORG 0x2000
+DW 0  ; Variable A
+ORG 0x2002
+DW 0  ; Variable B
+ORG 0x2004
+DW 0  ; Variable C
+ORG 0x2006
+DW 0  ; Variable D
+ORG 0x2008
+DW 0  ; Variable E
+ORG 0x200A
+DW 0  ; Variable F
+ORG 0x200C
+DW 0  ; Variable G
+ORG 0x200E
+DW 0  ; Variable H
+ORG 0x2010
+DW 0  ; Variable I
+ORG 0x2012
+DW 0  ; Variable J
+ORG 0x2014
+DW 0  ; Variable K
+ORG 0x2016
+DW 0  ; Variable L
+ORG 0x2018
+DW 0  ; Variable M
+ORG 0x201A
+DW 0  ; Variable N
+ORG 0x201C
+DW 0  ; Variable O
+ORG 0x201E
+DW 0  ; Variable P
+ORG 0x2020
+DW 0  ; Variable Q
+ORG 0x2022
+DW 0  ; Variable R
+ORG 0x2024
+DW 0  ; Variable S
+ORG 0x2026
+DW 0  ; Variable T
+ORG 0x2028
+DW 0  ; Variable U
+ORG 0x202A
+DW 0  ; Variable V
+ORG 0x202C
+DW 0  ; Variable W
+ORG 0x202E
+DW 0  ; Variable X
+ORG 0x2030
+DW 0  ; Variable Y
+ORG 0x2032
+DW 0  ; Variable Z
+ORG 0x4000
+DB 77
+DB 101
+DB 109
+DB 111
+DB 114
+DB 121
+DB 32
+DB 70
+DB 117
+DB 110
+DB 99
+DB 116
+DB 105
+DB 111
+DB 110
+DB 115
+DB 32
+DB 84
+DB 101
+DB 115
+DB 116
+DB 0  ; Null terminator
+ORG 0x4100
+DB 84
+DB 101
+DB 115
+DB 116
+DB 105
+DB 110
+DB 103
+DB 32
+DB 77
+DB 69
+DB 77
+DB 83
+DB 69
+DB 84
+DB 46
+DB 46
+DB 46
+DB 0  ; Null terminator
+ORG 0x4200
+DB 77
+DB 69
+DB 77
+DB 83
+DB 69
+DB 84
+DB 32
+DB 99
+DB 111
+DB 109
+DB 112
+DB 108
+DB 101
+DB 116
+DB 101
+DB 100
+DB 0  ; Null terminator
+ORG 0x4300
+DB 84
+DB 101
+DB 115
+DB 116
+DB 105
+DB 110
+DB 103
+DB 32
+DB 77
+DB 69
+DB 77
+DB 84
+DB 69
+DB 83
+DB 84
+DB 46
+DB 46
+DB 46
+DB 0  ; Null terminator
+ORG 0x4400
+DB 77
+DB 69
+DB 77
+DB 84
+DB 69
+DB 83
+DB 84
+DB 32
+DB 110
+DB 111
+DB 116
+DB 32
+DB 101
+DB 113
+DB 117
+DB 97
+DB 108
+DB 58
+DB 0  ; Null terminator
+ORG 0x4500
+DB 77
+DB 69
+DB 77
+DB 84
+DB 69
+DB 83
+DB 84
+DB 32
+DB 101
+DB 113
+DB 117
+DB 97
+DB 108
+DB 58
+DB 0  ; Null terminator
+ORG 0x4600
+DB 84
+DB 101
+DB 115
+DB 116
+DB 105
+DB 110
+DB 103
+DB 32
+DB 77
+DB 69
+DB 77
+DB 77
+DB 79
+DB 86
+DB 69
+DB 46
+DB 46
+DB 46
+DB 0  ; Null terminator
+ORG 0x4700
+DB 77
+DB 69
+DB 77
+DB 77
+DB 79
+DB 86
+DB 69
+DB 32
+DB 114
+DB 101
+DB 115
+DB 117
+DB 108
+DB 116
+DB 58
+DB 0  ; Null terminator
+ORG 0x4800
+DB 65
+DB 108
+DB 108
+DB 32
+DB 109
+DB 101
+DB 109
+DB 111
+DB 114
+DB 121
+DB 32
+DB 116
+DB 101
+DB 115
+DB 116
+DB 115
+DB 32
+DB 99
+DB 111
+DB 109
+DB 112
+DB 108
+DB 101
+DB 116
+DB 101
+DB 100
+DB 33
+DB 0  ; Null terminator
 
 ORG 0x8000
 
@@ -963,27 +577,84 @@ str_concat:
     
     ; Allocate space for result string
     MOV P0,0x6000
-    MOV P4,P0
-    
-    ; Copy left string
-str_cat_copy_left:
+    STRCPY P0,P1
+    STRCAT P0,P3
+    RET
+
+; LEFT(string, count) - extract left count characters
+left_substr:
+    ; P0 = result buffer, P1 = source string, P2 = count
+    MOV P3,P0
+    MOV P4,0
+left_loop:
+    CMP P4,P2
+    JZ left_done
     MOV P5,[P1]
     CMP P5,0
-    JZ str_cat_copy_right
-    MOV [P4],P5
+    JZ left_done
+    MOV [P3],P5
     INC P1
-    INC P4
-    JMP str_cat_copy_left
-    
-str_cat_copy_right:
-    MOV P5,[P3]
-    CMP P5,0
-    JZ str_cat_done
-    MOV [P4],P5
     INC P3
     INC P4
-    JMP str_cat_copy_right
-    
-str_cat_done:
+    JMP left_loop
+left_done:
+    MOV [P3],0
+    RET
+
+; RIGHT(string, count) - extract right count characters
+right_substr:
+    ; P0 = result buffer, P1 = source string, P2 = count
+    MOV P3,P1
+    MOV P4,0
+right_len_loop:
+    MOV P5,[P3]
+    CMP P5,0
+    JZ right_len_done
+    INC P3
+    INC P4
+    JMP right_len_loop
+right_len_done:
+    ; P4 now contains string length
+    ; Calculate start position: max(0, length - count)
+    CMP P4,P2
+    JC right_use_all
+    MOV P3,P4
+    SUB P3,P2
+    JMP right_copy
+right_use_all:
+    MOV P3,0
+right_copy:
+    ADD P1,P3
+    MOV P3,P0
+right_copy_loop:
+    MOV P5,[P1]
+    CMP P5,0
+    JZ right_copy_done
+    MOV [P3],P5
+    INC P1
+    INC P3
+    JMP right_copy_loop
+right_copy_done:
+    MOV [P3],0
+    RET
+
+; MID(string, start, count) - extract substring
+mid_substr:
+    ; P0 = result buffer, P1 = source string, P2 = start position, P3 = count
+    ADD P1,P2
+    MOV P4,P0
+    MOV P5,0
+mid_loop:
+    CMP P5,P3
+    JZ mid_done
+    MOV P6,[P1]
+    CMP P6,0
+    JZ mid_done
+    MOV [P4],P6
+    INC P1
+    INC P4
+    INC P5
+    JMP mid_loop
+mid_done:
     MOV [P4],0
     RET

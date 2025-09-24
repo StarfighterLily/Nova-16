@@ -11,7 +11,8 @@
     ],
     "instruction_counts": {
       "SFILL": 1,
-      "CHAR": 15
+      "TEXT": 1,
+      "CHAR": 2
     },
     "memory_regions_accessed": [],
     "max_x": 

@@ -2,7 +2,7 @@
   "cycle": 10000,
   "timestamp": "Final Report",
   "statistics": {
-    "total_pixel_writes": 435,
+    "total_pixel_writes": 472,
     "layers_used": [
       0
     ],
@@ -11,7 +11,7 @@
     ],
     "instruction_counts": {
       "SFILL": 1,
-      "CHAR": 40
+      "TEXT": 1
     },
     "memory_regions_accessed": [],
     "max_x": 

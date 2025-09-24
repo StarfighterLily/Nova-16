@@ -349,6 +349,11 @@ class NoBasicCompiler:
                     self.assembly_lines.extend(lines)
                     i = new_i
 
+                elif token == "RECT":
+                    lines, new_i = self._compile_rect(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
                 elif token == "PXLON":
                     lines, new_i = self._compile_pxlon(tokens, i)
                     self.assembly_lines.extend(lines)
@@ -729,31 +734,296 @@ class NoBasicCompiler:
         return lines, i
 
     def _compile_if(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
-        """Compile If statement - simplified version for now"""
+        """Compile If statement with ELSE/ELSEIF support"""
+        # Check if this IF has ELSE/ELSEIF by scanning ahead
+        has_else = self._if_has_else(tokens, i)
+        
+        if not has_else:
+            # Simple IF without ELSE - use original approach
+            lines = []
+            i += 1  # Skip IF
+
+            # Parse condition
+            condition_lines, i = self._parse_condition(tokens, i)
+
+            # Skip THEN if present
+            if i < len(tokens) and tokens[i].upper() == "THEN":
+                i += 1
+
+            # Generate labels
+            end_label = self._generate_label("if_end")
+
+            lines.extend(condition_lines)
+            lines.append(f"    JZ {end_label}")
+
+            # Skip to END IF without parsing body
+            while i < len(tokens):
+                token = tokens[i].upper()
+                if token == "END" and i + 1 < len(tokens) and tokens[i + 1].upper() == "IF":
+                    i += 2  # Skip END IF
+                    break
+                i += 1
+
+            lines.append(f"{end_label}:")
+
+            return lines, i
+        else:
+            # IF with ELSE/ELSEIF - use new parsing
+            return self._compile_if_with_else(tokens, i)
+
+    def _if_has_else(self, tokens: List[str], start_i: int) -> bool:
+        """Check if IF statement has ELSE or ELSEIF"""
+        i = start_i + 1  # Skip IF
+        nesting = 0
+        
+        while i < len(tokens):
+            token = tokens[i].upper()
+            if token == "IF":
+                nesting += 1
+            elif token == "END" and i + 1 < len(tokens) and tokens[i + 1].upper() == "IF":
+                if nesting == 0:
+                    return False  # Found END IF without ELSE
+                nesting -= 1
+                i += 1  # Skip the IF part
+            elif (token == "ELSE" or token == "ELSEIF") and nesting == 0:
+                return True
+            i += 1
+        
+        return False
+
+    def _compile_if_with_else(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile IF statement with ELSE/ELSEIF support"""
         lines = []
         i += 1  # Skip IF
 
         # Parse condition
         condition_lines, i = self._parse_condition(tokens, i)
 
+        # Skip THEN if present
+        if i < len(tokens) and tokens[i].upper() == "THEN":
+            i += 1
+
         # Generate labels
+        else_label = self._generate_label("if_else")
         end_label = self._generate_label("if_end")
 
         lines.extend(condition_lines)
-        lines.append(f"    JZ {end_label}")
+        lines.append(f"    JZ {else_label}")
 
-        # For now, just skip to END IF without parsing the body
-        # This is a temporary fix
+        # Collect all tokens until END IF, handling nested structures
+        if_body_tokens = []
+        nesting_level = 0
         while i < len(tokens):
             token = tokens[i].upper()
-            if token == "END" and i + 1 < len(tokens) and tokens[i + 1].upper() == "IF":
-                i += 2  # Skip END IF
-                break
+            if token in ["IF", "FOR", "WHILE", "DEFINE", "SELECT"]:
+                nesting_level += 1
+                if_body_tokens.append(tokens[i])
+            elif token == "END" and i + 1 < len(tokens):
+                next_token = tokens[i + 1].upper()
+                if next_token in ["IF", "FOR", "WHILE", "DEFINE", "SELECT"]:
+                    if nesting_level == 0:
+                        # Found our END IF
+                        i += 2  # Skip END IF
+                        break
+                    else:
+                        nesting_level -= 1
+                        if_body_tokens.append(tokens[i])
+                        if_body_tokens.append(tokens[i + 1])
+                        i += 2
+                        continue
+                else:
+                    if_body_tokens.append(tokens[i])
+            elif token in ["NEXT", "WEND", "RETURN", "CASEELSE"]:
+                # These close nested structures
+                if_body_tokens.append(tokens[i])
+                if nesting_level > 0:
+                    nesting_level -= 1
+            elif token == "CASE":
+                # CASE doesn't start nesting but can be in SELECT
+                if_body_tokens.append(tokens[i])
+            else:
+                if_body_tokens.append(tokens[i])
             i += 1
 
+        # Parse the IF body tokens
+        if if_body_tokens:
+            body_lines = self._parse_token_block(if_body_tokens, else_label, end_label)
+            lines.extend(body_lines)
+
+        lines.append(f"{else_label}:")
         lines.append(f"{end_label}:")
 
         return lines, i
+
+    def _parse_token_block(self, tokens: List[str], else_label: str, end_label: str) -> List[str]:
+        """Parse a block of tokens, handling ELSE/ELSEIF within IF"""
+        lines = []
+        i = 0
+        while i < len(tokens):
+            token = tokens[i].upper()
+
+            # Check for ELSE/ELSEIF
+            if token == "ELSEIF":
+                # Jump to end after previous block
+                lines.append(f"    JMP {end_label}")
+                lines.append(f"{else_label}:")
+
+                i += 1  # Skip ELSEIF
+                # Parse ELSEIF condition
+                condition_lines, i = self._parse_condition(tokens, i)
+
+                # Skip THEN if present
+                if i < len(tokens) and tokens[i].upper() == "THEN":
+                    i += 1
+
+                # Generate new else label
+                else_label = self._generate_label("if_else")
+                lines.extend(condition_lines)
+                lines.append(f"    JZ {else_label}")
+
+            elif token == "ELSE":
+                # Jump to end after previous block
+                lines.append(f"    JMP {end_label}")
+                lines.append(f"{else_label}:")
+                else_label = end_label  # No more alternatives
+                i += 1
+
+            else:
+                # Parse regular statement
+                if self._is_statement_start_in_block(tokens, i):
+                    statement_lines, new_i = self._parse_statement_in_block(tokens, i)
+                    lines.extend(statement_lines)
+                    i = new_i
+                else:
+                    i += 1
+
+        return lines
+
+    def _is_statement_start_in_block(self, tokens: List[str], i: int) -> bool:
+        """Check if current position is start of a statement in a block"""
+        if i >= len(tokens):
+            return False
+        token = tokens[i].upper()
+        return token in [
+            "CLRHOME", "DISP", "FOR", "IF", "INPUT", "PROMPT", "WHILE", "WEND",
+            "PAUSE", "END", "GOTO", "LBL", "DEFINE", "LINE", "FILL", "PXLON",
+            "PXLOFF", "PXLCHANGE", "PTON", "PTOFF", "PTCHANGE", "PLAY", "STOP",
+            "SOUND", "DIM", "MATRIX", "CALL", "RETURN", "NEXT", "SELECT", "CASE",
+            "CASEELSE"
+        ]
+
+    def _parse_statement_in_block(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Parse a single statement in a block"""
+        token = tokens[i].upper()
+
+        # Use the same compilation methods as the main parser
+        if token == "CLRHOME":
+            lines = self._compile_clrhome()
+            return lines, i + 1
+
+        elif token == "DISP":
+            return self._compile_disp(tokens, i)
+
+        elif token == "FOR":
+            return self._compile_for(tokens, i)
+
+        elif token == "IF":
+            return self._compile_if(tokens, i)
+
+        elif token == "INPUT":
+            return self._compile_input(tokens, i)
+
+        elif token == "PROMPT":
+            return self._compile_prompt(tokens, i)
+
+        elif token == "WHILE":
+            return self._compile_while(tokens, i)
+
+        elif token == "WEND":
+            lines = self._compile_wend()
+            return lines, i + 1
+
+        elif token == "PAUSE":
+            lines = self._compile_pause()
+            return lines, i + 1
+
+        elif token == "END":
+            lines = self._compile_end()
+            return lines, i + 1
+
+        elif token == "GOTO":
+            return self._compile_goto(tokens, i)
+
+        elif token == "LBL":
+            return self._compile_lbl(tokens, i)
+
+        elif token == "DEFINE":
+            return self._compile_define(tokens, i)
+
+        elif token == "LINE":
+            return self._compile_line(tokens, i)
+
+        elif token == "FILL":
+            return self._compile_fill(tokens, i)
+
+        elif token == "RECT":
+            return self._compile_rect(tokens, i)
+
+        elif token == "PXLON":
+            return self._compile_pxlon(tokens, i)
+
+        elif token == "PXLOFF":
+            return self._compile_pxloff(tokens, i)
+
+        elif token == "PXLCHANGE":
+            return self._compile_pxlchange(tokens, i)
+
+        elif token == "PTON":
+            return self._compile_pton(tokens, i)
+
+        elif token == "PTOFF":
+            return self._compile_pttoff(tokens, i)
+
+        elif token == "PTCHANGE":
+            return self._compile_ptchange(tokens, i)
+
+        elif token == "PLAY":
+            return self._compile_play(tokens, i)
+
+        elif token == "STOP":
+            return self._compile_stop(tokens, i)
+
+        elif token == "SOUND":
+            return self._compile_sound(tokens, i)
+
+        elif token == "DIM":
+            return self._compile_dim(tokens, i)
+
+        elif token == "MATRIX":
+            return self._compile_matrix(tokens, i)
+
+        elif token == "CALL":
+            return self._compile_call(tokens, i)
+
+        elif token == "RETURN":
+            lines = self._compile_return()
+            return lines, i + 1
+
+        elif token == "NEXT":
+            return self._compile_next(tokens, i)
+
+        elif token == "SELECT":
+            return self._compile_select(tokens, i)
+
+        elif token == "CASE":
+            return self._compile_case(tokens, i)
+
+        elif token == "CASEELSE":
+            return self._compile_case_else(tokens, i)
+
+        else:
+            # Unknown statement, skip it
+            return [], i + 1
 
     def _compile_input(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
         """Compile Input statement"""
@@ -2219,6 +2489,85 @@ class NoBasicCompiler:
             self._free_register(reg)
         if isinstance(color, str):  # If color was a register
             self._free_register(color)
+
+        return lines, i
+
+    def _compile_rect(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile RECT(X,Y,Width,Height[,Color]) statement - draw rectangle outline"""
+        lines = ["    ; Rect"]
+        i += 1  # Skip RECT
+
+        if i >= len(tokens) or tokens[i] != '(':
+            raise ValueError("Expected '(' after RECT")
+        i += 1  # Skip '('
+
+        # Parse X
+        x_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(x_lines)
+        x_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after X in RECT")
+        i += 1  # Skip ','
+
+        # Parse Y
+        y_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(y_lines)
+        y_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after Y in RECT")
+        i += 1  # Skip ','
+
+        # Parse Width
+        width_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(width_lines)
+        width_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ',':
+            raise ValueError("Expected ',' after Width in RECT")
+        i += 1  # Skip ','
+
+        # Parse Height
+        height_lines, i = self._parse_additive_expression(tokens, i)
+        lines.extend(height_lines)
+        height_reg = self._get_current_register()
+
+        # Optional color parameter (default white = 15)
+        color_reg = "P7"
+        lines.append("    MOV P7,15")  # Default white color
+        if i < len(tokens) and tokens[i] == ',':
+            i += 1  # Skip ','
+            color_lines, i = self._parse_additive_expression(tokens, i)
+            lines.extend(color_lines)
+            color_reg = self._get_current_register()
+
+        if i >= len(tokens) or tokens[i] != ')':
+            raise ValueError("Expected ')' after RECT parameters")
+        i += 1  # Skip ')'
+
+        # Calculate X2 = X + Width - 1, Y2 = Y + Height - 1
+        lines.extend([
+            f"    ; Calculate rectangle coordinates",
+            f"    MOV P5,{x_reg}",        # P5 = X
+            f"    ADD P5,{width_reg}",    # P5 = X + Width
+            f"    DEC P5",                # P5 = X + Width - 1 (X2)
+            f"    MOV P6,{y_reg}",        # P6 = Y
+            f"    ADD P6,{height_reg}",   # P6 = Y + Height
+            f"    DEC P6",                # P6 = Y + Height - 1 (Y2)
+        ])
+
+        # Generate SRECT instruction (unfilled rectangle)
+        lines.extend([
+            f"    ; Draw rectangle from ({x_reg},{y_reg}) to (P5,P6)",
+            f"    SRECT {x_reg},{y_reg},P5,P6,{color_reg},0",  # 0 = unfilled
+        ])
+
+        # Free registers in reverse order to maintain allocation order
+        for reg in reversed([x_reg, y_reg, width_reg, height_reg]):
+            self._free_register(reg)
+        if color_reg != "P7":  # Don't free P7 if we used it for default color
+            self._free_register(color_reg)
 
         return lines, i
 

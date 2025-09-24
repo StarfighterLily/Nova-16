@@ -1,0 +1,3 @@
+ClrHome
+Sound(440,300,128,0)
+Disp "Sound test done"

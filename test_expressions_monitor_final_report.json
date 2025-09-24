@@ -10,7 +10,8 @@
       15
     ],
     "instruction_counts": {
-      "CHAR": 9
+      "TEXT": 1,
+      "CHAR": 2
     },
     "memory_regions_accessed": [],
     "max_x": 

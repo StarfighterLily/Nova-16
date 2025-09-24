@@ -13,7 +13,7 @@
     ],
     "instruction_counts": {
       "SFILL": 1,
-      "CHAR": 48,
+      "TEXT": 2,
       "SWRITE": 6,
       "SREAD": 2
     },
