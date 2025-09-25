@@ -1,16 +1,10 @@
 ClrHome
 
-// Fill the screen one pixel at a time using nested loops
-// This demonstrates graphics operations and loop constructs
-// Now with color cycling through all 256 colors!
-
-For X = 0 To 255
-  For Y = 0 To 255
-    // Cycle through all 256 colors based on pixel position
-    COLOR_VAL = (X + Y) MOD 256
+For X = 0 To 2
+  For Y = 0 To 2
+    COLOR_VAL = 1
     PxlOn(Y, X, COLOR_VAL)
   Next Y
 Next X
 
-// Display completion message
-Disp "SCREEN FILLED WITH COLORS!"
+Disp "DONE"

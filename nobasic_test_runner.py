@@ -75,7 +75,8 @@ class NoBasicTestRunner:
         print("1. Compiling...")
         success, stdout, stderr = self.compile_program(nob_file)
         if not success:
-            print(f"[FAIL] Compilation failed: {stderr}")
+            error_msg = stderr if stderr else stdout
+            print(f"[FAIL] Compilation failed: {error_msg.strip()}")
             return False
         print("[OK] Compilation successful")
 

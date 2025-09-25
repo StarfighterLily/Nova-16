@@ -21,2038 +21,1484 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,0
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Validating color constants:' using TEXT
-    MOV P0,0x4000
+    ; Display 'Validating color constants:'
+    MOV P0,86
     MOV P1,15
-    TEXT P0,P1
-    ; Y_POS = 
-    MOV P0,10
-    ; Store P0 into Y_POS
-    MOV [0x2034],P0
-    ; For I = 0 To 16
-    MOV P0,0
-    MOV [0x2010],P0
-for_loop_1:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,0
-    JZ if_else_3
-    JMP if_end_4
-if_else_3:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,1
-    JZ if_else_5
-    JMP if_end_4
-if_else_5:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,2
-    JZ if_else_6
-    JMP if_end_4
-if_else_6:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,3
-    JZ if_else_7
-    JMP if_end_4
-if_else_7:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,4
-    JZ if_else_8
-    JMP if_end_4
-if_else_8:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,5
-    JZ if_else_9
-    JMP if_end_4
-if_else_9:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,6
-    JZ if_else_10
-    JMP if_end_4
-if_else_10:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,7
-    JZ if_else_11
-    JMP if_end_4
-if_else_11:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,8
-    JZ if_else_12
-    JMP if_end_4
-if_else_12:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,9
-    JZ if_else_13
-    JMP if_end_4
-if_else_13:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,10
-    JZ if_else_14
-    JMP if_end_4
-if_else_14:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,11
-    JZ if_else_15
-    JMP if_end_4
-if_else_15:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,12
-    JZ if_else_16
-    JMP if_end_4
-if_else_16:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,13
-    JZ if_else_17
-    JMP if_end_4
-if_else_17:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,14
-    JZ if_else_18
-    JMP if_end_4
-if_else_18:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,15
-    JZ if_else_19
-    JMP if_end_4
-if_else_19:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,16
-    JZ if_else_20
-if_else_3:
-if_end_4:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Color ' using TEXT
-    MOV P0,0x4100
+    CHAR P0,P1
+    MOV P0,97
     MOV P1,15
-    TEXT P0,P1
-    ; Load STR into P0
-    MOV P0,[0x2036]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; Display ':'
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
     MOV P0,58
     MOV P1,15
     CHAR P0,P1
-    ; Display ' '
+    ; Y_POS = expression
+    MOV P0,10
+    MOV [0x2000],P0
+    MOV P0,0
+    MOV [0x2002],P0
+for_1:
+    MOV P0,[0x2002]
+    MOV P0,17
+    MOV P1,P0
+    MOV P0,[0x2002]
+    CMP P0,P1
+    JGE next_2
+    MOV P0,[0x2002]
+    PUSH P0
+    MOV P0,0
+    MOV P1,P0
+    POP P0
+    JZ else_3
+    ; EXPECTED_VALUE = expression
+    MOV P0,0
+    MOV [0x2004],P0
+    ; COLOR_NAME = expression
+    MOV [0x2006],P0
+    JMP endif_4
+else_3:
+endif_4:
+    ; Disp
+    PUSH P0
+    MOV P0,[0x2002]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P0,[0x2006]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P0,[0x2004]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV P0,[0x2002]
+    PUSH P0
+    MOV P0,0
+    MOV P1,P0
+    POP P0
+    JZ else_5
+    ; ACTUAL_VALUE = expression
+    MOV P0,[0x2008]
+    MOV [0x200A],P0
+    JMP endif_6
+else_5:
+endif_6:
+    MOV P0,[0x200A]
+    PUSH P0
+    MOV P0,[0x2004]
+    MOV P1,P0
+    POP P0
+    JZ else_7
+    ; Disp
+    ; Display '  PASS'
     MOV P0,32
     MOV P1,15
     CHAR P0,P1
-    ; Display string ' (expected: ' using TEXT
-    MOV P0,0x4200
+    MOV P0,32
     MOV P1,15
-    TEXT P0,P1
-    ; Load STR into P0
-    MOV P0,[0x2036]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
+    CHAR P0,P1
+    MOV P0,80
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,65
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,83
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,83
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,200
     MOV VY,P0
-    MOV P0,0
+    MOV P0,[0x2000]
     MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; Display ')'
+    MOV P0,[0x200C]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    JMP endif_8
+else_7:
+    ; Disp
+    ; Display '  FAIL'
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,70
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,65
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,73
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,76
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,200
+    MOV VY,P0
+    MOV P0,[0x2000]
+    MOV VX,P0
+    MOV P0,[0x200E]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+endif_8:
+    ; Y_POS = expression
+    MOV P0,[0x2000]
+    PUSH P0
+    MOV P0,10
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x2000],P0
+    MOV P0,[0x2002]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2002],P0
+    JMP for_1
+next_2:
+    ; Disp
+    ; Display 'Testing COLOR() bounds:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,67
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,79
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,76
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,79
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,82
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,40
+    MOV P1,15
+    CHAR P0,P1
     MOV P0,41
     MOV P1,15
     CHAR P0,P1
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,0
-    JZ if_else_21
-    JMP if_end_22
-if_else_21:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,1
-    JZ if_else_23
-    JMP if_end_22
-if_else_23:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,2
-    JZ if_else_24
-    JMP if_end_22
-if_else_24:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,3
-    JZ if_else_25
-    JMP if_end_22
-if_else_25:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,4
-    JZ if_else_26
-    JMP if_end_22
-if_else_26:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,5
-    JZ if_else_27
-    JMP if_end_22
-if_else_27:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,6
-    JZ if_else_28
-    JMP if_end_22
-if_else_28:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,7
-    JZ if_else_29
-    JMP if_end_22
-if_else_29:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,8
-    JZ if_else_30
-    JMP if_end_22
-if_else_30:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,9
-    JZ if_else_31
-    JMP if_end_22
-if_else_31:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,10
-    JZ if_else_32
-    JMP if_end_22
-if_else_32:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,11
-    JZ if_else_33
-    JMP if_end_22
-if_else_33:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,12
-    JZ if_else_34
-    JMP if_end_22
-if_else_34:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,13
-    JZ if_else_35
-    JMP if_end_22
-if_else_35:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,14
-    JZ if_else_36
-    JMP if_end_22
-if_else_36:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,15
-    JZ if_else_37
-    JMP if_end_22
-if_else_37:
-    ; Load I into P0
-    MOV P0,[0x2010]
-    CMP P0,16
-    JZ if_else_38
-if_else_21:
-if_end_22:
-    MOV P0,ACTUAL_VALUE
-    CMP P0,EXPECTED_VALUE
-    JZ if_else_39
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,16
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string '  PASS' using TEXT
-    MOV P0,0x4300
-    MOV P1,15
-    TEXT P0,P1
-    ; Pxl-On
-    MOV P0,200
-    ; Load Y_POS into P1
-    MOV P1,[0x2034]
-    MOV P2,36
-    ; Pxl-On at (P0,P1)
-    MOV VX,P0
-    MOV VY,P1
-    MOV P0,P2
-    SWRITE P0
-    JMP if_end_40
-if_else_39:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,24
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string '  FAIL' using TEXT
-    MOV P0,0x4400
-    MOV P1,15
-    TEXT P0,P1
-    ; Pxl-On
-    MOV P2,200
-    ; Load Y_POS into P1
-    MOV P1,[0x2034]
-    MOV P0,20
-    ; Pxl-On at (P2,P1)
-    MOV VX,P2
-    MOV VY,P1
-    MOV P0,P0
-    SWRITE P0
-if_else_39:
-if_end_40:
-    ; Y_POS = 
-    ; Load Y_POS into P0
-    MOV P0,[0x2034]
-    ADD P0,10
-    ; Store P0 into Y_POS
-    MOV [0x2034],P0
-    ; Next I
-    MOV P0,[0x2010]
-    INC P0
-    MOV [0x2010],P0
-    CMP P0,16
-    JLE for_loop_1
-for_end_2:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
     MOV P0,32
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing COLOR() bounds:' using TEXT
-    MOV P0,0x4500
     MOV P1,15
-    TEXT P0,P1
-    ; VALID_TESTS = 
-    MOV P0,0
-    ; Store P0 into VALID_TESTS
-    MOV [0x2038],P0
-    ; For R = 0 To 15
-    MOV P0,0
-    MOV [0x2022],P0
-for_loop_41:
-    ; For S = 0 To 15
-    MOV P0,0
-    MOV [0x2024],P0
-for_loop_43:
-    ; C = 
-    ; Load R into P0
-    MOV P0,[0x2022]
-    ; Load S into P1
-    MOV P1,[0x2024]
-    ; COLOR(P0, P1)
-    SHL P0,4
-    OR P0,P1
-    ; Store P0 into C
-    MOV [0x2004],P0
-    ; EXPECTED = 
-    ; Load R into P0
-    MOV P0,[0x2022]
-    MUL P0,16
-    ; Load S into P1
-    MOV P1,[0x2024]
-    ADD P0,P1
-    ; Store P0 into EXPECTED
-    MOV [0x203A],P0
-    ; Load C into P0
-    MOV P0,[0x2004]
-    ; Load EXPECTED into P1
-    MOV P1,[0x203A]
-    CMP P0,P1
-    JZ if_end_45
-if_end_45:
-    ; Next S
-    MOV P0,[0x2024]
-    INC P0
-    MOV [0x2024],P0
-    CMP P0,15
-    JLE for_loop_43
-for_end_44:
-    ; Next R
-    MOV P0,[0x2022]
-    INC P0
-    MOV [0x2022],P0
-    CMP P0,15
-    JLE for_loop_41
-for_end_42:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,40
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Valid COLOR() combinations: ' using TEXT
-    MOV P0,0x4600
+    CHAR P0,P1
+    MOV P0,98
     MOV P1,15
-    TEXT P0,P1
-    ; Load STR into P0
-    MOV P0,[0x2036]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; Display string '/256' using TEXT
-    MOV P0,0x4700
+    CHAR P0,P1
+    MOV P0,111
     MOV P1,15
-    TEXT P0,P1
-    MOV P0,VALID_TESTS
-    CMP P0,256
-    JZ if_else_46
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,48
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'All COLOR() tests passed' using TEXT
-    MOV P0,0x4800
+    CHAR P0,P1
+    MOV P0,117
     MOV P1,15
-    TEXT P0,P1
-    ; Pxl-On
-    MOV P0,10
-    MOV P1,200
-    MOV P2,36
-    ; Pxl-On at (P0,P1)
-    MOV VX,P0
-    MOV VY,P1
-    MOV P0,P2
-    SWRITE P0
-    JMP if_end_47
-if_else_46:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,56
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Some COLOR() tests failed' using TEXT
-    MOV P0,0x4900
+    CHAR P0,P1
+    MOV P0,110
     MOV P1,15
-    TEXT P0,P1
-    ; Pxl-On
-    MOV P2,10
-    MOV P1,200
-    MOV P0,20
-    ; Pxl-On at (P2,P1)
-    MOV VX,P2
-    MOV VY,P1
-    MOV P0,P0
-    SWRITE P0
-if_else_46:
-if_end_47:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,64
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing RAMP() and SHADE() extraction:' using TEXT
-    MOV P0,0x4A00
-    MOV P1,15
-    TEXT P0,P1
-    ; EXTRACTION_TESTS = 
-    MOV P0,0
-    ; Store P0 into EXTRACTION_TESTS
-    MOV [0x203C],P0
-    ; For R = 0 To 15
-    MOV P0,0
-    MOV [0x2022],P0
-for_loop_48:
-    ; For S = 0 To 15
-    MOV P0,0
-    MOV [0x2024],P0
-for_loop_50:
-    ; ORIGINAL = 
-    ; Load R into P0
-    MOV P0,[0x2022]
-    MUL P0,16
-    ; Load S into P1
-    MOV P1,[0x2024]
-    ADD P0,P1
-    ; Store P0 into ORIGINAL
-    MOV [0x203E],P0
-    ; EXTRACTED_R = 
-    ; Load ORIGINAL into P0
-    MOV P0,[0x203E]
-    ; RAMP(P0)
-    SHR P0,4
-    ; Store P0 into EXTRACTED_R
-    MOV [0x2040],P0
-    ; EXTRACTED_S = 
-    ; Load ORIGINAL into P0
-    MOV P0,[0x203E]
-    ; SHADE(P0)
-    AND P0,15
-    ; Store P0 into EXTRACTED_S
-    MOV [0x2042],P0
-    MOV P0,EXTRACTED_R
-    ; Load R into P1
-    MOV P1,[0x2022]
-    CMP P0,P1
-    JZ if_end_52
-if_end_52:
-    ; Next S
-    MOV P0,[0x2024]
-    INC P0
-    MOV [0x2024],P0
-    CMP P0,15
-    JLE for_loop_50
-for_end_51:
-    ; Next R
-    MOV P0,[0x2022]
-    INC P0
-    MOV [0x2022],P0
-    CMP P0,15
-    JLE for_loop_48
-for_end_49:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,72
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Valid extractions: ' using TEXT
-    MOV P0,0x4B00
-    MOV P1,15
-    TEXT P0,P1
-    ; Load STR into P0
-    MOV P0,[0x2036]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; Display string '/256' using TEXT
-    MOV P0,0x4700
-    MOV P1,15
-    TEXT P0,P1
-    MOV P0,EXTRACTION_TESTS
-    CMP P0,256
-    JZ if_else_53
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,80
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'All extraction tests passed' using TEXT
-    MOV P0,0x4C00
-    MOV P1,15
-    TEXT P0,P1
-    ; Pxl-On
-    MOV P0,30
-    MOV P1,200
-    MOV P2,36
-    ; Pxl-On at (P0,P1)
-    MOV VX,P0
-    MOV VY,P1
-    MOV P0,P2
-    SWRITE P0
-    JMP if_end_54
-if_else_53:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,88
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Some extraction tests failed' using TEXT
-    MOV P0,0x4D00
-    MOV P1,15
-    TEXT P0,P1
-    ; Pxl-On
-    MOV P2,30
-    MOV P1,200
-    MOV P0,20
-    ; Pxl-On at (P2,P1)
-    MOV VX,P2
-    MOV VY,P1
-    MOV P0,P0
-    SWRITE P0
-if_else_53:
-if_end_54:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,96
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing round-trip conversion:' using TEXT
-    MOV P0,0x4E00
-    MOV P1,15
-    TEXT P0,P1
-    ; ROUND_TRIP_TESTS = 
-    MOV P0,0
-    ; Store P0 into ROUND_TRIP_TESTS
-    MOV [0x2044],P0
-    ; For C = 0 To 255
-    MOV P0,0
-    MOV [0x2004],P0
-for_loop_55:
-    ; R = 
-    ; Load C into P0
-    MOV P0,[0x2004]
-    ; RAMP(P0)
-    SHR P0,4
-    ; Store P0 into R
-    MOV [0x2022],P0
-    ; S = 
-    ; Load C into P0
-    MOV P0,[0x2004]
-    ; SHADE(P0)
-    AND P0,15
-    ; Store P0 into S
-    MOV [0x2024],P0
-    ; RECREATED = 
-    ; Load R into P0
-    MOV P0,[0x2022]
-    ; Load S into P1
-    MOV P1,[0x2024]
-    ; COLOR(P0, P1)
-    SHL P0,4
-    OR P0,P1
-    ; Store P0 into RECREATED
-    MOV [0x2046],P0
-    ; Load RECREATED into P0
-    MOV P0,[0x2046]
-    ; Load C into P1
-    MOV P1,[0x2004]
-    CMP P0,P1
-    JZ if_end_57
-if_end_57:
-    ; Next C
-    MOV P0,[0x2004]
-    INC P0
-    MOV [0x2004],P0
-    CMP P0,255
-    JLE for_loop_55
-for_end_56:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,104
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Round-trip conversions: ' using TEXT
-    MOV P0,0x4F00
-    MOV P1,15
-    TEXT P0,P1
-    ; Load STR into P0
-    MOV P0,[0x2036]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; Display string '/256' using TEXT
-    MOV P0,0x4700
-    MOV P1,15
-    TEXT P0,P1
-    MOV P0,ROUND_TRIP_TESTS
-    CMP P0,256
-    JZ if_else_58
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,112
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'All round-trip tests passed' using TEXT
-    MOV P0,0x5000
-    MOV P1,15
-    TEXT P0,P1
-    ; Pxl-On
-    MOV P0,50
-    MOV P1,200
-    MOV P2,36
-    ; Pxl-On at (P0,P1)
-    MOV VX,P0
-    MOV VY,P1
-    MOV P0,P2
-    SWRITE P0
-    JMP if_end_59
-if_else_58:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,120
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Some round-trip tests failed' using TEXT
-    MOV P0,0x5100
-    MOV P1,15
-    TEXT P0,P1
-    ; Pxl-On
-    MOV P2,50
-    MOV P1,200
-    MOV P0,20
-    ; Pxl-On at (P2,P1)
-    MOV VX,P2
-    MOV VY,P1
-    MOV P0,P0
-    SWRITE P0
-if_else_58:
-if_end_59:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,128
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing color arithmetic:' using TEXT
-    MOV P0,0x5200
-    MOV P1,15
-    TEXT P0,P1
-    ; RED_COL = 
-    MOV P0,20
-    ; Store P0 into RED_COL
-    MOV [0x2048],P0
-    ; BLUE_COL = 
-    MOV P0,52
-    ; Store P0 into BLUE_COL
-    MOV [0x204A],P0
-    ; SUM_COLOR = 
-    ; Load RED_COL into P0
-    MOV P0,[0x2048]
-    ; Load BLUE_COL into P1
-    MOV P1,[0x204A]
-    ADD P0,P1
-    ; Store P0 into SUM_COLOR
-    MOV [0x204C],P0
-    ; DIFF_COLOR = 
-    ; Load RED_COL into P0
-    MOV P0,[0x2048]
-    ; Load BLUE_COL into P1
-    MOV P1,[0x204A]
-    SUB P0,P1
-    ; Store P0 into DIFF_COLOR
-    MOV [0x204E],P0
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,136
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'RED + BLUE = ' using TEXT
-    MOV P0,0x5300
-    MOV P1,15
-    TEXT P0,P1
-    ; Load STR into P0
-    MOV P0,[0x2036]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,144
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'RED - BLUE = ' using TEXT
-    MOV P0,0x5400
-    MOV P1,15
-    TEXT P0,P1
-    ; Load STR into P0
-    MOV P0,[0x2036]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; Pxl-On
+    CHAR P0,P1
     MOV P0,100
-    MOV P1,200
-    ; Load RED_COL into P2
-    MOV P2,[0x2048]
-    ; Pxl-On at (P0,P1)
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    ; VALID_TESTS = expression
+    MOV P0,0
+    MOV [0x2010],P0
+    MOV P0,0
+    MOV [0x2012],P0
+for_9:
+    MOV P0,[0x2012]
+    MOV P0,16
+    MOV P1,P0
+    MOV P0,[0x2012]
+    CMP P0,P1
+    JGE next_10
+    MOV P0,0
+    MOV [0x2014],P0
+for_11:
+    MOV P0,[0x2014]
+    MOV P0,16
+    MOV P1,P0
+    MOV P0,[0x2014]
+    CMP P0,P1
+    JGE next_12
+    ; C = expression
+    MOV P0,[0x2012]
+    PUSH P0
+    MOV P0,[0x2014]
+    MOV P1,P0
+    POP P0
+    SHL P0,4
+    OR P0,P1
+    MOV [0x2016],P0
+    ; EXPECTED = expression
+    MOV P0,[0x2012]
+    PUSH P0
+    MOV P0,16
+    MOV P1,P0
+    POP P0
+    MUL P0,P1
+    PUSH P0
+    MOV P0,[0x2014]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x2018],P0
+    MOV P0,[0x2016]
+    PUSH P0
+    MOV P0,[0x2018]
+    MOV P1,P0
+    POP P0
+    JZ else_13
+    ; VALID_TESTS = expression
+    MOV P0,[0x2010]
+    PUSH P0
+    MOV P0,1
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x2010],P0
+    JMP endif_14
+else_13:
+endif_14:
+    MOV P0,[0x2014]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2014],P0
+    JMP for_11
+next_12:
+    MOV P0,[0x2012]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2012],P0
+    JMP for_9
+next_10:
+    ; Disp
+    PUSH P0
+    MOV P0,[0x2010]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV P0,[0x2010]
+    PUSH P0
+    MOV P0,256
+    MOV P1,P0
+    POP P0
+    JZ else_15
+    ; Disp
+    ; Display 'All COLOR() tests passed'
+    MOV P0,65
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,67
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,79
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,76
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,79
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,82
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,40
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,41
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,10
+    MOV VY,P0
+    MOV P0,200
     MOV VX,P0
-    MOV VY,P1
-    MOV P0,P2
+    MOV P0,[0x200C]
+    MOV VL,P0
+    MOV VM,0
     SWRITE P0
-    ; Pxl-On
-    MOV P2,110
-    MOV P1,200
-    ; Load BLUE_COL into P0
-    MOV P0,[0x204A]
-    ; Pxl-On at (P2,P1)
-    MOV VX,P2
-    MOV VY,P1
-    MOV P0,P0
+    JMP endif_16
+else_15:
+    ; Disp
+    ; Display 'Some COLOR() tests failed'
+    MOV P0,83
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,109
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,67
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,79
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,76
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,79
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,82
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,40
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,41
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,102
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,10
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x200E]
+    MOV VL,P0
+    MOV VM,0
     SWRITE P0
-    ; Pxl-On
+endif_16:
+    ; Disp
+    ; Display 'Testing RAMP() and SHADE() extraction:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,82
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,65
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,77
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,80
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,40
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,41
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,83
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,72
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,65
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,68
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,69
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,40
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,41
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
     MOV P0,120
-    MOV P1,200
-    ; Load SUM_COLOR into P2
-    MOV P2,[0x204C]
-    ; Pxl-On at (P0,P1)
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    ; EXTRACTION_TESTS = expression
+    MOV P0,0
+    MOV [0x201A],P0
+    MOV P0,0
+    MOV [0x2012],P0
+for_17:
+    MOV P0,[0x2012]
+    MOV P0,16
+    MOV P1,P0
+    MOV P0,[0x2012]
+    CMP P0,P1
+    JGE next_18
+    MOV P0,0
+    MOV [0x2014],P0
+for_19:
+    MOV P0,[0x2014]
+    MOV P0,16
+    MOV P1,P0
+    MOV P0,[0x2014]
+    CMP P0,P1
+    JGE next_20
+    ; ORIGINAL = expression
+    MOV P0,[0x2012]
+    PUSH P0
+    MOV P0,16
+    MOV P1,P0
+    POP P0
+    MUL P0,P1
+    PUSH P0
+    MOV P0,[0x2014]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x201C],P0
+    ; EXTRACTED_R = expression
+    MOV P0,[0x201C]
+    SHR P0,4
+    MOV [0x201E],P0
+    ; EXTRACTED_S = expression
+    MOV P0,[0x201C]
+    AND P0,15
+    MOV [0x2020],P0
+    MOV P0,[0x201E]
+    PUSH P0
+    MOV P0,[0x2012]
+    MOV P1,P0
+    POP P0
+    PUSH P0
+    MOV P0,[0x2020]
+    PUSH P0
+    MOV P0,[0x2014]
+    MOV P1,P0
+    POP P0
+    MOV P1,P0
+    POP P0
+    JZ else_21
+    ; EXTRACTION_TESTS = expression
+    MOV P0,[0x201A]
+    PUSH P0
+    MOV P0,1
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x201A],P0
+    JMP endif_22
+else_21:
+endif_22:
+    MOV P0,[0x2014]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2014],P0
+    JMP for_19
+next_20:
+    MOV P0,[0x2012]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2012],P0
+    JMP for_17
+next_18:
+    ; Disp
+    PUSH P0
+    MOV P0,[0x201A]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV P0,[0x201A]
+    PUSH P0
+    MOV P0,256
+    MOV P1,P0
+    POP P0
+    JZ else_23
+    ; Disp
+    ; Display 'All extraction tests passed'
+    MOV P0,65
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,120
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,30
+    MOV VY,P0
+    MOV P0,200
     MOV VX,P0
-    MOV VY,P1
-    MOV P0,P2
+    MOV P0,[0x200C]
+    MOV VL,P0
+    MOV VM,0
     SWRITE P0
-    ; Pxl-On
-    MOV P2,130
-    MOV P1,200
-    ; Load DIFF_COLOR into P0
-    MOV P0,[0x204E]
-    ; Pxl-On at (P2,P1)
-    MOV VX,P2
-    MOV VY,P1
-    MOV P0,P0
+    JMP endif_24
+else_23:
+    ; Disp
+    ; Display 'Some extraction tests failed'
+    MOV P0,83
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,109
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,120
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,102
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,30
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x200E]
+    MOV VL,P0
+    MOV VM,0
     SWRITE P0
-    ; Pause - wait for key press
+endif_24:
+    ; Disp
+    ; Display 'Testing round-trip conversion:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,117
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,45
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,118
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    ; ROUND_TRIP_TESTS = expression
+    MOV P0,0
+    MOV [0x2022],P0
+    MOV P0,0
+    MOV [0x2016],P0
+for_25:
+    MOV P0,[0x2016]
+    MOV P0,256
+    MOV P1,P0
+    MOV P0,[0x2016]
+    CMP P0,P1
+    JGE next_26
+    ; R = expression
+    MOV P0,[0x2016]
+    SHR P0,4
+    MOV [0x2012],P0
+    ; S = expression
+    MOV P0,[0x2016]
+    AND P0,15
+    MOV [0x2014],P0
+    ; RECREATED = expression
+    MOV P0,[0x2012]
+    PUSH P0
+    MOV P0,[0x2014]
+    MOV P1,P0
+    POP P0
+    SHL P0,4
+    OR P0,P1
+    MOV [0x2024],P0
+    MOV P0,[0x2024]
+    PUSH P0
+    MOV P0,[0x2016]
+    MOV P1,P0
+    POP P0
+    JZ else_27
+    ; ROUND_TRIP_TESTS = expression
+    MOV P0,[0x2022]
+    PUSH P0
+    MOV P0,1
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x2022],P0
+    JMP endif_28
+else_27:
+endif_28:
+    MOV P0,[0x2016]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2016],P0
+    JMP for_25
+next_26:
+    ; Disp
+    PUSH P0
+    MOV P0,[0x2022]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV P0,[0x2022]
+    PUSH P0
+    MOV P0,256
+    MOV P1,P0
+    POP P0
+    JZ else_29
+    ; Disp
+    ; Display 'All round-trip tests passed'
+    MOV P0,65
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,117
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,45
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,50
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x200C]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    JMP endif_30
+else_29:
+    ; Disp
+    ; Display 'Some round-trip tests failed'
+    MOV P0,83
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,109
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,117
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,45
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,102
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,50
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x200E]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+endif_30:
+    ; Disp
+    ; Display 'Testing color arithmetic:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,104
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,109
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    ; RED_COL = expression
+    MOV P0,[0x200E]
+    MOV [0x2026],P0
+    ; BLUE_COL = expression
+    MOV P0,[0x2028]
+    MOV [0x202A],P0
+    ; SUM_COLOR = expression
+    MOV P0,[0x2026]
+    PUSH P0
+    MOV P0,[0x202A]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x202C],P0
+    ; DIFF_COLOR = expression
+    MOV P0,[0x2026]
+    PUSH P0
+    MOV P0,[0x202A]
+    MOV P1,P0
+    POP P0
+    SUB P0,P1
+    MOV [0x202E],P0
+    ; Disp
+    PUSH P0
+    MOV P0,[0x202C]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    ; Disp
+    PUSH P0
+    MOV P0,[0x202E]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV P0,100
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x2026]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,110
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x202A]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,120
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x202C]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,130
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x202E]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    ; Pause - halt execution
 pause_loop:
-    KEYSTAT P0
-    CMP P0,0
-    JZ pause_loop
-    KEYIN P0
+    JMP pause_loop
 
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
+
 ORG 0x2000
 DW 0  ; Variable A
-ORG 0x2002
 DW 0  ; Variable B
-ORG 0x2004
 DW 0  ; Variable C
-ORG 0x2006
 DW 0  ; Variable D
-ORG 0x2008
 DW 0  ; Variable E
-ORG 0x200A
 DW 0  ; Variable F
-ORG 0x200C
 DW 0  ; Variable G
-ORG 0x200E
 DW 0  ; Variable H
-ORG 0x2010
 DW 0  ; Variable I
-ORG 0x2012
 DW 0  ; Variable J
-ORG 0x2014
 DW 0  ; Variable K
-ORG 0x2016
 DW 0  ; Variable L
-ORG 0x2018
 DW 0  ; Variable M
-ORG 0x201A
 DW 0  ; Variable N
-ORG 0x201C
 DW 0  ; Variable O
-ORG 0x201E
 DW 0  ; Variable P
-ORG 0x2020
 DW 0  ; Variable Q
-ORG 0x2022
 DW 0  ; Variable R
-ORG 0x2024
 DW 0  ; Variable S
-ORG 0x2026
 DW 0  ; Variable T
-ORG 0x2028
 DW 0  ; Variable U
-ORG 0x202A
 DW 0  ; Variable V
-ORG 0x202C
 DW 0  ; Variable W
-ORG 0x202E
 DW 0  ; Variable X
-ORG 0x2030
 DW 0  ; Variable Y
-ORG 0x2032
 DW 0  ; Variable Z
-ORG 0x2034
-DW 0  ; Variable Y_POS
-ORG 0x2036
-DW 0  ; Variable STR
-ORG 0x2038
-DW 0  ; Variable VALID_TESTS
-ORG 0x203A
-DW 0  ; Variable EXPECTED
-ORG 0x203C
-DW 0  ; Variable EXTRACTION_TESTS
-ORG 0x203E
-DW 0  ; Variable ORIGINAL
-ORG 0x2040
-DW 0  ; Variable EXTRACTED_R
-ORG 0x2042
-DW 0  ; Variable EXTRACTED_S
-ORG 0x2044
-DW 0  ; Variable ROUND_TRIP_TESTS
-ORG 0x2046
-DW 0  ; Variable RECREATED
-ORG 0x2048
-DW 0  ; Variable RED_COL
-ORG 0x204A
-DW 0  ; Variable BLUE_COL
-ORG 0x204C
-DW 0  ; Variable SUM_COLOR
-ORG 0x204E
-DW 0  ; Variable DIFF_COLOR
-ORG 0x4000
-DB 86
-DB 97
-DB 108
-DB 105
-DB 100
-DB 97
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 99
-DB 111
-DB 108
-DB 111
-DB 114
-DB 32
-DB 99
-DB 111
-DB 110
-DB 115
-DB 116
-DB 97
-DB 110
-DB 116
-DB 115
-DB 58
-DB 0  ; Null terminator
-ORG 0x4100
-DB 67
-DB 111
-DB 108
-DB 111
-DB 114
-DB 32
-DB 0  ; Null terminator
-ORG 0x4200
-DB 32
-DB 40
-DB 101
-DB 120
-DB 112
-DB 101
-DB 99
-DB 116
-DB 101
-DB 100
-DB 58
-DB 32
-DB 0  ; Null terminator
-ORG 0x4300
-DB 32
-DB 32
-DB 80
-DB 65
-DB 83
-DB 83
-DB 0  ; Null terminator
-ORG 0x4400
-DB 32
-DB 32
-DB 70
-DB 65
-DB 73
-DB 76
-DB 0  ; Null terminator
-ORG 0x4500
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 67
-DB 79
-DB 76
-DB 79
-DB 82
-DB 40
-DB 41
-DB 32
-DB 98
-DB 111
-DB 117
-DB 110
-DB 100
-DB 115
-DB 58
-DB 0  ; Null terminator
-ORG 0x4600
-DB 86
-DB 97
-DB 108
-DB 105
-DB 100
-DB 32
-DB 67
-DB 79
-DB 76
-DB 79
-DB 82
-DB 40
-DB 41
-DB 32
-DB 99
-DB 111
-DB 109
-DB 98
-DB 105
-DB 110
-DB 97
-DB 116
-DB 105
-DB 111
-DB 110
-DB 115
-DB 58
-DB 32
-DB 0  ; Null terminator
-ORG 0x4700
-DB 47
-DB 50
-DB 53
-DB 54
-DB 0  ; Null terminator
-ORG 0x4800
-DB 65
-DB 108
-DB 108
-DB 32
-DB 67
-DB 79
-DB 76
-DB 79
-DB 82
-DB 40
-DB 41
-DB 32
-DB 116
-DB 101
-DB 115
-DB 116
-DB 115
-DB 32
-DB 112
-DB 97
-DB 115
-DB 115
-DB 101
-DB 100
-DB 0  ; Null terminator
-ORG 0x4900
-DB 83
-DB 111
-DB 109
-DB 101
-DB 32
-DB 67
-DB 79
-DB 76
-DB 79
-DB 82
-DB 40
-DB 41
-DB 32
-DB 116
-DB 101
-DB 115
-DB 116
-DB 115
-DB 32
-DB 102
-DB 97
-DB 105
-DB 108
-DB 101
-DB 100
-DB 0  ; Null terminator
-ORG 0x4A00
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 82
-DB 65
-DB 77
-DB 80
-DB 40
-DB 41
-DB 32
-DB 97
-DB 110
-DB 100
-DB 32
-DB 83
-DB 72
-DB 65
-DB 68
-DB 69
-DB 40
-DB 41
-DB 32
-DB 101
-DB 120
-DB 116
-DB 114
-DB 97
-DB 99
-DB 116
-DB 105
-DB 111
-DB 110
-DB 58
-DB 0  ; Null terminator
-ORG 0x4B00
-DB 86
-DB 97
-DB 108
-DB 105
-DB 100
-DB 32
-DB 101
-DB 120
-DB 116
-DB 114
-DB 97
-DB 99
-DB 116
-DB 105
-DB 111
-DB 110
-DB 115
-DB 58
-DB 32
-DB 0  ; Null terminator
-ORG 0x4C00
-DB 65
-DB 108
-DB 108
-DB 32
-DB 101
-DB 120
-DB 116
-DB 114
-DB 97
-DB 99
-DB 116
-DB 105
-DB 111
-DB 110
-DB 32
-DB 116
-DB 101
-DB 115
-DB 116
-DB 115
-DB 32
-DB 112
-DB 97
-DB 115
-DB 115
-DB 101
-DB 100
-DB 0  ; Null terminator
-ORG 0x4D00
-DB 83
-DB 111
-DB 109
-DB 101
-DB 32
-DB 101
-DB 120
-DB 116
-DB 114
-DB 97
-DB 99
-DB 116
-DB 105
-DB 111
-DB 110
-DB 32
-DB 116
-DB 101
-DB 115
-DB 116
-DB 115
-DB 32
-DB 102
-DB 97
-DB 105
-DB 108
-DB 101
-DB 100
-DB 0  ; Null terminator
-ORG 0x4E00
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 114
-DB 111
-DB 117
-DB 110
-DB 100
-DB 45
-DB 116
-DB 114
-DB 105
-DB 112
-DB 32
-DB 99
-DB 111
-DB 110
-DB 118
-DB 101
-DB 114
-DB 115
-DB 105
-DB 111
-DB 110
-DB 58
-DB 0  ; Null terminator
-ORG 0x4F00
-DB 82
-DB 111
-DB 117
-DB 110
-DB 100
-DB 45
-DB 116
-DB 114
-DB 105
-DB 112
-DB 32
-DB 99
-DB 111
-DB 110
-DB 118
-DB 101
-DB 114
-DB 115
-DB 105
-DB 111
-DB 110
-DB 115
-DB 58
-DB 32
-DB 0  ; Null terminator
-ORG 0x5000
-DB 65
-DB 108
-DB 108
-DB 32
-DB 114
-DB 111
-DB 117
-DB 110
-DB 100
-DB 45
-DB 116
-DB 114
-DB 105
-DB 112
-DB 32
-DB 116
-DB 101
-DB 115
-DB 116
-DB 115
-DB 32
-DB 112
-DB 97
-DB 115
-DB 115
-DB 101
-DB 100
-DB 0  ; Null terminator
-ORG 0x5100
-DB 83
-DB 111
-DB 109
-DB 101
-DB 32
-DB 114
-DB 111
-DB 117
-DB 110
-DB 100
-DB 45
-DB 116
-DB 114
-DB 105
-DB 112
-DB 32
-DB 116
-DB 101
-DB 115
-DB 116
-DB 115
-DB 32
-DB 102
-DB 97
-DB 105
-DB 108
-DB 101
-DB 100
-DB 0  ; Null terminator
-ORG 0x5200
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 99
-DB 111
-DB 108
-DB 111
-DB 114
-DB 32
-DB 97
-DB 114
-DB 105
-DB 116
-DB 104
-DB 109
-DB 101
-DB 116
-DB 105
-DB 99
-DB 58
-DB 0  ; Null terminator
-ORG 0x5300
-DB 82
-DB 69
-DB 68
-DB 32
-DB 43
-DB 32
-DB 66
-DB 76
-DB 85
-DB 69
-DB 32
-DB 61
-DB 32
-DB 0  ; Null terminator
-ORG 0x5400
-DB 82
-DB 69
-DB 68
-DB 32
-DB 45
-DB 32
-DB 66
-DB 76
-DB 85
-DB 69
-DB 32
-DB 61
-DB 32
-DB 0  ; Null terminator
-
-ORG 0x8000
-
-; String concatenation subroutine
-str_concat:
-    ; P1 = left string address
-    ; Top of stack = right string address
-    ; Returns result address in P0
-    POP P2
-    POP P3
-    PUSH P2
-    
-    ; Allocate space for result string
-    MOV P0,0x6000
-    STRCPY P0,P1
-    STRCAT P0,P3
-    RET
-
-; LEFT(string, count) - extract left count characters
-left_substr:
-    ; P0 = result buffer, P1 = source string, P2 = count
-    MOV P3,P0
-    MOV P4,0
-left_loop:
-    CMP P4,P2
-    JZ left_done
-    MOV P5,[P1]
-    CMP P5,0
-    JZ left_done
-    MOV [P3],P5
-    INC P1
-    INC P3
-    INC P4
-    JMP left_loop
-left_done:
-    MOV [P3],0
-    RET
-
-; RIGHT(string, count) - extract right count characters
-right_substr:
-    ; P0 = result buffer, P1 = source string, P2 = count
-    MOV P3,P1
-    MOV P4,0
-right_len_loop:
-    MOV P5,[P3]
-    CMP P5,0
-    JZ right_len_done
-    INC P3
-    INC P4
-    JMP right_len_loop
-right_len_done:
-    ; P4 now contains string length
-    ; Calculate start position: max(0, length - count)
-    CMP P4,P2
-    JC right_use_all
-    MOV P3,P4
-    SUB P3,P2
-    JMP right_copy
-right_use_all:
-    MOV P3,0
-right_copy:
-    ADD P1,P3
-    MOV P3,P0
-right_copy_loop:
-    MOV P5,[P1]
-    CMP P5,0
-    JZ right_copy_done
-    MOV [P3],P5
-    INC P1
-    INC P3
-    JMP right_copy_loop
-right_copy_done:
-    MOV [P3],0
-    RET
-
-; MID(string, start, count) - extract substring
-mid_substr:
-    ; P0 = result buffer, P1 = source string, P2 = start position, P3 = count
-    ADD P1,P2
-    MOV P4,P0
-    MOV P5,0
-mid_loop:
-    CMP P5,P3
-    JZ mid_done
-    MOV P6,[P1]
-    CMP P6,0
-    JZ mid_done
-    MOV [P4],P6
-    INC P1
-    INC P4
-    INC P5
-    JMP mid_loop
-mid_done:
-    MOV [P4],0
-    RET
-
-; TRIM(string) - remove leading and trailing whitespace (space and tab only for simplicity)
-trim_string:
-    ; P0 = result buffer, P1 = source string
-    ; Find start of non-whitespace characters
-    MOV P2,P1
-trim_find_start:
-    MOV P3,[P2]
-    CMP P3,0
-    JZ trim_empty
-    CMP P3,32
-    JZ trim_skip_space_start
-    CMP P3,9
-    JZ trim_skip_space_start
-    JMP trim_found_start
-trim_skip_space_start:
-    INC P2
-    JMP trim_find_start
-trim_found_start:
-    ; P2 now points to first non-whitespace character
-    ; Find end of non-whitespace characters (scan backwards from end)
-    MOV P3,P1
-trim_find_end:
-    MOV P4,[P3]
-    CMP P4,0
-    JZ trim_end_found
-    INC P3
-    JMP trim_find_end
-trim_end_found:
-    DEC P3
-trim_scan_back:
-    CMP P3,P2
-    JC trim_empty
-    MOV P4,[P3]
-    CMP P4,32
-    JZ trim_skip_space_end
-    CMP P4,9
-    JZ trim_skip_space_end
-    JMP trim_copy
-trim_skip_space_end:
-    DEC P3
-    JMP trim_scan_back
-trim_copy:
-    ; Copy from P2 to P3 (inclusive) to result buffer P0
-    MOV P4,P0
-trim_copy_loop:
-    CMP P2,P3
-    JNC trim_copy_done
-    MOV P5,[P2]
-    MOV [P4],P5
-    INC P2
-    INC P4
-    JMP trim_copy_loop
-trim_copy_done:
-    MOV [P4],0
-    RET
-trim_empty:
-    MOV [P0],0
-    RET
-
-; REPLACE(string, old_substr, new_substr) - replace all occurrences of old_substr with new_substr
-replace_string:
-    ; P0 = result buffer, P1 = source string, P2 = old substring, P3 = new substring
-    MOV P4,P0
-    MOV P5,P1
-    MOV P6,P2
-    MOV P7,P3
-    
-    ; Get lengths of old and new substrings
-    MOV P8,P6
-    MOV P9,0
-replace_old_len_loop:
-    MOV R0,[P8]
-    CMP R0,0
-    JZ replace_old_len_done
-    INC P8
-    INC P9
-    JMP replace_old_len_loop
-replace_old_len_done:
-    
-    MOV P8,P7
-    MOV R0,0
-replace_new_len_loop:
-    MOV R1,[P8]
-    CMP R1,0
-    JZ replace_new_len_done
-    INC P8
-    INC R0
-    JMP replace_new_len_loop
-replace_new_len_done:
-    MOV P8,R0
-    
-replace_main_loop:
-    MOV R0,[P5]
-    CMP R0,0
-    JZ replace_done
-    
-    ; Check if old substring matches at current position
-    MOV R1,P5
-    MOV R2,P6
-    MOV R3,0
-replace_check_match:
-    MOV R4,[R1]
-    MOV R5,[R2]
-    CMP R4,R5
-    JNZ replace_no_match
-    CMP R5,0
-    JZ replace_match_found
-    INC R1
-    INC R2
-    INC R3
-    CMP R3,P9
-    JNZ replace_check_match
-    JMP replace_match_found
-    
-replace_no_match:
-    ; No match, copy current character
-    MOV [P4],R0
-    INC P5
-    INC P4
-    JMP replace_main_loop
-    
-replace_match_found:
-    ; Match found, copy new substring
-    MOV R1,P7
-replace_copy_new:
-    MOV R2,[R1]
-    CMP R2,0
-    JZ replace_skip_old
-    MOV [P4],R2
-    INC P4
-    INC R1
-    JMP replace_copy_new
-    
-replace_skip_old:
-    ; Skip the old substring in source
-    ADD P5,P9
-    JMP replace_main_loop
-    
-replace_done:
-    MOV [P4],0
-    RET
-
-; SPLIT(string, delimiter) - split string by delimiter, store parts in array
-split_string:
-    ; P0 = array base address, P1 = source string, P2 = delimiter
-    ; This is a simplified implementation - splits on single character delimiter only
-    ; Returns array with parts, first element is count, then string addresses
-    MOV P3,P0
-    ADD P3,2
-    MOV P4,P1
-    MOV P5,0
-split_loop:
-    MOV P6,[P4]
-    CMP P6,0
-    JZ split_done
-    MOV P7,[P2]
-    CMP P6,P7
-    JNZ split_continue
-    ; Found delimiter, store current part
-    MOV [P3],P4
-    ADD P3,2
-    INC P5
-    INC P4
-    JMP split_loop
-split_continue:
-    INC P4
-    JMP split_loop
-split_done:
-    ; Store final part (empty string after last delimiter)
-    MOV [P3],P4
-    ADD P3,2
-    INC P5
-    ; Store count at array start
-    MOV [P0],P5
-    RET
-
-; JOIN(array_base, delimiter, count) - join array elements with delimiter
-join_array:
-    ; P0 = result buffer, P1 = array base, P2 = delimiter, P3 = element count
-    MOV P4,P0
-    MOV P5,P1
-    ADD P5,2
-    MOV P6,0
-join_loop:
-    CMP P6,P3
-    JZ join_done
-    ; Copy current element string
-    MOV P7,[P5]
-join_copy_element:
-    MOV P8,[P7]
-    CMP P8,0
-    JZ join_next_element
-    MOV [P4],P8
-    INC P7
-    INC P4
-    JMP join_copy_element
-join_next_element:
-    INC P6
-    CMP P6,P3
-    JZ join_done
-    ; Add delimiter
-    MOV P7,P2
-join_copy_delim:
-    MOV P8,[P7]
-    CMP P8,0
-    JZ join_delim_done
-    MOV [P4],P8
-    INC P7
-    INC P4
-    JMP join_copy_delim
-join_delim_done:
-    ADD P5,2
-    JMP join_loop
-join_done:
-    MOV [P4],0
-    RET
-
-; INSTR(haystack, needle) - find position of needle in haystack (1-based, 0 if not found)
-instr_substr:
-    ; P1 = haystack, P2 = needle, returns position in P0 (1-based, 0 if not found)
-    MOV P0,0
-    MOV P3,P1
-instr_loop:
-    MOV P4,[P3]
-    CMP P4,0
-    JZ instr_not_found
-    ; Check if needle matches at current position
-    MOV P5,P3
-    MOV P6,P2
-    MOV P7,1
-instr_check_match:
-    MOV P8,[P6]
-    CMP P8,0
-    JZ instr_found
-    MOV P9,[P5]
-    CMP P8,P9
-    JNZ instr_no_match
-    INC P5
-    INC P6
-    JMP instr_check_match
-instr_no_match:
-    INC P0
-    INC P3
-    JMP instr_loop
-instr_found:
-    INC P0
-    RET
-instr_not_found:
-    MOV P0,0
-    RET

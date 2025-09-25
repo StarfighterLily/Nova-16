@@ -1,0 +1,114 @@
+REM Advanced Graphics Test - Sprites and Layers
+REM Tests sprite control, layering, and advanced graphics features
+
+ClrHome
+Disp "Advanced Graphics Test"
+Disp "Sprites and Layers"
+
+REM Initialize some variables
+X = 50
+Y = 60
+SPRITE_ID = 0
+LAYER = 0
+
+REM Test sprite control blocks
+REM Sprite control block format (16 bytes per sprite):
+REM 0-1: X position (16-bit)
+REM 2-3: Y position (16-bit)  
+REM 4-5: Width (16-bit)
+REM 6-7: Height (16-bit)
+REM 8: Layer (0-7)
+REM 9: Flags (bit 0: visible, bit 1: flip X, bit 2: flip Y)
+REM 10-11: Sprite data address (16-bit)
+REM 12-15: Reserved
+
+REM Set up sprite 0
+REM MOV P0, SPRITE_ID
+REM SHL P0, 4  REM 16 bytes per sprite
+REM ADD P0, 0xF000  REM Sprite control block base
+REM MOV [P0], X     REM X position
+REM MOV [P0+2], Y   REM Y position
+REM MOV [P0+4], 16  REM Width
+REM MOV [P0+6], 16  REM Height
+REM MOV [P0+8], 5   REM Layer 5 (sprite layer)
+REM MOV [P0+9], 1   REM Visible flag
+REM MOV [P0+10], 0x3000  REM Sprite data address
+
+REM For now, just test basic layering
+For LAYER = 0 To 7
+    For I = 0 To 10
+        PxlOn(I * 10 + LAYER * 2, LAYER * 10, LAYER + 1)
+    Next I
+Next LAYER
+
+REM Test layer blending
+REM Layer 0: Background
+For X = 0 To 255 Step 10
+    For Y = 0 To 20
+        PxlOn(X, Y, 1)
+    Next Y
+Next X
+
+REM Layer 1: Foreground pattern
+For X = 0 To 255 Step 20
+    For Y = 21 To 40
+        PxlOn(X, Y, 15)
+        PxlOn(X + 5, Y, 14)
+    Next Y
+Next X
+
+REM Test sprite-like drawing (manual sprite)
+SPRITE_X = 100
+SPRITE_Y = 80
+
+REM Draw a simple 8x8 sprite manually
+REM Row 0: XXXX XXXX
+PxlOn(SPRITE_X + 0, SPRITE_Y + 0, 15)
+PxlOn(SPRITE_X + 1, SPRITE_Y + 0, 15)
+PxlOn(SPRITE_X + 2, SPRITE_Y + 0, 15)
+PxlOn(SPRITE_X + 3, SPRITE_Y + 0, 15)
+PxlOn(SPRITE_X + 4, SPRITE_Y + 0, 15)
+PxlOn(SPRITE_X + 5, SPRITE_Y + 0, 15)
+PxlOn(SPRITE_X + 6, SPRITE_Y + 0, 15)
+PxlOn(SPRITE_X + 7, SPRITE_Y + 0, 15)
+
+REM Row 1: X    X
+PxlOn(SPRITE_X + 0, SPRITE_Y + 1, 15)
+PxlOn(SPRITE_X + 7, SPRITE_Y + 1, 15)
+
+REM Row 2: X    X
+PxlOn(SPRITE_X + 0, SPRITE_Y + 2, 15)
+PxlOn(SPRITE_X + 7, SPRITE_Y + 2, 15)
+
+REM Row 3: X    X
+PxlOn(SPRITE_X + 0, SPRITE_Y + 3, 15)
+PxlOn(SPRITE_X + 7, SPRITE_Y + 3, 15)
+
+REM Row 4: X    X
+PxlOn(SPRITE_X + 0, SPRITE_Y + 4, 15)
+PxlOn(SPRITE_X + 7, SPRITE_Y + 4, 15)
+
+REM Row 5: X    X
+PxlOn(SPRITE_X + 0, SPRITE_Y + 5, 15)
+PxlOn(SPRITE_X + 7, SPRITE_Y + 5, 15)
+
+REM Row 6: X    X
+PxlOn(SPRITE_X + 0, SPRITE_Y + 6, 15)
+PxlOn(SPRITE_X + 7, SPRITE_Y + 6, 15)
+
+REM Row 7: XXXX XXXX
+PxlOn(SPRITE_X + 0, SPRITE_Y + 7, 15)
+PxlOn(SPRITE_X + 1, SPRITE_Y + 7, 15)
+PxlOn(SPRITE_X + 2, SPRITE_Y + 7, 15)
+PxlOn(SPRITE_X + 3, SPRITE_Y + 7, 15)
+PxlOn(SPRITE_X + 4, SPRITE_Y + 7, 15)
+PxlOn(SPRITE_X + 5, SPRITE_Y + 7, 15)
+PxlOn(SPRITE_X + 6, SPRITE_Y + 7, 15)
+PxlOn(SPRITE_X + 7, SPRITE_Y + 7, 15)
+
+REM Test sound with graphics
+REM Play a simple tone while displaying graphics
+Sound(440, 500, 100, 0)
+
+Disp "Advanced Graphics Test Complete"
+Pause

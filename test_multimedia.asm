@@ -21,1239 +21,1275 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,0
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing sound and advanced graphics:' using TEXT
-    MOV P0,0x4000
+    ; Display 'Testing sound and advanced graphics:'
+    MOV P0,84
     MOV P1,15
-    TEXT P0,P1
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Playing sound sequence:' using TEXT
-    MOV P0,0x4100
+    CHAR P0,P1
+    MOV P0,101
     MOV P1,15
-    TEXT P0,P1
-    ; For NOTE = 220 To 880
-    MOV P0,220
-    MOV [0x2034],P0
-for_loop_1:
-    ; Sound
-    ; Load NOTE into P0
-    MOV P0,[0x2034]
-    MOV P1,100
-    MOV P2,64
-    MOV P3,0
-    ; Sound freq=P0, duration=P1, vol=P2, wave=P3
-    MOV SA,0x2000
-    MOV SF,P0
-    MOV SV,P2
-    MOV SW,P3
-    SPLAY
-    ; Wait for duration
-    MOV P2,P1
-sound_wait_loop:
-    DEC P2
-    JNZ sound_wait_loop
-    SSTOP
-    ; Pause - wait for key press
-pause_loop:
-    KEYSTAT P0
-    CMP P0,0
-    JZ pause_loop
-    KEYIN P0
-    ; Next NOTE
-    MOV P0,[0x2034]
-    INC P0
-    MOV [0x2034],P0
-    CMP P0,880
-    JLE for_loop_1
-for_end_2:
-    ; Stop - stop sound playback
-    SSTOP
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,16
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Drawing graphics patterns:' using TEXT
-    MOV P0,0x4200
+    CHAR P0,P1
+    MOV P0,115
     MOV P1,15
-    TEXT P0,P1
-    ; For X = 0 To 255
-    MOV P0,0
-    MOV [0x202E],P0
-for_loop_3:
-    ; For Y = 0 To 255
-    MOV P0,0
-    MOV [0x2030],P0
-for_loop_5:
-    MOV P3,(
-    CMP P3,/
-    JZ if_else_7
-    JMP if_end_8
-if_else_7:
-if_else_7:
-if_end_8:
-    ; For BX = 0 To 7
-    MOV P0,0
-    MOV [0x2036],P0
-for_loop_9:
-    ; For BY = 0 To 7
-    MOV P0,0
-    MOV [0x2038],P0
-for_loop_11:
-    ; Pxl-On
-    ; Load X into P3
-    MOV P3,[0x202E]
-    ; Load BX into P2
-    MOV P2,[0x2036]
-    ADD P3,P2
-    ; Load Y into P2
-    MOV P2,[0x2030]
-    ; Load BY into P1
-    MOV P1,[0x2038]
-    ADD P2,P1
-    ; Load COLOR into P1
-    MOV P1,[0x203A]
-    ; Pxl-On at (P3,P2)
-    MOV VX,P3
-    MOV VY,P2
-    MOV P0,P1
-    SWRITE P0
-    ; Next BY
-    MOV P0,[0x2038]
-    INC P0
-    MOV [0x2038],P0
-    CMP P0,7
-    JLE for_loop_11
-for_end_12:
-    ; Next BX
-    MOV P0,[0x2036]
-    INC P0
-    MOV [0x2036],P0
-    CMP P0,7
-    JLE for_loop_9
-for_end_10:
-    ; Next Y
-    MOV P0,[0x2030]
-    INC P0
-    MOV [0x2030],P0
-    CMP P0,255
-    JLE for_loop_5
-for_end_6:
-    ; Next X
-    MOV P0,[0x202E]
-    INC P0
-    MOV [0x202E],P0
-    CMP P0,255
-    JLE for_loop_3
-for_end_4:
-    ; Pause - wait for key press
-pause_loop:
-    KEYSTAT P0
-    CMP P0,0
-    JZ pause_loop
-    KEYIN P0
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,24
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Drawing lines:' using TEXT
-    MOV P0,0x4300
+    CHAR P0,P1
+    MOV P0,116
     MOV P1,15
-    TEXT P0,P1
-    ; For Y = 0 To 255
-    MOV P0,0
-    MOV [0x2030],P0
-for_loop_13:
-    ; For X = 0 To 255
-    MOV P0,0
-    MOV [0x202E],P0
-for_loop_15:
-    ; Pxl-On
-    ; Load X into P1
-    MOV P1,[0x202E]
-    ; Load Y into P2
-    MOV P2,[0x2030]
-    MOV P3,20
-    ; Pxl-On at (P1,P2)
-    MOV VX,P1
-    MOV VY,P2
-    MOV P0,P3
-    SWRITE P0
-    ; Next X
-    MOV P0,[0x202E]
-    INC P0
-    MOV [0x202E],P0
-    CMP P0,255
-    JLE for_loop_15
-for_end_16:
-    ; Next Y
-    MOV P0,[0x2030]
-    INC P0
-    MOV [0x2030],P0
-    CMP P0,255
-    JLE for_loop_13
-for_end_14:
-    ; For X = 0 To 255
-    MOV P0,0
-    MOV [0x202E],P0
-for_loop_17:
-    ; For Y = 0 To 255
-    MOV P0,0
-    MOV [0x2030],P0
-for_loop_19:
-    ; Pxl-On
-    ; Load X into P3
-    MOV P3,[0x202E]
-    ; Load Y into P2
-    MOV P2,[0x2030]
-    MOV P1,52
-    ; Pxl-On at (P3,P2)
-    MOV VX,P3
-    MOV VY,P2
-    MOV P0,P1
-    SWRITE P0
-    ; Next Y
-    MOV P0,[0x2030]
-    INC P0
-    MOV [0x2030],P0
-    CMP P0,255
-    JLE for_loop_19
-for_end_20:
-    ; Next X
-    MOV P0,[0x202E]
-    INC P0
-    MOV [0x202E],P0
-    CMP P0,255
-    JLE for_loop_17
-for_end_18:
-    ; Pause - wait for key press
-pause_loop:
-    KEYSTAT P0
-    CMP P0,0
-    JZ pause_loop
-    KEYIN P0
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
     MOV P0,32
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Drawing circles:' using TEXT
-    MOV P0,0x4400
     MOV P1,15
-    TEXT P0,P1
-    ; CENTERS = 
-    MOV P1,50
-    MOV P2,100
-    MOV P3,150
-    MOV P0,200
-    ; Allocate array of 4 elements
-    MOV [0x6000],4
-    ; Store array element 0
-    MOV [0x6002],P1
-    ; Store array element 1
-    MOV [0x6004],P2
-    ; Store array element 2
-    MOV [0x6006],P3
-    ; Store array element 3
-    MOV [0x6008],P0
-    MOV P4,24576
-    ; Store P4 into CENTERS
-    MOV [0x203C],P4
-    ; RADII = 
-    MOV P4,10
-    MOV P0,20
-    MOV P3,30
-    MOV P2,40
-    ; Allocate array of 4 elements
-    MOV [0x600A],4
-    ; Store array element 0
-    MOV [0x600C],P4
-    ; Store array element 1
-    MOV [0x600E],P0
-    ; Store array element 2
-    MOV [0x6010],P3
-    ; Store array element 3
-    MOV [0x6012],P2
-    MOV P5,24586
-    ; Store P5 into RADII
-    MOV [0x203E],P5
-    ; CIRCLE_COLORS = 
-    MOV P5,36
-    MOV P2,68
-    MOV P3,84
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,117
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
     MOV P0,100
-    ; Allocate array of 4 elements
-    MOV [0x6014],4
-    ; Store array element 0
-    MOV [0x6016],P5
-    ; Store array element 1
-    MOV [0x6018],P2
-    ; Store array element 2
-    MOV [0x601A],P3
-    ; Store array element 3
-    MOV [0x601C],P0
-    MOV P6,24596
-    ; Store P6 into CIRCLE_COLORS
-    MOV [0x2040],P6
-    ; For I = 0 To 3
-    MOV P0,0
-    MOV [0x2010],P0
-for_loop_21:
-    ; CX = 
-    ; Load I into P6
-    MOV P6,[0x2010]
-    ; Load CENTERS[P6] into P0
-    LEA P0,[0x203C + P6*2]
-    MOV P0,[P0]
-    ; Store P0 into CX
-    MOV [0x2042],P0
-    ; CY = 
-    MOV P0,128
-    ; Store P0 into CY
-    MOV [0x2044],P0
-    ; R = 
-    ; Load I into P0
-    MOV P0,[0x2010]
-    ; Load RADII[P0] into P6
-    LEA P6,[0x203E + P0*2]
-    MOV P6,[P6]
-    ; Store P6 into R
-    MOV [0x2022],P6
-    ; CC = 
-    ; Load I into P6
-    MOV P6,[0x2010]
-    ; Load CIRCLE_COLORS[P6] into P0
-    LEA P0,[0x2040 + P6*2]
-    MOV P0,[P0]
-    ; Store P0 into CC
-    MOV [0x2046],P0
-    ; For DX = - To TO
-    MOV P0,-
-    MOV [0x2048],P0
-for_loop_23:
-    ; For DY = - To TO
-    MOV P0,-
-    MOV [0x204A],P0
-for_loop_25:
-    ; DIST_SQ = 
-    ; Load DX into P0
-    MOV P0,[0x2048]
-    ; Load DX into P6
-    MOV P6,[0x2048]
-    MUL P0,P6
-    ; Load DY into P6
-    MOV P6,[0x204A]
-    ; Load DY into P3
-    MOV P3,[0x204A]
-    MUL P6,P3
-    ADD P0,P6
-    ; Store P0 into DIST_SQ
-    MOV [0x204C],P0
-    MOV P0,DIST_SQ
-    ; Load R into P6
-    MOV P6,[0x2022]
-    CMP P0,P6
-    JZ if_end_27
-if_end_27:
-    ; End - terminate program
-    JMP halt
-    MOV P0,[0x204A]
-    INC P0
-    MOV [0x204A],P0
-    CMP P0,TO
-    JLE for_loop_25
-for_end_26:
-    ; Next DX
-    MOV P0,[0x2048]
-    INC P0
-    MOV [0x2048],P0
-    CMP P0,TO
-    JLE for_loop_23
-for_end_24:
-    ; Next I
-    MOV P0,[0x2010]
-    INC P0
-    MOV [0x2010],P0
-    CMP P0,3
-    JLE for_loop_21
-for_end_22:
-    ; Pause - wait for key press
-pause_loop:
-    KEYSTAT P0
-    CMP P0,0
-    JZ pause_loop
-    KEYIN P0
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,40
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Synchronized audio-visual:' using TEXT
-    MOV P0,0x4500
     MOV P1,15
-    TEXT P0,P1
-    ; For FREQ = 200 To 800
-    MOV P0,200
-    MOV [0x204E],P0
-for_loop_28:
-    ; Play - start sound playback
-    SPLAY
-    ; BAR_HEIGHT = 
-    ; Load FREQ into P0
-    MOV P0,[0x204E]
-    SUB P0,200
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,118
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,104
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    ; Disp
+    ; Display 'Playing sound sequence:'
+    MOV P0,80
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,121
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,117
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,113
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,117
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,220
+    MOV [0x2000],P0
+for_1:
+    MOV P0,[0x2000]
+    MOV P0,881
+    MOV P1,P0
+    MOV P0,[0x2000]
+    CMP P0,P1
+    JGE next_2
+    ; Pause - halt execution
+pause_loop:
+    JMP pause_loop
+    MOV P0,[0x2000]
+    MOV P0,110
+    ADD P0,P1
+    MOV [0x2000],P0
+    JMP for_1
+next_2:
+    ; Disp
+    ; Display 'Drawing graphics patterns:'
+    MOV P0,68
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,119
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,104
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
     MOV P0,0
-    ; Store P0 into BAR_HEIGHT
-    MOV [0x2050],P0
-    ; For Y = 256 To BAR_HEIGHT
+    MOV [0x2002],P0
+for_3:
+    MOV P0,[0x2002]
     MOV P0,256
-    MOV [0x2030],P0
-for_loop_30:
-    ; For X = 0 To 255
+    MOV P1,P0
+    MOV P0,[0x2002]
+    CMP P0,P1
+    JGE next_4
     MOV P0,0
-    MOV [0x202E],P0
-for_loop_32:
-    ; Pxl-On
-    ; Load X into P0
-    MOV P0,[0x202E]
-    ; Load Y into P6
-    MOV P6,[0x2030]
-    ; Load FREQ into P3
-    MOV P3,[0x204E]
-    MOD P3,256
-    ; RAMP(P3)
-    SHR P3,4
-    ; Pxl-On at (P0,P6)
-    MOV VX,P0
-    MOV VY,P6
-    MOV P0,P3
-    SWRITE P0
-    ; Next X
-    MOV P0,[0x202E]
-    INC P0
-    MOV [0x202E],P0
-    CMP P0,255
-    JLE for_loop_32
-for_end_33:
-    ; Next Y
-    MOV P0,[0x2030]
-    INC P0
-    MOV [0x2030],P0
-    CMP P0,BAR_HEIGHT
-    JLE for_loop_30
-for_end_31:
-    ; Pause - wait for key press
-pause_loop:
-    KEYSTAT P0
-    CMP P0,0
-    JZ pause_loop
-    KEYIN P0
-    ; Next FREQ
-    MOV P0,[0x204E]
-    INC P0
-    MOV [0x204E],P0
-    CMP P0,800
-    JLE for_loop_28
-for_end_29:
-    ; Stop - stop sound playback
-    SSTOP
-    ; Disp
+    MOV [0x2004],P0
+for_5:
+    MOV P0,[0x2004]
+    MOV P0,256
+    MOV P1,P0
+    MOV P0,[0x2004]
+    CMP P0,P1
+    JGE next_6
+    MOV P0,[0x2002]
+    PUSH P0
+    MOV P0,8
+    MOV P1,P0
+    POP P0
+    DIV P0,P1
+    PUSH P0
+    MOV P0,[0x2004]
+    PUSH P0
+    MOV P0,8
+    MOV P1,P0
+    POP P0
+    DIV P0,P1
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P0,2
+    MOV P1,P0
+    POP P0
+    MOD P0,P1
+    PUSH P0
     MOV P0,0
-    MOV VX,P0
-    MOV P0,48
+    MOV P1,P0
+    POP P0
+    JZ else_7
+    ; COLOR = expression
+    MOV P0,[0x2006]
+    MOV [0x2008],P0
+    JMP endif_8
+else_7:
+    ; COLOR = expression
+    MOV P0,[0x200A]
+    MOV [0x2008],P0
+endif_8:
+    MOV P0,0
+    MOV [0x200C],P0
+for_9:
+    MOV P0,[0x200C]
+    MOV P0,8
+    MOV P1,P0
+    MOV P0,[0x200C]
+    CMP P0,P1
+    JGE next_10
+    MOV P0,0
+    MOV [0x200E],P0
+for_11:
+    MOV P0,[0x200E]
+    MOV P0,8
+    MOV P1,P0
+    MOV P0,[0x200E]
+    CMP P0,P1
+    JGE next_12
+    MOV P0,[0x2002]
+    PUSH P0
+    MOV P0,[0x200C]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
     MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Simple animation:' using TEXT
-    MOV P0,0x4600
-    MOV P1,15
-    TEXT P0,P1
-    ; SPRITE_X = 
-    MOV P3,0
-    ; Store P3 into SPRITE_X
-    MOV [0x2052],P3
-    ; SPRITE_Y = 
-    MOV P3,100
-    ; Store P3 into SPRITE_Y
-    MOV [0x2054],P3
-    ; SPRITE_SIZE = 
-    MOV P3,8
-    ; Store P3 into SPRITE_SIZE
-    MOV [0x2056],P3
-    ; For FRAME = 0 To 50
-    MOV P0,0
-    MOV [0x2058],P0
-for_loop_34:
-    ; For X = 0 To SPRITE_SIZE
-    MOV P0,0
-    MOV [0x202E],P0
-for_loop_36:
-    ; For Y = 0 To SPRITE_SIZE
-    MOV P0,0
-    MOV [0x2030],P0
-for_loop_38:
-    ; Pxl-Off
-    ; Load SPRITE_X into P3
-    MOV P3,[0x2052]
-    ; Load X into P6
-    MOV P6,[0x202E]
-    ADD P3,P6
-    ; Load SPRITE_Y into P6
-    MOV P6,[0x2054]
-    ; Load Y into P0
-    MOV P0,[0x2030]
-    ADD P6,P0
-    ; Turn off pixel at (P3,P6)
-    MOV [0xF100],P3
-    MOV [0xF101],P6
-    MOV P0,0
-    SWRITE P0
-    ; Next Y
-    MOV P0,[0x2030]
-    INC P0
-    MOV [0x2030],P0
-    CMP P0,SPRITE_SIZE
-    JLE for_loop_38
-for_end_39:
-    ; Next X
-    MOV P0,[0x202E]
-    INC P0
-    MOV [0x202E],P0
-    CMP P0,SPRITE_SIZE
-    JLE for_loop_36
-for_end_37:
-    ; SPRITE_X = 
-    ; Load SPRITE_X into P6
-    MOV P6,[0x2052]
-    ADD P6,2
-    ; Store P6 into SPRITE_X
-    MOV [0x2052],P6
-    MOV P6,SPRITE_X
-    CMP P6,256
-    JZ if_end_40
-if_end_40:
-    ; For X = 0 To SPRITE_SIZE
-    MOV P0,0
-    MOV [0x202E],P0
-for_loop_41:
-    ; For Y = 0 To SPRITE_SIZE
-    MOV P0,0
-    MOV [0x2030],P0
-for_loop_43:
-    MOV P6,(
-    CMP P6,+
-    JZ if_end_45
-if_end_45:
-    ; Next Y
-    MOV P0,[0x2030]
-    INC P0
-    MOV [0x2030],P0
-    CMP P0,SPRITE_SIZE
-    JLE for_loop_43
-for_end_44:
-    ; Next X
-    MOV P0,[0x202E]
-    INC P0
-    MOV [0x202E],P0
-    CMP P0,SPRITE_SIZE
-    JLE for_loop_41
-for_end_42:
-    ; Pause - wait for key press
-pause_loop:
-    KEYSTAT P0
-    CMP P0,0
-    JZ pause_loop
-    KEYIN P0
-    ; Next FRAME
-    MOV P0,[0x2058]
-    INC P0
-    MOV [0x2058],P0
-    CMP P0,50
-    JLE for_loop_34
-for_end_35:
-    ; Disp
-    MOV P0,0
+    MOV P0,[0x2004]
+    PUSH P0
+    MOV P0,[0x200E]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
     MOV VX,P0
-    MOV P0,56
-    MOV VY,P0
-    MOV P0,0
+    MOV P0,[0x2008]
     MOV VL,P0
-    ; Display string 'Sound and graphics tests completed!' using TEXT
-    MOV P0,0x4700
-    MOV P1,15
-    TEXT P0,P1
-    ; Pause - wait for key press
+    MOV VM,0
+    SWRITE P0
+    MOV P0,[0x200E]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x200E],P0
+    JMP for_11
+next_12:
+    MOV P0,[0x200C]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x200C],P0
+    JMP for_9
+next_10:
+    MOV P0,[0x2004]
+    MOV P0,8
+    ADD P0,P1
+    MOV [0x2004],P0
+    JMP for_5
+next_6:
+    MOV P0,[0x2002]
+    MOV P0,8
+    ADD P0,P1
+    MOV [0x2002],P0
+    JMP for_3
+next_4:
+    ; Pause - halt execution
 pause_loop:
-    KEYSTAT P0
-    CMP P0,0
-    JZ pause_loop
-    KEYIN P0
+    JMP pause_loop
+    ; Disp
+    ; Display 'Drawing lines:'
+    MOV P0,68
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,119
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,0
+    MOV [0x2004],P0
+for_13:
+    MOV P0,[0x2004]
+    MOV P0,256
+    MOV P1,P0
+    MOV P0,[0x2004]
+    CMP P0,P1
+    JGE next_14
+    MOV P0,0
+    MOV [0x2002],P0
+for_15:
+    MOV P0,[0x2002]
+    MOV P0,256
+    MOV P1,P0
+    MOV P0,[0x2002]
+    CMP P0,P1
+    JGE next_16
+    MOV P0,[0x2002]
+    MOV VY,P0
+    MOV P0,[0x2004]
+    MOV VX,P0
+    MOV P0,[0x2010]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,[0x2002]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2002],P0
+    JMP for_15
+next_16:
+    MOV P0,[0x2004]
+    MOV P0,32
+    ADD P0,P1
+    MOV [0x2004],P0
+    JMP for_13
+next_14:
+    MOV P0,0
+    MOV [0x2002],P0
+for_17:
+    MOV P0,[0x2002]
+    MOV P0,256
+    MOV P1,P0
+    MOV P0,[0x2002]
+    CMP P0,P1
+    JGE next_18
+    MOV P0,0
+    MOV [0x2004],P0
+for_19:
+    MOV P0,[0x2004]
+    MOV P0,256
+    MOV P1,P0
+    MOV P0,[0x2004]
+    CMP P0,P1
+    JGE next_20
+    MOV P0,[0x2002]
+    MOV VY,P0
+    MOV P0,[0x2004]
+    MOV VX,P0
+    MOV P0,[0x2012]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,[0x2004]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2004],P0
+    JMP for_19
+next_20:
+    MOV P0,[0x2002]
+    MOV P0,32
+    ADD P0,P1
+    MOV [0x2002],P0
+    JMP for_17
+next_18:
+    ; Pause - halt execution
+pause_loop:
+    JMP pause_loop
+    ; Disp
+    ; Display 'Drawing circles:'
+    MOV P0,68
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,119
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    ; CENTERS = expression
+    MOV P0,0
+    MOV [0x2014],P0
+    ; RADII = expression
+    MOV P0,0
+    MOV [0x2016],P0
+    ; CIRCLE_COLORS = expression
+    MOV P0,0
+    MOV [0x2018],P0
+    MOV P0,0
+    MOV [0x201A],P0
+for_21:
+    MOV P0,[0x201A]
+    MOV P0,4
+    MOV P1,P0
+    MOV P0,[0x201A]
+    CMP P0,P1
+    JGE next_22
+    ; CX = expression
+    MOV [0x201C],P0
+    ; CY = expression
+    MOV P0,128
+    MOV [0x201E],P0
+    ; R = expression
+    MOV [0x2020],P0
+    ; CC = expression
+    MOV [0x2022],P0
+    MOV P0,[0x2020]
+    NEG P0
+    MOV [0x2024],P0
+for_23:
+    MOV P0,[0x2024]
+    MOV P0,[0x2020]
+    ADD P0,1
+    MOV P1,P0
+    MOV P0,[0x2024]
+    CMP P0,P1
+    JGE next_24
+    MOV P0,[0x2020]
+    NEG P0
+    MOV [0x2026],P0
+for_25:
+    MOV P0,[0x2026]
+    MOV P0,[0x2020]
+    ADD P0,1
+    MOV P1,P0
+    MOV P0,[0x2026]
+    CMP P0,P1
+    JGE next_26
+    ; DIST_SQ = expression
+    MOV P0,[0x2024]
+    PUSH P0
+    MOV P0,[0x2024]
+    MOV P1,P0
+    POP P0
+    MUL P0,P1
+    PUSH P0
+    MOV P0,[0x2026]
+    PUSH P0
+    MOV P0,[0x2026]
+    MOV P1,P0
+    POP P0
+    MUL P0,P1
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x2028],P0
+    MOV P0,[0x2028]
+    PUSH P0
+    MOV P0,[0x2020]
+    PUSH P0
+    MOV P0,[0x2020]
+    MOV P1,P0
+    POP P0
+    MUL P0,P1
+    MOV P1,P0
+    POP P0
+    JZ else_27
+    ; PX = expression
+    MOV P0,[0x201C]
+    PUSH P0
+    MOV P0,[0x2024]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x202A],P0
+    ; PY = expression
+    MOV P0,[0x201E]
+    PUSH P0
+    MOV P0,[0x2026]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x202C],P0
+    MOV P0,[0x202A]
+    PUSH P0
+    MOV P0,0
+    MOV P1,P0
+    POP P0
+    PUSH P0
+    MOV P0,[0x202A]
+    PUSH P0
+    MOV P0,256
+    MOV P1,P0
+    POP P0
+    MOV P1,P0
+    POP P0
+    PUSH P0
+    MOV P0,[0x202C]
+    PUSH P0
+    MOV P0,0
+    MOV P1,P0
+    POP P0
+    MOV P1,P0
+    POP P0
+    PUSH P0
+    MOV P0,[0x202C]
+    PUSH P0
+    MOV P0,256
+    MOV P1,P0
+    POP P0
+    MOV P1,P0
+    POP P0
+    JZ else_29
+    MOV P0,[0x202A]
+    MOV VY,P0
+    MOV P0,[0x202C]
+    MOV VX,P0
+    MOV P0,[0x2022]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    JMP endif_30
+else_29:
+endif_30:
+    JMP endif_28
+else_27:
+endif_28:
+    MOV P0,[0x2026]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2026],P0
+    JMP for_25
+next_26:
+    MOV P0,[0x2024]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2024],P0
+    JMP for_23
+next_24:
+    MOV P0,[0x201A]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x201A],P0
+    JMP for_21
+next_22:
+    ; Pause - halt execution
+pause_loop:
+    JMP pause_loop
+    ; Disp
+    ; Display 'Synchronized audio-visual:'
+    MOV P0,83
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,121
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,104
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,122
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,117
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,45
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,118
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,117
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,200
+    MOV [0x202E],P0
+for_31:
+    MOV P0,[0x202E]
+    MOV P0,801
+    MOV P1,P0
+    MOV P0,[0x202E]
+    CMP P0,P1
+    JGE next_32
+    SPLAY
+    ; BAR_HEIGHT = expression
+    MOV P0,[0x202E]
+    PUSH P0
+    MOV P0,200
+    MOV P1,P0
+    POP P0
+    SUB P0,P1
+    PUSH P0
+    MOV P0,256
+    MOV P1,P0
+    POP P0
+    MUL P0,P1
+    PUSH P0
+    MOV P0,600
+    MOV P1,P0
+    POP P0
+    DIV P0,P1
+    MOV [0x2030],P0
+    MOV P0,256
+    PUSH P0
+    MOV P0,[0x2030]
+    MOV P1,P0
+    POP P0
+    SUB P0,P1
+    MOV [0x2004],P0
+for_33:
+    MOV P0,[0x2004]
+    MOV P0,256
+    MOV P1,P0
+    MOV P0,[0x2004]
+    CMP P0,P1
+    JGE next_34
+    MOV P0,0
+    MOV [0x2002],P0
+for_35:
+    MOV P0,[0x2002]
+    MOV P0,256
+    MOV P1,P0
+    MOV P0,[0x2002]
+    CMP P0,P1
+    JGE next_36
+    MOV P0,[0x2002]
+    MOV VY,P0
+    MOV P0,[0x2004]
+    MOV VX,P0
+    MOV P0,[0x202E]
+    PUSH P0
+    MOV P0,256
+    MOV P1,P0
+    POP P0
+    MOD P0,P1
+    SHR P0,4
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,[0x2002]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2002],P0
+    JMP for_35
+next_36:
+    MOV P0,[0x2004]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2004],P0
+    JMP for_33
+next_34:
+    ; Pause - halt execution
+pause_loop:
+    JMP pause_loop
+    MOV P0,[0x202E]
+    MOV P0,50
+    ADD P0,P1
+    MOV [0x202E],P0
+    JMP for_31
+next_32:
+    ; Disp
+    ; Display 'Simple animation:'
+    MOV P0,83
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,109
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,109
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    ; SPRITE_X = expression
+    MOV P0,0
+    MOV [0x2032],P0
+    ; SPRITE_Y = expression
+    MOV P0,100
+    MOV [0x2034],P0
+    ; SPRITE_SIZE = expression
+    MOV P0,8
+    MOV [0x2036],P0
+    MOV P0,0
+    MOV [0x2038],P0
+for_37:
+    MOV P0,[0x2038]
+    MOV P0,51
+    MOV P1,P0
+    MOV P0,[0x2038]
+    CMP P0,P1
+    JGE next_38
+    MOV P0,0
+    MOV [0x2002],P0
+for_39:
+    MOV P0,[0x2002]
+    MOV P0,[0x2036]
+    ADD P0,1
+    MOV P1,P0
+    MOV P0,[0x2002]
+    CMP P0,P1
+    JGE next_40
+    MOV P0,0
+    MOV [0x2004],P0
+for_41:
+    MOV P0,[0x2004]
+    MOV P0,[0x2036]
+    ADD P0,1
+    MOV P1,P0
+    MOV P0,[0x2004]
+    CMP P0,P1
+    JGE next_42
+    MOV P0,[0x2032]
+    PUSH P0
+    MOV P0,[0x2002]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV VY,P0
+    MOV P0,[0x2034]
+    PUSH P0
+    MOV P0,[0x2004]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV VX,P0
+    MOV VL,0
+    MOV VM,0
+    SWRITE 0
+    MOV P0,[0x2004]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2004],P0
+    JMP for_41
+next_42:
+    MOV P0,[0x2002]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2002],P0
+    JMP for_39
+next_40:
+    ; SPRITE_X = expression
+    MOV P0,[0x2032]
+    PUSH P0
+    MOV P0,2
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV [0x2032],P0
+    MOV P0,[0x2032]
+    PUSH P0
+    MOV P0,256
+    PUSH P0
+    MOV P0,[0x2036]
+    MOV P1,P0
+    POP P0
+    SUB P0,P1
+    MOV P1,P0
+    POP P0
+    JZ else_43
+    ; SPRITE_X = expression
+    MOV P0,0
+    MOV [0x2032],P0
+    JMP endif_44
+else_43:
+endif_44:
+    MOV P0,0
+    MOV [0x2002],P0
+for_45:
+    MOV P0,[0x2002]
+    MOV P0,[0x2036]
+    ADD P0,1
+    MOV P1,P0
+    MOV P0,[0x2002]
+    CMP P0,P1
+    JGE next_46
+    MOV P0,0
+    MOV [0x2004],P0
+for_47:
+    MOV P0,[0x2004]
+    MOV P0,[0x2036]
+    ADD P0,1
+    MOV P1,P0
+    MOV P0,[0x2004]
+    CMP P0,P1
+    JGE next_48
+    MOV P0,[0x2002]
+    PUSH P0
+    MOV P0,[0x2004]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P0,[0x2038]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P0,3
+    MOV P1,P0
+    POP P0
+    MOD P0,P1
+    PUSH P0
+    MOV P0,0
+    MOV P1,P0
+    POP P0
+    JZ else_49
+    MOV P0,[0x2032]
+    PUSH P0
+    MOV P0,[0x2002]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV VY,P0
+    MOV P0,[0x2034]
+    PUSH P0
+    MOV P0,[0x2004]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV VX,P0
+    MOV P0,[0x2038]
+    PUSH P0
+    MOV P0,5
+    MOV P1,P0
+    POP P0
+    MUL P0,P1
+    PUSH P0
+    MOV P0,256
+    MOV P1,P0
+    POP P0
+    MOD P0,P1
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    JMP endif_50
+else_49:
+endif_50:
+    MOV P0,[0x2004]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2004],P0
+    JMP for_47
+next_48:
+    MOV P0,[0x2002]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2002],P0
+    JMP for_45
+next_46:
+    ; Pause - halt execution
+pause_loop:
+    JMP pause_loop
+    MOV P0,[0x2038]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2038],P0
+    JMP for_37
+next_38:
+    ; Disp
+    ; Display 'Sound and graphics tests completed!'
+    MOV P0,83
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,117
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,104
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,109
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,33
+    MOV P1,15
+    CHAR P0,P1
+    ; Pause - halt execution
+pause_loop:
+    JMP pause_loop
 
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
+
 ORG 0x2000
 DW 0  ; Variable A
-ORG 0x2002
 DW 0  ; Variable B
-ORG 0x2004
 DW 0  ; Variable C
-ORG 0x2006
 DW 0  ; Variable D
-ORG 0x2008
 DW 0  ; Variable E
-ORG 0x200A
 DW 0  ; Variable F
-ORG 0x200C
 DW 0  ; Variable G
-ORG 0x200E
 DW 0  ; Variable H
-ORG 0x2010
 DW 0  ; Variable I
-ORG 0x2012
 DW 0  ; Variable J
-ORG 0x2014
 DW 0  ; Variable K
-ORG 0x2016
 DW 0  ; Variable L
-ORG 0x2018
 DW 0  ; Variable M
-ORG 0x201A
 DW 0  ; Variable N
-ORG 0x201C
 DW 0  ; Variable O
-ORG 0x201E
 DW 0  ; Variable P
-ORG 0x2020
 DW 0  ; Variable Q
-ORG 0x2022
 DW 0  ; Variable R
-ORG 0x2024
 DW 0  ; Variable S
-ORG 0x2026
 DW 0  ; Variable T
-ORG 0x2028
 DW 0  ; Variable U
-ORG 0x202A
 DW 0  ; Variable V
-ORG 0x202C
 DW 0  ; Variable W
-ORG 0x202E
 DW 0  ; Variable X
-ORG 0x2030
 DW 0  ; Variable Y
-ORG 0x2032
 DW 0  ; Variable Z
-ORG 0x2034
-DW 0  ; Variable NOTE
-ORG 0x2036
-DW 0  ; Variable BX
-ORG 0x2038
-DW 0  ; Variable BY
-ORG 0x203A
-DW 0  ; Variable COLOR
-ORG 0x203C
-DW 0  ; Variable CENTERS
-ORG 0x203E
-DW 0  ; Variable RADII
-ORG 0x2040
-DW 0  ; Variable CIRCLE_COLORS
-ORG 0x2042
-DW 0  ; Variable CX
-ORG 0x2044
-DW 0  ; Variable CY
-ORG 0x2046
-DW 0  ; Variable CC
-ORG 0x2048
-DW 0  ; Variable DX
-ORG 0x204A
-DW 0  ; Variable DY
-ORG 0x204C
-DW 0  ; Variable DIST_SQ
-ORG 0x204E
-DW 0  ; Variable FREQ
-ORG 0x2050
-DW 0  ; Variable BAR_HEIGHT
-ORG 0x2052
-DW 0  ; Variable SPRITE_X
-ORG 0x2054
-DW 0  ; Variable SPRITE_Y
-ORG 0x2056
-DW 0  ; Variable SPRITE_SIZE
-ORG 0x2058
-DW 0  ; Variable FRAME
-ORG 0x4000
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 115
-DB 111
-DB 117
-DB 110
-DB 100
-DB 32
-DB 97
-DB 110
-DB 100
-DB 32
-DB 97
-DB 100
-DB 118
-DB 97
-DB 110
-DB 99
-DB 101
-DB 100
-DB 32
-DB 103
-DB 114
-DB 97
-DB 112
-DB 104
-DB 105
-DB 99
-DB 115
-DB 58
-DB 0  ; Null terminator
-ORG 0x4100
-DB 80
-DB 108
-DB 97
-DB 121
-DB 105
-DB 110
-DB 103
-DB 32
-DB 115
-DB 111
-DB 117
-DB 110
-DB 100
-DB 32
-DB 115
-DB 101
-DB 113
-DB 117
-DB 101
-DB 110
-DB 99
-DB 101
-DB 58
-DB 0  ; Null terminator
-ORG 0x4200
-DB 68
-DB 114
-DB 97
-DB 119
-DB 105
-DB 110
-DB 103
-DB 32
-DB 103
-DB 114
-DB 97
-DB 112
-DB 104
-DB 105
-DB 99
-DB 115
-DB 32
-DB 112
-DB 97
-DB 116
-DB 116
-DB 101
-DB 114
-DB 110
-DB 115
-DB 58
-DB 0  ; Null terminator
-ORG 0x4300
-DB 68
-DB 114
-DB 97
-DB 119
-DB 105
-DB 110
-DB 103
-DB 32
-DB 108
-DB 105
-DB 110
-DB 101
-DB 115
-DB 58
-DB 0  ; Null terminator
-ORG 0x4400
-DB 68
-DB 114
-DB 97
-DB 119
-DB 105
-DB 110
-DB 103
-DB 32
-DB 99
-DB 105
-DB 114
-DB 99
-DB 108
-DB 101
-DB 115
-DB 58
-DB 0  ; Null terminator
-ORG 0x4500
-DB 83
-DB 121
-DB 110
-DB 99
-DB 104
-DB 114
-DB 111
-DB 110
-DB 105
-DB 122
-DB 101
-DB 100
-DB 32
-DB 97
-DB 117
-DB 100
-DB 105
-DB 111
-DB 45
-DB 118
-DB 105
-DB 115
-DB 117
-DB 97
-DB 108
-DB 58
-DB 0  ; Null terminator
-ORG 0x4600
-DB 83
-DB 105
-DB 109
-DB 112
-DB 108
-DB 101
-DB 32
-DB 97
-DB 110
-DB 105
-DB 109
-DB 97
-DB 116
-DB 105
-DB 111
-DB 110
-DB 58
-DB 0  ; Null terminator
-ORG 0x4700
-DB 83
-DB 111
-DB 117
-DB 110
-DB 100
-DB 32
-DB 97
-DB 110
-DB 100
-DB 32
-DB 103
-DB 114
-DB 97
-DB 112
-DB 104
-DB 105
-DB 99
-DB 115
-DB 32
-DB 116
-DB 101
-DB 115
-DB 116
-DB 115
-DB 32
-DB 99
-DB 111
-DB 109
-DB 112
-DB 108
-DB 101
-DB 116
-DB 101
-DB 100
-DB 33
-DB 0  ; Null terminator
-
-ORG 0x8000
-
-; String concatenation subroutine
-str_concat:
-    ; P1 = left string address
-    ; Top of stack = right string address
-    ; Returns result address in P0
-    POP P2
-    POP P3
-    PUSH P2
-    
-    ; Allocate space for result string
-    MOV P0,0x6000
-    STRCPY P0,P1
-    STRCAT P0,P3
-    RET
-
-; LEFT(string, count) - extract left count characters
-left_substr:
-    ; P0 = result buffer, P1 = source string, P2 = count
-    MOV P3,P0
-    MOV P4,0
-left_loop:
-    CMP P4,P2
-    JZ left_done
-    MOV P5,[P1]
-    CMP P5,0
-    JZ left_done
-    MOV [P3],P5
-    INC P1
-    INC P3
-    INC P4
-    JMP left_loop
-left_done:
-    MOV [P3],0
-    RET
-
-; RIGHT(string, count) - extract right count characters
-right_substr:
-    ; P0 = result buffer, P1 = source string, P2 = count
-    MOV P3,P1
-    MOV P4,0
-right_len_loop:
-    MOV P5,[P3]
-    CMP P5,0
-    JZ right_len_done
-    INC P3
-    INC P4
-    JMP right_len_loop
-right_len_done:
-    ; P4 now contains string length
-    ; Calculate start position: max(0, length - count)
-    CMP P4,P2
-    JC right_use_all
-    MOV P3,P4
-    SUB P3,P2
-    JMP right_copy
-right_use_all:
-    MOV P3,0
-right_copy:
-    ADD P1,P3
-    MOV P3,P0
-right_copy_loop:
-    MOV P5,[P1]
-    CMP P5,0
-    JZ right_copy_done
-    MOV [P3],P5
-    INC P1
-    INC P3
-    JMP right_copy_loop
-right_copy_done:
-    MOV [P3],0
-    RET
-
-; MID(string, start, count) - extract substring
-mid_substr:
-    ; P0 = result buffer, P1 = source string, P2 = start position, P3 = count
-    ADD P1,P2
-    MOV P4,P0
-    MOV P5,0
-mid_loop:
-    CMP P5,P3
-    JZ mid_done
-    MOV P6,[P1]
-    CMP P6,0
-    JZ mid_done
-    MOV [P4],P6
-    INC P1
-    INC P4
-    INC P5
-    JMP mid_loop
-mid_done:
-    MOV [P4],0
-    RET
-
-; TRIM(string) - remove leading and trailing whitespace (space and tab only for simplicity)
-trim_string:
-    ; P0 = result buffer, P1 = source string
-    ; Find start of non-whitespace characters
-    MOV P2,P1
-trim_find_start:
-    MOV P3,[P2]
-    CMP P3,0
-    JZ trim_empty
-    CMP P3,32
-    JZ trim_skip_space_start
-    CMP P3,9
-    JZ trim_skip_space_start
-    JMP trim_found_start
-trim_skip_space_start:
-    INC P2
-    JMP trim_find_start
-trim_found_start:
-    ; P2 now points to first non-whitespace character
-    ; Find end of non-whitespace characters (scan backwards from end)
-    MOV P3,P1
-trim_find_end:
-    MOV P4,[P3]
-    CMP P4,0
-    JZ trim_end_found
-    INC P3
-    JMP trim_find_end
-trim_end_found:
-    DEC P3
-trim_scan_back:
-    CMP P3,P2
-    JC trim_empty
-    MOV P4,[P3]
-    CMP P4,32
-    JZ trim_skip_space_end
-    CMP P4,9
-    JZ trim_skip_space_end
-    JMP trim_copy
-trim_skip_space_end:
-    DEC P3
-    JMP trim_scan_back
-trim_copy:
-    ; Copy from P2 to P3 (inclusive) to result buffer P0
-    MOV P4,P0
-trim_copy_loop:
-    CMP P2,P3
-    JNC trim_copy_done
-    MOV P5,[P2]
-    MOV [P4],P5
-    INC P2
-    INC P4
-    JMP trim_copy_loop
-trim_copy_done:
-    MOV [P4],0
-    RET
-trim_empty:
-    MOV [P0],0
-    RET
-
-; REPLACE(string, old_substr, new_substr) - replace all occurrences of old_substr with new_substr
-replace_string:
-    ; P0 = result buffer, P1 = source string, P2 = old substring, P3 = new substring
-    MOV P4,P0
-    MOV P5,P1
-    MOV P6,P2
-    MOV P7,P3
-    
-    ; Get lengths of old and new substrings
-    MOV P8,P6
-    MOV P9,0
-replace_old_len_loop:
-    MOV R0,[P8]
-    CMP R0,0
-    JZ replace_old_len_done
-    INC P8
-    INC P9
-    JMP replace_old_len_loop
-replace_old_len_done:
-    
-    MOV P8,P7
-    MOV R0,0
-replace_new_len_loop:
-    MOV R1,[P8]
-    CMP R1,0
-    JZ replace_new_len_done
-    INC P8
-    INC R0
-    JMP replace_new_len_loop
-replace_new_len_done:
-    MOV P8,R0
-    
-replace_main_loop:
-    MOV R0,[P5]
-    CMP R0,0
-    JZ replace_done
-    
-    ; Check if old substring matches at current position
-    MOV R1,P5
-    MOV R2,P6
-    MOV R3,0
-replace_check_match:
-    MOV R4,[R1]
-    MOV R5,[R2]
-    CMP R4,R5
-    JNZ replace_no_match
-    CMP R5,0
-    JZ replace_match_found
-    INC R1
-    INC R2
-    INC R3
-    CMP R3,P9
-    JNZ replace_check_match
-    JMP replace_match_found
-    
-replace_no_match:
-    ; No match, copy current character
-    MOV [P4],R0
-    INC P5
-    INC P4
-    JMP replace_main_loop
-    
-replace_match_found:
-    ; Match found, copy new substring
-    MOV R1,P7
-replace_copy_new:
-    MOV R2,[R1]
-    CMP R2,0
-    JZ replace_skip_old
-    MOV [P4],R2
-    INC P4
-    INC R1
-    JMP replace_copy_new
-    
-replace_skip_old:
-    ; Skip the old substring in source
-    ADD P5,P9
-    JMP replace_main_loop
-    
-replace_done:
-    MOV [P4],0
-    RET
-
-; SPLIT(string, delimiter) - split string by delimiter, store parts in array
-split_string:
-    ; P0 = array base address, P1 = source string, P2 = delimiter
-    ; This is a simplified implementation - splits on single character delimiter only
-    ; Returns array with parts, first element is count, then string addresses
-    MOV P3,P0
-    ADD P3,2
-    MOV P4,P1
-    MOV P5,0
-split_loop:
-    MOV P6,[P4]
-    CMP P6,0
-    JZ split_done
-    MOV P7,[P2]
-    CMP P6,P7
-    JNZ split_continue
-    ; Found delimiter, store current part
-    MOV [P3],P4
-    ADD P3,2
-    INC P5
-    INC P4
-    JMP split_loop
-split_continue:
-    INC P4
-    JMP split_loop
-split_done:
-    ; Store final part (empty string after last delimiter)
-    MOV [P3],P4
-    ADD P3,2
-    INC P5
-    ; Store count at array start
-    MOV [P0],P5
-    RET
-
-; JOIN(array_base, delimiter, count) - join array elements with delimiter
-join_array:
-    ; P0 = result buffer, P1 = array base, P2 = delimiter, P3 = element count
-    MOV P4,P0
-    MOV P5,P1
-    ADD P5,2
-    MOV P6,0
-join_loop:
-    CMP P6,P3
-    JZ join_done
-    ; Copy current element string
-    MOV P7,[P5]
-join_copy_element:
-    MOV P8,[P7]
-    CMP P8,0
-    JZ join_next_element
-    MOV [P4],P8
-    INC P7
-    INC P4
-    JMP join_copy_element
-join_next_element:
-    INC P6
-    CMP P6,P3
-    JZ join_done
-    ; Add delimiter
-    MOV P7,P2
-join_copy_delim:
-    MOV P8,[P7]
-    CMP P8,0
-    JZ join_delim_done
-    MOV [P4],P8
-    INC P7
-    INC P4
-    JMP join_copy_delim
-join_delim_done:
-    ADD P5,2
-    JMP join_loop
-join_done:
-    MOV [P4],0
-    RET
-
-; INSTR(haystack, needle) - find position of needle in haystack (1-based, 0 if not found)
-instr_substr:
-    ; P1 = haystack, P2 = needle, returns position in P0 (1-based, 0 if not found)
-    MOV P0,0
-    MOV P3,P1
-instr_loop:
-    MOV P4,[P3]
-    CMP P4,0
-    JZ instr_not_found
-    ; Check if needle matches at current position
-    MOV P5,P3
-    MOV P6,P2
-    MOV P7,1
-instr_check_match:
-    MOV P8,[P6]
-    CMP P8,0
-    JZ instr_found
-    MOV P9,[P5]
-    CMP P8,P9
-    JNZ instr_no_match
-    INC P5
-    INC P6
-    JMP instr_check_match
-instr_no_match:
-    INC P0
-    INC P3
-    JMP instr_loop
-instr_found:
-    INC P0
-    RET
-instr_not_found:
-    MOV P0,0
-    RET

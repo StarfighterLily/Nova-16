@@ -1,0 +1,26 @@
+REM Memory Operations Test
+REM Tests basic memory manipulation functions
+
+ClrHome
+Disp "Memory Operations Test"
+
+REM Test memory setting
+A = MEMSET(8192, 170, 10)
+Disp "MEMSET completed"
+
+REM Test memory comparison
+B = MEMTEST(8192, 8448, 10)
+Disp "MEMTEST not equal:", B
+
+REM Fill second area and test again
+C = MEMSET(8448, 170, 10)
+D = MEMTEST(8192, 8448, 10)
+Disp "MEMTEST equal:", D
+
+REM Test memory move
+E = MEMSET(8704, 17, 5)
+F = MEMMOVE(8960, 8704, 5)
+G = MEMTEST(8704, 8960, 5)
+Disp "MEMMOVE result:", G
+
+Disp "Memory operations test complete"

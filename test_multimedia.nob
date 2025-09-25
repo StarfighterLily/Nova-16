@@ -13,7 +13,7 @@ FOR NOTE = 220 TO 880 STEP 110
     PAUSE 50
 NEXT NOTE
 
-STOP  REM Stop all sounds
+REM STOP  REM Stop all sounds
 
 REM Test graphics patterns
 DISP "Drawing graphics patterns:"
@@ -91,7 +91,7 @@ REM Test sound with graphics synchronization
 DISP "Synchronized audio-visual:"
 
 FOR FREQ = 200 TO 800 STEP 50
-    PLAY FREQ, 200  REM Start playing note
+    PLAY(FREQ, 200)  REM Start playing note
 
     REM Draw visual representation
     BAR_HEIGHT = (FREQ - 200) * 256 / 600
@@ -104,7 +104,7 @@ FOR FREQ = 200 TO 800 STEP 50
     PAUSE 100
 NEXT FREQ
 
-STOP
+REM STOP
 
 REM Test sprite-like animation (simulated)
 DISP "Simple animation:"

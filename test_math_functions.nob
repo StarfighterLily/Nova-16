@@ -19,21 +19,21 @@ Disp "Random numbers:"
 For I = 1 To 5
     R = RND()
     Disp "Random", I, ":", R
-End
+Next
 
 REM Test RND with range
 Disp "Random in range 1-10:"
 For I = 1 To 5
     R = RND(10) + 1  REM 1 to 10
     Disp "Range random", I, ":", R
-End
+Next
 
 REM Test SQRT function
 D = SQRT(16)
 Disp "SQRT(16) =", D
 
 E = SQRT(2)
-Disp "SQRT(2) ≈", E
+Disp "SQRT(2) ~", E
 
 REM Test ABS function
 F = ABS(-5)

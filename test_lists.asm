@@ -21,594 +21,116 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,0
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'List Test' using TEXT
-    MOV P0,0x4000
+    ; Display 'List Test'
+    MOV P0,76
     MOV P1,15
-    TEXT P0,P1
-    ; L1 = 
-    MOV P0,10
-    MOV P1,1
-    ; Store to L1[P1]
-    LEA P2,[12288 + P1*2]
-    MOV [P2],P0
-    ; L1 = 
-    MOV P0,20
-    MOV P1,2
-    ; Store to L1[P1]
-    LEA P2,[12288 + P1*2]
-    MOV [P2],P0
-    ; L1 = 
-    MOV P0,30
-    MOV P1,3
-    ; Store to L1[P1]
-    LEA P2,[12288 + P1*2]
-    MOV [P2],P0
-    ; A = 
-    MOV P0,2
-    ; Load L1(P0) into P1
-    LEA P1,[12288 + P0*2]
-    MOV P1,[P1]
-    ; Store P1 into A
-    MOV [0x2000],P1
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    ; Complex assignment not implemented yet
+    ; Complex assignment not implemented yet
+    ; Complex assignment not implemented yet
+    ; A = expression
+    MOV [0x2000],P0
     ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'L1(2) =' using TEXT
-    MOV P0,0x4100
+    ; Display 'L1(2) ='
+    MOV P0,76
     MOV P1,15
-    TEXT P0,P1
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    ; Load A into P0
+    CHAR P0,P1
+    MOV P0,49
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,40
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,50
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,41
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,61
+    MOV P1,15
+    CHAR P0,P1
     MOV P0,[0x2000]
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
-    ; L1 = 
-    ; Load A into P1
-    MOV P1,[0x2000]
-    ADD P1,5
-    MOV P2,4
-    ; Store to L1[P2]
-    LEA P2,[12288 + P2*2]
-    MOV [P2],P1
+    ; Complex assignment not implemented yet
     ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,24
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'L1(4) =' using TEXT
-    MOV P0,0x4200
+    ; Display 'L1(4) ='
+    MOV P0,76
     MOV P1,15
-    TEXT P0,P1
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,4
-    ; Display value (number or string)
-    MOV P1,P0
-    CMP P0,0x4000
-    JC display_as_number
-    CMP P0,0x8000
-    JNC display_as_number
-    ; Display as string
-    MOV P2,P0
-display_str_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    CMP P0,10
-    JZ display_str_newline
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_str_loop
-display_str_newline:
-    MOV P0,VY
-    ADD P0,8
-    MOV VY,P0
-    MOV P0,0
-    MOV VX,P0
-    INC P2
-    JMP display_str_loop
-display_as_number:
-    MOV P0,P1
-    ; Display as number
-    MOV P1,0x6000
-    ITOS P1,P0
-    MOV P2,P1
-display_num_loop:
-    MOV P0,[P2]
-    CMP P0,0
-    JZ display_value_done
-    MOV P3,15
-    CHAR P0,P3
-    INC P2
-    JMP display_num_loop
-display_value_done:
+    CHAR P0,P1
+    MOV P0,49
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,40
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,52
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,41
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,61
+    MOV P1,15
+    CHAR P0,P1
 
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
+
 ORG 0x2000
 DW 0  ; Variable A
-ORG 0x2002
 DW 0  ; Variable B
-ORG 0x2004
 DW 0  ; Variable C
-ORG 0x2006
 DW 0  ; Variable D
-ORG 0x2008
 DW 0  ; Variable E
-ORG 0x200A
 DW 0  ; Variable F
-ORG 0x200C
 DW 0  ; Variable G
-ORG 0x200E
 DW 0  ; Variable H
-ORG 0x2010
 DW 0  ; Variable I
-ORG 0x2012
 DW 0  ; Variable J
-ORG 0x2014
 DW 0  ; Variable K
-ORG 0x2016
 DW 0  ; Variable L
-ORG 0x2018
 DW 0  ; Variable M
-ORG 0x201A
 DW 0  ; Variable N
-ORG 0x201C
 DW 0  ; Variable O
-ORG 0x201E
 DW 0  ; Variable P
-ORG 0x2020
 DW 0  ; Variable Q
-ORG 0x2022
 DW 0  ; Variable R
-ORG 0x2024
 DW 0  ; Variable S
-ORG 0x2026
 DW 0  ; Variable T
-ORG 0x2028
 DW 0  ; Variable U
-ORG 0x202A
 DW 0  ; Variable V
-ORG 0x202C
 DW 0  ; Variable W
-ORG 0x202E
 DW 0  ; Variable X
-ORG 0x2030
 DW 0  ; Variable Y
-ORG 0x2032
 DW 0  ; Variable Z
-ORG 0x4000
-DB 76
-DB 105
-DB 115
-DB 116
-DB 32
-DB 84
-DB 101
-DB 115
-DB 116
-DB 0  ; Null terminator
-ORG 0x4100
-DB 76
-DB 49
-DB 40
-DB 50
-DB 41
-DB 32
-DB 61
-DB 0  ; Null terminator
-ORG 0x4200
-DB 76
-DB 49
-DB 40
-DB 52
-DB 41
-DB 32
-DB 61
-DB 0  ; Null terminator
-
-ORG 0x8000
-
-; String concatenation subroutine
-str_concat:
-    ; P1 = left string address
-    ; Top of stack = right string address
-    ; Returns result address in P0
-    POP P2
-    POP P3
-    PUSH P2
-    
-    ; Allocate space for result string
-    MOV P0,0x6000
-    STRCPY P0,P1
-    STRCAT P0,P3
-    RET
-
-; LEFT(string, count) - extract left count characters
-left_substr:
-    ; P0 = result buffer, P1 = source string, P2 = count
-    MOV P3,P0
-    MOV P4,0
-left_loop:
-    CMP P4,P2
-    JZ left_done
-    MOV P5,[P1]
-    CMP P5,0
-    JZ left_done
-    MOV [P3],P5
-    INC P1
-    INC P3
-    INC P4
-    JMP left_loop
-left_done:
-    MOV [P3],0
-    RET
-
-; RIGHT(string, count) - extract right count characters
-right_substr:
-    ; P0 = result buffer, P1 = source string, P2 = count
-    MOV P3,P1
-    MOV P4,0
-right_len_loop:
-    MOV P5,[P3]
-    CMP P5,0
-    JZ right_len_done
-    INC P3
-    INC P4
-    JMP right_len_loop
-right_len_done:
-    ; P4 now contains string length
-    ; Calculate start position: max(0, length - count)
-    CMP P4,P2
-    JC right_use_all
-    MOV P3,P4
-    SUB P3,P2
-    JMP right_copy
-right_use_all:
-    MOV P3,0
-right_copy:
-    ADD P1,P3
-    MOV P3,P0
-right_copy_loop:
-    MOV P5,[P1]
-    CMP P5,0
-    JZ right_copy_done
-    MOV [P3],P5
-    INC P1
-    INC P3
-    JMP right_copy_loop
-right_copy_done:
-    MOV [P3],0
-    RET
-
-; MID(string, start, count) - extract substring
-mid_substr:
-    ; P0 = result buffer, P1 = source string, P2 = start position, P3 = count
-    ADD P1,P2
-    MOV P4,P0
-    MOV P5,0
-mid_loop:
-    CMP P5,P3
-    JZ mid_done
-    MOV P6,[P1]
-    CMP P6,0
-    JZ mid_done
-    MOV [P4],P6
-    INC P1
-    INC P4
-    INC P5
-    JMP mid_loop
-mid_done:
-    MOV [P4],0
-    RET
-
-; TRIM(string) - remove leading and trailing whitespace (space and tab only for simplicity)
-trim_string:
-    ; P0 = result buffer, P1 = source string
-    ; Find start of non-whitespace characters
-    MOV P2,P1
-trim_find_start:
-    MOV P3,[P2]
-    CMP P3,0
-    JZ trim_empty
-    CMP P3,32
-    JZ trim_skip_space_start
-    CMP P3,9
-    JZ trim_skip_space_start
-    JMP trim_found_start
-trim_skip_space_start:
-    INC P2
-    JMP trim_find_start
-trim_found_start:
-    ; P2 now points to first non-whitespace character
-    ; Find end of non-whitespace characters (scan backwards from end)
-    MOV P3,P1
-trim_find_end:
-    MOV P4,[P3]
-    CMP P4,0
-    JZ trim_end_found
-    INC P3
-    JMP trim_find_end
-trim_end_found:
-    DEC P3
-trim_scan_back:
-    CMP P3,P2
-    JC trim_empty
-    MOV P4,[P3]
-    CMP P4,32
-    JZ trim_skip_space_end
-    CMP P4,9
-    JZ trim_skip_space_end
-    JMP trim_copy
-trim_skip_space_end:
-    DEC P3
-    JMP trim_scan_back
-trim_copy:
-    ; Copy from P2 to P3 (inclusive) to result buffer P0
-    MOV P4,P0
-trim_copy_loop:
-    CMP P2,P3
-    JNC trim_copy_done
-    MOV P5,[P2]
-    MOV [P4],P5
-    INC P2
-    INC P4
-    JMP trim_copy_loop
-trim_copy_done:
-    MOV [P4],0
-    RET
-trim_empty:
-    MOV [P0],0
-    RET
-
-; REPLACE(string, old_substr, new_substr) - replace all occurrences of old_substr with new_substr
-replace_string:
-    ; P0 = result buffer, P1 = source string, P2 = old substring, P3 = new substring
-    MOV P4,P0
-    MOV P5,P1
-    MOV P6,P2
-    MOV P7,P3
-    
-    ; Get lengths of old and new substrings
-    MOV P8,P6
-    MOV P9,0
-replace_old_len_loop:
-    MOV R0,[P8]
-    CMP R0,0
-    JZ replace_old_len_done
-    INC P8
-    INC P9
-    JMP replace_old_len_loop
-replace_old_len_done:
-    
-    MOV P8,P7
-    MOV R0,0
-replace_new_len_loop:
-    MOV R1,[P8]
-    CMP R1,0
-    JZ replace_new_len_done
-    INC P8
-    INC R0
-    JMP replace_new_len_loop
-replace_new_len_done:
-    MOV P8,R0
-    
-replace_main_loop:
-    MOV R0,[P5]
-    CMP R0,0
-    JZ replace_done
-    
-    ; Check if old substring matches at current position
-    MOV R1,P5
-    MOV R2,P6
-    MOV R3,0
-replace_check_match:
-    MOV R4,[R1]
-    MOV R5,[R2]
-    CMP R4,R5
-    JNZ replace_no_match
-    CMP R5,0
-    JZ replace_match_found
-    INC R1
-    INC R2
-    INC R3
-    CMP R3,P9
-    JNZ replace_check_match
-    JMP replace_match_found
-    
-replace_no_match:
-    ; No match, copy current character
-    MOV [P4],R0
-    INC P5
-    INC P4
-    JMP replace_main_loop
-    
-replace_match_found:
-    ; Match found, copy new substring
-    MOV R1,P7
-replace_copy_new:
-    MOV R2,[R1]
-    CMP R2,0
-    JZ replace_skip_old
-    MOV [P4],R2
-    INC P4
-    INC R1
-    JMP replace_copy_new
-    
-replace_skip_old:
-    ; Skip the old substring in source
-    ADD P5,P9
-    JMP replace_main_loop
-    
-replace_done:
-    MOV [P4],0
-    RET
-
-; SPLIT(string, delimiter) - split string by delimiter, store parts in array
-split_string:
-    ; P0 = array base address, P1 = source string, P2 = delimiter
-    ; This is a simplified implementation - splits on single character delimiter only
-    ; Returns array with parts, first element is count, then string addresses
-    MOV P3,P0
-    ADD P3,2
-    MOV P4,P1
-    MOV P5,0
-split_loop:
-    MOV P6,[P4]
-    CMP P6,0
-    JZ split_done
-    MOV P7,[P2]
-    CMP P6,P7
-    JNZ split_continue
-    ; Found delimiter, store current part
-    MOV [P3],P4
-    ADD P3,2
-    INC P5
-    INC P4
-    JMP split_loop
-split_continue:
-    INC P4
-    JMP split_loop
-split_done:
-    ; Store final part (empty string after last delimiter)
-    MOV [P3],P4
-    ADD P3,2
-    INC P5
-    ; Store count at array start
-    MOV [P0],P5
-    RET
-
-; JOIN(array_base, delimiter, count) - join array elements with delimiter
-join_array:
-    ; P0 = result buffer, P1 = array base, P2 = delimiter, P3 = element count
-    MOV P4,P0
-    MOV P5,P1
-    ADD P5,2
-    MOV P6,0
-join_loop:
-    CMP P6,P3
-    JZ join_done
-    ; Copy current element string
-    MOV P7,[P5]
-join_copy_element:
-    MOV P8,[P7]
-    CMP P8,0
-    JZ join_next_element
-    MOV [P4],P8
-    INC P7
-    INC P4
-    JMP join_copy_element
-join_next_element:
-    INC P6
-    CMP P6,P3
-    JZ join_done
-    ; Add delimiter
-    MOV P7,P2
-join_copy_delim:
-    MOV P8,[P7]
-    CMP P8,0
-    JZ join_delim_done
-    MOV [P4],P8
-    INC P7
-    INC P4
-    JMP join_copy_delim
-join_delim_done:
-    ADD P5,2
-    JMP join_loop
-join_done:
-    MOV [P4],0
-    RET
-
-; INSTR(haystack, needle) - find position of needle in haystack (1-based, 0 if not found)
-instr_substr:
-    ; P1 = haystack, P2 = needle, returns position in P0 (1-based, 0 if not found)
-    MOV P0,0
-    MOV P3,P1
-instr_loop:
-    MOV P4,[P3]
-    CMP P4,0
-    JZ instr_not_found
-    ; Check if needle matches at current position
-    MOV P5,P3
-    MOV P6,P2
-    MOV P7,1
-instr_check_match:
-    MOV P8,[P6]
-    CMP P8,0
-    JZ instr_found
-    MOV P9,[P5]
-    CMP P8,P9
-    JNZ instr_no_match
-    INC P5
-    INC P6
-    JMP instr_check_match
-instr_no_match:
-    INC P0
-    INC P3
-    JMP instr_loop
-instr_found:
-    INC P0
-    RET
-instr_not_found:
-    MOV P0,0
-    RET

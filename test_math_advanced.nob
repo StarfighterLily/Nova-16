@@ -1,0 +1,96 @@
+REM Complex Math Test
+REM Tests advanced mathematical functions and complex expressions
+
+ClrHome
+Disp "Complex Math Test"
+Disp "Functions and Expressions"
+
+REM Test mathematical constants and functions (integer approximations)
+PI_VAL = 31416  REM PI * 10000 for integer math
+E_VAL = 27183   REM E * 10000 for integer math
+
+REM Test trigonometric functions (using integer approximations)
+ANGLE = 45
+RADIAN = ANGLE * PI_VAL / 180 / 10000  REM Convert back to approximate value
+
+REM SIN/COS/TAN approximations for 45 degrees
+SIN_VAL = 7071  REM sin(45°) * 10000 ≈ 7071
+COS_VAL = 7071  REM cos(45°) * 10000 ≈ 7071
+
+Disp "Angle:", ANGLE
+Disp "Sin:", SIN_VAL
+Disp "Cos:", COS_VAL
+
+REM Test exponential and logarithmic functions
+BASE = 2
+EXP = 3
+POWER_RESULT = BASE ^ EXP  REM 2^3 = 8
+LOG_RESULT = 2079  REM log2(8) * 1000 ≈ 2079
+
+Disp "2^3 =", POWER_RESULT
+Disp "log2(8) =", LOG_RESULT
+
+REM Test complex expressions
+A = 10
+B = 20
+C = 5
+
+RESULT1 = (A + B) * C / 2  REM (30) * 5 / 2 = 75
+RESULT2 = A * B + C ^ 2   REM 200 + 25 = 225
+RESULT3 = (A - C) * (B + C)  REM 5 * 25 = 125
+
+Disp "(A+B)*C/2 =", RESULT1
+Disp "A*B+C^2 =", RESULT2
+Disp "(A-C)*(B+C) =", RESULT3
+
+REM Test MIN/MAX functions
+MIN_VAL = MIN(A, B)  REM Should be 10
+MAX_VAL = MAX(A, B)  REM Should be 20
+
+Disp "MIN(10,20) =", MIN_VAL
+Disp "MAX(10,20) =", MAX_VAL
+
+REM Test ABS function
+NEG_VAL = -15
+ABS_VAL = ABS(NEG_VAL)  REM Should be 15
+
+Disp "ABS(-15) =", ABS_VAL
+
+REM Test random number generation
+Disp "Random numbers:"
+For I = 1 To 5
+    RND_VAL = RND()
+    Disp "RND():", RND_VAL
+Next
+
+Disp "Random 1-10:"
+For I = 1 To 5
+    RND_RANGE = RND(10) + 1
+    Disp "RND(10)+1:", RND_RANGE
+Next
+
+REM Test complex nested expressions
+COMPLEX_RESULT = (A + B) * (C - 2) + MAX(A, C) / MIN(B, 15)
+Disp "Complex expr:", COMPLEX_RESULT
+
+REM Test bitwise operations
+BIT_A = 0x0F  REM 15
+BIT_B = 0xF0  REM 240
+
+AND_RESULT = (BIT_A AND BIT_B)  REM 0
+OR_RESULT = BIT_A OR BIT_B    REM 255
+XOR_RESULT = BIT_A XOR BIT_B  REM 255
+
+Disp "15 AND 240 =", AND_RESULT
+Disp "15 OR 240 =", OR_RESULT
+Disp "15 XOR 240 =", XOR_RESULT
+
+REM Test shift operations
+SHIFT_LEFT = BIT_A SHL 2   REM 60
+SHIFT_RIGHT = BIT_B SHR 2  REM 60
+
+Disp "15 SHL 2 =", SHIFT_LEFT
+Disp "240 SHR 2 =", SHIFT_RIGHT
+
+Disp "Complex Math Test Complete"
+Pause

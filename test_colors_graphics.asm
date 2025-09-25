@@ -21,986 +21,986 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,0
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing PXLON with colors:' using TEXT
-    MOV P0,0x4000
+    ; Display 'Testing PXLON with colors:'
+    MOV P0,84
     MOV P1,15
-    TEXT P0,P1
-    ; For I = 0 To 15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,80
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,88
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,76
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,79
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,78
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,119
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,104
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
     MOV P0,0
-    MOV [0x2010],P0
-for_loop_1:
-    ; COLOR_VAL = 
-    ; Load I into P0
-    MOV P0,[0x2010]
-    MOV P1,8
-    ; COLOR(P0, P1)
+    MOV [0x2000],P0
+for_1:
+    MOV P0,[0x2000]
+    MOV P0,16
+    MOV P1,P0
+    MOV P0,[0x2000]
+    CMP P0,P1
+    JGE next_2
+    ; COLOR_VAL = expression
+    MOV P0,[0x2000]
+    PUSH P0
+    MOV P0,8
+    MOV P1,P0
+    POP P0
     SHL P0,4
     OR P0,P1
-    ; Store P0 into COLOR_VAL
-    MOV [0x2034],P0
-    ; Pxl-On
-    ; Load I into P0
-    MOV P0,[0x2010]
-    MUL P0,8
-    MOV P1,10
-    ; Load COLOR_VAL into P2
-    MOV P2,[0x2034]
-    ; Pxl-On at (P0,P1)
-    MOV VX,P0
-    MOV VY,P1
-    MOV P0,P2
-    SWRITE P0
-    ; Next I
-    MOV P0,[0x2010]
-    INC P0
-    MOV [0x2010],P0
-    CMP P0,15
-    JLE for_loop_1
-for_end_2:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
+    MOV [0x2002],P0
+    MOV P0,[0x2000]
+    PUSH P0
     MOV P0,8
+    MOV P1,P0
+    POP P0
+    MUL P0,P1
     MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing PXLOFF:' using TEXT
-    MOV P0,0x4100
-    MOV P1,15
-    TEXT P0,P1
-    ; Pxl-On
-    MOV P2,50
-    MOV P1,30
-    MOV P0,20
-    ; Pxl-On at (P2,P1)
-    MOV VX,P2
-    MOV VY,P1
-    MOV P0,P0
-    SWRITE P0
-    ; Pxl-Off
-    MOV P0,50
-    MOV P1,30
-    ; Turn off pixel at (P0,P1)
-    MOV [0xF100],P0
-    MOV [0xF101],P1
-    MOV P0,0
-    SWRITE P0
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,16
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing PXLCHANGE:' using TEXT
-    MOV P0,0x4200
-    MOV P1,15
-    TEXT P0,P1
-    ; Pxl-On
-    MOV P1,60
-    MOV P0,30
-    MOV P2,36
-    ; Pxl-On at (P1,P0)
-    MOV VX,P1
-    MOV VY,P0
-    MOV P0,P2
-    SWRITE P0
-    ; Pxl-Change
-    MOV P2,60
-    MOV P0,30
-    ; Toggle pixel at (P2,P0)
-    MOV VX,P2
-    MOV VY,P0
-    SREAD P0
-    XOR P0,15
-    SWRITE P0
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,24
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing LINE with colors:' using TEXT
-    MOV P0,0x4300
-    MOV P1,15
-    TEXT P0,P1
-    ; Line
     MOV P0,10
-    MOV P2,50
-    MOV P1,100
-    MOV P3,50
-    MOV P4,52
-    ; Draw line from (P0,P2) to (P1,P3)
     MOV VX,P0
-    MOV VY,P2
-    MOV VC,P4
-    SLINE P1,P3
-    ; Line
-    MOV P4,10
-    MOV P3,60
-    MOV P1,100
-    MOV P2,60
-    MOV P0,68
-    ; Draw line from (P4,P3) to (P1,P2)
-    MOV VX,P4
-    MOV VY,P3
-    MOV VC,P0
-    SLINE P1,P2
-    ; Line
-    MOV P0,10
-    MOV P2,70
-    MOV P1,100
-    MOV P3,70
-    MOV P4,84
-    ; Draw line from (P0,P2) to (P1,P3)
-    MOV VX,P0
-    MOV VY,P2
-    MOV VC,P4
-    SLINE P1,P3
+    MOV P0,[0x2002]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,[0x2000]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2000],P0
+    JMP for_1
+next_2:
     ; Disp
-    MOV P0,0
-    MOV VX,P0
+    ; Display 'Testing PXLOFF:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
     MOV P0,32
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing CIRCLE with colors:' using TEXT
-    MOV P0,0x4400
     MOV P1,15
-    TEXT P0,P1
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,40
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing filled CIRCLE:' using TEXT
-    MOV P0,0x4500
+    CHAR P0,P1
+    MOV P0,80
     MOV P1,15
-    TEXT P0,P1
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,48
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing diagonal LINE:' using TEXT
-    MOV P0,0x4600
+    CHAR P0,P1
+    MOV P0,88
     MOV P1,15
-    TEXT P0,P1
-    ; Line
-    MOV P4,200
-    MOV P3,50
-    MOV P1,250
-    MOV P2,100
-    MOV P0,148
-    ; Draw line from (P4,P3) to (P1,P2)
-    MOV VX,P4
-    MOV VY,P3
-    MOV VC,P0
-    SLINE P1,P2
-    ; Line
-    MOV P0,200
-    MOV P2,100
-    MOV P1,250
-    MOV P3,50
-    MOV P4,164
-    ; Draw line from (P0,P2) to (P1,P3)
-    MOV VX,P0
-    MOV VY,P2
-    MOV VC,P4
-    SLINE P1,P3
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,56
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing color gradients:' using TEXT
-    MOV P0,0x4700
+    CHAR P0,P1
+    MOV P0,76
     MOV P1,15
-    TEXT P0,P1
-    ; For X = 0 To 50
-    MOV P0,0
-    MOV [0x202E],P0
-for_loop_3:
-    ; GRADIENT_COLOR = 
-    MOV P4,0
-    ; Load X into P3
-    MOV P3,0
-    ; COLOR(P4, P3)
-    SHL P4,4
-    OR P4,P3
-    ; Store P4 into GRADIENT_COLOR
-    MOV [0x2036],P4
-    ; Pxl-On
-    MOV P4,100
-    ; Load X into P3
-    MOV P3,[0x202E]
-    ADD P4,P3
-    MOV P3,150
-    ; Load GRADIENT_COLOR into P1
-    MOV P1,[0x2036]
-    ; Pxl-On at (P4,P3)
-    MOV VX,P4
-    MOV VY,P3
-    MOV P0,P1
-    SWRITE P0
-    ; Next X
-    MOV P0,[0x202E]
-    INC P0
-    MOV [0x202E],P0
-    CMP P0,50
-    JLE for_loop_3
-for_end_4:
-    ; For Y = 0 To 20
-    MOV P0,0
-    MOV [0x2030],P0
-for_loop_5:
-    ; RAINBOW_COLOR = 
-    ; Load Y into P1
-    MOV P1,0
-    MOV P3,12
-    ; COLOR(P1, P3)
-    SHL P1,4
-    OR P1,P3
-    ; Store P1 into RAINBOW_COLOR
-    MOV [0x2038],P1
-    ; Line
-    MOV P1,160
-    MOV P3,170
-    ; Load Y into P4
-    MOV P4,[0x2030]
-    ADD P3,P4
-    MOV P4,200
-    MOV P2,170
-    ; Load Y into P0
-    MOV P0,[0x2030]
-    ADD P2,P0
-    ; Load RAINBOW_COLOR into P0
-    MOV P0,[0x2038]
-    ; Draw line from (P1,P3) to (P4,P2)
-    MOV VX,P1
-    MOV VY,P3
-    MOV VC,P0
-    SLINE P4,P2
-    ; Next Y
-    MOV P0,[0x2030]
-    INC P0
-    MOV [0x2030],P0
-    CMP P0,20
-    JLE for_loop_5
-for_end_6:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,64
-    MOV VY,P0
-    MOV P0,0
-    MOV VL,P0
-    ; Display string 'Testing color operations:' using TEXT
-    MOV P0,0x4800
+    CHAR P0,P1
+    MOV P0,79
     MOV P1,15
-    TEXT P0,P1
-    ; BASE_COLOR = 
-    MOV P0,36
-    ; Store P0 into BASE_COLOR
-    MOV [0x203A],P0
-    ; Pxl-On
-    MOV P0,10
-    MOV P2,200
-    ; Load BASE_COLOR into P4
-    MOV P4,[0x203A]
-    ; Pxl-On at (P0,P2)
-    MOV VX,P0
-    MOV VY,P2
-    MOV P0,P4
-    SWRITE P0
-    ; Pxl-On
-    MOV P4,20
-    MOV P2,200
-    ; Load BASE_COLOR into P0
-    MOV P0,[0x203A]
-    ; RAMP(P0)
-    SHR P0,4
-    ; Load BASE_COLOR into P3
-    MOV P3,[0x203A]
-    ; SHADE(P3)
-    AND P3,15
-    ADD P3,2
-    ; COLOR(P0, P3)
-    SHL P0,4
-    OR P0,P3
-    ; Pxl-On at (P4,P2)
-    MOV VX,P4
-    MOV VY,P2
-    MOV P0,P0
-    SWRITE P0
-    ; Pxl-On
+    CHAR P0,P1
+    MOV P0,70
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,70
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,50
+    MOV VY,P0
     MOV P0,30
-    MOV P2,200
-    ; Load BASE_COLOR into P4
-    MOV P4,[0x203A]
-    ; RAMP(P4)
-    SHR P4,4
-    ADD P4,1
-    ; Load BASE_COLOR into P3
-    MOV P3,[0x203A]
-    ; SHADE(P3)
-    AND P3,15
-    ; COLOR(P4, P3)
-    SHL P4,4
-    OR P4,P3
-    ; Pxl-On at (P0,P2)
     MOV VX,P0
-    MOV VY,P2
-    MOV P0,P4
+    MOV P0,[0x2004]
+    MOV VL,P0
+    MOV VM,0
     SWRITE P0
-    ; Pause - wait for key press
+    MOV P0,50
+    MOV VY,P0
+    MOV P0,30
+    MOV VX,P0
+    MOV VL,0
+    MOV VM,0
+    SWRITE 0
+    ; Disp
+    ; Display 'Testing PXLCHANGE:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,80
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,88
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,76
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,67
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,72
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,65
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,78
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,71
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,69
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,60
+    MOV VY,P0
+    MOV P0,30
+    MOV VX,P0
+    MOV P0,[0x2006]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,60
+    MOV VY,P0
+    MOV P0,30
+    MOV VX,P0
+    MOV VL,15
+    MOV VM,0
+    SWRITE 0
+    ; Disp
+    ; Display 'Testing LINE with colors:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,76
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,73
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,78
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,69
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,119
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,104
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,10
+    MOV VX,P0
+    MOV P0,50
+    MOV VY,P0
+    MOV P0,[0x2008]
+    MOV VC,P0
+    MOV P0,100
+    PUSH P0
+    MOV P0,50
+    MOV P1,P0
+    POP P0
+    SLINE P0,P1
+    MOV P0,10
+    MOV VX,P0
+    MOV P0,60
+    MOV VY,P0
+    MOV P0,[0x200A]
+    MOV VC,P0
+    MOV P0,100
+    PUSH P0
+    MOV P0,60
+    MOV P1,P0
+    POP P0
+    SLINE P0,P1
+    MOV P0,10
+    MOV VX,P0
+    MOV P0,70
+    MOV VY,P0
+    MOV P0,[0x200C]
+    MOV VC,P0
+    MOV P0,100
+    PUSH P0
+    MOV P0,70
+    MOV P1,P0
+    POP P0
+    SLINE P0,P1
+    ; Disp
+    ; Display 'Testing CIRCLE with colors:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,67
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,73
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,82
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,67
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,76
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,69
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,119
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,104
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,50
+    MOV VX,P0
+    MOV P0,100
+    MOV VY,P0
+    MOV P0,[0x200E]
+    MOV VC,P0
+    MOV P0,15
+    PUSH P0
+    MOV P0,0
+    MOV P1,P0
+    POP P0
+    SCIRC P0,P1
+    MOV P0,50
+    MOV VX,P0
+    MOV P0,100
+    MOV VY,P0
+    MOV P0,[0x2010]
+    MOV VC,P0
+    MOV P0,10
+    PUSH P0
+    MOV P0,0
+    MOV P1,P0
+    POP P0
+    SCIRC P0,P1
+    ; Disp
+    ; Display 'Testing filled CIRCLE:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,102
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,67
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,73
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,82
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,67
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,76
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,69
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,150
+    MOV VX,P0
+    MOV P0,100
+    MOV VY,P0
+    MOV P0,[0x2012]
+    MOV VC,P0
+    MOV P0,12
+    PUSH P0
+    MOV P0,1
+    MOV P1,P0
+    POP P0
+    SCIRC P0,P1
+    ; Disp
+    ; Display 'Testing diagonal LINE:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,76
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,73
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,78
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,69
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,50
+    MOV VY,P0
+    MOV P0,[0x2014]
+    MOV VC,P0
+    MOV P0,250
+    PUSH P0
+    MOV P0,100
+    MOV P1,P0
+    POP P0
+    SLINE P0,P1
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,100
+    MOV VY,P0
+    MOV P0,[0x2016]
+    MOV VC,P0
+    MOV P0,250
+    PUSH P0
+    MOV P0,50
+    MOV P1,P0
+    POP P0
+    SLINE P0,P1
+    ; Disp
+    ; Display 'Testing color gradients:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,100
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,0
+    MOV [0x2018],P0
+for_3:
+    MOV P0,[0x2018]
+    MOV P0,51
+    MOV P1,P0
+    MOV P0,[0x2018]
+    CMP P0,P1
+    JGE next_4
+    ; GRADIENT_COLOR = expression
+    MOV P0,0
+    PUSH P0
+    MOV P0,[0x2018]
+    PUSH P0
+    MOV P0,5
+    MOV P1,P0
+    POP P0
+    MUL P0,P1
+    PUSH P0
+    MOV P0,50
+    MOV P1,P0
+    POP P0
+    DIV P0,P1
+    MOV P1,P0
+    POP P0
+    SHL P0,4
+    OR P0,P1
+    MOV [0x201A],P0
+    MOV P0,100
+    PUSH P0
+    MOV P0,[0x2018]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV VY,P0
+    MOV P0,150
+    MOV VX,P0
+    MOV P0,[0x201A]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,[0x2018]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2018],P0
+    JMP for_3
+next_4:
+    MOV P0,0
+    MOV [0x201C],P0
+for_5:
+    MOV P0,[0x201C]
+    MOV P0,21
+    MOV P1,P0
+    MOV P0,[0x201C]
+    CMP P0,P1
+    JGE next_6
+    ; RAINBOW_COLOR = expression
+    MOV P0,[0x201C]
+    PUSH P0
+    MOV P0,15
+    MOV P1,P0
+    POP P0
+    MUL P0,P1
+    PUSH P0
+    MOV P0,20
+    MOV P1,P0
+    POP P0
+    DIV P0,P1
+    PUSH P0
+    MOV P0,12
+    MOV P1,P0
+    POP P0
+    SHL P0,4
+    OR P0,P1
+    MOV [0x201E],P0
+    MOV P0,160
+    MOV VX,P0
+    MOV P0,170
+    PUSH P0
+    MOV P0,[0x201C]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV VY,P0
+    MOV P0,[0x201E]
+    MOV VC,P0
+    MOV P0,200
+    PUSH P0
+    MOV P0,170
+    PUSH P0
+    MOV P0,[0x201C]
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV P1,P0
+    POP P0
+    SLINE P0,P1
+    MOV P0,[0x201C]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x201C],P0
+    JMP for_5
+next_6:
+    ; Disp
+    ; Display 'Testing color operations:'
+    MOV P0,84
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,103
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,99
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,108
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,32
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,112
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,101
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,114
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,97
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,116
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,105
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,111
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,110
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,115
+    MOV P1,15
+    CHAR P0,P1
+    MOV P0,58
+    MOV P1,15
+    CHAR P0,P1
+    ; BASE_COLOR = expression
+    MOV P0,[0x2006]
+    MOV [0x2020],P0
+    MOV P0,10
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x2020]
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,20
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x2020]
+    SHR P0,4
+    PUSH P0
+    MOV P0,[0x2020]
+    AND P0,15
+    PUSH P0
+    MOV P0,2
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    MOV P1,P0
+    POP P0
+    SHL P0,4
+    OR P0,P1
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    MOV P0,30
+    MOV VY,P0
+    MOV P0,200
+    MOV VX,P0
+    MOV P0,[0x2020]
+    SHR P0,4
+    PUSH P0
+    MOV P0,1
+    MOV P1,P0
+    POP P0
+    ADD P0,P1
+    PUSH P0
+    MOV P0,[0x2020]
+    AND P0,15
+    MOV P1,P0
+    POP P0
+    SHL P0,4
+    OR P0,P1
+    MOV VL,P0
+    MOV VM,0
+    SWRITE P0
+    ; Pause - halt execution
 pause_loop:
-    KEYSTAT P0
-    CMP P0,0
-    JZ pause_loop
-    KEYIN P0
+    JMP pause_loop
 
 ; Program end - infinite loop to keep display visible
 halt:
 JMP halt
+
 ORG 0x2000
 DW 0  ; Variable A
-ORG 0x2002
 DW 0  ; Variable B
-ORG 0x2004
 DW 0  ; Variable C
-ORG 0x2006
 DW 0  ; Variable D
-ORG 0x2008
 DW 0  ; Variable E
-ORG 0x200A
 DW 0  ; Variable F
-ORG 0x200C
 DW 0  ; Variable G
-ORG 0x200E
 DW 0  ; Variable H
-ORG 0x2010
 DW 0  ; Variable I
-ORG 0x2012
 DW 0  ; Variable J
-ORG 0x2014
 DW 0  ; Variable K
-ORG 0x2016
 DW 0  ; Variable L
-ORG 0x2018
 DW 0  ; Variable M
-ORG 0x201A
 DW 0  ; Variable N
-ORG 0x201C
 DW 0  ; Variable O
-ORG 0x201E
 DW 0  ; Variable P
-ORG 0x2020
 DW 0  ; Variable Q
-ORG 0x2022
 DW 0  ; Variable R
-ORG 0x2024
 DW 0  ; Variable S
-ORG 0x2026
 DW 0  ; Variable T
-ORG 0x2028
 DW 0  ; Variable U
-ORG 0x202A
 DW 0  ; Variable V
-ORG 0x202C
 DW 0  ; Variable W
-ORG 0x202E
 DW 0  ; Variable X
-ORG 0x2030
 DW 0  ; Variable Y
-ORG 0x2032
 DW 0  ; Variable Z
-ORG 0x2034
-DW 0  ; Variable COLOR_VAL
-ORG 0x2036
-DW 0  ; Variable GRADIENT_COLOR
-ORG 0x2038
-DW 0  ; Variable RAINBOW_COLOR
-ORG 0x203A
-DW 0  ; Variable BASE_COLOR
-ORG 0x4000
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 80
-DB 88
-DB 76
-DB 79
-DB 78
-DB 32
-DB 119
-DB 105
-DB 116
-DB 104
-DB 32
-DB 99
-DB 111
-DB 108
-DB 111
-DB 114
-DB 115
-DB 58
-DB 0  ; Null terminator
-ORG 0x4100
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 80
-DB 88
-DB 76
-DB 79
-DB 70
-DB 70
-DB 58
-DB 0  ; Null terminator
-ORG 0x4200
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 80
-DB 88
-DB 76
-DB 67
-DB 72
-DB 65
-DB 78
-DB 71
-DB 69
-DB 58
-DB 0  ; Null terminator
-ORG 0x4300
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 76
-DB 73
-DB 78
-DB 69
-DB 32
-DB 119
-DB 105
-DB 116
-DB 104
-DB 32
-DB 99
-DB 111
-DB 108
-DB 111
-DB 114
-DB 115
-DB 58
-DB 0  ; Null terminator
-ORG 0x4400
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 67
-DB 73
-DB 82
-DB 67
-DB 76
-DB 69
-DB 32
-DB 119
-DB 105
-DB 116
-DB 104
-DB 32
-DB 99
-DB 111
-DB 108
-DB 111
-DB 114
-DB 115
-DB 58
-DB 0  ; Null terminator
-ORG 0x4500
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 102
-DB 105
-DB 108
-DB 108
-DB 101
-DB 100
-DB 32
-DB 67
-DB 73
-DB 82
-DB 67
-DB 76
-DB 69
-DB 58
-DB 0  ; Null terminator
-ORG 0x4600
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 100
-DB 105
-DB 97
-DB 103
-DB 111
-DB 110
-DB 97
-DB 108
-DB 32
-DB 76
-DB 73
-DB 78
-DB 69
-DB 58
-DB 0  ; Null terminator
-ORG 0x4700
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 99
-DB 111
-DB 108
-DB 111
-DB 114
-DB 32
-DB 103
-DB 114
-DB 97
-DB 100
-DB 105
-DB 101
-DB 110
-DB 116
-DB 115
-DB 58
-DB 0  ; Null terminator
-ORG 0x4800
-DB 84
-DB 101
-DB 115
-DB 116
-DB 105
-DB 110
-DB 103
-DB 32
-DB 99
-DB 111
-DB 108
-DB 111
-DB 114
-DB 32
-DB 111
-DB 112
-DB 101
-DB 114
-DB 97
-DB 116
-DB 105
-DB 111
-DB 110
-DB 115
-DB 58
-DB 0  ; Null terminator
-
-ORG 0x8000
-
-; String concatenation subroutine
-str_concat:
-    ; P1 = left string address
-    ; Top of stack = right string address
-    ; Returns result address in P0
-    POP P2
-    POP P3
-    PUSH P2
-    
-    ; Allocate space for result string
-    MOV P0,0x6000
-    STRCPY P0,P1
-    STRCAT P0,P3
-    RET
-
-; LEFT(string, count) - extract left count characters
-left_substr:
-    ; P0 = result buffer, P1 = source string, P2 = count
-    MOV P3,P0
-    MOV P4,0
-left_loop:
-    CMP P4,P2
-    JZ left_done
-    MOV P5,[P1]
-    CMP P5,0
-    JZ left_done
-    MOV [P3],P5
-    INC P1
-    INC P3
-    INC P4
-    JMP left_loop
-left_done:
-    MOV [P3],0
-    RET
-
-; RIGHT(string, count) - extract right count characters
-right_substr:
-    ; P0 = result buffer, P1 = source string, P2 = count
-    MOV P3,P1
-    MOV P4,0
-right_len_loop:
-    MOV P5,[P3]
-    CMP P5,0
-    JZ right_len_done
-    INC P3
-    INC P4
-    JMP right_len_loop
-right_len_done:
-    ; P4 now contains string length
-    ; Calculate start position: max(0, length - count)
-    CMP P4,P2
-    JC right_use_all
-    MOV P3,P4
-    SUB P3,P2
-    JMP right_copy
-right_use_all:
-    MOV P3,0
-right_copy:
-    ADD P1,P3
-    MOV P3,P0
-right_copy_loop:
-    MOV P5,[P1]
-    CMP P5,0
-    JZ right_copy_done
-    MOV [P3],P5
-    INC P1
-    INC P3
-    JMP right_copy_loop
-right_copy_done:
-    MOV [P3],0
-    RET
-
-; MID(string, start, count) - extract substring
-mid_substr:
-    ; P0 = result buffer, P1 = source string, P2 = start position, P3 = count
-    ADD P1,P2
-    MOV P4,P0
-    MOV P5,0
-mid_loop:
-    CMP P5,P3
-    JZ mid_done
-    MOV P6,[P1]
-    CMP P6,0
-    JZ mid_done
-    MOV [P4],P6
-    INC P1
-    INC P4
-    INC P5
-    JMP mid_loop
-mid_done:
-    MOV [P4],0
-    RET
-
-; TRIM(string) - remove leading and trailing whitespace (space and tab only for simplicity)
-trim_string:
-    ; P0 = result buffer, P1 = source string
-    ; Find start of non-whitespace characters
-    MOV P2,P1
-trim_find_start:
-    MOV P3,[P2]
-    CMP P3,0
-    JZ trim_empty
-    CMP P3,32
-    JZ trim_skip_space_start
-    CMP P3,9
-    JZ trim_skip_space_start
-    JMP trim_found_start
-trim_skip_space_start:
-    INC P2
-    JMP trim_find_start
-trim_found_start:
-    ; P2 now points to first non-whitespace character
-    ; Find end of non-whitespace characters (scan backwards from end)
-    MOV P3,P1
-trim_find_end:
-    MOV P4,[P3]
-    CMP P4,0
-    JZ trim_end_found
-    INC P3
-    JMP trim_find_end
-trim_end_found:
-    DEC P3
-trim_scan_back:
-    CMP P3,P2
-    JC trim_empty
-    MOV P4,[P3]
-    CMP P4,32
-    JZ trim_skip_space_end
-    CMP P4,9
-    JZ trim_skip_space_end
-    JMP trim_copy
-trim_skip_space_end:
-    DEC P3
-    JMP trim_scan_back
-trim_copy:
-    ; Copy from P2 to P3 (inclusive) to result buffer P0
-    MOV P4,P0
-trim_copy_loop:
-    CMP P2,P3
-    JNC trim_copy_done
-    MOV P5,[P2]
-    MOV [P4],P5
-    INC P2
-    INC P4
-    JMP trim_copy_loop
-trim_copy_done:
-    MOV [P4],0
-    RET
-trim_empty:
-    MOV [P0],0
-    RET
-
-; REPLACE(string, old_substr, new_substr) - replace all occurrences of old_substr with new_substr
-replace_string:
-    ; P0 = result buffer, P1 = source string, P2 = old substring, P3 = new substring
-    MOV P4,P0
-    MOV P5,P1
-    MOV P6,P2
-    MOV P7,P3
-    
-    ; Get lengths of old and new substrings
-    MOV P8,P6
-    MOV P9,0
-replace_old_len_loop:
-    MOV R0,[P8]
-    CMP R0,0
-    JZ replace_old_len_done
-    INC P8
-    INC P9
-    JMP replace_old_len_loop
-replace_old_len_done:
-    
-    MOV P8,P7
-    MOV R0,0
-replace_new_len_loop:
-    MOV R1,[P8]
-    CMP R1,0
-    JZ replace_new_len_done
-    INC P8
-    INC R0
-    JMP replace_new_len_loop
-replace_new_len_done:
-    MOV P8,R0
-    
-replace_main_loop:
-    MOV R0,[P5]
-    CMP R0,0
-    JZ replace_done
-    
-    ; Check if old substring matches at current position
-    MOV R1,P5
-    MOV R2,P6
-    MOV R3,0
-replace_check_match:
-    MOV R4,[R1]
-    MOV R5,[R2]
-    CMP R4,R5
-    JNZ replace_no_match
-    CMP R5,0
-    JZ replace_match_found
-    INC R1
-    INC R2
-    INC R3
-    CMP R3,P9
-    JNZ replace_check_match
-    JMP replace_match_found
-    
-replace_no_match:
-    ; No match, copy current character
-    MOV [P4],R0
-    INC P5
-    INC P4
-    JMP replace_main_loop
-    
-replace_match_found:
-    ; Match found, copy new substring
-    MOV R1,P7
-replace_copy_new:
-    MOV R2,[R1]
-    CMP R2,0
-    JZ replace_skip_old
-    MOV [P4],R2
-    INC P4
-    INC R1
-    JMP replace_copy_new
-    
-replace_skip_old:
-    ; Skip the old substring in source
-    ADD P5,P9
-    JMP replace_main_loop
-    
-replace_done:
-    MOV [P4],0
-    RET
-
-; SPLIT(string, delimiter) - split string by delimiter, store parts in array
-split_string:
-    ; P0 = array base address, P1 = source string, P2 = delimiter
-    ; This is a simplified implementation - splits on single character delimiter only
-    ; Returns array with parts, first element is count, then string addresses
-    MOV P3,P0
-    ADD P3,2
-    MOV P4,P1
-    MOV P5,0
-split_loop:
-    MOV P6,[P4]
-    CMP P6,0
-    JZ split_done
-    MOV P7,[P2]
-    CMP P6,P7
-    JNZ split_continue
-    ; Found delimiter, store current part
-    MOV [P3],P4
-    ADD P3,2
-    INC P5
-    INC P4
-    JMP split_loop
-split_continue:
-    INC P4
-    JMP split_loop
-split_done:
-    ; Store final part (empty string after last delimiter)
-    MOV [P3],P4
-    ADD P3,2
-    INC P5
-    ; Store count at array start
-    MOV [P0],P5
-    RET
-
-; JOIN(array_base, delimiter, count) - join array elements with delimiter
-join_array:
-    ; P0 = result buffer, P1 = array base, P2 = delimiter, P3 = element count
-    MOV P4,P0
-    MOV P5,P1
-    ADD P5,2
-    MOV P6,0
-join_loop:
-    CMP P6,P3
-    JZ join_done
-    ; Copy current element string
-    MOV P7,[P5]
-join_copy_element:
-    MOV P8,[P7]
-    CMP P8,0
-    JZ join_next_element
-    MOV [P4],P8
-    INC P7
-    INC P4
-    JMP join_copy_element
-join_next_element:
-    INC P6
-    CMP P6,P3
-    JZ join_done
-    ; Add delimiter
-    MOV P7,P2
-join_copy_delim:
-    MOV P8,[P7]
-    CMP P8,0
-    JZ join_delim_done
-    MOV [P4],P8
-    INC P7
-    INC P4
-    JMP join_copy_delim
-join_delim_done:
-    ADD P5,2
-    JMP join_loop
-join_done:
-    MOV [P4],0
-    RET
-
-; INSTR(haystack, needle) - find position of needle in haystack (1-based, 0 if not found)
-instr_substr:
-    ; P1 = haystack, P2 = needle, returns position in P0 (1-based, 0 if not found)
-    MOV P0,0
-    MOV P3,P1
-instr_loop:
-    MOV P4,[P3]
-    CMP P4,0
-    JZ instr_not_found
-    ; Check if needle matches at current position
-    MOV P5,P3
-    MOV P6,P2
-    MOV P7,1
-instr_check_match:
-    MOV P8,[P6]
-    CMP P8,0
-    JZ instr_found
-    MOV P9,[P5]
-    CMP P8,P9
-    JNZ instr_no_match
-    INC P5
-    INC P6
-    JMP instr_check_match
-instr_no_match:
-    INC P0
-    INC P3
-    JMP instr_loop
-instr_found:
-    INC P0
-    RET
-instr_not_found:
-    MOV P0,0
-    RET

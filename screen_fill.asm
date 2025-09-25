@@ -20,159 +20,59 @@ start:
     MOV VX,P0
     MOV VY,P0
     SFILL P0
-    ; For X = 0 To 255
     MOV P0,0
-    MOV [0x202E],P0
-for_loop_1:
-    ; For Y = 0 To 255
+    MOV [0x2000],P0
+for_1:
+    MOV P0,[0x2000]
+    MOV P0,3
+    MOV P1,P0
+    MOV P0,[0x2000]
+    CMP P0,P1
+    JGE next_2
     MOV P0,0
-    MOV [0x2030],P0
-for_loop_3:
-    ; COLOR_VAL = 
-    ; Load X into P0
-    MOV P0,[0x202E]
-    ; Load Y into P1
-    MOV P1,[0x2030]
-    ADD P0,P1
-    MOV P1,256
-    MOD P0,P1
-    ; Store P0 into COLOR_VAL
-    MOV [0x2034],P0
-    ; Pxl-On
-    ; Load Y into P0
-    MOV P0,[0x2030]
-    ; Load X into P1
-    MOV P1,[0x202E]
-    ; Load COLOR_VAL into P2
-    MOV P2,[0x2034]
-    ; Pxl-On at (P0,P1)
-    MOV VX,P0
-    MOV VY,P1
-    MOV P0,P2
-    SWRITE P0
-    ; Next Y
-    MOV P0,[0x2030]
-    INC P0
-    MOV [0x2030],P0
-    CMP P0,255
-    JLE for_loop_3
-for_end_4:
-    ; Next X
-    MOV P0,[0x202E]
-    INC P0
-    MOV [0x202E],P0
-    CMP P0,255
-    JLE for_loop_1
-for_end_2:
-    ; Disp
-    MOV P0,0
-    MOV VX,P0
-    MOV P0,0
+    MOV [0x2002],P0
+for_3:
+    MOV P0,[0x2002]
+    MOV P0,3
+    MOV P1,P0
+    MOV P0,[0x2002]
+    CMP P0,P1
+    JGE next_4
+    ; COLOR_VAL = expression
+    MOV P0,1
+    MOV [0x2004],P0
+    MOV P0,[0x2002]
     MOV VY,P0
-    MOV P0,0
+    MOV P0,[0x2000]
+    MOV VX,P0
+    MOV P0,[0x2004]
     MOV VL,P0
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'C'
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'R'
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'N'
-    MOV P0,78
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'F'
-    MOV P0,70
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'I'
-    MOV P0,73
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'L'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'L'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'E'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'D'
+    MOV VM,0
+    SWRITE P0
+    MOV P0,[0x2002]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2002],P0
+    JMP for_3
+next_4:
+    MOV P0,[0x2000]
+    MOV P1,1
+    ADD P0,P1
+    MOV [0x2000],P0
+    JMP for_1
+next_2:
+    ; Disp
+    ; Display 'DONE'
     MOV P0,68
     MOV P1,15
     CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'W'
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'I'
-    MOV P0,73
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'T'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'H'
-    MOV P0,72
-    MOV P1,15
-    CHAR P0,P1
-    ; Display ' '
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'C'
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'O'
     MOV P0,79
     MOV P1,15
     CHAR P0,P1
-    ; Display 'L'
-    MOV P0,76
+    MOV P0,78
     MOV P1,15
     CHAR P0,P1
-    ; Display 'O'
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'R'
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    ; Display 'S'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    ; Display '!'
-    MOV P0,33
+    MOV P0,69
     MOV P1,15
     CHAR P0,P1
 
@@ -180,40 +80,30 @@ for_end_2:
 halt:
 JMP halt
 
-ORG 0x8000
-
-; String concatenation subroutine
-str_concat:
-    ; P1 = left string address
-    ; Top of stack = right string address
-    ; Returns result address in P0
-    POP P2
-    POP P3
-    PUSH P2
-    
-    ; Allocate space for result string
-    MOV P0,0x6000
-    MOV P4,P0
-    
-    ; Copy left string
-str_cat_copy_left:
-    MOV P5,[P1]
-    CMP P5,0
-    JZ str_cat_copy_right
-    MOV [P4],P5
-    INC P1
-    INC P4
-    JMP str_cat_copy_left
-    
-str_cat_copy_right:
-    MOV P5,[P3]
-    CMP P5,0
-    JZ str_cat_done
-    MOV [P4],P5
-    INC P3
-    INC P4
-    JMP str_cat_copy_right
-    
-str_cat_done:
-    MOV [P4],0
-    RET
+ORG 0x2000
+DW 0  ; Variable A
+DW 0  ; Variable B
+DW 0  ; Variable C
+DW 0  ; Variable D
+DW 0  ; Variable E
+DW 0  ; Variable F
+DW 0  ; Variable G
+DW 0  ; Variable H
+DW 0  ; Variable I
+DW 0  ; Variable J
+DW 0  ; Variable K
+DW 0  ; Variable L
+DW 0  ; Variable M
+DW 0  ; Variable N
+DW 0  ; Variable O
+DW 0  ; Variable P
+DW 0  ; Variable Q
+DW 0  ; Variable R
+DW 0  ; Variable S
+DW 0  ; Variable T
+DW 0  ; Variable U
+DW 0  ; Variable V
+DW 0  ; Variable W
+DW 0  ; Variable X
+DW 0  ; Variable Y
+DW 0  ; Variable Z

@@ -1,0 +1,13 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1011
+for_1 0x12C7
+next_2 0x135B
+for_3 0x146D
+else_5 0x1566
+endif_6 0x1566
+next_4 0x157C
+else_7 0x16AB
+endif_8 0x1794
+pause_loop 0x1956
+halt 0x195A

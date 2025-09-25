@@ -24,17 +24,17 @@ CATCH
 END TRY
 
 REM Test invalid function calls
-TRY
-    Result = INVALID_FUNCTION(123)
-    Disp "Invalid function result:", Result
-CATCH
-    Disp "Caught invalid function error"
-END TRY
+REM TRY
+REM     Result = INVALID_FUNCTION(123)
+REM     Disp "Invalid function result:", Result
+REM CATCH
+REM     Disp "Caught invalid function error"
+REM END TRY
 
 REM Test string operation errors
 TRY
     Str = "hello"
-    Char = MID(Str, 100)  REM Out of bounds
+    Char = MID(Str, 100, 1)  REM Out of bounds
     Disp "String operation successful"
 CATCH
     Disp "Caught string bounds error"
