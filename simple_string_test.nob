@@ -1,0 +1,4 @@
+REM Simple string function test
+Str1 = "Hello World"
+Str2 = RIGHT(Str1, 5)
+END

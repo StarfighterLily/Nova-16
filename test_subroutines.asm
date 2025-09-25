@@ -34,45 +34,60 @@ start:
     ; Define subroutine DrawStar
 sub_DrawStar:
     ; Line
-    MOV VX,100
-    MOV VY,50
-    MOV P0,120
-    MOV P1,90
-    MOV VC,7
-    ; Draw line from (VX,VY) to (P0,P1)
-    SLINE P0,P1
-    ; Line
-    MOV VX,120
-    MOV VY,90
-    MOV P0,80
-    MOV P1,70
-    MOV VC,7
-    ; Draw line from (VX,VY) to (P0,P1)
-    SLINE P0,P1
-    ; Line
-    MOV VX,80
-    MOV VY,70
-    MOV P0,140
-    MOV P1,70
-    MOV VC,7
-    ; Draw line from (VX,VY) to (P0,P1)
-    SLINE P0,P1
-    ; Line
-    MOV VX,140
-    MOV VY,70
     MOV P0,100
     MOV P1,50
-    MOV VC,7
-    ; Draw line from (VX,VY) to (P0,P1)
-    SLINE P0,P1
+    MOV P2,120
+    MOV P3,90
+    MOV P4,7
+    ; Draw line from (P0,P1) to (P2,P3)
+    MOV VX,P0
+    MOV VY,P1
+    MOV VC,P4
+    SLINE P2,P3
     ; Line
-    MOV VX,100
-    MOV VY,50
+    MOV P4,120
+    MOV P3,90
+    MOV P2,80
+    MOV P1,70
+    MOV P0,7
+    ; Draw line from (P4,P3) to (P2,P1)
+    MOV VX,P4
+    MOV VY,P3
+    MOV VC,P0
+    SLINE P2,P1
+    ; Line
+    MOV P0,80
+    MOV P1,70
+    MOV P2,140
+    MOV P3,70
+    MOV P4,7
+    ; Draw line from (P0,P1) to (P2,P3)
+    MOV VX,P0
+    MOV VY,P1
+    MOV VC,P4
+    SLINE P2,P3
+    ; Line
+    MOV P4,140
+    MOV P3,70
+    MOV P2,100
+    MOV P1,50
+    MOV P0,7
+    ; Draw line from (P4,P3) to (P2,P1)
+    MOV VX,P4
+    MOV VY,P3
+    MOV VC,P0
+    SLINE P2,P1
+    ; Line
     MOV P0,100
-    MOV P1,110
-    MOV VC,7
-    ; Draw line from (VX,VY) to (P0,P1)
-    SLINE P0,P1
+    MOV P1,50
+    MOV P2,100
+    MOV P3,110
+    MOV P4,7
+    ; Draw line from (P0,P1) to (P2,P3)
+    MOV VX,P0
+    MOV VY,P1
+    MOV VC,P4
+    SLINE P2,P3
     ; Return
     RET
     ; Define subroutine PlayMelody
@@ -382,4 +397,255 @@ mid_loop:
     JMP mid_loop
 mid_done:
     MOV [P4],0
+    RET
+
+; TRIM(string) - remove leading and trailing whitespace (space and tab only for simplicity)
+trim_string:
+    ; P0 = result buffer, P1 = source string
+    ; Find start of non-whitespace characters
+    MOV P2,P1
+trim_find_start:
+    MOV P3,[P2]
+    CMP P3,0
+    JZ trim_empty
+    CMP P3,32
+    JZ trim_skip_space_start
+    CMP P3,9
+    JZ trim_skip_space_start
+    JMP trim_found_start
+trim_skip_space_start:
+    INC P2
+    JMP trim_find_start
+trim_found_start:
+    ; P2 now points to first non-whitespace character
+    ; Find end of non-whitespace characters (scan backwards from end)
+    MOV P3,P1
+trim_find_end:
+    MOV P4,[P3]
+    CMP P4,0
+    JZ trim_end_found
+    INC P3
+    JMP trim_find_end
+trim_end_found:
+    DEC P3
+trim_scan_back:
+    CMP P3,P2
+    JC trim_empty
+    MOV P4,[P3]
+    CMP P4,32
+    JZ trim_skip_space_end
+    CMP P4,9
+    JZ trim_skip_space_end
+    JMP trim_copy
+trim_skip_space_end:
+    DEC P3
+    JMP trim_scan_back
+trim_copy:
+    ; Copy from P2 to P3 (inclusive) to result buffer P0
+    MOV P4,P0
+trim_copy_loop:
+    CMP P2,P3
+    JNC trim_copy_done
+    MOV P5,[P2]
+    MOV [P4],P5
+    INC P2
+    INC P4
+    JMP trim_copy_loop
+trim_copy_done:
+    MOV [P4],0
+    RET
+trim_empty:
+    MOV [P0],0
+    RET
+
+; REPLACE(string, old_substr, new_substr) - replace all occurrences of old_substr with new_substr
+replace_string:
+    ; P0 = result buffer, P1 = source string, P2 = old substring, P3 = new substring
+    MOV P4,P0
+    MOV P5,P1
+    MOV P6,P2
+    MOV P7,P3
+    
+    ; Get lengths of old and new substrings
+    MOV P8,P6
+    MOV P9,0
+replace_old_len_loop:
+    MOV R0,[P8]
+    CMP R0,0
+    JZ replace_old_len_done
+    INC P8
+    INC P9
+    JMP replace_old_len_loop
+replace_old_len_done:
+    
+    MOV P8,P7
+    MOV R0,0
+replace_new_len_loop:
+    MOV R1,[P8]
+    CMP R1,0
+    JZ replace_new_len_done
+    INC P8
+    INC R0
+    JMP replace_new_len_loop
+replace_new_len_done:
+    MOV P8,R0
+    
+replace_main_loop:
+    MOV R0,[P5]
+    CMP R0,0
+    JZ replace_done
+    
+    ; Check if old substring matches at current position
+    MOV R1,P5
+    MOV R2,P6
+    MOV R3,0
+replace_check_match:
+    MOV R4,[R1]
+    MOV R5,[R2]
+    CMP R4,R5
+    JNZ replace_no_match
+    CMP R5,0
+    JZ replace_match_found
+    INC R1
+    INC R2
+    INC R3
+    CMP R3,P9
+    JNZ replace_check_match
+    JMP replace_match_found
+    
+replace_no_match:
+    ; No match, copy current character
+    MOV [P4],R0
+    INC P5
+    INC P4
+    JMP replace_main_loop
+    
+replace_match_found:
+    ; Match found, copy new substring
+    MOV R1,P7
+replace_copy_new:
+    MOV R2,[R1]
+    CMP R2,0
+    JZ replace_skip_old
+    MOV [P4],R2
+    INC P4
+    INC R1
+    JMP replace_copy_new
+    
+replace_skip_old:
+    ; Skip the old substring in source
+    ADD P5,P9
+    JMP replace_main_loop
+    
+replace_done:
+    MOV [P4],0
+    RET
+
+; SPLIT(string, delimiter) - split string by delimiter, store parts in array
+split_string:
+    ; P0 = array base address, P1 = source string, P2 = delimiter
+    ; This is a simplified implementation - splits on single character delimiter only
+    ; Returns array with parts, first element is count, then string addresses
+    MOV P3,P0
+    ADD P3,2
+    MOV P4,P1
+    MOV P5,0
+split_loop:
+    MOV P6,[P4]
+    CMP P6,0
+    JZ split_done
+    MOV P7,[P2]
+    CMP P6,P7
+    JNZ split_continue
+    ; Found delimiter, store current part
+    MOV [P3],P4
+    ADD P3,2
+    INC P5
+    INC P4
+    JMP split_loop
+split_continue:
+    INC P4
+    JMP split_loop
+split_done:
+    ; Store final part (empty string after last delimiter)
+    MOV [P3],P4
+    ADD P3,2
+    INC P5
+    ; Store count at array start
+    MOV [P0],P5
+    RET
+
+; JOIN(array_base, delimiter, count) - join array elements with delimiter
+join_array:
+    ; P0 = result buffer, P1 = array base, P2 = delimiter, P3 = element count
+    MOV P4,P0
+    MOV P5,P1
+    ADD P5,2
+    MOV P6,0
+join_loop:
+    CMP P6,P3
+    JZ join_done
+    ; Copy current element string
+    MOV P7,[P5]
+join_copy_element:
+    MOV P8,[P7]
+    CMP P8,0
+    JZ join_next_element
+    MOV [P4],P8
+    INC P7
+    INC P4
+    JMP join_copy_element
+join_next_element:
+    INC P6
+    CMP P6,P3
+    JZ join_done
+    ; Add delimiter
+    MOV P7,P2
+join_copy_delim:
+    MOV P8,[P7]
+    CMP P8,0
+    JZ join_delim_done
+    MOV [P4],P8
+    INC P7
+    INC P4
+    JMP join_copy_delim
+join_delim_done:
+    ADD P5,2
+    JMP join_loop
+join_done:
+    MOV [P4],0
+    RET
+
+; INSTR(haystack, needle) - find position of needle in haystack (1-based, 0 if not found)
+instr_substr:
+    ; P1 = haystack, P2 = needle, returns position in P0 (1-based, 0 if not found)
+    MOV P0,0
+    MOV P3,P1
+instr_loop:
+    MOV P4,[P3]
+    CMP P4,0
+    JZ instr_not_found
+    ; Check if needle matches at current position
+    MOV P5,P3
+    MOV P6,P2
+    MOV P7,1
+instr_check_match:
+    MOV P8,[P6]
+    CMP P8,0
+    JZ instr_found
+    MOV P9,[P5]
+    CMP P8,P9
+    JNZ instr_no_match
+    INC P5
+    INC P6
+    JMP instr_check_match
+instr_no_match:
+    INC P0
+    INC P3
+    JMP instr_loop
+instr_found:
+    INC P0
+    RET
+instr_not_found:
+    MOV P0,0
     RET

@@ -1,0 +1,45 @@
+REM Test math functions
+REM Tests POW, RND, and other mathematical functions
+
+ClrHome
+Disp "Testing math functions"
+
+REM Test POW function (exponentiation)
+A = POW(2, 3)  REM 2^3 = 8
+Disp "2^3 =", A
+
+B = POW(3, 2)  REM 3^2 = 9
+Disp "3^2 =", B
+
+C = POW(5, 0)  REM 5^0 = 1
+Disp "5^0 =", C
+
+REM Test RND function (random numbers)
+Disp "Random numbers:"
+For I = 1 To 5
+    R = RND()
+    Disp "Random", I, ":", R
+End
+
+REM Test RND with range
+Disp "Random in range 1-10:"
+For I = 1 To 5
+    R = RND(10) + 1  REM 1 to 10
+    Disp "Range random", I, ":", R
+End
+
+REM Test SQRT function
+D = SQRT(16)
+Disp "SQRT(16) =", D
+
+E = SQRT(2)
+Disp "SQRT(2) ≈", E
+
+REM Test ABS function
+F = ABS(-5)
+Disp "ABS(-5) =", F
+
+G = ABS(3)
+Disp "ABS(3) =", G
+
+Disp "Math functions test complete"

@@ -1,6 +1,7 @@
 {
-  "pixels_written": [
+  "pixels_written": [],
+  "register_changes": [
     [
-      50,
-      0,
+      27,
+      "VX",
       

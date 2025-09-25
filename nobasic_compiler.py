@@ -50,6 +50,14 @@ class NoBasicCompiler:
         # List management
         self.lists: Dict[str, int] = {}  # List name -> memory address
         self.list_sizes: Dict[str, int] = {}  # List name -> size
+        
+        # Array management
+        self.arrays: Dict[str, Dict] = {}  # Array name -> {'address': addr, 'size': size, 'allocated': bool}
+        self.array_allocation_ptr = self.TEMP_START  # Start allocating arrays from temp area
+
+        # Struct management
+        self.structs: Dict[str, Dict] = {}  # Struct name -> {'fields': {'field_name': offset}, 'size': total_size}
+        self.struct_instances: Dict[str, Dict] = {}  # Instance name -> {'struct_name': name, 'address': addr}
 
         # Compilation state
         self.assembly_lines: List[str] = []
@@ -67,6 +75,9 @@ class NoBasicCompiler:
         # Loop tracking for For/Next
         self.loop_start_labels: Dict[str, str] = {}  # Variable name -> loop start label
         self.loop_end_values: Dict[str, int] = {}    # Variable name -> end value
+        
+        # Loop stack for BREAK/CONTINUE support
+        self.loop_stack: List[Dict[str, str]] = []  # Stack of {'start': label, 'end': label, 'type': 'for'|'while'}
         
         # Register allocation for expression evaluation - improved system
         self.available_registers = ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7"]
@@ -182,6 +193,12 @@ class NoBasicCompiler:
             'VERYLIGHTRED': 0xFC,
         }
 
+        # Boolean constants
+        self.boolean_constants = {
+            'TRUE': 1,
+            'FALSE': 0,
+        }
+
         # Initialize standard header
         self._init_assembly()
 
@@ -290,6 +307,11 @@ class NoBasicCompiler:
                     self.assembly_lines.extend(lines)
                     i = new_i
 
+                elif token == "TRY":
+                    lines, new_i = self._compile_try(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
                 elif token == "INPUT":
                     lines, new_i = self._compile_input(tokens, i)
                     self.assembly_lines.extend(lines)
@@ -336,6 +358,11 @@ class NoBasicCompiler:
 
                 elif token == "DEFINE":
                     lines, new_i = self._compile_define(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "STRUCT":
+                    lines, new_i = self._compile_struct(tokens, i)
                     self.assembly_lines.extend(lines)
                     i = new_i
 
@@ -391,6 +418,11 @@ class NoBasicCompiler:
 
                 elif token == "STOP":
                     lines, new_i = self._compile_stop(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif token == "SPLAY":
+                    lines, new_i = self._compile_splay(tokens, i)
                     self.assembly_lines.extend(lines)
                     i = new_i
 
@@ -480,6 +512,12 @@ class NoBasicCompiler:
 
                 elif (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit()) and i + 1 < len(tokens) and tokens[i + 1] == "(":
                     # List assignment: L1(index) = expression
+                    lines, new_i = self._compile_assignment(tokens, i)
+                    self.assembly_lines.extend(lines)
+                    i = new_i
+
+                elif re.match(r'[A-Za-z_][A-Za-z0-9_]*', token) and i + 1 < len(tokens) and tokens[i + 1] == "[":
+                    # Array assignment: ARRAY[index] = expression
                     lines, new_i = self._compile_assignment(tokens, i)
                     self.assembly_lines.extend(lines)
                     i = new_i
@@ -617,6 +655,257 @@ class NoBasicCompiler:
             "mid_done:",
             "    MOV [P4],0",          # Null terminate result",
             "    RET",
+            "",
+            "; TRIM(string) - remove leading and trailing whitespace (space and tab only for simplicity)",
+            "trim_string:",
+            "    ; P0 = result buffer, P1 = source string",
+            "    ; Find start of non-whitespace characters",
+            "    MOV P2,P1",           # P2 = source pointer for finding start",
+            "trim_find_start:",
+            "    MOV P3,[P2]",         # Load character",
+            "    CMP P3,0",            # End of string?",
+            "    JZ trim_empty",       # If empty string, return empty result",
+            "    CMP P3,32",           # Space character?",
+            "    JZ trim_skip_space_start",
+            "    CMP P3,9",            # Tab character?",
+            "    JZ trim_skip_space_start",
+            "    JMP trim_found_start", # Found non-whitespace, start copying",
+            "trim_skip_space_start:",
+            "    INC P2",              # Skip whitespace character",
+            "    JMP trim_find_start",
+            "trim_found_start:",
+            "    ; P2 now points to first non-whitespace character",
+            "    ; Find end of non-whitespace characters (scan backwards from end)",
+            "    MOV P3,P1",           # P3 = pointer to find string end",
+            "trim_find_end:",
+            "    MOV P4,[P3]",         # Load character to find end of string",
+            "    CMP P4,0",            # End of string?",
+            "    JZ trim_end_found",   # Found end, now scan backwards for non-whitespace",
+            "    INC P3",              # Next character to find end of string",
+            "    JMP trim_find_end",
+            "trim_end_found:",
+            "    DEC P3",              # P3 now points to last character (before null terminator)",
+            "trim_scan_back:",
+            "    CMP P3,P2",           # Reached start position? (all whitespace case handled above by trim_empty check above, but this is safe guard)", 
+            "    JC trim_empty",       # If start > end, empty result (shouldn't happen with our earlier check, but safe guard)", 
+            "    MOV P4,[P3]",         # Load character from end", 
+            "    CMP P4,32",           # Space?",
+            "    JZ trim_skip_space_end", 
+            "    CMP P4,9",            # Tab?",
+            "    JZ trim_skip_space_end", 
+            "    JMP trim_copy",       # Found last non-whitespace, start copying", 
+            "trim_skip_space_end:",
+            "    DEC P3",              # Move back one character", 
+            "    JMP trim_scan_back", 
+            "trim_copy:",
+            "    ; Copy from P2 to P3 (inclusive) to result buffer P0", 
+            "    MOV P4,P0",           # P4 = result pointer", 
+            "trim_copy_loop:",
+            "    CMP P2,P3",           # Past end position?", 
+            "    JNC trim_copy_done",   # Yes, done copying", 
+            "    MOV P5,[P2]",         # Load character from source", 
+            "    MOV [P4],P5",         # Store in result", 
+            "    INC P2",              # Next source character", 
+            "    INC P4",              # Next result position", 
+            "    JMP trim_copy_loop", 
+            "trim_copy_done:",
+            "    MOV [P4],0",          # Null terminate result", 
+            "    RET", 
+            "trim_empty:",
+            "    MOV [P0],0",          # Return empty string", 
+            "    RET", 
+            "", 
+            "; REPLACE(string, old_substr, new_substr) - replace all occurrences of old_substr with new_substr", 
+            "replace_string:",
+            "    ; P0 = result buffer, P1 = source string, P2 = old substring, P3 = new substring", 
+            "    MOV P4,P0",           # P4 = result pointer", 
+            "    MOV P5,P1",           # P5 = source pointer", 
+            "    MOV P6,P2",           # P6 = old substring pointer", 
+            "    MOV P7,P3",           # P7 = new substring pointer", 
+            "    ", 
+            "    ; Get lengths of old and new substrings", 
+            "    MOV P8,P6",           # P8 = old substring for length", 
+            "    MOV P9,0",            # P9 = old substring length", 
+            "replace_old_len_loop:",
+            "    MOV R0,[P8]", 
+            "    CMP R0,0", 
+            "    JZ replace_old_len_done", 
+            "    INC P8", 
+            "    INC P9", 
+            "    JMP replace_old_len_loop", 
+            "replace_old_len_done:",
+            "    ", 
+            "    MOV P8,P7",           # P8 = new substring for length", 
+            "    MOV R0,0",            # R0 = new substring length", 
+            "replace_new_len_loop:",
+            "    MOV R1,[P8]", 
+            "    CMP R1,0", 
+            "    JZ replace_new_len_done", 
+            "    INC P8", 
+            "    INC R0", 
+            "    JMP replace_new_len_loop", 
+            "replace_new_len_done:",
+            "    MOV P8,R0",           # P8 = new substring length", 
+            "    ", 
+            "replace_main_loop:",
+            "    MOV R0,[P5]",         # Load character from source", 
+            "    CMP R0,0",            # End of string?", 
+            "    JZ replace_done",     # Yes, done", 
+            "    ", 
+            "    ; Check if old substring matches at current position", 
+            "    MOV R1,P5",           # R1 = current source position", 
+            "    MOV R2,P6",           # R2 = old substring pointer", 
+            "    MOV R3,0",            # R3 = match counter", 
+            "replace_check_match:",
+            "    MOV R4,[R1]",         # Load source char", 
+            "    MOV R5,[R2]",         # Load old substring char", 
+            "    CMP R4,R5",           # Do they match?", 
+            "    JNZ replace_no_match", # No match", 
+            "    CMP R5,0",            # End of old substring?", 
+            "    JZ replace_match_found", # Match found!", 
+            "    INC R1",              # Next source char", 
+            "    INC R2",              # Next old substring char", 
+            "    INC R3",              # Increment match counter", 
+            "    CMP R3,P9",           # Checked all chars?", 
+            "    JNZ replace_check_match", 
+            "    JMP replace_match_found", 
+            "    ", 
+            "replace_no_match:",
+            "    ; No match, copy current character", 
+            "    MOV [P4],R0", 
+            "    INC P5", 
+            "    INC P4", 
+            "    JMP replace_main_loop", 
+            "    ", 
+            "replace_match_found:",
+            "    ; Match found, copy new substring", 
+            "    MOV R1,P7",           # R1 = new substring pointer", 
+            "replace_copy_new:",
+            "    MOV R2,[R1]", 
+            "    CMP R2,0", 
+            "    JZ replace_skip_old", 
+            "    MOV [P4],R2", 
+            "    INC P4", 
+            "    INC R1", 
+            "    JMP replace_copy_new", 
+            "    ", 
+            "replace_skip_old:",
+            "    ; Skip the old substring in source", 
+            "    ADD P5,P9", 
+            "    JMP replace_main_loop", 
+            "    ", 
+            "replace_done:",
+            "    MOV [P4],0",          # Null terminate result", 
+            "    RET", 
+            "", 
+            "; SPLIT(string, delimiter) - split string by delimiter, store parts in array", 
+            "split_string:",
+            "    ; P0 = array base address, P1 = source string, P2 = delimiter", 
+            "    ; This is a simplified implementation - splits on single character delimiter only", 
+            "    ; Returns array with parts, first element is count, then string addresses", 
+            "    MOV P3,P0",           # P3 = array pointer (skip count slot for now)", 
+            "    ADD P3,2",            # Start after count position", 
+            "    MOV P4,P1",           # P4 = current position in source", 
+            "    MOV P5,0",            # P5 = part counter", 
+            "split_loop:",
+            "    MOV P6,[P4]",         # Load character from source", 
+            "    CMP P6,0",            # End of string?", 
+            "    JZ split_done",       # Yes, add final part", 
+            "    MOV P7,[P2]",         # Load first delimiter character", 
+            "    CMP P6,P7",           # Is it the delimiter?", 
+            "    JNZ split_continue",  # No, continue", 
+            "    ; Found delimiter, store current part", 
+            "    MOV [P3],P4",         # Store address of next part start", 
+            "    ADD P3,2",            # Next array slot", 
+            "    INC P5",              # Increment part count", 
+            "    INC P4",              # Skip delimiter", 
+            "    JMP split_loop",      # Continue", 
+            "split_continue:",
+            "    INC P4",              # Next character", 
+            "    JMP split_loop", 
+            "split_done:",
+            "    ; Store final part (empty string after last delimiter)", 
+            "    MOV [P3],P4",         # Store address of final part (end of string)", 
+            "    ADD P3,2",            # Next array slot", 
+            "    INC P5",              # Increment part count", 
+            "    ; Store count at array start", 
+            "    MOV [P0],P5",         # Store part count", 
+            "    RET", 
+            "", 
+            "; JOIN(array_base, delimiter, count) - join array elements with delimiter", 
+            "join_array:",
+            "    ; P0 = result buffer, P1 = array base, P2 = delimiter, P3 = element count", 
+            "    MOV P4,P0",           # P4 = result pointer", 
+            "    MOV P5,P1",           # P5 = array pointer", 
+            "    ADD P5,2",            # Skip count, start with first element", 
+            "    MOV P6,0",            # P6 = current element index", 
+            "join_loop:",
+            "    CMP P6,P3",           # Processed all elements?", 
+            "    JZ join_done",        # Yes, done", 
+            "    ; Copy current element string", 
+            "    MOV P7,[P5]",         # P7 = address of current element string", 
+            "join_copy_element:",
+            "    MOV P8,[P7]",         # Load character from element", 
+            "    CMP P8,0",            # End of element string?", 
+            "    JZ join_next_element", # Yes, add delimiter if not last", 
+            "    MOV [P4],P8",         # Copy character to result", 
+            "    INC P7",              # Next element character", 
+            "    INC P4",              # Next result position", 
+            "    JMP join_copy_element", 
+            "join_next_element:",
+            "    INC P6",              # Next element index", 
+            "    CMP P6,P3",           # Was this the last element?", 
+            "    JZ join_done",        # Yes, don't add delimiter", 
+            "    ; Add delimiter", 
+            "    MOV P7,P2",           # P7 = delimiter string", 
+            "join_copy_delim:",
+            "    MOV P8,[P7]",         # Load delimiter character", 
+            "    CMP P8,0",            # End of delimiter?", 
+            "    JZ join_delim_done",  # Yes, done with delimiter", 
+            "    MOV [P4],P8",         # Copy delimiter character", 
+            "    INC P7",              # Next delimiter character", 
+            "    INC P4",              # Next result position", 
+            "    JMP join_copy_delim", 
+            "join_delim_done:",
+            "    ADD P5,2",            # Next array element", 
+            "    JMP join_loop", 
+            "join_done:",
+            "    MOV [P4],0",          # Null terminate result", 
+            "    RET", 
+            "", 
+            "; INSTR(haystack, needle) - find position of needle in haystack (1-based, 0 if not found)", 
+            "instr_substr:",
+            "    ; P1 = haystack, P2 = needle, returns position in P0 (1-based, 0 if not found)", 
+            "    MOV P0,0",            # P0 = position counter (1-based)", 
+            "    MOV P3,P1",           # P3 = haystack pointer", 
+            "instr_loop:",
+            "    MOV P4,[P3]",         # Load haystack character", 
+            "    CMP P4,0",            # End of haystack?", 
+            "    JZ instr_not_found",  # Yes, not found", 
+            "    ; Check if needle matches at current position", 
+            "    MOV P5,P3",           # P5 = current haystack position", 
+            "    MOV P6,P2",           # P6 = needle pointer", 
+            "    MOV P7,1",            # P7 = match flag (assume match)", 
+            "instr_check_match:",
+            "    MOV P8,[P6]",         # Load needle character", 
+            "    CMP P8,0",            # End of needle?", 
+            "    JZ instr_found",      # Yes, match found!", 
+            "    MOV P9,[P5]",         # Load haystack character", 
+            "    CMP P8,P9",           # Do they match?", 
+            "    JNZ instr_no_match",  # No match", 
+            "    INC P5",              # Next haystack position", 
+            "    INC P6",              # Next needle position", 
+            "    JMP instr_check_match", 
+            "instr_no_match:",
+            "    INC P0",              # Increment position", 
+            "    INC P3",              # Next haystack position", 
+            "    JMP instr_loop", 
+            "instr_found:",
+            "    INC P0",              # Make position 1-based", 
+            "    RET", 
+            "instr_not_found:",
+            "    MOV P0,0",            # Return 0 (not found)", 
+            "    RET", 
         ])
 
     def _compile_clrhome(self) -> List[str]:
@@ -721,6 +1010,14 @@ class NoBasicCompiler:
             self.labels[f"end_{var_name}"] = end_label
             self.loop_start_labels[var_name] = loop_label
             self.loop_end_values[var_name] = end_value
+            
+            # Push to loop stack for BREAK/CONTINUE
+            self.loop_stack.append({
+                'start': loop_label,
+                'end': end_label,
+                'type': 'for',
+                'var': var_name
+            })
 
             # Initialize loop variable
             var_addr = self._get_variable_address(var_name)
@@ -855,6 +1152,112 @@ class NoBasicCompiler:
 
         return lines, i
 
+    def _is_function_name(self, name: str) -> bool:
+        """Check if a name is a known function"""
+        known_functions = {
+            'INT', 'STR', 'MIN', 'MAX', 'RND', 'LOWER', 'UPPER', 'LEN', 'LEFT', 'RIGHT', 'MID', 'INSTR',
+            'TRIM', 'REPLACE', 'SPLIT', 'JOIN',
+            'MEMSET', 'MEMTEST', 'MEMMOVE', 'STRCMP', 'STRCPY', 'MEMSWAP', 'KEYIN', 'KEYSTAT',
+            'SIN', 'COS', 'TAN', 'ASIN', 'ACOS', 'ATAN', 'SQRT', 'LOG', 'EXP', 'ABS', 'FLOOR', 'CEIL', 'ROUND',
+            'COLOR', 'RAMP', 'SHADE', 'POW'
+        }
+        return name.upper() in known_functions
+
+    def _compile_try(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile TRY/CATCH block with error flag mechanism"""
+        lines = []
+        i += 1  # Skip TRY
+
+        # Generate labels
+        catch_label = self._generate_label("catch")
+        end_label = self._generate_label("try_end")
+
+        # Use a simple error flag mechanism
+        # We'll use a dedicated error flag register/variable
+        error_flag_addr = 0xFFF0  # Use a fixed address for error flag
+
+        lines.extend([
+            f"    ; TRY block start",
+            f"    MOV [0x{error_flag_addr:04X}],0",  # Clear error flag
+        ])
+
+        # Parse TRY block until CATCH or END TRY
+        try_tokens = []
+        catch_found = False
+        try_end_found = False
+
+        while i < len(tokens):
+            token = tokens[i].upper()
+            if token == "CATCH":
+                catch_found = True
+                break
+            elif token == "END" and i + 1 < len(tokens) and tokens[i + 1].upper() == "TRY":
+                try_end_found = True
+                i += 2  # Skip END TRY
+                break
+            try_tokens.append(tokens[i])
+            i += 1
+
+        # Parse TRY block
+        if try_tokens:
+            try_lines = self._parse_token_block(try_tokens, "", "")
+            lines.extend(try_lines)
+
+        # Check error flag after TRY block
+        lines.extend([
+            f"    ; Check error flag after TRY block",
+            f"    MOV P0,[0x{error_flag_addr:04X}]",
+            f"    CMP P0,0",
+            f"    JNZ {catch_label}",  # Jump to CATCH if error occurred
+            f"    JMP {end_label}",    # Skip CATCH if no error
+        ])
+
+        # Parse CATCH block if present
+        if catch_found:
+            lines.append(f"{catch_label}:")
+            i += 1  # Skip CATCH
+
+            # Parse optional error variable
+            error_var = None
+            if i < len(tokens) and tokens[i].isalpha():
+                error_var = tokens[i]
+                i += 1
+
+            # Parse CATCH block until END TRY
+            catch_tokens = []
+            while i < len(tokens):
+                token = tokens[i].upper()
+                if token == "END" and i + 1 < len(tokens) and tokens[i + 1].upper() == "TRY":
+                    i += 2  # Skip END TRY
+                    break
+                catch_tokens.append(tokens[i])
+                i += 1
+
+            # Parse CATCH block
+            if catch_tokens:
+                # If error variable specified, load error code into it
+                if error_var:
+                    var_addr = self._get_variable_address(error_var)
+                    catch_lines = [
+                        f"    ; Load error code into {error_var}",
+                        f"    MOV P0,[0x{error_flag_addr:04X}]",
+                        f"    MOV [0x{var_addr:04X}],P0",
+                    ]
+                else:
+                    catch_lines = []
+
+                # Parse the catch block
+                catch_body_lines = self._parse_token_block(catch_tokens, "", "")
+                catch_lines.extend(catch_body_lines)
+                lines.extend(catch_lines)
+
+        lines.extend([
+            f"{end_label}:",
+            f"    ; TRY/CATCH block end",
+        ])
+
+        return lines, i
+
     def _parse_token_block(self, tokens: List[str], else_label: str, end_label: str) -> List[str]:
         """Parse a block of tokens, handling ELSE/ELSEIF within IF"""
         lines = []
@@ -906,7 +1309,7 @@ class NoBasicCompiler:
         token = tokens[i].upper()
         return token in [
             "CLRHOME", "DISP", "FOR", "IF", "INPUT", "PROMPT", "WHILE", "WEND",
-            "PAUSE", "END", "GOTO", "LBL", "DEFINE", "LINE", "FILL", "PXLON",
+            "PAUSE", "END", "GOTO", "LBL", "DEFINE", "STRUCT", "LINE", "FILL", "PXLON",
             "PXLOFF", "PXLCHANGE", "PTON", "PTOFF", "PTCHANGE", "PLAY", "STOP",
             "SOUND", "DIM", "MATRIX", "CALL", "RETURN", "NEXT", "SELECT", "CASE",
             "CASEELSE"
@@ -929,6 +1332,9 @@ class NoBasicCompiler:
 
         elif token == "IF":
             return self._compile_if(tokens, i)
+
+        elif token == "TRY":
+            return self._compile_try(tokens, i)
 
         elif token == "INPUT":
             return self._compile_input(tokens, i)
@@ -959,6 +1365,9 @@ class NoBasicCompiler:
 
         elif token == "DEFINE":
             return self._compile_define(tokens, i)
+
+        elif token == "STRUCT":
+            return self._compile_struct(tokens, i)
 
         elif token == "LINE":
             return self._compile_line(tokens, i)
@@ -993,6 +1402,9 @@ class NoBasicCompiler:
         elif token == "STOP":
             return self._compile_stop(tokens, i)
 
+        elif token == "SPLAY":
+            return self._compile_splay(tokens, i)
+
         elif token == "SOUND":
             return self._compile_sound(tokens, i)
 
@@ -1020,6 +1432,14 @@ class NoBasicCompiler:
 
         elif token == "CASEELSE":
             return self._compile_case_else(tokens, i)
+
+        elif token == "BREAK":
+            lines = self._compile_break()
+            return lines, i + 1
+
+        elif token == "CONTINUE":
+            lines = self._compile_continue()
+            return lines, i + 1
 
         else:
             # Unknown statement, skip it
@@ -1085,6 +1505,13 @@ class NoBasicCompiler:
         # Store end label for WEND
         self.labels["current_while_end"] = end_label
         self.labels["current_while_loop"] = loop_label
+        
+        # Push to loop stack for BREAK/CONTINUE
+        self.loop_stack.append({
+            'start': loop_label,
+            'end': end_label,
+            'type': 'while'
+        })
 
         return lines, i
 
@@ -1093,23 +1520,48 @@ class NoBasicCompiler:
         end_label = self.labels.get("current_while_end", "while_end")
         loop_label = self.labels.get("current_while_loop", "while_loop")
 
-        return [
+        lines = [
             f"    JMP {loop_label}",
             f"{end_label}:",
         ]
+        
+        # Pop from loop stack if this is a WHILE loop
+        if self.loop_stack and self.loop_stack[-1]['type'] == 'while':
+            self.loop_stack.pop()
+
+        return lines
 
     def _compile_assignment(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
-        """Compile variable or list assignment with optimizations"""
+        """Compile variable, list, array, or struct field assignment with optimizations"""
         target_name = tokens[i]
         i += 1  # Skip target name
         
+        # Check if this is a struct field assignment (instance.field = ...)
+        is_struct_field_assignment = False
+        instance_name = ""
+        field_name = ""
+        
+        if tokens[i] == '.':
+            # Struct field assignment like player.x = 10
+            is_struct_field_assignment = True
+            instance_name = target_name.upper()
+            i += 1  # Skip '.'
+            
+            if i >= len(tokens):
+                raise ValueError("Expected field name after '.'")
+            
+            field_name = tokens[i].upper()
+            i += 1
+            
         # Check if this is a list assignment (L1(index) = ...)
         is_list_assignment = False
+        is_array_assignment = False
         list_name = ""
+        array_name = ""
         index_tokens = []
         
         if tokens[i] == '(':
-            # This is a list assignment
+            # This could be a list assignment
             is_list_assignment = True
             list_name = target_name.upper()
             i += 1  # Skip '('
@@ -1126,6 +1578,24 @@ class NoBasicCompiler:
                 index_tokens.append(tokens[i])
                 i += 1
             i += 1  # Skip ')'
+        elif tokens[i] == '[':
+            # This is an array assignment
+            is_array_assignment = True
+            array_name = target_name.upper()
+            i += 1  # Skip '['
+            
+            # Collect index tokens until ']'
+            bracket_count = 1
+            while i < len(tokens) and bracket_count > 0:
+                if tokens[i] == '[':
+                    bracket_count += 1
+                elif tokens[i] == ']':
+                    bracket_count -= 1
+                    if bracket_count == 0:
+                        break
+                index_tokens.append(tokens[i])
+                i += 1
+            i += 1  # Skip ']'
         
         if tokens[i] != '=':
             raise ValueError("Expected '=' in assignment")
@@ -1138,21 +1608,90 @@ class NoBasicCompiler:
         lines.extend(expr_lines)
         
         if is_list_assignment:
-            # For now, simple list assignment: assume index is a constant
-            # TODO: Handle complex index expressions
-            if len(index_tokens) == 1 and index_tokens[0].isdigit():
-                index = int(index_tokens[0])
-                list_addr = self._get_list_address(list_name)
-                
-                value_reg = self._get_current_register()
-                
-                lines.extend([
-                    f"    ; Store to {list_name}({index})",
-                    f"    LEA P2,[{list_addr} + {index}*2]",  # Calculate address with LEA
-                    f"    MOV [P2],{value_reg}",  # Direct address calculation
-                ])
+            # Parse complex index expressions for lists
+            index_lines, remaining_tokens = self._parse_tokens_for_expression(index_tokens)
+            lines.extend(index_lines)
+            
+            list_addr = self._get_list_address(list_name)
+            index_reg = self._get_current_register()
+            value_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+            
+            lines.extend([
+                f"    ; Store to {list_name}[{index_reg}]",
+                f"    LEA P2,[{list_addr} + {index_reg}*2]",  # Calculate address with LEA
+                f"    MOV [P2],{value_reg}",  # Store value
+            ])
+            
+            # Free the index register
+            self._free_register(index_reg)
+        elif is_array_assignment:
+            # Array assignment: parse index expression
+            index_lines, remaining_tokens = self._parse_tokens_for_expression(index_tokens)
+            lines.extend(index_lines)
+            
+            # Get array address
+            if array_name in self.arrays:
+                array_addr = self.arrays[array_name]['address']
+                array_info = self.arrays[array_name]
             else:
-                raise ValueError(f"Complex list indices not yet supported: {index_tokens}")
+                # Fallback to variable address for compatibility
+                array_addr = self._get_variable_address(array_name)
+                array_info = None
+            
+            index_reg = self._get_current_register()  # Top of stack is the index result
+            value_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()  # Previous is the value result
+            
+            lines.append(f"    ; Store to {array_name}[{index_reg}]")
+            
+            # Add bounds checking if we have array info
+            if array_info and 'size_addr' in array_info:
+                size_addr = array_info['size_addr']
+                bounds_check_label = self._generate_label("bounds_ok")
+                lines.extend([
+                    f"    ; Bounds check: 0 <= {index_reg} < [{size_addr}]",
+                    f"    MOV P3,[0x{size_addr:04X}]",  # Load size into P3
+                    f"    CMP {index_reg},P3",
+                    f"    JC {bounds_check_label}",  # Jump if index < size (unsigned)
+                    f"    ; Bounds check failed - index out of range",
+                    f"    ; For now, continue execution (TODO: proper error handling)",
+                    f"{bounds_check_label}:",
+                ])
+            
+            lines.extend([
+                f"    LEA P2,[0x{array_addr:04X} + {index_reg}*2]",  # Calculate address with LEA
+                f"    MOV [P2],{value_reg}",  # Store value
+            ])
+            
+            # Free the index register
+            self._free_register(index_reg)
+        elif is_struct_field_assignment:
+            # Struct field assignment: instance.field = value
+            # Verify instance exists
+            if instance_name not in self.struct_instances:
+                raise ValueError(f"Undefined struct instance '{instance_name}'")
+            
+            instance_info = self.struct_instances[instance_name]
+            struct_name = instance_info['struct_name']
+            instance_addr = instance_info['address']
+            
+            # Verify struct and field exist
+            if struct_name not in self.structs:
+                raise ValueError(f"Struct definition for '{struct_name}' not found")
+            
+            struct_info = self.structs[struct_name]
+            if field_name not in struct_info['fields']:
+                raise ValueError(f"Field '{field_name}' not found in struct '{struct_name}'")
+            
+            field_offset = struct_info['fields'][field_name]['offset']
+            field_addr = instance_addr + field_offset
+            
+            # Get the value register
+            value_reg = self._get_current_register()
+            
+            lines.extend([
+                f"    ; Store to {instance_name}.{field_name}",
+                f"    MOV [0x{field_addr:04X}],{value_reg}",
+            ])
         else:
             # Regular variable assignment
             var_addr = self._get_variable_address(target_name)
@@ -1204,7 +1743,7 @@ class NoBasicCompiler:
 
     def _parse_additive_expression(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
         """Parse additive expressions (+, -) - lowest precedence"""
-        lines, i = self._parse_multiplicative_expression(tokens, i)
+        lines, i = self._parse_bitwise_expression(tokens, i)
 
         while i < len(tokens) and tokens[i] in ['+', '-']:
             op = tokens[i]
@@ -1214,7 +1753,7 @@ class NoBasicCompiler:
             left_reg = self._get_current_register()
             
             # Parse right operand
-            right_lines, i = self._parse_multiplicative_expression(tokens, i)
+            right_lines, i = self._parse_bitwise_expression(tokens, i)
             lines.extend(right_lines)
             right_reg = self._get_current_register()
 
@@ -1238,6 +1777,40 @@ class NoBasicCompiler:
                     lines.append(f"    ADD {left_reg},{right_reg}")
                 elif op == '-':
                     lines.append(f"    SUB {left_reg},{right_reg}")
+
+            # Free the right register
+            self._free_register(right_reg)
+
+        return lines, i
+
+    def _parse_bitwise_expression(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Parse bitwise expressions (AND, OR, XOR, SHL, SHR)"""
+        lines, i = self._parse_multiplicative_expression(tokens, i)
+
+        while i < len(tokens) and tokens[i] in ['AND', 'OR', 'XOR', 'SHL', 'SHR']:
+            op = tokens[i]
+            i += 1
+
+            # Save current result register
+            left_reg = self._get_current_register()
+            
+            # Parse right operand
+            right_lines, i = self._parse_multiplicative_expression(tokens, i)
+            lines.extend(right_lines)
+            right_reg = self._get_current_register()
+
+            # Perform bitwise operation
+            if op == 'AND':
+                lines.append(f"    AND {left_reg},{right_reg}")
+            elif op == 'OR':
+                lines.append(f"    OR {left_reg},{right_reg}")
+            elif op == 'XOR':
+                lines.append(f"    XOR {left_reg},{right_reg}")
+            elif op == 'SHL':
+
+                lines.append(f"    SHL {left_reg},{right_reg}")
+            elif op == 'SHR':
+                lines.append(f"    SHR {left_reg},{right_reg}")
 
             # Free the right register
             self._free_register(right_reg)
@@ -1314,6 +1887,15 @@ class NoBasicCompiler:
                 i += 1
             else:
                 raise ValueError("Expected number after unary minus")
+        elif token == 'NOT':
+            # Bitwise NOT unary operator
+            i += 1
+            # Parse the operand
+            operand_lines, i = self._parse_primary_expression(tokens, i)
+            lines.extend(operand_lines)
+            operand_reg = self._get_current_register()
+            # Apply NOT operation
+            lines.append(f"    NOT {operand_reg}")
         elif token == '[':
             # Array literal like [BLACK, RED, GREEN, BLUE]
             i += 1  # Skip '['
@@ -1338,22 +1920,34 @@ class NoBasicCompiler:
             else:
                 raise ValueError("Missing closing bracket in array literal")
             
-            # For now, return the address of the first element as the array base
-            # TODO: Implement proper array storage and return array base address
+            # Allocate array storage dynamically
             if array_elements:
                 result_reg = self._allocate_register()
-                # Store array elements in consecutive memory locations starting at a temp address
-                array_base = 0x7000  # Temporary array storage area
+                # Calculate array size: number of elements * 2 bytes per element + 2 bytes for count
+                array_size = len(array_elements) * 2 + 2
+                array_base = self.array_allocation_ptr
+                
+                # Store array size at the beginning
+                lines.extend([
+                    f"    ; Allocate array of {len(array_elements)} elements",
+                    f"    MOV [0x{array_base:04X}],{len(array_elements)}",  # Store element count
+                ])
+                
+                # Store array elements starting after the count
+                element_addr = array_base + 2
                 for idx, elem_reg in enumerate(array_elements):
                     lines.extend([
                         f"    ; Store array element {idx}",
-                        f"    MOV [0x{array_base + idx * 2:04X}],{elem_reg}",
+                        f"    MOV [0x{element_addr + idx * 2:04X}],{elem_reg}",
                     ])
                     if idx > 0:  # Free all but the last register
                         self._free_register(elem_reg)
                 
                 # Return array base address
                 lines.append(f"    MOV {result_reg},{array_base}")
+                
+                # Update allocation pointer
+                self.array_allocation_ptr += array_size
             else:
                 # Empty array
                 result_reg = self._allocate_register()
@@ -1382,7 +1976,15 @@ class NoBasicCompiler:
             result_reg = self._allocate_register()
             lines.append(f"    MOV {result_reg},{color_value}")
             i += 1
-        elif token.isalpha() or '_' in token or '$' in token or (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit()):
+        elif token.upper() in self.boolean_constants:
+            # Boolean constant
+            bool_value = self.boolean_constants[token.upper()]
+            result_reg = self._allocate_register()
+            lines.append(f"    MOV {result_reg},{bool_value}")
+            i += 1
+        elif (token.isalpha() or '_' in token or '$' in token or 
+              (token and token[0].isalpha() and all(c.isalnum() or c in '_$' for c in token))) or \
+             (token.upper().startswith('L') and len(token) == 2 and token[1].isdigit()):
             # Check if this is a list access (L1(index))
             if token.upper().startswith('L') and len(token) == 2 and token[1].isdigit():
                 # List access like L1, L2, etc.
@@ -1414,6 +2016,43 @@ class NoBasicCompiler:
                     result_reg = self._allocate_register()
                     lines.extend(self._load_variable_to_reg(token, result_reg))
                     i += 1
+            # Check if this is a struct field access (instance.field)
+            elif i + 1 < len(tokens) and tokens[i + 1] == '.':
+                # Struct field access like player.x or enemy.health
+                instance_name = token.upper()
+                i += 2  # Skip instance name and '.'
+                
+                if i >= len(tokens):
+                    raise ValueError("Expected field name after '.'")
+                
+                field_name = tokens[i].upper()
+                i += 1
+                
+                # Verify instance exists
+                if instance_name not in self.struct_instances:
+                    raise ValueError(f"Undefined struct instance '{instance_name}'")
+                
+                instance_info = self.struct_instances[instance_name]
+                struct_name = instance_info['struct_name']
+                instance_addr = instance_info['address']
+                
+                # Verify struct and field exist
+                if struct_name not in self.structs:
+                    raise ValueError(f"Struct definition for '{struct_name}' not found")
+                
+                struct_info = self.structs[struct_name]
+                if field_name not in struct_info['fields']:
+                    raise ValueError(f"Field '{field_name}' not found in struct '{struct_name}'")
+                
+                field_offset = struct_info['fields'][field_name]['offset']
+                field_addr = instance_addr + field_offset
+                
+                # Load the field value
+                result_reg = self._allocate_register()
+                lines.extend([
+                    f"    ; Load {instance_name}.{field_name} into {result_reg}",
+                    f"    MOV {result_reg},[0x{field_addr:04X}]",
+                ])
             # Check if this is an array access (array[index])
             elif i + 1 < len(tokens) and tokens[i + 1] == '[':
                 # Array access like TEST_COLORS[I]
@@ -1430,14 +2069,91 @@ class NoBasicCompiler:
                     raise ValueError("Missing closing bracket in array access")
                 
                 # Generate code to load from array
-                # For now, assume arrays are stored as consecutive 16-bit values starting at variable address
-                array_addr = self._get_variable_address(array_name)
+                # Use allocated array address
+                if array_name in self.arrays:
+                    array_addr = self.arrays[array_name]['address']
+                    array_info = self.arrays[array_name]
+                else:
+                    # Fallback to variable address for compatibility
+                    array_addr = self._get_variable_address(array_name)
+                    array_info = None
+                
                 index_reg = self._get_current_register()  # Save index register
                 result_reg = self._allocate_register()    # Allocate result register
                 
                 lines.extend([
                     f"    ; Load {array_name}[{index_reg}] into {result_reg}",
-                    f"    LEA {result_reg},[{array_addr} + {index_reg}*2]",  # Calculate address with LEA
+                ])
+                
+                # Add bounds checking if we have array info
+                if array_info and 'size_addr' in array_info:
+                    size_addr = array_info['size_addr']
+                    bounds_check_label = self._generate_label("bounds_ok")
+                    lines.extend([
+                        f"    ; Bounds check: 0 <= {index_reg} < [{size_addr}]",
+                        f"    MOV P3,[0x{size_addr:04X}]",  # Load size into P3
+                        f"    CMP {index_reg},P3",
+                        f"    JC {bounds_check_label}",  # Jump if index < size (unsigned)
+                        f"    ; Bounds check failed - index out of range",
+                        f"    ; For now, continue execution (TODO: proper error handling)",
+                        f"{bounds_check_label}:",
+                    ])
+                
+                lines.extend([
+                    f"    LEA {result_reg},[0x{array_addr:04X} + {index_reg}*2]",  # Calculate address with LEA
+                    f"    MOV {result_reg},[{result_reg}]",     # Load value
+                ])
+                
+                # Free the index register
+                self._free_register(index_reg)
+            # Check if this is a general array access (array(index)) - for compatibility
+            elif i + 1 < len(tokens) and tokens[i + 1] == '(' and not self._is_function_name(token):
+                # Array access like Notes(I) - treat as array access if not a known function
+                array_name = token
+                i += 2  # Skip array name and '('
+                
+                # Parse index expression
+                index_lines, i = self._parse_additive_expression(tokens, i)
+                lines.extend(index_lines)
+                
+                if i < len(tokens) and tokens[i] == ')':
+                    i += 1
+                else:
+                    raise ValueError("Missing closing parenthesis in array access")
+                
+                # Generate code to load from array
+                # Use allocated array address
+                if array_name in self.arrays:
+                    array_addr = self.arrays[array_name]['address']
+                    array_info = self.arrays[array_name]
+                else:
+                    # Fallback to variable address for compatibility
+                    array_addr = self._get_variable_address(array_name)
+                    array_info = None
+                
+                index_reg = self._get_current_register()  # Save index register
+                result_reg = self._allocate_register()    # Allocate result register
+                
+                lines.extend([
+                    f"    ; Load {array_name}({index_reg}) into {result_reg}",
+                ])
+                
+                # Add bounds checking if we have array info
+                if array_info and 'size_addr' in array_info:
+                    size_addr = array_info['size_addr']
+                    bounds_check_label = self._generate_label("bounds_ok")
+                    lines.extend([
+                        f"    ; Bounds check: 0 <= {index_reg} < [{size_addr}]",
+                        f"    MOV P3,[0x{size_addr:04X}]",  # Load size into P3
+                        f"    CMP {index_reg},P3",
+                        f"    JC {bounds_check_label}",  # Jump if index < size (unsigned)
+                        f"    ; Bounds check failed - index out of range",
+                        f"    ; For now, continue execution (TODO: proper error handling)",
+                        f"{bounds_check_label}:",
+                    ])
+                
+                lines.extend([
+                    f"    LEA {result_reg},[0x{array_addr:04X} + {index_reg}*2]",  # Calculate address with LEA
                     f"    MOV {result_reg},[{result_reg}]",     # Load value
                 ])
                 
@@ -1475,34 +2191,75 @@ class NoBasicCompiler:
                         f"    MOV {current_reg},P1",      # Return string address
                         f"    POP {current_reg}",
                     ])
-                elif func_name in ['MIN', 'MAX']:
-                    # MIN/MAX functions take two arguments
-                    arg1_lines, i = self._parse_additive_expression(tokens, i)
-                    lines.extend(arg1_lines)
+                elif func_name == 'POW':
+                    # POW(base, exponent) - power function
+                    base_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(base_lines)
                     if i < len(tokens) and tokens[i] == ',':
                         i += 1  # Skip comma
                     else:
-                        raise ValueError(f"Expected comma in {func_name}(arg1, arg2)")
+                        raise ValueError("Expected comma in POW(base, exponent)")
                     
-                    arg2_lines, i = self._parse_additive_expression(tokens, i)
-                    lines.extend(arg2_lines)
+                    exp_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(exp_lines)
                     
                     if i < len(tokens) and tokens[i] == ')':
                         i += 1
                     else:
-                        raise ValueError(f"Missing closing parenthesis in {func_name}()")
+                        raise ValueError("Missing closing parenthesis in POW()")
                     
                     # Get the two argument registers
-                    arg2_reg = self._get_current_register()
-                    arg1_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    exp_reg = self._get_current_register()
+                    base_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
                     
                     lines.extend([
-                        f"    ; {func_name}({arg1_reg}, {arg2_reg})",
-                        f"    {func_name} {arg1_reg},{arg2_reg}",  # MIN/MAX instruction
+                        f"    ; POW({base_reg}, {exp_reg})",
+                        f"    POWR {base_reg},{exp_reg}",  # Power instruction
                     ])
                     
-                    # Free arg2 register, keep arg1 as result
-                    self._free_register(arg2_reg)
+                    # Free exp register, keep base as result
+                    self._free_register(exp_reg)
+                elif func_name == 'RND':
+                    # RND() or RND(max) - random number
+                    if i < len(tokens) and tokens[i] == ')':
+                        # RND() - random number 0-255
+                        i += 1
+                        current_reg = self._allocate_register()
+                        lines.append(f"    RND {current_reg}")
+                    else:
+                        # RND(max) - random number 0 to max-1
+                        max_lines, i = self._parse_additive_expression(tokens, i)
+                        lines.extend(max_lines)
+                        if i < len(tokens) and tokens[i] == ')':
+                            i += 1
+                        else:
+                            raise ValueError("Missing closing parenthesis in RND()")
+                        
+                        max_reg = self._get_current_register()
+                        lines.extend([
+                            f"    ; RND(0 to {max_reg}-1)",
+                            f"    RNDR {max_reg},0,{max_reg}",  # Random in range 0 to max-1
+                        ])
+                elif func_name == 'LOWER':
+                    # LOWER(string) - convert string to lowercase
+                    lines, i = self._parse_additive_expression(tokens, i)  # Parse string argument
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in LOWER()")
+                    # Apply STRLWR to the string
+                    current_reg = self._get_current_register()
+                    lines.append(f"    STRLWR {current_reg}")
+                elif func_name == 'UPPER':
+                    # UPPER(string) - convert string to uppercase
+                    lines, i = self._parse_additive_expression(tokens, i)  # Parse string argument
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in UPPER()")
+                    # Apply STRUPR to the string
+                    current_reg = self._get_current_register()
+                    lines.append(f"    STRUPR {current_reg}")
                 elif func_name in ['SIN', 'COS', 'TAN', 'ASIN', 'ACOS', 'ATAN', 'SQRT', 'LOG', 'EXP', 'ABS', 'FLOOR', 'CEIL', 'ROUND']:
                     # Math functions
                     lines, i = self._parse_additive_expression(tokens, i)  # Parse argument
@@ -1571,6 +2328,90 @@ class NoBasicCompiler:
                         f"    ; SHADE({current_reg})",
                         f"    AND {current_reg},15",  # color & 0x0F (15 = 0b1111)
                     ])
+                elif func_name == 'MIN':
+                    # MIN(a, b) - return minimum of two values
+                    # Parse first argument
+                    arg1_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(arg1_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MIN(a, b)")
+                    
+                    # Parse second argument
+                    arg2_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(arg2_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in MIN()")
+                    
+                    # Get the two argument registers
+                    arg2_reg = self._get_current_register()
+                    arg1_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; MIN({arg1_reg}, {arg2_reg})",
+                        f"    MIN {arg1_reg},{arg2_reg}",  # MIN result,arg1,arg2
+                    ])
+                    
+                    # Free arg2 register, keep arg1 as result
+                    self._free_register(arg2_reg)
+                elif func_name == 'MAX':
+                    # MAX(a, b) - return maximum of two values
+                    # Parse first argument
+                    arg1_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(arg1_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in MAX(a, b)")
+                    
+                    # Parse second argument
+                    arg2_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(arg2_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in MAX()")
+                    
+                    # Get the two argument registers
+                    arg2_reg = self._get_current_register()
+                    arg1_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; MAX({arg1_reg}, {arg2_reg})",
+                        f"    MAX {arg1_reg},{arg2_reg}",  # MAX result,arg1,arg2
+                    ])
+                    
+                    # Free arg2 register, keep arg1 as result
+                    self._free_register(arg2_reg)
+                elif func_name == 'KEYIN':
+                    # KEYIN() - read key from keyboard buffer
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in KEYIN()")
+                    
+                    current_reg = self._allocate_register()
+                    lines.extend([
+                        f"    ; KEYIN()",
+                        f"    KEYIN {current_reg}",  # Read key into register
+                    ])
+                elif func_name == 'KEYSTAT':
+                    # KEYSTAT() - check if key is available
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in KEYSTAT()")
+                    
+                    current_reg = self._allocate_register()
+                    lines.extend([
+                        f"    ; KEYSTAT()",
+                        f"    KEYSTAT {current_reg}",  # Check key status into register
+                    ])
                 elif func_name == 'LEN':
                     # LEN(string) - get string length using STRLEN
                     lines, i = self._parse_additive_expression(tokens, i)  # Parse string argument
@@ -1624,9 +2465,11 @@ class NoBasicCompiler:
                     # Allocate temp buffer for result
                     lines.extend([
                         f"    ; LEFT({str_reg}, {count_reg})",
+                        f"    PUSH {str_reg}",       # Save string address
+                        f"    PUSH {count_reg}",     # Save count
                         f"    MOV P0,0x6000",        # Temp buffer
-                        f"    MOV P1,{str_reg}",     # Source string
-                        f"    MOV P2,{count_reg}",   # Character count
+                        f"    POP P2",               # P2 = count
+                        f"    POP P1",               # P1 = string address
                         f"    CALL left_substr",
                         f"    MOV {str_reg},P0",     # Return temp buffer address
                     ])
@@ -1659,9 +2502,11 @@ class NoBasicCompiler:
                     # Allocate temp buffer for result
                     lines.extend([
                         f"    ; RIGHT({str_reg}, {count_reg})",
+                        f"    PUSH {str_reg}",       # Save string address
+                        f"    PUSH {count_reg}",     # Save count
                         f"    MOV P0,0x6000",        # Temp buffer
-                        f"    MOV P1,{str_reg}",     # Source string
-                        f"    MOV P2,{count_reg}",   # Character count
+                        f"    POP P2",               # P2 = count
+                        f"    POP P1",               # P1 = string address
                         f"    CALL right_substr",
                         f"    MOV {str_reg},P0",     # Return temp buffer address
                     ])
@@ -1703,10 +2548,14 @@ class NoBasicCompiler:
                     # Allocate temp buffer for result
                     lines.extend([
                         f"    ; MID({str_reg}, {start_reg}, {count_reg})",
+                        f"    PUSH {str_reg}",       # Save string address
+                        f"    PUSH {start_reg}",     # Save start position
+                        f"    PUSH {count_reg}",     # Save count
+                        f"    DEC {start_reg}",      # Convert 1-based to 0-based indexing
                         f"    MOV P0,0x6000",        # Temp buffer
-                        f"    MOV P1,{str_reg}",     # Source string
-                        f"    MOV P2,{start_reg}",   # Start position (0-based)
-                        f"    MOV P3,{count_reg}",   # Character count
+                        f"    POP P3",               # P3 = count
+                        f"    POP P2",               # P2 = start position (0-based)
+                        f"    POP P1",               # P1 = string address
                         f"    CALL mid_substr",
                         f"    MOV {str_reg},P0",     # Return temp buffer address
                     ])
@@ -1739,16 +2588,157 @@ class NoBasicCompiler:
                     
                     lines.extend([
                         f"    ; INSTR({haystack_reg}, {needle_reg})",
-                        f"    MOV P0,0x6000",        # Temp buffer for result
-                        f"    MOV P1,{haystack_reg}", # Haystack
-                        f"    MOV P2,{needle_reg}",  # Needle
-                        f"    MOV P3,255",           # Max search length
-                        f"    STREXT P0,P1,P2,P3",   # Find needle in haystack
-                        f"    MOV {haystack_reg},P0", # Return position (0 if not found)
+                        f"    PUSH {haystack_reg}",  # Save haystack address
+                        f"    PUSH {needle_reg}",    # Save needle address
+                        f"    MOV P0,0x6000",        # Temp buffer (not used for INSTR)
+                        f"    POP P2",               # P2 = needle address
+                        f"    POP P1",               # P1 = haystack address
+                        f"    CALL instr_substr",
+                        f"    MOV {haystack_reg},P0", # Return position in haystack_reg
                     ])
                     
                     # Free needle register, keep haystack_reg as result
                     self._free_register(needle_reg)
+                elif func_name == 'TRIM':
+                    # TRIM(string) - remove leading and trailing whitespace
+                    lines, i = self._parse_additive_expression(tokens, i)  # Parse string argument
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in TRIM()")
+                    
+                    current_reg = self._get_current_register()
+                    lines.extend([
+                        f"    ; TRIM({current_reg})",
+                        f"    MOV P0,0x6000",        # Temp buffer
+                        f"    MOV P1,{current_reg}", # Source string
+                        f"    CALL trim_string",
+                        f"    MOV {current_reg},P0", # Return trimmed string address
+                    ])
+                elif func_name == 'REPLACE':
+                    # REPLACE(string, old_substr, new_substr) - replace all occurrences
+                    # Parse string argument
+                    str_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(str_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in REPLACE(string, old_substr, new_substr)")
+                    
+                    # Parse old_substr argument
+                    old_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(old_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in REPLACE(string, old_substr, new_substr)")
+                    
+                    # Parse new_substr argument
+                    new_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(new_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in REPLACE()")
+                    
+                    # Get registers
+                    new_reg = self._get_current_register()
+                    old_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    str_reg = self.register_stack[-3] if len(self.register_stack) >= 3 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; REPLACE({str_reg}, {old_reg}, {new_reg})",
+                        f"    MOV P0,0x6000",        # Temp buffer
+                        f"    MOV P1,{str_reg}",     # Source string
+                        f"    MOV P2,{old_reg}",     # Old substring
+                        f"    MOV P3,{new_reg}",     # New substring
+                        f"    CALL replace_string",
+                        f"    MOV {str_reg},P0",     # Return result string address
+                    ])
+                    
+                    # Free registers, keep str_reg as result
+                    self._free_register(new_reg)
+                    self._free_register(old_reg)
+                elif func_name == 'SPLIT':
+                    # SPLIT(string, delimiter) - split string by delimiter, return array base address
+                    # Parse string argument
+                    str_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(str_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in SPLIT(string, delimiter)")
+                    
+                    # Parse delimiter argument
+                    delim_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(delim_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in SPLIT()")
+                    
+                    # Get registers
+                    delim_reg = self._get_current_register()
+                    str_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; SPLIT({str_reg}, {delim_reg})",
+                        f"    MOV P0,0x6100",        # Temp array storage area
+                        f"    MOV P1,{str_reg}",     # Source string
+                        f"    MOV P2,{delim_reg}",   # Delimiter
+                        f"    CALL split_string",
+                        f"    MOV {str_reg},P0",     # Return array base address
+                    ])
+                    
+                    # Free delim register, keep str_reg as result
+                    self._free_register(delim_reg)
+                elif func_name == 'JOIN':
+                    # JOIN(array_base, delimiter, count) - join array elements with delimiter
+                    # Parse array_base argument
+                    array_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(array_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in JOIN(array_base, delimiter, count)")
+                    
+                    # Parse delimiter argument
+                    delim_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(delim_lines)
+                    if i < len(tokens) and tokens[i] == ',':
+                        i += 1  # Skip comma
+                    else:
+                        raise ValueError("Expected comma in JOIN(array_base, delimiter, count)")
+                    
+                    # Parse count argument
+                    count_lines, i = self._parse_additive_expression(tokens, i)
+                    lines.extend(count_lines)
+                    
+                    if i < len(tokens) and tokens[i] == ')':
+                        i += 1
+                    else:
+                        raise ValueError("Missing closing parenthesis in JOIN()")
+                    
+                    # Get registers
+                    count_reg = self._get_current_register()
+                    delim_reg = self.register_stack[-2] if len(self.register_stack) >= 2 else self._allocate_register()
+                    array_reg = self.register_stack[-3] if len(self.register_stack) >= 3 else self._allocate_register()
+                    
+                    lines.extend([
+                        f"    ; JOIN({array_reg}, {delim_reg}, {count_reg})",
+                        f"    MOV P0,0x6000",        # Temp buffer for result
+                        f"    MOV P1,{array_reg}",   # Array base
+                        f"    MOV P2,{delim_reg}",   # Delimiter
+                        f"    MOV P3,{count_reg}",   # Element count
+                        f"    CALL join_array",
+                        f"    MOV {array_reg},P0",   # Return joined string address
+                    ])
+                    
+                    # Free registers, keep array_reg as result
+                    self._free_register(count_reg)
+                    self._free_register(delim_reg)
                 elif func_name == 'MEMSET':
                     # MEMSET(address, value, length) - set memory block to value
                     # Parse address argument
@@ -1950,7 +2940,7 @@ class NoBasicCompiler:
                         raise ValueError("Expected comma in MEMSWAP(addr1, addr2, length)")
                     
                     addr2_lines, i = self._parse_additive_expression(tokens, i)
-                    lines.extend(addr2_lines)
+                    lines.extend(addr2Lines)
                     if i < len(tokens) and tokens[i] == ',':
                         i += 1  # Skip comma
                     else:
@@ -2073,7 +3063,7 @@ class NoBasicCompiler:
             lines.append(f"    DIV {left_reg},{right_reg}")
         elif op == 'MOD':
             lines.append(f"    MOD {left_reg},{right_reg}")
-        
+
         return lines
 
     def compile_program(self, nobasic_source: str, output_file: str):
@@ -2233,39 +3223,91 @@ class NoBasicCompiler:
     def _load_variable(self, var_name: str, dest_register: str = "P0") -> List[str]:
         """Generate code to load a variable into a register"""
         var_addr = self._get_variable_address(var_name)
-        return [
-            f"    ; Load {var_name} into {dest_register}",
-            f"    MOV {dest_register},[0x{var_addr:04X}]",  # Direct memory access
-        ]
+        if var_addr == -1:
+            # This is a special register
+            return [
+                f"    ; Load {var_name} into {dest_register}",
+                f"    MOV {dest_register},{var_name}",  # Direct register access
+            ]
+        else:
+            return [
+                f"    ; Load {var_name} into {dest_register}",
+                f"    MOV {dest_register},[0x{var_addr:04X}]",  # Direct memory access
+            ]
 
     def _load_variable_to_reg(self, var_name: str, dest_register: str) -> List[str]:
         """Generate code to load a variable into a specific register"""
         var_addr = self._get_variable_address(var_name)
-        return [
-            f"    ; Load {var_name} into {dest_register}",
-            f"    MOV {dest_register},[0x{var_addr:04X}]",  # Direct memory access
-        ]
+        if var_addr == -1:
+            # This is a special register
+            return [
+                f"    ; Load {var_name} into {dest_register}",
+                f"    MOV {dest_register},{var_name}",  # Direct register access
+            ]
+        else:
+            return [
+                f"    ; Load {var_name} into {dest_register}",
+                f"    MOV {dest_register},[0x{var_addr:04X}]",  # Direct memory access
+            ]
 
     def _store_variable(self, var_name: str, source_register: str = "P0") -> List[str]:
         """Generate code to store a register value into a variable"""
         var_addr = self._get_variable_address(var_name)
-        return [
-            f"    ; Store {source_register} into {var_name}",
-            f"    MOV [0x{var_addr:04X}],{source_register}",  # Direct memory access
-        ]
+        if var_addr == -1:
+            # This is a special register
+            return [
+                f"    ; Store {source_register} into {var_name}",
+                f"    MOV {var_name},{source_register}",  # Direct register access
+            ]
+        else:
+            return [
+                f"    ; Store {source_register} into {var_name}",
+                f"    MOV [0x{var_addr:04X}],{source_register}",  # Direct memory access
+            ]
 
     def _store_variable_from_reg(self, var_name: str, source_register: str) -> List[str]:
         """Generate code to store a register value into a variable"""
         var_addr = self._get_variable_address(var_name)
-        return [
-            f"    ; Store {source_register} into {var_name}",
-            f"    MOV [0x{var_addr:04X}],{source_register}",  # Direct memory access
-        ]
+        if var_addr == -1:
+            # This is a special register
+            return [
+                f"    ; Store {source_register} into {var_name}",
+                f"    MOV {var_name},{source_register}",  # Direct register access
+            ]
+        else:
+            return [
+                f"    ; Store {source_register} into {var_name}",
+                f"    MOV [0x{var_addr:04X}],{source_register}",  # Direct memory access
+            ]
 
     def _get_variable_address(self, var_name: str) -> int:
         """Get or allocate memory address for a variable"""
         # Normalize variable name by removing $ suffix (make it optional)
         var_name = var_name.upper().rstrip('$')
+        
+        # Check if this is a special register
+        special_registers = {
+            # Graphics registers
+            'VX': 'VX', 'VY': 'VY', 'VM': 'VM', 'VL': 'VL',
+            # Sound registers  
+            'SA': 'SA', 'SF': 'SF', 'SV': 'SV', 'SW': 'SW',
+            # Timer registers
+            'TT': 'TT', 'TM': 'TM', 'TC': 'TC', 'TS': 'TS'
+        }
+        
+        if var_name in special_registers:
+            # Return a negative value to indicate this is a special register
+            return -1
+        
+        # Check if this is a string variable (Str1-Str9)
+        # NOTE: String variables are now treated like regular variables
+        # They store the address of their string data, not the data itself
+        # if var_name.startswith('STR') and len(var_name) == 4 and var_name[3].isdigit() and var_name[3] in '123456789':
+        #     # String variables Str1-Str9 are allocated in STRING_START area
+        #     str_num = int(var_name[3])
+        #     addr = self.STRING_START + (str_num - 1) * 256  # 256 bytes per string
+        #     return addr
+        
         if var_name not in self.variables:
             # Allocate new variable address (2 bytes per variable)
             addr = self.VARIABLE_START + len(self.variables) * 2
@@ -2330,7 +3372,7 @@ class NoBasicCompiler:
             color_lines, i = self._parse_additive_expression(tokens, i)
             lines.extend(color_lines)
             color_reg = self._get_current_register()
-            color = color_reg  # Use register
+            color = color_reg
         else:
             color_reg = None
 
@@ -2754,6 +3796,14 @@ class NoBasicCompiler:
         lines.append("    SSTOP")
         return lines, i
 
+    def _compile_splay(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile Splay statement - start sound playback"""
+        lines = ["    ; Splay - start sound playback"]
+        i += 1  # Skip SPLAY
+
+        lines.append("    SPLAY")
+        return lines, i
+
     def _compile_sound(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
         """Compile Sound(Frequency, Duration[, Volume, Waveform]) statement"""
         lines = ["    ; Sound"]
@@ -2854,18 +3904,56 @@ class NoBasicCompiler:
         return lines, i
 
     def _compile_dim(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
-        """Compile DIM statement for array declaration"""
-        lines = ["    ; DIM - array declaration"]
+        """Compile DIM statement for array declaration or struct instance creation"""
+        lines = ["    ; DIM - declaration"]
         i += 1  # Skip DIM
 
         if i >= len(tokens):
-            raise ValueError("Expected array name after DIM")
+            raise ValueError("Expected variable name after DIM")
 
-        array_name = tokens[i]
+        var_name = tokens[i].upper()
         i += 1
 
+        # Check if this is a struct instance declaration (DIM var AS struct_name)
+        if i < len(tokens) and tokens[i].upper() == 'AS':
+            i += 1  # Skip 'AS'
+            
+            if i >= len(tokens):
+                raise ValueError("Expected struct name after AS")
+            
+            struct_name = tokens[i].upper()
+            i += 1
+            
+            # Verify struct exists
+            if struct_name not in self.structs:
+                raise ValueError(f"Undefined struct '{struct_name}'")
+            
+            struct_info = self.structs[struct_name]
+            struct_size = struct_info['size']
+            
+            # Allocate memory for the struct instance
+            instance_addr = self.array_allocation_ptr  # Reuse array allocation pointer
+            
+            # Store struct instance info
+            self.struct_instances[var_name] = {
+                'struct_name': struct_name,
+                'address': instance_addr
+            }
+            
+            lines.extend([
+                f"    ; Create struct instance {var_name} of type {struct_name}",
+                f"    ; Struct size: {struct_size} bytes",
+                f"    ; Instance address: 0x{instance_addr:04X}"
+            ])
+            
+            # Update allocation pointer
+            self.array_allocation_ptr += struct_size
+            
+            return lines, i
+        
+        # Original array declaration logic
         if i >= len(tokens) or tokens[i] != '(':
-            raise ValueError("Expected '(' after array name in DIM")
+            raise ValueError("Expected '(' after array name in DIM or 'AS' for struct instance")
 
         i += 1  # Skip '('
 
@@ -2881,20 +3969,44 @@ class NoBasicCompiler:
         # Get the size from the current register
         size_reg = self._get_current_register()
 
-        # Allocate memory for the array (size * 2 bytes per element)
-        # For now, store array info for later use
-        if not hasattr(self, 'arrays'):
-            self.arrays = {}
+        # Calculate actual memory needed: size * 2 bytes per element + 2 bytes for size storage
+        lines.append(f"    ; Calculate total memory needed: {size_reg} * 2 + 2")
+        lines.append(f"    MOV P2,{size_reg}")  # Copy size to P2
+        lines.append(f"    SHL P2,P2,1")        # Multiply by 2 (P2 = P2 * 2)
+        lines.append(f"    ADD P2,2")           # Add 2 for size storage
 
-        self.arrays[array_name] = {
-            'size_reg': size_reg,
-            'allocated': False
+        # Allocate memory for the array at runtime
+        array_addr = self.array_allocation_ptr
+        size_addr = array_addr  # Store size at the beginning of array data
+
+        # Store array info with proper size tracking
+        self.arrays[var_name] = {
+            'address': array_addr + 2,  # Data starts after size
+            'size_addr': size_addr,     # Address where size is stored
+            'size_reg': size_reg,       # Size register (for compilation time)
+            'allocated': True,
+            'max_elements': None        # Will be set at runtime
         }
 
+        # Update allocation pointer with actual size (P2 contains total bytes needed)
+        lines.append(f"    ; Update allocation pointer")
+        lines.append(f"    MOV P3,{self.array_allocation_ptr}")  # Current pointer
+        lines.append(f"    ADD P3,P2")                           # Add allocated size
+        lines.append(f"    MOV [0x{self.array_allocation_ptr - 2:04X}],P3")  # Store new pointer (using temp location)
+
+        # Store the size at size_addr
         lines.extend([
-            f"    ; Array {array_name} declared with size in {size_reg}",
-            f"    ; Memory will be allocated at runtime"
+            f"    ; Store array size at 0x{size_addr:04X}",
+            f"    MOV [0x{size_addr:04X}],{size_reg}",
+            f"    ; Array {var_name} data address: 0x{array_addr + 2:04X}",
+            f"    ; Runtime bounds checking enabled"
         ])
+
+        # Update the allocation pointer for next allocation
+        self.array_allocation_ptr += 1024  # Reserve reasonable space, actual size tracked at runtime
+
+        # Free the size register since we stored it
+        self._free_register(size_reg)
 
         return lines, i
 
@@ -2980,6 +4092,28 @@ class NoBasicCompiler:
             "    RET",
         ]
 
+    def _compile_break(self) -> List[str]:
+        """Compile Break statement"""
+        if not self.loop_stack:
+            raise ValueError("BREAK statement must be inside a loop")
+        
+        end_label = self.loop_stack[-1]['end']
+        return [
+            f"    ; Break",
+            f"    JMP {end_label}",
+        ]
+
+    def _compile_continue(self) -> List[str]:
+        """Compile Continue statement"""
+        if not self.loop_stack:
+            raise ValueError("CONTINUE statement must be inside a loop")
+        
+        start_label = self.loop_stack[-1]['start']
+        return [
+            f"    ; Continue",
+            f"    JMP {start_label}",
+        ]
+
     def _compile_next(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
         """Compile Next statement"""
         lines = []
@@ -3004,6 +4138,10 @@ class NoBasicCompiler:
                 ])
             else:
                 lines.append(f"    ; Warning: No loop found for variable {var_name}")
+
+        # Pop from loop stack if this is a FOR loop
+        if self.loop_stack and self.loop_stack[-1]['type'] == 'for':
+            self.loop_stack.pop()
 
         return lines, i
 
@@ -3159,6 +4297,8 @@ class NoBasicCompiler:
                             new_val = imm_val * op_val
                         elif op_parts[0].endswith("DIV") and op_val != 0:
                             new_val = imm_val // op_val  # Integer division
+                        elif op_parts[0].endswith("MOD") and op_val != 0:
+                            new_val = imm_val % op_val
                         else:
                             raise ValueError("Invalid operation")
                         optimized_lines.append(f"    MOV {parts[1]},{new_val}")
@@ -3273,6 +4413,73 @@ class NoBasicCompiler:
         
         return string_addr
 
+    def _compile_struct(self, tokens: List[str], i: int) -> Tuple[List[str], int]:
+        """Compile STRUCT statement - define a user-defined structure"""
+        lines = ["    ; STRUCT - structure definition"]
+        i += 1  # Skip STRUCT
+
+        if i >= len(tokens):
+            raise ValueError("Expected structure name after STRUCT")
+
+        struct_name = tokens[i].upper()
+        i += 1
+
+        # Initialize struct definition
+        fields = {}
+        offset = 0
+
+        # Parse fields until END STRUCT
+        while i < len(tokens):
+            token = tokens[i]
+
+            if token.upper() == "END" and i + 1 < len(tokens) and tokens[i + 1].upper() == "STRUCT":
+                # End of struct definition
+                i += 2  # Skip END STRUCT
+                break
+
+            # Skip newlines and empty tokens
+            if token == '\n' or token.strip() == '':
+                i += 1
+                continue
+
+            # Expect field name
+            field_name = token.upper()
+            i += 1
+
+            # For now, assume all fields are 16-bit integers (2 bytes)
+            # Future: could support different types like BYTE, WORD, etc.
+            field_size = 2  # 16-bit words
+
+            # Store field info
+            fields[field_name] = {
+                'offset': offset,
+                'size': field_size
+            }
+
+            offset += field_size
+
+            # Check for comma (multiple fields on same line) or end of line
+            if i < len(tokens) and tokens[i] == ',':
+                i += 1  # Skip comma, continue parsing fields
+            # If no comma, assume end of field declarations for this line
+
+        # Store struct definition
+        self.structs[struct_name] = {
+            'fields': fields,
+            'size': offset,  # Total size in bytes
+            'field_count': len(fields)
+        }
+
+        lines.extend([
+            f"    ; Struct {struct_name} defined with {len(fields)} fields, total size {offset} bytes",
+        ])
+
+        # List the fields for debugging
+        for field_name, field_info in fields.items():
+            lines.append(f"    ;   {field_name}: offset {field_info['offset']}, size {field_info['size']}")
+
+        return lines, i
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python nobasic_compiler.py <input.nob> <output>")
@@ -3282,13 +4489,13 @@ if __name__ == "__main__":
     output_file = sys.argv[2]
     
     try:
-        with open(input_file, 'r') as f:
+        with open(input_file, 'r', encoding='utf-8') as f:
             nobasic_source = f.read()
         
         compiler = NoBasicCompiler()
         compiler.compile_program(nobasic_source, output_file)
-        #print(f"Compiled {input_file} to {output_file}")
         
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error compiling {input_file}: {e}")
         sys.exit(1)
+    

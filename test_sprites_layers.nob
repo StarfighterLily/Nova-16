@@ -1,0 +1,43 @@
+REM Test sprite and layer functionality
+REM Tests sprite control, layer management, and advanced graphics
+
+ClrHome
+Disp "Testing sprites and layers"
+
+REM Test layer operations
+VL = 0  REM Background layer
+Rect(0,0,256,256,BLACK)  REM Clear background
+
+VL = 1  REM Layer 1
+Disp "Layer 1 operations"
+PxlOn(50,50,RED)
+Rect(60,60,40,30,GREEN)
+
+VL = 2  REM Layer 2
+Disp "Layer 2 operations"
+PxlOn(100,100,BLUE)
+Rect(110,110,40,30,YELLOW)
+
+VL = 3  REM Layer 3
+Disp "Layer 3 operations"
+PxlOn(150,150,CYAN)
+Rect(160,160,40,30,MAGENTA)
+
+REM Test sprite control blocks (16 sprites × 16 bytes each)
+REM Sprite 0 control block at 0xF000
+Disp "Sprite control blocks:"
+Disp "Sprite 0: 0xF000"
+Disp "Sprite 1: 0xF010"
+Disp "Sprite 15: 0xF0F0"
+
+REM Test graphics coordinate modes
+VM = 0  REM Pixel mode (default)
+PxlOn(200,200,WHITE)
+
+VM = 1  REM Coordinate mode
+VX = 220
+VY = 220
+VC = WHITE
+REM SWRITE would write pixel in coordinate mode
+
+Disp "Sprites and layers test complete"

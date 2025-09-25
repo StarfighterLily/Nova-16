@@ -91,8 +91,12 @@ class NovaProfiler:
 
         try:
             while not self.cpu.halted and cycles < max_cycles:
-                self.cpu.step()
-                cycles += 1
+                try:
+                    self.cpu.step()
+                    cycles += 1
+                except Exception as e:
+                    print(f"CPU execution error at cycle {cycles}, PC=0x{self.cpu.pc:04X}: {e}")
+                    break
 
                 if cycles % 1000 == 0:
                     print(f"Executed {cycles} cycles...")

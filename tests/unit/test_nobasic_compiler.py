@@ -250,6 +250,72 @@ class TestNoBasicCompiler(unittest.TestCase):
     #     call_lines = [line for line in lines if 'CALL print_number' in line]
     #     self.assertTrue(len(call_lines) > 0)
 
+    def test_compile_struct_definition(self):
+        """Test STRUCT definition compilation"""
+        tokens = ['STRUCT', 'PLAYER', 'X', 'Y', 'HEALTH', 'SCORE', 'END', 'STRUCT']
+        lines, new_i = self.compiler._compile_struct(tokens, 0)
+
+        # Should define struct with correct fields
+        self.assertIn("    ; Struct PLAYER defined with 4 fields, total size 8 bytes", lines)
+        self.assertIn("    ;   X: offset 0, size 2", lines)
+        self.assertIn("    ;   Y: offset 2, size 2", lines)
+        self.assertIn("    ;   HEALTH: offset 4, size 2", lines)
+        self.assertIn("    ;   SCORE: offset 6, size 2", lines)
+
+        # Check struct was stored
+        self.assertIn('PLAYER', self.compiler.structs)
+        struct_info = self.compiler.structs['PLAYER']
+        self.assertEqual(struct_info['size'], 8)
+        self.assertEqual(len(struct_info['fields']), 4)
+        self.assertEqual(struct_info['fields']['X']['offset'], 0)
+        self.assertEqual(struct_info['fields']['SCORE']['offset'], 6)
+
+    def test_compile_dim_struct_instance(self):
+        """Test DIM var AS struct_name compilation"""
+        # First define a struct
+        self.compiler._compile_struct(['STRUCT', 'POINT', 'X', 'Y', 'END', 'STRUCT'], 0)
+        
+        # Create instance
+        tokens = ['DIM', 'MYPOINT', 'AS', 'POINT']
+        lines, new_i = self.compiler._compile_dim(tokens, 0)
+
+        # Should create struct instance
+        self.assertIn("    ; Create struct instance MYPOINT of type POINT", lines)
+        self.assertIn("    ; Struct size: 4 bytes", lines)
+
+        # Check instance was stored
+        self.assertIn('MYPOINT', self.compiler.struct_instances)
+        instance_info = self.compiler.struct_instances['MYPOINT']
+        self.assertEqual(instance_info['struct_name'], 'POINT')
+
+    def test_compile_struct_field_access(self):
+        """Test struct field access compilation"""
+        # Define struct and create instance
+        self.compiler._compile_struct(['STRUCT', 'VEC2', 'X', 'Y', 'END', 'STRUCT'], 0)
+        self.compiler._compile_dim(['DIM', 'POS', 'AS', 'VEC2'], 0)
+        
+        # Test field access in expression
+        tokens = ['POS', '.', 'X']
+        lines, new_i = self.compiler._parse_primary_expression(tokens, 0)
+
+        # Should load field value
+        load_lines = [line for line in lines if 'Load POS.X' in line]
+        self.assertTrue(len(load_lines) > 0)
+
+    def test_compile_struct_field_assignment(self):
+        """Test struct field assignment compilation"""
+        # Define struct and create instance
+        self.compiler._compile_struct(['STRUCT', 'VEC2', 'X', 'Y', 'END', 'STRUCT'], 0)
+        self.compiler._compile_dim(['DIM', 'POS', 'AS', 'VEC2'], 0)
+        
+        # Test field assignment
+        tokens = ['POS', '.', 'X', '=', '10']
+        lines, new_i = self.compiler._compile_assignment(tokens, 0)
+
+        # Should store to field
+        store_lines = [line for line in lines if 'Store to POS.X' in line]
+        self.assertTrue(len(store_lines) > 0)
+
 
 if __name__ == '__main__':
     unittest.main()

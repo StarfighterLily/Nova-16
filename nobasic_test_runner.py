@@ -136,7 +136,11 @@ class NoBasicTestRunner:
 
         # Run profiler
         print("5. Running CPU profiler...")
-        success, stdout, stderr = self.run_profiler(bin_file)
+        try:
+            success, stdout, stderr = self.run_profiler(bin_file)
+        except Exception as e:
+            print(f"[FAIL] CPU profiler crashed: {e}")
+            success = False
         if success:
             print("[OK] CPU profiler successful")
             # Could extract more detailed metrics here

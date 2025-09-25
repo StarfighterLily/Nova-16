@@ -1,0 +1,45 @@
+REM Test BREAK and CONTINUE statements in loops
+
+REM Test BREAK in FOR loop
+FOR I = 1 TO 10
+    IF I = 5 THEN
+        BREAK
+    END IF
+    DISP I
+NEXT I
+
+REM Should display 1,2,3,4
+
+REM Test CONTINUE in FOR loop
+FOR J = 1 TO 5
+    IF J = 3 THEN
+        CONTINUE
+    END IF
+    DISP J
+NEXT J
+
+REM Should display 1,2,4,5
+
+REM Test BREAK in WHILE loop
+K = 1
+WHILE K <= 10
+    IF K = 7 THEN
+        BREAK
+    END IF
+    DISP K
+    K = K + 1
+WEND
+
+REM Should display 1,2,3,4,5,6
+
+REM Test CONTINUE in WHILE loop
+M = 1
+WHILE M <= 5
+    M = M + 1
+    IF M = 3 THEN
+        CONTINUE
+    END IF
+    DISP M
+WEND
+
+REM Should display 2,4,5,6

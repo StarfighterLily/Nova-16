@@ -1,0 +1,40 @@
+REM Test advanced string functions
+ClrHome
+Disp "Testing advanced string functions"
+
+REM Test LOWER function
+Str1 = "Hello World"
+LowerStr = LOWER(Str1)
+Disp "LOWER('Hello World'):", LowerStr
+
+REM Test UPPER function (already tested elsewhere but good to include)
+UpperStr = UPPER(Str1)
+Disp "UPPER('Hello World'):", UpperStr
+
+REM Test TRIM function
+Str2 = "  Hello World  "
+TrimStr = TRIM(Str2)
+Disp "TRIM('  Hello World  '):", TrimStr
+
+REM Test REPLACE function
+Str3 = "Hello World"
+ReplaceStr = REPLACE(Str3, "World", "Universe")
+Disp "REPLACE('Hello World', 'World', 'Universe'):", ReplaceStr
+
+REM Test SPLIT function
+Str4 = "apple,banana,cherry"
+SplitArray = SPLIT(Str4, ",")
+Disp "SPLIT result array created"
+
+REM Test JOIN function
+JoinStr = JOIN(SplitArray, "-", 3)
+Disp "JOIN result:", JoinStr
+
+REM Test INSTR function (already tested but comprehensive)
+Pos1 = INSTR("Hello World", "World")
+Disp "INSTR('Hello World', 'World'):", Pos1
+
+Pos2 = INSTR("Hello World", "xyz")
+Disp "INSTR('Hello World', 'xyz'):", Pos2
+
+Disp "Advanced string functions test complete"

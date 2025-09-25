@@ -1,0 +1,86 @@
+REM NoBASIC Struct Example Program
+REM Demonstrates user-defined structures
+
+REM Define a Player structure
+STRUCT Player
+  X
+  Y
+  Health
+  Score
+END STRUCT
+
+REM Define a Vector2 structure
+STRUCT Vec2
+  X
+  Y
+END STRUCT
+
+REM Create instances
+DIM Hero AS Player
+DIM Enemy AS Player
+DIM Position AS Vec2
+DIM Velocity AS Vec2
+
+REM Initialize hero
+Hero.X = 100
+Hero.Y = 120
+Hero.Health = 100
+Hero.Score = 0
+
+REM Initialize enemy
+Enemy.X = 200
+Enemy.Y = 150
+Enemy.Health = 50
+Enemy.Score = 0
+
+REM Initialize position and velocity
+Position.X = 50
+Position.Y = 75
+Velocity.X = 2
+Velocity.Y = 1
+
+REM Main game loop
+MainLoop:
+ClrHome
+Disp "NoBASIC Struct Demo"
+Disp "Hero Health:", Hero.Health
+Disp "Enemy Health:", Enemy.Health
+Disp "Position:", Position.X, ",", Position.Y
+
+REM Simple movement
+Position.X = Position.X + Velocity.X
+Position.Y = Position.Y + Velocity.Y
+
+REM Check bounds
+IF Position.X > 300 THEN
+  Velocity.X = -Velocity.X
+END IF
+
+IF Position.X < 0 THEN
+  Velocity.X = -Velocity.X
+END IF
+
+IF Position.Y > 200 THEN
+  Velocity.Y = -Velocity.Y
+END IF
+
+IF Position.Y < 0 THEN
+  Velocity.Y = -Velocity.Y
+END IF
+
+REM Combat simulation
+IF Hero.X = Enemy.X AND Hero.Y = Enemy.Y THEN
+  Enemy.Health = Enemy.Health - 10
+  Hero.Score = Hero.Score + 10
+  Disp "Hero attacks! Enemy health:", Enemy.Health
+END IF
+
+REM Check win condition
+IF Enemy.Health <= 0 THEN
+  Disp "Hero wins with score:", Hero.Score
+  END
+END IF
+
+REM Continue game
+Pause 100
+Goto MainLoop

@@ -1,44 +1,20 @@
 {
-  "cycle": 10000,
+  "cycle": 34,
   "timestamp": "Final Report",
   "statistics": {
-    "total_pixel_writes": 3790,
-    "layers_used": [
-      0
-    ],
-    "colors_used": [
-      8,
-      136,
-      12,
-      15,
-      148,
-      24,
-      152,
-      36,
-      164,
-      38,
-      40,
-      168,
-      43,
-      52,
-      56,
-      184,
-      68,
-      72,
-      200,
-      84,
-      88,
-      216,
-      120,
-      104,
-      232,
-      248
-    ],
+    "total_pixel_writes": 0,
+    "layers_used": [],
+    "colors_used": [],
     "instruction_counts": {
       "SFILL": 1,
-      "TEXT": 9,
-      "SWRITE": 74,
-      "SREAD": 1
+      "TEXT": 1,
+      "SWRITE": 1
     },
     "memory_regions_accessed": [],
-    "max_x": 
+    "max_x": 0,
+    "max_y": 0,
+    "min_x": 255,
+    "min_y": 255
+  },
+  "video_registers": {
+    "VX": 

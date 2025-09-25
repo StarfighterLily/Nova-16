@@ -1,0 +1,12 @@
+REM Simple test for REPLACE function
+ClrHome
+Disp "Testing REPLACE function"
+
+REM Test REPLACE function
+Str7 = "hello world"
+Str8 = REPLACE(Str7, "world", "nova")
+Disp "Original: hello world"
+Disp "REPLACE:", Str8
+Disp "Test complete"
+
+Disp "String functions test complete"

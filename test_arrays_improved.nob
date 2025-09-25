@@ -1,0 +1,30 @@
+REM Test improved array implementation with bounds checking
+CLRHOME
+DISP "Testing Improved Arrays"
+
+REM Test DIM with variable size
+A = 5
+DIM TEST_ARRAY(A)
+DISP "Array declared with size:", A
+
+REM Fill array with values
+FOR I = 0 TO A-1
+  TEST_ARRAY[I] = I * 10
+  DISP "TEST_ARRAY[", I, "] =", TEST_ARRAY[I]
+END
+
+REM Test bounds checking (should work within bounds)
+DISP "Testing bounds:"
+X = TEST_ARRAY[0]
+Y = TEST_ARRAY[4]
+DISP "First element:", X
+DISP "Last element:", Y
+
+REM Test array access with expressions
+INDEX = 2
+VALUE = TEST_ARRAY[INDEX + 1]
+DISP "TEST_ARRAY[2+1] =", VALUE
+
+DISP "Array tests completed!"
+PAUSE
+END

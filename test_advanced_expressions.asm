@@ -195,17 +195,19 @@ display_value_done:
     MOV P2,30
     MOV P3,40
     MOV P4,50
+    ; Allocate array of 5 elements
+    MOV [0x6000],5
     ; Store array element 0
-    MOV [0x7000],P0
+    MOV [0x6002],P0
     ; Store array element 1
-    MOV [0x7002],P1
+    MOV [0x6004],P1
     ; Store array element 2
-    MOV [0x7004],P2
+    MOV [0x6006],P2
     ; Store array element 3
-    MOV [0x7006],P3
+    MOV [0x6008],P3
     ; Store array element 4
-    MOV [0x7008],P4
-    MOV P5,28672
+    MOV [0x600A],P4
+    MOV P5,24576
     ; Store P5 into NUMBERS
     MOV [0x203A],P5
     ; SUM = 
@@ -222,7 +224,7 @@ for_loop_1:
     ; Load I into P4
     MOV P4,[0x2010]
     ; Load NUMBERS[P4] into P3
-    LEA P3,[8250 + P4*2]
+    LEA P3,[0x203A + P4*2]
     MOV P3,[P3]
     ADD P5,P3
     ; Store P5 into SUM
@@ -722,19 +724,21 @@ display_value_done:
     MOV P2,68
     MOV P1,84
     MOV P6,100
+    ; Allocate array of 6 elements
+    MOV [0x600C],6
     ; Store array element 0
-    MOV [0x7000],P5
+    MOV [0x600E],P5
     ; Store array element 1
-    MOV [0x7002],P3
+    MOV [0x6010],P3
     ; Store array element 2
-    MOV [0x7004],P4
+    MOV [0x6012],P4
     ; Store array element 3
-    MOV [0x7006],P2
+    MOV [0x6014],P2
     ; Store array element 4
-    MOV [0x7008],P1
+    MOV [0x6016],P1
     ; Store array element 5
-    MOV [0x700A],P6
-    MOV P7,28672
+    MOV [0x6018],P6
+    MOV P7,24588
     ; Store P7 into COLORS
     MOV [0x203E],P7
     ; Y_POS = 
@@ -759,7 +763,7 @@ for_loop_3:
     ; Load I into P1
     MOV P1,[0x2010]
     ; Load COLORS[P1] into P2
-    LEA P2,[8254 + P1*2]
+    LEA P2,[0x203E + P1*2]
     MOV P2,[P2]
     ; Pxl-On at (P7,P6)
     MOV VX,P7
@@ -775,7 +779,7 @@ for_loop_3:
     ; Load I into P7
     MOV P7,[0x2010]
     ; Load COLORS[P7] into P1
-    LEA P1,[8254 + P7*2]
+    LEA P1,[0x203E + P7*2]
     MOV P1,[P1]
     ; Pxl-On at (P2,P6)
     MOV VX,P2
@@ -791,7 +795,7 @@ for_loop_3:
     ; Load I into P2
     MOV P2,[0x2010]
     ; Load COLORS[P2] into P7
-    LEA P7,[8254 + P2*2]
+    LEA P7,[0x203E + P2*2]
     MOV P7,[P7]
     ; Pxl-On at (P1,P6)
     MOV VX,P1
@@ -808,7 +812,7 @@ for_loop_3:
     ; Load I into P1
     MOV P1,[0x2010]
     ; Load COLORS[P1] into P2
-    LEA P2,[8254 + P1*2]
+    LEA P2,[0x203E + P1*2]
     MOV P2,[P2]
     ; Pxl-On at (P7,P6)
     MOV VX,P7
@@ -1400,4 +1404,255 @@ mid_loop:
     JMP mid_loop
 mid_done:
     MOV [P4],0
+    RET
+
+; TRIM(string) - remove leading and trailing whitespace (space and tab only for simplicity)
+trim_string:
+    ; P0 = result buffer, P1 = source string
+    ; Find start of non-whitespace characters
+    MOV P2,P1
+trim_find_start:
+    MOV P3,[P2]
+    CMP P3,0
+    JZ trim_empty
+    CMP P3,32
+    JZ trim_skip_space_start
+    CMP P3,9
+    JZ trim_skip_space_start
+    JMP trim_found_start
+trim_skip_space_start:
+    INC P2
+    JMP trim_find_start
+trim_found_start:
+    ; P2 now points to first non-whitespace character
+    ; Find end of non-whitespace characters (scan backwards from end)
+    MOV P3,P1
+trim_find_end:
+    MOV P4,[P3]
+    CMP P4,0
+    JZ trim_end_found
+    INC P3
+    JMP trim_find_end
+trim_end_found:
+    DEC P3
+trim_scan_back:
+    CMP P3,P2
+    JC trim_empty
+    MOV P4,[P3]
+    CMP P4,32
+    JZ trim_skip_space_end
+    CMP P4,9
+    JZ trim_skip_space_end
+    JMP trim_copy
+trim_skip_space_end:
+    DEC P3
+    JMP trim_scan_back
+trim_copy:
+    ; Copy from P2 to P3 (inclusive) to result buffer P0
+    MOV P4,P0
+trim_copy_loop:
+    CMP P2,P3
+    JNC trim_copy_done
+    MOV P5,[P2]
+    MOV [P4],P5
+    INC P2
+    INC P4
+    JMP trim_copy_loop
+trim_copy_done:
+    MOV [P4],0
+    RET
+trim_empty:
+    MOV [P0],0
+    RET
+
+; REPLACE(string, old_substr, new_substr) - replace all occurrences of old_substr with new_substr
+replace_string:
+    ; P0 = result buffer, P1 = source string, P2 = old substring, P3 = new substring
+    MOV P4,P0
+    MOV P5,P1
+    MOV P6,P2
+    MOV P7,P3
+    
+    ; Get lengths of old and new substrings
+    MOV P8,P6
+    MOV P9,0
+replace_old_len_loop:
+    MOV R0,[P8]
+    CMP R0,0
+    JZ replace_old_len_done
+    INC P8
+    INC P9
+    JMP replace_old_len_loop
+replace_old_len_done:
+    
+    MOV P8,P7
+    MOV R0,0
+replace_new_len_loop:
+    MOV R1,[P8]
+    CMP R1,0
+    JZ replace_new_len_done
+    INC P8
+    INC R0
+    JMP replace_new_len_loop
+replace_new_len_done:
+    MOV P8,R0
+    
+replace_main_loop:
+    MOV R0,[P5]
+    CMP R0,0
+    JZ replace_done
+    
+    ; Check if old substring matches at current position
+    MOV R1,P5
+    MOV R2,P6
+    MOV R3,0
+replace_check_match:
+    MOV R4,[R1]
+    MOV R5,[R2]
+    CMP R4,R5
+    JNZ replace_no_match
+    CMP R5,0
+    JZ replace_match_found
+    INC R1
+    INC R2
+    INC R3
+    CMP R3,P9
+    JNZ replace_check_match
+    JMP replace_match_found
+    
+replace_no_match:
+    ; No match, copy current character
+    MOV [P4],R0
+    INC P5
+    INC P4
+    JMP replace_main_loop
+    
+replace_match_found:
+    ; Match found, copy new substring
+    MOV R1,P7
+replace_copy_new:
+    MOV R2,[R1]
+    CMP R2,0
+    JZ replace_skip_old
+    MOV [P4],R2
+    INC P4
+    INC R1
+    JMP replace_copy_new
+    
+replace_skip_old:
+    ; Skip the old substring in source
+    ADD P5,P9
+    JMP replace_main_loop
+    
+replace_done:
+    MOV [P4],0
+    RET
+
+; SPLIT(string, delimiter) - split string by delimiter, store parts in array
+split_string:
+    ; P0 = array base address, P1 = source string, P2 = delimiter
+    ; This is a simplified implementation - splits on single character delimiter only
+    ; Returns array with parts, first element is count, then string addresses
+    MOV P3,P0
+    ADD P3,2
+    MOV P4,P1
+    MOV P5,0
+split_loop:
+    MOV P6,[P4]
+    CMP P6,0
+    JZ split_done
+    MOV P7,[P2]
+    CMP P6,P7
+    JNZ split_continue
+    ; Found delimiter, store current part
+    MOV [P3],P4
+    ADD P3,2
+    INC P5
+    INC P4
+    JMP split_loop
+split_continue:
+    INC P4
+    JMP split_loop
+split_done:
+    ; Store final part (empty string after last delimiter)
+    MOV [P3],P4
+    ADD P3,2
+    INC P5
+    ; Store count at array start
+    MOV [P0],P5
+    RET
+
+; JOIN(array_base, delimiter, count) - join array elements with delimiter
+join_array:
+    ; P0 = result buffer, P1 = array base, P2 = delimiter, P3 = element count
+    MOV P4,P0
+    MOV P5,P1
+    ADD P5,2
+    MOV P6,0
+join_loop:
+    CMP P6,P3
+    JZ join_done
+    ; Copy current element string
+    MOV P7,[P5]
+join_copy_element:
+    MOV P8,[P7]
+    CMP P8,0
+    JZ join_next_element
+    MOV [P4],P8
+    INC P7
+    INC P4
+    JMP join_copy_element
+join_next_element:
+    INC P6
+    CMP P6,P3
+    JZ join_done
+    ; Add delimiter
+    MOV P7,P2
+join_copy_delim:
+    MOV P8,[P7]
+    CMP P8,0
+    JZ join_delim_done
+    MOV [P4],P8
+    INC P7
+    INC P4
+    JMP join_copy_delim
+join_delim_done:
+    ADD P5,2
+    JMP join_loop
+join_done:
+    MOV [P4],0
+    RET
+
+; INSTR(haystack, needle) - find position of needle in haystack (1-based, 0 if not found)
+instr_substr:
+    ; P1 = haystack, P2 = needle, returns position in P0 (1-based, 0 if not found)
+    MOV P0,0
+    MOV P3,P1
+instr_loop:
+    MOV P4,[P3]
+    CMP P4,0
+    JZ instr_not_found
+    ; Check if needle matches at current position
+    MOV P5,P3
+    MOV P6,P2
+    MOV P7,1
+instr_check_match:
+    MOV P8,[P6]
+    CMP P8,0
+    JZ instr_found
+    MOV P9,[P5]
+    CMP P8,P9
+    JNZ instr_no_match
+    INC P5
+    INC P6
+    JMP instr_check_match
+instr_no_match:
+    INC P0
+    INC P3
+    JMP instr_loop
+instr_found:
+    INC P0
+    RET
+instr_not_found:
+    MOV P0,0
     RET
