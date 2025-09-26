@@ -1538,7 +1538,8 @@ class Sfill(BaseInstruction):
         super().__init__("SFILL", opcode_val)
     
     def execute(self, cpu):
-        color = cpu.gfx.Vregisters[3]  # VC register
+        operands = cpu.parse_operands(1)
+        color = cpu.get_operand_value(operands[0])
         cpu.gfx.fill_layer(color)
 
 class Sline(BaseInstruction):

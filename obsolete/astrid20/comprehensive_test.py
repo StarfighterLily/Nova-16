@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from astrid2.main import AstridCompiler
 
-def test_compilation(name, source_code, should_fail=False):
+def compilation_test(name, source_code, should_fail=False):
     """Test compilation of source code."""
     print(f"\n=== Testing: {name} ===")
     

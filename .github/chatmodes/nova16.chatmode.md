@@ -14,7 +14,7 @@ This is a custom 16-bit CPU emulator with a tightly integrated hardware model. H
   - R0-R9: 8-bit general purpose
   - P0-P7: 16-bit general purpose (can access high/low byte via `:P0`/`P0:`)
   - P8, P9 / SP, FP: 16-bit special purpose (stack/frame pointers)
-  - Special: VX/VY (graphics coords), VM (video mode), VL (video layer)
+  - Special: VX/VY (graphics coords), VM (video mode), VL (video layer), VC (video color)
   - Sound: SA (address), SF (frequency), SV (volume), SW (waveform)
   - Timer: TT, TM, TC, TS
 
@@ -41,7 +41,6 @@ This is a custom 16-bit CPU emulator with a tightly integrated hardware model. H
 
 ## Assembly & High-Level Development
 - Assembly: `.asm` → `.bin` via `nova_assembler.py`
-- Astrid 2.0: `.ast` → `.asm` → `.bin`
 - Headless and GUI execution supported
 
 ## Quirks & Unique Features
@@ -63,7 +62,6 @@ This is a custom 16-bit CPU emulator with a tightly integrated hardware model. H
 
 ## File Organization
 - `asm/`: Assembly examples
-- `astrid2.0/`: High-level compiler/tools
 - `docs/`: Hardware and software specs
 
 ## Error Handling

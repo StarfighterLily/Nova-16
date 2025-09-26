@@ -927,6 +927,13 @@ class GFX:
         # Mark layers as dirty if drawing to a non-main layer
         if self.VL != 0:
             self.layers_dirty = True
+        else:
+            # For main layer, update screen directly
+            if background is None:
+                mask = char_matrix
+                self.screen[y:y+8, x:x+8][mask] = color
+            else:
+                self.screen[y:y+8, x:x+8] = char_bitmap
     
     def _get_layer_buffer(self):
         """Get the numpy array for the current layer specified by VL register"""

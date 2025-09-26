@@ -90,7 +90,7 @@ opcodes = [
     ("SCIRC",              "0x3A", 2), # Circle radius, filled # implemented
     ("SINV",               "0x3B", 0), # Invert screen colors # implemented
     ("SBLIT",              "0x3C", 1), # Blit screen # implemented
-    ("SFILL",              "0x3D", 0), # Fill screen # implemented
+    ("SFILL",              "0x3D", 1), # Fill screen # implemented
 
     # VRAM operations
     ("VREAD",              "0x3E", 1), # Read VRAM # implemented

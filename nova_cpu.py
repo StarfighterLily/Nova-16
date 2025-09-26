@@ -1835,7 +1835,7 @@ class CPU:
         instruction = self.instruction_table.get(opcode)
         if instruction:
             # Check if this is a no-operand instruction
-            if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D, 0x3B, 0x3D]:  # HLT, NOP, RET, IRET, CLI, STI, PUSHF, POPF, PUSHA, POPA, SINV, SFILL
+            if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D, 0x3B]:  # HLT, NOP, RET, IRET, CLI, STI, PUSHF, POPF, PUSHA, POPA, SINV
                 # No-operand instructions don't have mode byte
                 self._current_mode_byte = 0  # Dummy mode byte
                 start_pc = self.pc - 1  # PC was already advanced by fetch_byte

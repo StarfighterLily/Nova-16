@@ -13,6 +13,7 @@ Nova-16 is a custom fantasy 16-bit CPU and hardware platform, implemented in Pyt
   - VX/VY: Graphics coordinates
   - VM: Video mode (0=coordinate, 1=memory)
   - VL: Video layer (0-7)
+  - VC: Video color (0-255)
   - Sound: SA (address), SF (frequency), SV (volume), SW (waveform)
   - Timer: TT, TM, TC, TS
 
@@ -60,7 +61,7 @@ Nova-16 is a custom fantasy 16-bit CPU and hardware platform, implemented in Pyt
 
 
 ## Development Workflow
-1. Write assembly (`.asm`) or Astrid high-level code (`.ast`)
+1. Write assembly (`.asm`)
 2. Assemble to binary (`.bin`) using `nova_assembler.py`
 3. Run in emulator (`nova.py`) or headless mode for automated testing
 4. Debug with `nova_debugger.py` as needed
@@ -88,7 +89,6 @@ Nova-16 is a custom fantasy 16-bit CPU and hardware platform, implemented in Pyt
 
 ## File Organization
 - `asm/`: Assembly examples
-- `astrid/`: High-level compiler/tools
 - `docs/`: Hardware and software specs
 
 

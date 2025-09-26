@@ -618,7 +618,7 @@ class CodeGenerator:
                     val = int(operand)
             except ValueError:
                 val = 0  # Unknown symbol defaults to 0
-            return [val & 0xFF, (val >> 8) & 0xFF]
+            return [(val >> 8) & 0xFF, val & 0xFF]
         
         elif operand_type == OperandType.REGISTER_INDIRECT:
             indirect_match = re.match(r'^\[([A-Za-z0-9]+)\]$', operand)

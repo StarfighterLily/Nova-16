@@ -64,12 +64,12 @@ TEXT:
     MOV VM, 0        ; Set coordinate mode
     MOV VX, 101      ; Position shadow text X
     MOV VY, 123      ; Position shadow text Y
-    MOV R0, 0x15     ; Set color to dark red
-    TEXT TXT, R0     ; Print shadow text
+    MOV VC, 0x15     ; Set color to dark red
+    TEXT TXT     ; Print shadow text
     MOV VX, 100      ; Center main text X
     MOV VY, 124      ; Center main text Y
-    MOV R0, 0x1F     ; Set color to bright red
-    TEXT TXT, R0     ; Print main text
+    MOV VC, 0x1F     ; Set color to bright red
+    TEXT TXT     ; Print main text
 
 LOOP4:
     ; Main loop

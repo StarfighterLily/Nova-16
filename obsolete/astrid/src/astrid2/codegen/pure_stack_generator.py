@@ -91,6 +91,8 @@ class PureStackCodeGenerator:
             "; Architecture: Nova-16 with pure stack-first approach", 
             "; Variables stored on stack, minimal register usage",
             "; Stack Layout: [locals][FP][return_addr][params]",
+            "",
+            "ORG 0x1000",
             ""
         ])
         
