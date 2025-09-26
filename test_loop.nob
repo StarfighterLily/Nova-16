@@ -1,4 +1,0 @@
-ClrHome
-For I = 1 To 5
-Disp "Loop:", I
-End

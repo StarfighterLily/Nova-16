@@ -31,8 +31,9 @@ LOOP:
     MOV VX, 108      ; Set X to mid point
     MOV VY, 118      ; Set Y to mid point
     MOV R0, 0x5F     ; Set R0 to color 0x5F
+    MOV VC, R0       ; Set VC to the color
     MOV VL, 5        ; Switch to Layer 5
-    TEXT TXT, R0     ; Print the text at TXT
+    TEXT TXT         ; Print the text at TXT (uses VC for color)
     MOV VL, 1        ; Switch back to Layer 1
 
 LOOP2:

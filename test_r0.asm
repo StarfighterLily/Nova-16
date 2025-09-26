@@ -1,3 +1,0 @@
-ORG 0x1000
-MOV R0, 0x1F
-HLT

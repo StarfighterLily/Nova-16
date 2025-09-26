@@ -1,5 +1,0 @@
-ClrHome
-A = 42
-B = 24
-Disp "A=", A
-Disp "B=", B

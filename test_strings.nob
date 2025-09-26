@@ -1,6 +1,0 @@
-﻿CLRHOME
-A = "Hello"
-B = " World"
-C = A & B
-DISP C
-DISP "Length: " & STR(LEN(C))

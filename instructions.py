@@ -956,9 +956,11 @@ class Pusha(BaseInstruction):
         registers = []
         registers.extend(cpu.Rregisters)  # R0-R9
         registers.extend(cpu.Pregisters)  # P0-P9
-        registers.extend(cpu.gfx.Vregisters[:3])  # VX, VY, VC
+        registers.append(cpu.gfx.Vregisters[0])  # VX
+        registers.append(cpu.gfx.Vregisters[1])  # VY
+        registers.append(cpu.gfx.Vregisters[3])  # VC
         
-        for reg_value in reversed(registers):  # Push in reverse order
+        for reg_value in reversed(registers):  # Push in reverse order so POPA can pop in forward order
             sp = int(cpu.Pregisters[8])
             sp = (sp - 2) & 0xFFFF
             cpu.Pregisters[8] = sp
@@ -972,7 +974,7 @@ class Popa(BaseInstruction):
     
     def execute(self, cpu):
         # Pop all registers from stack (R0-R9, P0-P9, VX, VY, VC)
-        registers_order = list(range(22))  # 0-21 (R0-R9, P0-P9, VX, VY, VC)
+        registers_order = list(range(23))  # 0-22 (R0-R9, P0-P9, VX, VY, VC)
         
         for reg_num in registers_order:
             sp = int(cpu.Pregisters[8])
@@ -1536,8 +1538,7 @@ class Sfill(BaseInstruction):
         super().__init__("SFILL", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        color = cpu.get_operand_value(operands[0])
+        color = cpu.gfx.Vregisters[3]  # VC register
         cpu.gfx.fill_layer(color)
 
 class Sline(BaseInstruction):
@@ -1657,9 +1658,9 @@ class Char(BaseInstruction):
         super().__init__("CHAR", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(2)
+        operands = cpu.parse_operands(1)  # Parse 1 operand (char code)
         char_code = cpu.get_operand_value(operands[0])
-        color = cpu.get_operand_value(operands[1])
+        color = cpu.gfx.Vregisters[3]  # VC register
         x = cpu.gfx.Vregisters[0]
         y = cpu.gfx.Vregisters[1]
         cpu.gfx.draw_char(char_code, x, y, color)
@@ -1673,9 +1674,9 @@ class Text(BaseInstruction):
         super().__init__("TEXT", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(2)
+        operands = cpu.parse_operands(1)  # Parse 1 operand (text address)
         text_addr = cpu.get_operand_value(operands[0])
-        color = cpu.get_operand_value(operands[1])
+        color = cpu.gfx.Vregisters[3]  # VC register
         x = cpu.gfx.Vregisters[0]
         y = cpu.gfx.Vregisters[1]
         final_x, final_y = cpu.gfx.draw_text(x, y, color, text_addr, cpu.memory)

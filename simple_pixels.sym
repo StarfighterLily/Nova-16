@@ -1,6 +1,0 @@
-# Symbol table
-# Format: <symbol> <value>
-start 0x1011
-for_loop_1 0x1035
-for_end_2 0x1065
-halt 0x1158

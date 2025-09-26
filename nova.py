@@ -85,7 +85,7 @@ def run_headless(program_path, max_cycles=10000, enable_memory_profiling=False, 
     print("Final register states:")
     print(f"R0-R9: {[f'0x{r:02X}' for r in proc.Rregisters[:10]]}")
     print(f"P0-P9: {[f'0x{r:04X}' for r in proc.Pregisters[:10]]}")
-    print(f"VX,VY: 0x{gfx.Vregisters[0]:04X}, 0x{gfx.Vregisters[1]:04X}")
+    print(f"VX,VY,VC: 0x{gfx.Vregisters[0]:04X}, 0x{gfx.Vregisters[1]:04X}, 0x{gfx.Vregisters[3]:02X}")
     
     # Sound system info
     if proc.sound:

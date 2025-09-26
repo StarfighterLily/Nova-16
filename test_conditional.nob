@@ -1,6 +1,0 @@
-ClrHome
-A = 10
-B = 5
-If A > B Then
-Disp "A is greater"
-End

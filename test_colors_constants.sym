@@ -1,5 +1,0 @@
-# Symbol table
-# Format: <symbol> <value>
-start 0x1011
-pause_loop 0x1C70
-halt 0x1C74

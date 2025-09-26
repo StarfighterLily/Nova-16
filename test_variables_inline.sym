@@ -1,9 +1,0 @@
-# Symbol table
-# Format: <symbol> <value>
-start 0x1011
-dn_not_zero 0x1162
-dn_positive 0x117D
-dn_loop 0x117D
-dn_display 0x119B
-dn_done 0x11B5
-halt 0x11BE

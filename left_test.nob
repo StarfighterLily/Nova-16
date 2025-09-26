@@ -1,3 +1,0 @@
-Str1 = "Hello World"
-Str2 = LEFT(Str1, 5)
-END

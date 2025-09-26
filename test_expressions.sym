@@ -1,8 +1,0 @@
-# Symbol table
-# Format: <symbol> <value>
-start 0x1011
-display_loop_0 0x3011
-display_end_0 0x302C
-display_loop_1 0x3035
-display_end_1 0x3050
-halt 0x3050

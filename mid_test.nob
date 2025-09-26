@@ -1,3 +1,0 @@
-Str1 = "Hello World"
-Str2 = MID(Str1, 1, 4)
-END

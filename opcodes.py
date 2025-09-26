@@ -80,7 +80,7 @@ opcodes = [
     # Graphics operations
     ("SBLEND",             "0x31", 1), # Set blend mode # implemented
     ("SREAD",              "0x32", 1), # Read screen pixel # implemented
-    ("SWRITE",             "0x33", 0), # Write screen pixel # implemented
+    ("SWRITE",             "0x33", 1), # Write screen pixel # implemented
     ("SROL",               "0x34", 2), # Roll screen by axis, amount # implemented
     ("SROT",               "0x35", 2), # Rotate screen by direction, amount # implemented
     ("SSHFT",              "0x36", 2), # Shift screen by axis, amount # implemented
@@ -90,7 +90,7 @@ opcodes = [
     ("SCIRC",              "0x3A", 2), # Circle radius, filled # implemented
     ("SINV",               "0x3B", 0), # Invert screen colors # implemented
     ("SBLIT",              "0x3C", 1), # Blit screen # implemented
-    ("SFILL",              "0x3D", 1), # Fill screen # implemented
+    ("SFILL",              "0x3D", 0), # Fill screen # implemented
 
     # VRAM operations
     ("VREAD",              "0x3E", 1), # Read VRAM # implemented
@@ -98,8 +98,8 @@ opcodes = [
     ("VBLIT",              "0x40", 1), # Blit VRAM # implemented
 
     # Text operations
-    ("CHAR",               "0x41", 2), # Draw character # implemented
-    ("TEXT",               "0x42", 2), # Draw text # implemented
+    ("CHAR",               "0x41", 1), # Draw character # implemented
+    ("TEXT",               "0x42", 1), # Draw text # implemented
 
     # Keyboard operations
     ("KEYIN",              "0x43", 1), # Read key # implemented
