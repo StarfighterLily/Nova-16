@@ -1,6 +1,15 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-while_1 0x10E5
-wend_2 0x116D
-halt 0x11A9
+display_loop_0 0x3019
+display_end_0 0x3034
+while_2 0x303D
+cmp_done_3 0x305C
+display_loop_4 0x3110
+display_end_4 0x312B
+display_loop_5 0x3134
+display_end_5 0x314F
+wend_3 0x316B
+display_loop_6 0x320F
+display_end_6 0x322A
+halt 0x322A

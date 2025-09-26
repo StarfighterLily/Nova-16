@@ -40,7 +40,12 @@ for_1:
 next_2:
     ; Complex assignment not implemented yet
     ; A = expression
-    MOV [0x2002],P0
+    MOV P0,5
+    MOV P1,0x2002
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
+    MOV [0x2004],P0
     ; X = expression
     MOV P0,10
     PUSH P0
@@ -48,10 +53,10 @@ next_2:
     MOV P1,P0
     POP P0
     CMP P0,P1
-    JLT min_done_2
+    JLE min_done_2
     MOV P0,P1
 min_done_2:
-    MOV [0x2004],P0
+    MOV [0x2006],P0
     ; Y = expression
     MOV P0,10
     PUSH P0
@@ -59,161 +64,200 @@ min_done_2:
     MOV P1,P0
     POP P0
     CMP P0,P1
-    JGT max_done_3
+    JGE max_done_3
     MOV P0,P1
 max_done_3:
-    MOV [0x2006],P0
-    ; S1 = expression
     MOV [0x2008],P0
-    ; S2 = expression
+    ; S1 = expression
+
+; String literal: 'HELLO'
+ORG 0x3000
+    DB 72
+    DB 69
+    DB 76
+    DB 76
+    DB 79
+    DB 0  ; null terminator
+    MOV P0,0x3000
     MOV [0x200A],P0
+    ; S2 = expression
+
+; String literal: 'WORLD'
+ORG 0x3100
+    DB 87
+    DB 79
+    DB 82
+    DB 76
+    DB 68
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    MOV [0x200C],P0
     JMP MEMSWAP
     ; Disp
-    ; Display 'ARRAY[5] = '
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,89
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,91
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,53
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,93
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,61
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'ARRAY[5] = '
+ORG 0x3200
+    DB 65
+    DB 82
+    DB 82
+    DB 65
+    DB 89
+    DB 91
+    DB 53
+    DB 93
+    DB 32
+    DB 61
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_4:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_4
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_4
+display_end_4:
+    MOV P0,5
+    MOV P1,0x200E
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_5:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_5
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_5
+display_end_5:
     ; Disp
-    ; Display 'L1[5] = '
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,49
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,91
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,53
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,93
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,61
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,[0x2002]
-    ; Disp
-    ; Display 'MIN(10,20) = '
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,73
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,78
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,49
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,48
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,44
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,50
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,48
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,61
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'L1[5] = '
+ORG 0x3300
+    DB 76
+    DB 49
+    DB 91
+    DB 53
+    DB 93
+    DB 32
+    DB 61
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x3300
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_6:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_6
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_6
+display_end_6:
     MOV P0,[0x2004]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_7:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_7
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_7
+display_end_7:
     ; Disp
-    ; Display 'MAX(10,20) = '
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,88
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,49
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,48
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,44
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,50
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,48
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,61
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'MIN(10,20) = '
+ORG 0x3400
+    DB 77
+    DB 73
+    DB 78
+    DB 40
+    DB 49
+    DB 48
+    DB 44
+    DB 50
+    DB 48
+    DB 41
+    DB 32
+    DB 61
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x3400
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_8:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_8
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_8
+display_end_8:
     MOV P0,[0x2006]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_9:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_9
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_9
+display_end_9:
+    ; Disp
+
+; String literal: 'MAX(10,20) = '
+ORG 0x3500
+    DB 77
+    DB 65
+    DB 88
+    DB 40
+    DB 49
+    DB 48
+    DB 44
+    DB 50
+    DB 48
+    DB 41
+    DB 32
+    DB 61
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x3500
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_10:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_10
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_10
+display_end_10:
+    MOV P0,[0x2008]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_11:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_11
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_11
+display_end_11:
 
 ; Program end - infinite loop to keep display visible
 halt:

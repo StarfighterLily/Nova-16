@@ -21,70 +21,43 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    ; Display 'Testing RECT function'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,102
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing RECT function'
+ORG 0x3000
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 82
+    DB 69
+    DB 67
+    DB 84
+    DB 32
+    DB 102
+    DB 117
+    DB 110
+    DB 99
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     MOV P0,50
     MOV VX,P0
     MOV P0,50
@@ -110,61 +83,40 @@ start:
     POP P0
     SRECT P0,P1
     ; Disp
-    ; Display 'RECT test complete'
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'RECT test complete'
+ORG 0x3100
+    DB 82
+    DB 69
+    DB 67
+    DB 84
+    DB 32
+    DB 116
+    DB 101
+    DB 115
+    DB 116
+    DB 32
+    DB 99
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 116
+    DB 101
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
 
 ; Program end - infinite loop to keep display visible
 halt:

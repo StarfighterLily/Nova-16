@@ -21,898 +21,688 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    ; Display 'Testing advanced string functions'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,102
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing advanced string functions'
+ORG 0x3000
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 97
+    DB 100
+    DB 118
+    DB 97
+    DB 110
+    DB 99
+    DB 101
+    DB 100
+    DB 32
+    DB 115
+    DB 116
+    DB 114
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 102
+    DB 117
+    DB 110
+    DB 99
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 115
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     ; Str1 = expression
+
+; String literal: 'Hello World'
+ORG 0x3100
+    DB 72
+    DB 101
+    DB 108
+    DB 108
+    DB 111
+    DB 32
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 0  ; null terminator
+    MOV P0,0x3100
     MOV [0x2000],P0
     ; LowerStr = expression
     MOV P0,[0x2000]
+    MOV P1,0x4001
+    STRLWR P1,P0
+    MOV P0,0x4001
     MOV [0x2002],P0
     ; Disp
-    ; Display 'LOWER('Hello World'):'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,72
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: "LOWER('Hello World'):"
+ORG 0x3200
+    DB 76
+    DB 79
+    DB 87
+    DB 69
+    DB 82
+    DB 40
+    DB 39
+    DB 72
+    DB 101
+    DB 108
+    DB 108
+    DB 111
+    DB 32
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 39
+    DB 41
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_2:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_2
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_2
+display_end_2:
     MOV P0,[0x2002]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_3:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_3
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_3
+display_end_3:
     ; UpperStr = expression
     MOV P0,[0x2000]
+    MOV P1,0x4004
+    STRUPR P1,P0
+    MOV P0,0x4004
     MOV [0x2004],P0
     ; Disp
-    ; Display 'UPPER('Hello World'):'
-    MOV P0,85
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,80
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,80
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,72
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: "UPPER('Hello World'):"
+ORG 0x3300
+    DB 85
+    DB 80
+    DB 80
+    DB 69
+    DB 82
+    DB 40
+    DB 39
+    DB 72
+    DB 101
+    DB 108
+    DB 108
+    DB 111
+    DB 32
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 39
+    DB 41
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3300
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_5:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_5
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_5
+display_end_5:
     MOV P0,[0x2004]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_6:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_6
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_6
+display_end_6:
     ; Str2 = expression
+
+; String literal: '  Hello World  '
+ORG 0x3400
+    DB 32
+    DB 32
+    DB 72
+    DB 101
+    DB 108
+    DB 108
+    DB 111
+    DB 32
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 32
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x3400
     MOV [0x2006],P0
     ; TrimStr = expression
     MOV P0,[0x2006]
+    ; TRIM() not implemented
     MOV [0x2008],P0
     ; Disp
-    ; Display 'TRIM('  Hello World  '):'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,73
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,72
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: "TRIM('  Hello World  '):"
+ORG 0x3500
+    DB 84
+    DB 82
+    DB 73
+    DB 77
+    DB 40
+    DB 39
+    DB 32
+    DB 32
+    DB 72
+    DB 101
+    DB 108
+    DB 108
+    DB 111
+    DB 32
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 32
+    DB 32
+    DB 39
+    DB 41
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3500
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_7:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_7
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_7
+display_end_7:
     MOV P0,[0x2008]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_8:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_8
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_8
+display_end_8:
     ; Str3 = expression
+    MOV P0,0x3100
     MOV [0x200A],P0
     ; ReplaceStr = expression
     MOV P0,[0x200A]
+    PUSH P0
+
+; String literal: 'World'
+ORG 0x3600
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 0  ; null terminator
+    MOV P0,0x3600
+    PUSH P0
+
+; String literal: 'Universe'
+ORG 0x3700
+    DB 85
+    DB 110
+    DB 105
+    DB 118
+    DB 101
+    DB 114
+    DB 115
+    DB 101
+    DB 0  ; null terminator
+    MOV P0,0x3700
+    MOV P3,P0
+    POP P2
+    POP P0
+    MOV P1,0x4009
+    STRCPY P1,P0
+    MOV P0,0x4009
     MOV [0x200C],P0
     ; Disp
-    ; Display 'REPLACE('Hello World', 'World', 'Universe'):'
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,80
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,72
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,44
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,44
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,85
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: "REPLACE('Hello World', 'World', 'Universe'):"
+ORG 0x3800
+    DB 82
+    DB 69
+    DB 80
+    DB 76
+    DB 65
+    DB 67
+    DB 69
+    DB 40
+    DB 39
+    DB 72
+    DB 101
+    DB 108
+    DB 108
+    DB 111
+    DB 32
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 39
+    DB 44
+    DB 32
+    DB 39
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 39
+    DB 44
+    DB 32
+    DB 39
+    DB 85
+    DB 110
+    DB 105
+    DB 118
+    DB 101
+    DB 114
+    DB 115
+    DB 101
+    DB 39
+    DB 41
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3800
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_10:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_10
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_10
+display_end_10:
     MOV P0,[0x200C]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_11:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_11
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_11
+display_end_11:
     ; Str4 = expression
+
+; String literal: 'apple,banana,cherry'
+ORG 0x3900
+    DB 97
+    DB 112
+    DB 112
+    DB 108
+    DB 101
+    DB 44
+    DB 98
+    DB 97
+    DB 110
+    DB 97
+    DB 110
+    DB 97
+    DB 44
+    DB 99
+    DB 104
+    DB 101
+    DB 114
+    DB 114
+    DB 121
+    DB 0  ; null terminator
+    MOV P0,0x3900
     MOV [0x200E],P0
     ; SplitArray = expression
     MOV P0,0
     MOV [0x2010],P0
     ; Disp
-    ; Display 'SPLIT result array created'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,80
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,73
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'SPLIT result array created'
+ORG 0x3A00
+    DB 83
+    DB 80
+    DB 76
+    DB 73
+    DB 84
+    DB 32
+    DB 114
+    DB 101
+    DB 115
+    DB 117
+    DB 108
+    DB 116
+    DB 32
+    DB 97
+    DB 114
+    DB 114
+    DB 97
+    DB 121
+    DB 32
+    DB 99
+    DB 114
+    DB 101
+    DB 97
+    DB 116
+    DB 101
+    DB 100
+    DB 0  ; null terminator
+    MOV P0,0x3A00
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_12:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_12
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_12
+display_end_12:
     ; JoinStr = expression
-    MOV P0,0
+    MOV P0,0x400D
+    MOV [P0],0
     MOV [0x2012],P0
     ; Disp
-    ; Display 'JOIN result:'
-    MOV P0,74
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,73
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,78
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'JOIN result:'
+ORG 0x3B00
+    DB 74
+    DB 79
+    DB 73
+    DB 78
+    DB 32
+    DB 114
+    DB 101
+    DB 115
+    DB 117
+    DB 108
+    DB 116
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3B00
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_14:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_14
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_14
+display_end_14:
     MOV P0,[0x2012]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_15:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_15
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_15
+display_end_15:
     ; Pos1 = expression
-    MOV P0,0
+    MOV P0,0x3100
+    PUSH P0
+    MOV P0,0x3600
+    MOV P1,P0
+    POP P0
+    STRFIND P0,P1
+    MOV P0,R0
     MOV [0x2014],P0
     ; Disp
-    ; Display 'INSTR('Hello World', 'World'):'
-    MOV P0,73
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,78
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,72
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,44
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: "INSTR('Hello World', 'World'):"
+ORG 0x3C00
+    DB 73
+    DB 78
+    DB 83
+    DB 84
+    DB 82
+    DB 40
+    DB 39
+    DB 72
+    DB 101
+    DB 108
+    DB 108
+    DB 111
+    DB 32
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 39
+    DB 44
+    DB 32
+    DB 39
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 39
+    DB 41
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3C00
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_16:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_16
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_16
+display_end_16:
     MOV P0,[0x2014]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_17:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_17
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_17
+display_end_17:
     ; Pos2 = expression
-    MOV P0,0
+    MOV P0,0x3100
+    PUSH P0
+
+; String literal: 'xyz'
+ORG 0x3D00
+    DB 120
+    DB 121
+    DB 122
+    DB 0  ; null terminator
+    MOV P0,0x3D00
+    MOV P1,P0
+    POP P0
+    STRFIND P0,P1
+    MOV P0,R0
     MOV [0x2016],P0
     ; Disp
-    ; Display 'INSTR('Hello World', 'xyz'):'
-    MOV P0,73
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,78
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,72
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,44
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,120
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,122
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,39
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: "INSTR('Hello World', 'xyz'):"
+ORG 0x3E00
+    DB 73
+    DB 78
+    DB 83
+    DB 84
+    DB 82
+    DB 40
+    DB 39
+    DB 72
+    DB 101
+    DB 108
+    DB 108
+    DB 111
+    DB 32
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 39
+    DB 44
+    DB 32
+    DB 39
+    DB 120
+    DB 121
+    DB 122
+    DB 39
+    DB 41
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3E00
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_18:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_18
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_18
+display_end_18:
     MOV P0,[0x2016]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_19:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_19
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_19
+display_end_19:
     ; Disp
-    ; Display 'Advanced string functions test complete'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,102
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Advanced string functions test complete'
+ORG 0x3F00
+    DB 65
+    DB 100
+    DB 118
+    DB 97
+    DB 110
+    DB 99
+    DB 101
+    DB 100
+    DB 32
+    DB 115
+    DB 116
+    DB 114
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 102
+    DB 117
+    DB 110
+    DB 99
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 115
+    DB 32
+    DB 116
+    DB 101
+    DB 115
+    DB 116
+    DB 32
+    DB 99
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 116
+    DB 101
+    DB 0  ; null terminator
+    MOV P0,0x3F00
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_20:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_20
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_20
+display_end_20:
 
 ; Program end - infinite loop to keep display visible
 halt:

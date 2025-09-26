@@ -21,87 +21,118 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    ; Display 'List Test'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'List Test'
+ORG 0x3000
+    DB 76
+    DB 105
+    DB 115
+    DB 116
+    DB 32
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     ; Complex assignment not implemented yet
     ; Complex assignment not implemented yet
     ; Complex assignment not implemented yet
     ; A = expression
-    MOV [0x2000],P0
+    MOV P0,2
+    MOV P1,0x2000
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
+    MOV [0x2002],P0
     ; Disp
-    ; Display 'L1(2) ='
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,49
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,50
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,61
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,[0x2000]
+
+; String literal: 'L1(2) ='
+ORG 0x3100
+    DB 76
+    DB 49
+    DB 40
+    DB 50
+    DB 41
+    DB 32
+    DB 61
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
+    MOV P0,[0x2002]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_2:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_2
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_2
+display_end_2:
     ; Complex assignment not implemented yet
     ; Disp
-    ; Display 'L1(4) ='
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,49
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,52
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,61
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'L1(4) ='
+ORG 0x3200
+    DB 76
+    DB 49
+    DB 40
+    DB 52
+    DB 41
+    DB 32
+    DB 61
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_3:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_3
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_3
+display_end_3:
+    MOV P0,4
+    MOV P1,0x2000
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_4:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_4
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_4
+display_end_4:
 
 ; Program end - infinite loop to keep display visible
 halt:

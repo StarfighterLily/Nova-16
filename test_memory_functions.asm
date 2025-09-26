@@ -21,123 +21,77 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    ; Display 'Memory Functions Test'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,70
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Memory Functions Test'
+ORG 0x3000
+    DB 77
+    DB 101
+    DB 109
+    DB 111
+    DB 114
+    DB 121
+    DB 32
+    DB 70
+    DB 117
+    DB 110
+    DB 99
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 115
+    DB 32
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     ; Disp
-    ; Display 'Testing MEMSET...'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing MEMSET...'
+ORG 0x3100
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 77
+    DB 69
+    DB 77
+    DB 83
+    DB 69
+    DB 84
+    DB 46
+    DB 46
+    DB 46
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
     ; A = expression
     MOV P0,10
     PUSH P0
@@ -146,114 +100,75 @@ start:
     MOV P0,8192
     MEMSET P0,P1,P2
     ADD SP,4
-    MOV P0,0
     MOV [0x2000],P0
     ; Disp
-    ; Display 'MEMSET completed'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'MEMSET completed'
+ORG 0x3200
+    DB 77
+    DB 69
+    DB 77
+    DB 83
+    DB 69
+    DB 84
+    DB 32
+    DB 99
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 116
+    DB 101
+    DB 100
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_2:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_2
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_2
+display_end_2:
     ; Disp
-    ; Display 'Testing MEMTEST...'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing MEMTEST...'
+ORG 0x3300
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 77
+    DB 69
+    DB 77
+    DB 84
+    DB 69
+    DB 83
+    DB 84
+    DB 46
+    DB 46
+    DB 46
+    DB 0  ; null terminator
+    MOV P0,0x3300
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_3:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_3
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_3
+display_end_3:
     ; B = expression
     MOV P0,10
     PUSH P0
@@ -264,62 +179,52 @@ start:
     ADD SP,4
     MOV [0x2002],P0
     ; Disp
-    ; Display 'MEMTEST not equal:'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,113
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'MEMTEST not equal:'
+ORG 0x3400
+    DB 77
+    DB 69
+    DB 77
+    DB 84
+    DB 69
+    DB 83
+    DB 84
+    DB 32
+    DB 110
+    DB 111
+    DB 116
+    DB 32
+    DB 101
+    DB 113
+    DB 117
+    DB 97
+    DB 108
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3400
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_4:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_4
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_4
+display_end_4:
     MOV P0,[0x2002]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_5:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_5
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_5
+display_end_5:
     MOV P0,10
     PUSH P0
     MOV P0,170
@@ -337,106 +242,83 @@ start:
     ADD SP,4
     MOV [0x2004],P0
     ; Disp
-    ; Display 'MEMTEST equal:'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,113
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'MEMTEST equal:'
+ORG 0x3500
+    DB 77
+    DB 69
+    DB 77
+    DB 84
+    DB 69
+    DB 83
+    DB 84
+    DB 32
+    DB 101
+    DB 113
+    DB 117
+    DB 97
+    DB 108
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3500
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_6:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_6
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_6
+display_end_6:
     MOV P0,[0x2004]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_7:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_7
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_7
+display_end_7:
     ; Disp
-    ; Display 'Testing MEMMOVE...'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,86
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,46
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing MEMMOVE...'
+ORG 0x3600
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 77
+    DB 69
+    DB 77
+    DB 77
+    DB 79
+    DB 86
+    DB 69
+    DB 46
+    DB 46
+    DB 46
+    DB 0  ; null terminator
+    MOV P0,0x3600
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_8:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_8
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_8
+display_end_8:
     MOV P0,5
     PUSH P0
     MOV P0,17
@@ -464,136 +346,93 @@ start:
     ADD SP,4
     MOV [0x2008],P0
     ; Disp
-    ; Display 'MEMMOVE result:'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,86
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'MEMMOVE result:'
+ORG 0x3700
+    DB 77
+    DB 69
+    DB 77
+    DB 77
+    DB 79
+    DB 86
+    DB 69
+    DB 32
+    DB 114
+    DB 101
+    DB 115
+    DB 117
+    DB 108
+    DB 116
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3700
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_9:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_9
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_9
+display_end_9:
     MOV P0,[0x2008]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_10:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_10
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_10
+display_end_10:
     ; Disp
-    ; Display 'All memory tests completed!'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,33
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'All memory tests completed!'
+ORG 0x3800
+    DB 65
+    DB 108
+    DB 108
+    DB 32
+    DB 109
+    DB 101
+    DB 109
+    DB 111
+    DB 114
+    DB 121
+    DB 32
+    DB 116
+    DB 101
+    DB 115
+    DB 116
+    DB 115
+    DB 32
+    DB 99
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 116
+    DB 101
+    DB 100
+    DB 33
+    DB 0  ; null terminator
+    MOV P0,0x3800
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_11:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_11
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_11
+display_end_11:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop

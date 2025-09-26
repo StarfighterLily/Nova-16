@@ -21,129 +21,79 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    ; Display 'Advanced Graphics Test'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,71
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Advanced Graphics Test'
+ORG 0x3000
+    DB 65
+    DB 100
+    DB 118
+    DB 97
+    DB 110
+    DB 99
+    DB 101
+    DB 100
+    DB 32
+    DB 71
+    DB 114
+    DB 97
+    DB 112
+    DB 104
+    DB 105
+    DB 99
+    DB 115
+    DB 32
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     ; Disp
-    ; Display 'Sprites and Layers'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Sprites and Layers'
+ORG 0x3100
+    DB 83
+    DB 112
+    DB 114
+    DB 105
+    DB 116
+    DB 101
+    DB 115
+    DB 32
+    DB 97
+    DB 110
+    DB 100
+    DB 32
+    DB 76
+    DB 97
+    DB 121
+    DB 101
+    DB 114
+    DB 115
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
     ; X = expression
     MOV P0,50
     MOV [0x2000],P0
@@ -158,51 +108,46 @@ start:
     MOV [0x2006],P0
     MOV P0,0
     MOV [0x2006],P0
-for_1:
+for_3:
     MOV P0,[0x2006]
     MOV P0,8
     MOV P1,P0
     MOV P0,[0x2006]
     CMP P0,P1
-    JGE next_2
+    JGE next_4
     MOV P0,0
     MOV [0x2008],P0
-for_3:
+for_5:
     MOV P0,[0x2008]
     MOV P0,11
     MOV P1,P0
     MOV P0,[0x2008]
     CMP P0,P1
-    JGE next_4
-    MOV P0,[0x2008]
-    PUSH P0
-    MOV P0,10
-    MOV P1,P0
-    POP P0
-    MUL P0,P1
+    JGE next_6
+    MOV P0,2
     PUSH P0
     MOV P0,[0x2006]
-    PUSH P0
-    MOV P0,2
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,10
+    PUSH P0
+    MOV P0,[0x2008]
+    POP P1
+    MUL P0,P1
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x2006]
-    PUSH P0
     MOV P0,10
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2006]
+    POP P1
     MUL P0,P1
     MOV VX,P0
-    MOV P0,[0x2006]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2006]
+    POP P1
     ADD P0,P1
     MOV VL,P0
     MOV VM,0
@@ -211,32 +156,32 @@ for_3:
     MOV P1,1
     ADD P0,P1
     MOV [0x2008],P0
-    JMP for_3
-next_4:
+    JMP for_5
+next_6:
     MOV P0,[0x2006]
     MOV P1,1
     ADD P0,P1
     MOV [0x2006],P0
-    JMP for_1
-next_2:
+    JMP for_3
+next_4:
     MOV P0,0
     MOV [0x2000],P0
-for_5:
+for_7:
     MOV P0,[0x2000]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2000]
     CMP P0,P1
-    JGE next_6
+    JGE next_8
     MOV P0,0
     MOV [0x2002],P0
-for_7:
+for_9:
     MOV P0,[0x2002]
     MOV P0,21
     MOV P1,P0
     MOV P0,[0x2002]
     CMP P0,P1
-    JGE next_8
+    JGE next_10
     MOV P0,[0x2000]
     MOV VY,P0
     MOV P0,[0x2002]
@@ -249,32 +194,32 @@ for_7:
     MOV P1,1
     ADD P0,P1
     MOV [0x2002],P0
-    JMP for_7
-next_8:
+    JMP for_9
+next_10:
     MOV P0,[0x2000]
     MOV P0,10
     ADD P0,P1
     MOV [0x2000],P0
-    JMP for_5
-next_6:
+    JMP for_7
+next_8:
     MOV P0,0
     MOV [0x2000],P0
-for_9:
+for_11:
     MOV P0,[0x2000]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2000]
     CMP P0,P1
-    JGE next_10
+    JGE next_12
     MOV P0,21
     MOV [0x2002],P0
-for_11:
+for_13:
     MOV P0,[0x2002]
     MOV P0,41
     MOV P1,P0
     MOV P0,[0x2002]
     CMP P0,P1
-    JGE next_12
+    JGE next_14
     MOV P0,[0x2000]
     MOV VY,P0
     MOV P0,[0x2002]
@@ -283,11 +228,10 @@ for_11:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,5
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2002]
@@ -300,518 +244,462 @@ for_11:
     MOV P1,1
     ADD P0,P1
     MOV [0x2002],P0
-    JMP for_11
-next_12:
+    JMP for_13
+next_14:
     MOV P0,[0x2000]
     MOV P0,20
     ADD P0,P1
     MOV [0x2000],P0
-    JMP for_9
-next_10:
+    JMP for_11
+next_12:
     ; SPRITE_X = expression
     MOV P0,100
     MOV [0x200A],P0
     ; SPRITE_Y = expression
     MOV P0,80
     MOV [0x200C],P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,4
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,5
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,6
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,4
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,4
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,5
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,5
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,6
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,6
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,4
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,5
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,6
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200A]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x200C]
-    PUSH P0
     MOV P0,7
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,15
@@ -819,100 +707,53 @@ next_10:
     MOV VM,0
     SWRITE P0
     ; Disp
-    ; Display 'Advanced Graphics Test Complete'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,71
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Advanced Graphics Test Complete'
+ORG 0x3200
+    DB 65
+    DB 100
+    DB 118
+    DB 97
+    DB 110
+    DB 99
+    DB 101
+    DB 100
+    DB 32
+    DB 71
+    DB 114
+    DB 97
+    DB 112
+    DB 104
+    DB 105
+    DB 99
+    DB 115
+    DB 32
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 32
+    DB 67
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 116
+    DB 101
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_14:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_14
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_14
+display_end_14:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop

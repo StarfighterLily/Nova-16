@@ -10,9 +10,9 @@ from nobasic_utils import (
     ClrHomeStmt, DispStmt, InputStmt, AssignmentStmt, DimStmt,
     BreakStmt, ContinueStmt, IfStmt, ElifClause, ForStmt, WhileStmt, DoLoopStmt,
     RepeatUntilStmt, SelectStmt, CaseClause, CallStmt, ReturnStmt, PauseStmt,
-    DefineStmt, GotoStmt, LabelStmt, TryCatchStmt,
+    DefineStmt, GotoStmt, LabelStmt, TryCatchStmt, StructStmt, StructField, StructFieldStmt, StructInstanceStmt,
     BinaryExpr, UnaryExpr, LiteralExpr, VariableExpr,
-    ArrayAccessExpr, FunctionCallExpr, ArrayLiteralExpr
+    ArrayAccessExpr, FunctionCallExpr, ArrayLiteralExpr, StructFieldAccessExpr
 )
 from nobasic_errors import ParserError
 
@@ -101,6 +101,8 @@ class Parser:
             return self.parse_label()
         elif token.type == TokenType.TRY:
             return self.parse_try_catch()
+        elif token.type == TokenType.STRUCT:
+            return self.parse_struct()
         elif token.type == TokenType.SPLAY:
             return self.parse_splay()
         elif token.type == TokenType.PLAY:
@@ -115,14 +117,21 @@ class Parser:
         self.consume(TokenType.CLRHOME, "Expected 'ClrHome'")
         return ClrHomeStmt()
 
-    def parse_dim(self) -> DimStmt:
-        """Parse DIM statement."""
+    def parse_dim(self) -> Statement:
+        """Parse DIM statement (array or struct instance)."""
         self.consume(TokenType.DIM, "Expected 'DIM'")
-        array_name = self.consume(TokenType.IDENTIFIER, "Expected array name").value
-        self.consume(TokenType.LPAREN, "Expected '(' after array name")
-        size = self.parse_expression()
-        self.consume(TokenType.RPAREN, "Expected ')' after array size")
-        return DimStmt(array_name, size)
+        var_name = self.consume(TokenType.IDENTIFIER, "Expected variable name").value
+        
+        if self.match(TokenType.AS):
+            # Struct instance: DIM var AS type
+            struct_name = self.consume(TokenType.IDENTIFIER, "Expected struct type name").value
+            return StructInstanceStmt(var_name, struct_name)
+        else:
+            # Array declaration: DIM array(size)
+            self.consume(TokenType.LPAREN, "Expected '(' after array name")
+            size = self.parse_expression()
+            self.consume(TokenType.RPAREN, "Expected ')' after array size")
+            return DimStmt(var_name, size)
 
     def parse_disp(self) -> DispStmt:
         """Parse Disp statement."""
@@ -177,6 +186,10 @@ class Parser:
                 index = self.parse_expression()
                 self.consume(TokenType.RBRACKET, "Expected ']' after array index")
                 target = ArrayAccessExpr(name, index)
+            elif self.match(TokenType.DOT):
+                # Struct field access: var.field
+                field_name = self.consume(TokenType.IDENTIFIER, "Expected field name after '.'").value
+                target = StructFieldAccessExpr(name, field_name)
             elif self.match(TokenType.LPAREN):
                 # Check if this is a function call or array access with parentheses
                 known_functions = {'ABS', 'INT', 'STR', 'LEN', 'VAL', 'ASC', 'CHR', 'SIN', 'COS', 'TAN', 'SQRT', 'LOG', 'EXP', 'RND', 'MIN', 'MAX', 'COLOR', 'RAMP', 'SHADE', 'KEYIN', 'KEYSTAT', 'LOWER', 'UPPER', 'LEFT', 'RIGHT', 'MID', 'INSTR', 'MEMSET', 'MEMCPY', 'MEMTEST', 'MEMMOVE', 'MEMSWAP', 'TRIM', 'REPLACE', 'SPLIT', 'JOIN', 'PXLON', 'PXLOFF', 'PXLCHANGE', 'PTON', 'PTOFF', 'PTCHANGE', 'PLAY', 'SOUND', 'LINE', 'CIRCLE', 'RECT', 'FILL', 'POW', 'SPLAY', 'STOP', 'INVALID_FUNCTION'}
@@ -198,7 +211,7 @@ class Parser:
             raise self.error("Expected identifier")
 
         if self.match(TokenType.EQUALS):
-            # Assignment: var = expr or array[index] = expr
+            # Assignment: var = expr or array[index] = expr or struct.field = expr
             expr = self.parse_expression()
             return AssignmentStmt(target, expr)
         elif self.match(TokenType.LPAREN):
@@ -391,6 +404,35 @@ class Parser:
         
         return TryCatchStmt(try_stmts, catch_stmts)
 
+    def parse_struct(self) -> StructStmt:
+        """Parse Struct definition."""
+        self.consume(TokenType.STRUCT, "Expected 'Struct'")
+        name = self.consume(TokenType.IDENTIFIER, "Expected struct name").value
+        
+        fields = []
+        while not self.check(TokenType.END):
+            if self.check(TokenType.NEWLINE):
+                self.advance()
+                continue
+            # Parse field name
+            field_name = self.consume(TokenType.IDENTIFIER, "Expected field name").value
+            # For now, assume all fields are integers (we can extend this later)
+            field_type = "integer"
+            fields.append(StructField(field_name, field_type))
+        
+        self.consume(TokenType.END, "Expected 'End' to close Struct definition")
+        # Optional "Struct" after End
+        self.match(TokenType.STRUCT)
+        
+        return StructStmt(name, fields)
+
+    def parse_struct_field(self) -> StructField:
+        """Parse a field in a struct."""
+        name = self.consume(TokenType.IDENTIFIER, "Expected field name").value
+        self.consume(TokenType.COLON, "Expected ':' after field name")
+        type_name = self.consume(TokenType.IDENTIFIER, "Expected type name").value
+        return StructField(name, type_name)
+
     def parse_splay(self) -> CallStmt:
         """Parse SPLAY statement."""
         self.consume(TokenType.SPLAY, "Expected 'SPLAY'")
@@ -413,9 +455,6 @@ class Parser:
             return CallStmt("PLAY", [])
 
     def parse_stop(self) -> CallStmt:
-        """Parse STOP statement."""
-        self.consume(TokenType.STOP, "Expected 'STOP'")
-        return CallStmt("STOP", [])
         """Parse STOP statement."""
         self.consume(TokenType.STOP, "Expected 'STOP'")
         return CallStmt("STOP", [])
@@ -619,6 +658,10 @@ class Parser:
                 index = self.parse_expression()
                 self.consume(TokenType.RBRACKET, "Expected ']' after array index")
                 return ArrayAccessExpr(name, index)
+            elif self.match(TokenType.DOT):
+                # Struct field access
+                field_name = self.consume(TokenType.IDENTIFIER, "Expected field name after '.'").value
+                return StructFieldAccessExpr(name, field_name)
             else:
                 return VariableExpr(name)
         else:

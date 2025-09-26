@@ -26,50 +26,45 @@ start:
     ; B = expression
     MOV P0,5
     MOV [0x2002],P0
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,[0x2002]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGT cmp_done_2
+    MOV P0,1
+cmp_done_2:
     JZ else_1
     ; Disp
-    ; Display 'A is greater'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'A is greater'
+ORG 0x3000
+    DB 65
+    DB 32
+    DB 105
+    DB 115
+    DB 32
+    DB 103
+    DB 114
+    DB 101
+    DB 97
+    DB 116
+    DB 101
+    DB 114
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_3:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_3
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_3
+display_end_3:
     JMP endif_2
 else_1:
 endif_2:

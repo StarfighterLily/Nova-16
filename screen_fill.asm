@@ -62,19 +62,26 @@ next_4:
     JMP for_1
 next_2:
     ; Disp
-    ; Display 'DONE'
-    MOV P0,68
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,78
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'DONE'
+ORG 0x3000
+    DB 68
+    DB 79
+    DB 78
+    DB 69
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_4:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_4
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_4
+display_end_4:
 
 ; Program end - infinite loop to keep display visible
 halt:

@@ -1,4 +1,20 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-halt 0x16DE
+display_loop_0 0x3020
+display_end_0 0x303B
+display_loop_1 0x311A
+display_end_1 0x3135
+display_loop_2 0x313E
+display_end_2 0x3159
+display_loop_3 0x3221
+display_end_3 0x323C
+mid_loop_5 0x3336
+mid_end_5 0x334F
+display_loop_6 0x3425
+display_end_6 0x3440
+display_loop_7 0x351D
+display_end_7 0x3538
+display_loop_8 0x3626
+display_end_8 0x3641
+halt 0x3641

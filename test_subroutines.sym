@@ -1,7 +1,11 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-DrawStar 0x10DC
-PlayMelody 0x11C5
-pause_loop 0x1306
-halt 0x130A
+display_loop_0 0x3019
+display_end_0 0x3034
+DrawStar 0x3034
+PlayMelody 0x311D
+display_loop_1 0x3124
+display_end_1 0x313F
+pause_loop 0x313F
+halt 0x3143

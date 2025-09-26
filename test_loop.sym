@@ -2,5 +2,9 @@
 # Format: <symbol> <value>
 start 0x1011
 for_1 0x1031
-next_2 0x10A2
-halt 0x10A2
+display_loop_2 0x300F
+display_end_2 0x302A
+display_loop_3 0x3033
+display_end_3 0x304E
+next_2 0x3064
+halt 0x3064

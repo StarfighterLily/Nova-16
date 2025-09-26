@@ -1,0 +1,4 @@
+Struct Point
+  X
+  Y
+End Struct

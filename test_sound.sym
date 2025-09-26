@@ -1,5 +1,9 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-pause_loop 0x10F5
-halt 0x11F6
+display_loop_0 0x301A
+display_end_0 0x3035
+pause_loop 0x3042
+display_loop_1 0x311F
+display_end_1 0x313A
+halt 0x313A

@@ -34,11 +34,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -47,11 +46,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -60,11 +58,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -73,11 +70,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,4
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -87,11 +83,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -102,11 +97,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -115,11 +109,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -128,11 +121,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -142,11 +134,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -157,11 +148,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -170,11 +160,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -183,11 +172,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -197,11 +185,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -212,11 +199,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -225,11 +211,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -238,11 +223,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -252,11 +236,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -267,11 +250,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -280,11 +262,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -293,11 +274,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -307,11 +287,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -322,11 +301,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -335,11 +313,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -348,11 +325,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -362,11 +338,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -377,11 +352,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -390,11 +364,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -403,11 +376,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -417,11 +389,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -432,11 +403,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -445,11 +415,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -458,11 +427,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -472,11 +440,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -487,11 +454,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -500,11 +466,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -513,11 +478,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -527,11 +491,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -542,11 +505,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -555,11 +517,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -568,11 +529,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -582,11 +542,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -597,11 +556,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -610,11 +568,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -623,11 +580,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -637,11 +593,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -652,11 +607,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -665,11 +619,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -678,11 +631,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -692,11 +644,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -707,11 +658,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -720,11 +670,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -733,11 +682,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -747,11 +695,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -762,11 +709,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -775,11 +721,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -788,11 +733,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -802,11 +746,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -817,11 +760,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -830,11 +772,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -843,11 +784,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -857,11 +797,10 @@ start:
     MOV VM,0
     SWRITE P0
     ; Y = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2000],P0
     MOV P0,[0x2002]
@@ -872,11 +811,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -885,11 +823,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]
@@ -898,11 +835,10 @@ start:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,[0x2000]

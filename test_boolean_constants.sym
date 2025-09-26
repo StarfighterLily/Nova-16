@@ -1,8 +1,17 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-else_1 0x121B
-endif_2 0x121B
-else_3 0x12C6
-endif_4 0x12C6
-halt 0x1446
+display_loop_0 0x3026
+display_end_0 0x3041
+display_loop_3 0x3115
+display_end_3 0x3130
+else_2 0x3134
+endif_3 0x3134
+cmp_done_6 0x3153
+display_loop_7 0x3216
+display_end_7 0x3231
+else_5 0x3235
+endif_6 0x3235
+display_loop_8 0x332A
+display_end_8 0x3345
+halt 0x3345

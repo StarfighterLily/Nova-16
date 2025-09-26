@@ -22,11 +22,15 @@ for_1:
     MOV P0,[0x2000]
     CMP P0,P1
     JGE next_2
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,5
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JNZ cmp_done_4
+    MOV P0,1
+cmp_done_4:
     JZ else_3
     JMP next_2
     JMP endif_4
@@ -34,6 +38,17 @@ else_3:
 endif_4:
     ; Disp
     MOV P0,[0x2000]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_5:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_5
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_5
+display_end_5:
     MOV P0,[0x2000]
     MOV P1,1
     ADD P0,P1
@@ -42,97 +57,148 @@ endif_4:
 next_2:
     MOV P0,1
     MOV [0x2002],P0
-for_5:
+for_7:
     MOV P0,[0x2002]
     MOV P0,6
     MOV P1,P0
     MOV P0,[0x2002]
     CMP P0,P1
-    JGE next_6
-    MOV P0,[0x2002]
-    PUSH P0
+    JGE next_8
     MOV P0,3
-    MOV P1,P0
-    POP P0
-    JZ else_7
-    JMP for_5
-    JMP endif_8
-else_7:
-endif_8:
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JNZ cmp_done_10
+    MOV P0,1
+cmp_done_10:
+    JZ else_9
+    JMP for_7
+    JMP endif_10
+else_9:
+endif_10:
     ; Disp
     MOV P0,[0x2002]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_11:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_11
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_11
+display_end_11:
     MOV P0,[0x2002]
     MOV P1,1
     ADD P0,P1
     MOV [0x2002],P0
-    JMP for_5
-next_6:
+    JMP for_7
+next_8:
     ; K = expression
     MOV P0,1
     MOV [0x2004],P0
-while_9:
-    MOV P0,[0x2004]
-    PUSH P0
-    MOV P0,10
-    MOV P1,P0
-    POP P0
-    CMP P0,0
-    JZ wend_10
-    MOV P0,[0x2004]
-    PUSH P0
-    MOV P0,7
-    MOV P1,P0
-    POP P0
-    JZ else_11
-    JMP wend_10
-    JMP endif_12
-else_11:
-endif_12:
-    ; Disp
-    MOV P0,[0x2004]
-    ; K = expression
-    MOV P0,[0x2004]
-    PUSH P0
-    MOV P0,1
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
-    MOV [0x2004],P0
-    JMP while_9
-wend_10:
-    ; M = expression
-    MOV P0,1
-    MOV [0x2006],P0
 while_13:
-    MOV P0,[0x2006]
+    MOV P0,10
     PUSH P0
-    MOV P0,5
-    MOV P1,P0
-    POP P0
+    MOV P0,[0x2004]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLE cmp_done_14
+    MOV P0,1
+cmp_done_14:
     CMP P0,0
     JZ wend_14
-    ; M = expression
-    MOV P0,[0x2006]
+    MOV P0,7
     PUSH P0
+    MOV P0,[0x2004]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JNZ cmp_done_17
     MOV P0,1
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
-    MOV [0x2006],P0
-    MOV P0,[0x2006]
-    PUSH P0
-    MOV P0,3
-    MOV P1,P0
-    POP P0
-    JZ else_15
-    JMP while_13
-    JMP endif_16
-else_15:
-endif_16:
+cmp_done_17:
+    JZ else_16
+    JMP wend_14
+    JMP endif_17
+else_16:
+endif_17:
     ; Disp
-    MOV P0,[0x2006]
+    MOV P0,[0x2004]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_18:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_18
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_18
+display_end_18:
+    ; K = expression
+    MOV P0,1
+    PUSH P0
+    MOV P0,[0x2004]
+    POP P1
+    ADD P0,P1
+    MOV [0x2004],P0
     JMP while_13
 wend_14:
+    ; M = expression
+    MOV P0,1
+    MOV [0x2006],P0
+while_20:
+    MOV P0,5
+    PUSH P0
+    MOV P0,[0x2006]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLE cmp_done_21
+    MOV P0,1
+cmp_done_21:
+    CMP P0,0
+    JZ wend_21
+    ; M = expression
+    MOV P0,1
+    PUSH P0
+    MOV P0,[0x2006]
+    POP P1
+    ADD P0,P1
+    MOV [0x2006],P0
+    MOV P0,3
+    PUSH P0
+    MOV P0,[0x2006]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JNZ cmp_done_24
+    MOV P0,1
+cmp_done_24:
+    JZ else_23
+    JMP while_20
+    JMP endif_24
+else_23:
+endif_24:
+    ; Disp
+    MOV P0,[0x2006]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_25:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_25
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_25
+display_end_25:
+    JMP while_20
+wend_21:
 
 ; Program end - infinite loop to keep display visible
 halt:

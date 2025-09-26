@@ -8,7 +8,7 @@ from typing import Dict, Set, List
 from nobasic_utils import (
     Program, Statement, Expression, VariableExpr, ArrayAccessExpr,
     AssignmentStmt, DimStmt, InputStmt, IfStmt, ForStmt, WhileStmt, DoLoopStmt, DispStmt,
-    BreakStmt, ContinueStmt, ArrayLiteralExpr, TryCatchStmt
+    BreakStmt, ContinueStmt, ArrayLiteralExpr, TryCatchStmt, StructStmt, StructField, StructFieldStmt
 )
 from nobasic_errors import SemanticError
 
@@ -133,6 +133,8 @@ class SemanticAnalyzer:
                 self._analyze_input(stmt)
             elif isinstance(stmt, TryCatchStmt):
                 self._analyze_try_catch(stmt)
+            elif isinstance(stmt, StructStmt):
+                self._analyze_struct(stmt)
             elif isinstance(stmt, IfStmt):
                 self._analyze_if(stmt)
             elif isinstance(stmt, ForStmt):
@@ -200,6 +202,16 @@ class SemanticAnalyzer:
             self._analyze_statement(s)
         for s in stmt.catch_stmts:
             self._analyze_statement(s)
+
+    def _analyze_struct(self, stmt: StructStmt):
+        """Analyze STRUCT statement."""
+        # For now, just validate field names
+        field_names = set()
+        for field in stmt.fields:
+            if field.name in field_names:
+                raise SemanticError(f"Duplicate field name '{field.name}' in struct '{stmt.name}'")
+            field_names.add(field.name)
+        # TODO: Store struct definitions for later validation
 
     def _analyze_if(self, stmt: IfStmt):
         """Analyze if statement."""

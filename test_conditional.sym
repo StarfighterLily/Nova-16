@@ -1,6 +1,9 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-else_1 0x10E6
-endif_2 0x10E6
-halt 0x10E6
+cmp_done_2 0x105A
+display_loop_3 0x3016
+display_end_3 0x3031
+else_1 0x3035
+endif_2 0x3035
+halt 0x3035

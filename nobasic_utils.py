@@ -47,6 +47,8 @@ class TokenType(Enum):
     LBL = "LBL"
     TRY = "TRY"
     CATCH = "CATCH"
+    STRUCT = "STRUCT"
+    AS = "AS"
     SPLAY = "SPLAY"
     PLAY = "PLAY"
     STOP = "STOP"
@@ -81,6 +83,7 @@ class TokenType(Enum):
     QUOTE = '"'
     ARROW = "->"
     AMPERSAND = "&"
+    DOT = "."
 
     # Literals
     NUMBER = "NUMBER"
@@ -284,6 +287,35 @@ class TryCatchStmt(Statement):
     catch_stmts: List[Statement]
 
 
+@dataclass
+class StructStmt(Statement):
+    """Struct definition statement."""
+    name: str
+    fields: List['StructField']
+
+
+@dataclass
+class StructField:
+    """Struct field definition."""
+    name: str
+    field_type: str  # "integer" or "string"
+
+
+@dataclass
+class StructFieldStmt(Statement):
+    """Struct field access/modification."""
+    struct_var: str
+    field_name: str
+    expression: Optional[Expression] = None  # None for access, Expression for assignment
+
+
+@dataclass
+class StructInstanceStmt(Statement):
+    """Struct instance declaration statement."""
+    var_name: str
+    struct_name: str
+
+
 # Expressions
 @dataclass
 class BinaryExpr(Expression):
@@ -330,6 +362,13 @@ class FunctionCallExpr(Expression):
 class ArrayLiteralExpr(Expression):
     """Array literal expression."""
     elements: List[Expression]
+
+
+@dataclass
+class StructFieldAccessExpr(Expression):
+    """Struct field access expression."""
+    struct_var: str
+    field_name: str
 
 
 # Utility functions

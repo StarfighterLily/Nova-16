@@ -20,15 +20,25 @@ start:
     MOV P0,20
     MOV [0x2002],P0
     ; C = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,[0x2002]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     MUL P0,P1
     MOV [0x2004],P0
     ; Disp
     MOV P0,[0x2004]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
 
 ; Program end - infinite loop to keep display visible
 halt:

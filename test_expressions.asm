@@ -27,42 +27,52 @@ start:
     MOV P0,10
     MOV [0x2002],P0
     ; C = expression
-    MOV P0,[0x2000]
+    MOV P0,2
     PUSH P0
     MOV P0,[0x2002]
-    PUSH P0
-    MOV P0,2
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2004],P0
     ; Disp
-    ; Display 'Result:'
-    MOV P0,82
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Result:'
+ORG 0x3000
+    DB 82
+    DB 101
+    DB 115
+    DB 117
+    DB 108
+    DB 116
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     MOV P0,[0x2004]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
 
 ; Program end - infinite loop to keep display visible
 halt:

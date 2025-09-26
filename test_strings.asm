@@ -21,26 +21,92 @@ start:
     MOV VY,P0
     SFILL P0
     ; A = expression
+
+; String literal: 'Hello'
+ORG 0x3000
+    DB 72
+    DB 101
+    DB 108
+    DB 108
+    DB 111
+    DB 0  ; null terminator
+    MOV P0,0x3000
     MOV [0x2000],P0
     ; B = expression
+
+; String literal: ' World'
+ORG 0x3100
+    DB 32
+    DB 87
+    DB 111
+    DB 114
+    DB 108
+    DB 100
+    DB 0  ; null terminator
+    MOV P0,0x3100
     MOV [0x2002],P0
     ; C = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,[0x2002]
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
+    MOV P2,0x4000
+    STRCPY P2,P0
+    STRCAT P2,P1
+    MOV P0,0x4000
     MOV [0x2004],P0
     ; Disp
     MOV P0,[0x2004]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
     ; Disp
-    PUSH P0
     MOV P0,[0x2004]
     STRLEN P0
+    MOV P0,R0
+    MOV P1,0x4002
+    ; STR() conversion not fully implemented
+    MOV [P1],'0'
+    MOV [P1+1],0
+    MOV P0,0x4002
+    PUSH P0
+
+; String literal: 'Length: '
+ORG 0x3200
+    DB 76
+    DB 101
+    DB 110
+    DB 103
+    DB 116
+    DB 104
+    DB 58
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    POP P1
+    MOV P2,0x4003
+    STRCPY P2,P0
+    STRCAT P2,P1
+    MOV P0,0x4003
+    ; Display string at address in P0
     MOV P1,P0
-    POP P0
-    ADD P0,P1
+display_loop_4:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_4
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_4
+display_end_4:
 
 ; Program end - infinite loop to keep display visible
 halt:

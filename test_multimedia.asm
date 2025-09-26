@@ -21,195 +21,107 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    ; Display 'Testing sound and advanced graphics:'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing sound and advanced graphics:'
+ORG 0x3000
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 115
+    DB 111
+    DB 117
+    DB 110
+    DB 100
+    DB 32
+    DB 97
+    DB 110
+    DB 100
+    DB 32
+    DB 97
+    DB 100
+    DB 118
+    DB 97
+    DB 110
+    DB 99
+    DB 101
+    DB 100
+    DB 32
+    DB 103
+    DB 114
+    DB 97
+    DB 112
+    DB 104
+    DB 105
+    DB 99
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     ; Disp
-    ; Display 'Playing sound sequence:'
-    MOV P0,80
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,113
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Playing sound sequence:'
+ORG 0x3100
+    DB 80
+    DB 108
+    DB 97
+    DB 121
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 115
+    DB 111
+    DB 117
+    DB 110
+    DB 100
+    DB 32
+    DB 115
+    DB 101
+    DB 113
+    DB 117
+    DB 101
+    DB 110
+    DB 99
+    DB 101
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
     MOV P0,220
     MOV [0x2000],P0
-for_1:
+for_3:
     MOV P0,[0x2000]
     MOV P0,881
     MOV P1,P0
     MOV P0,[0x2000]
     CMP P0,P1
-    JGE next_2
+    JGE next_4
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop
@@ -217,171 +129,132 @@ pause_loop:
     MOV P0,110
     ADD P0,P1
     MOV [0x2000],P0
-    JMP for_1
-next_2:
+    JMP for_3
+next_4:
     ; Disp
-    ; Display 'Drawing graphics patterns:'
-    MOV P0,68
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,119
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Drawing graphics patterns:'
+ORG 0x3200
+    DB 68
+    DB 114
+    DB 97
+    DB 119
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 103
+    DB 114
+    DB 97
+    DB 112
+    DB 104
+    DB 105
+    DB 99
+    DB 115
+    DB 32
+    DB 112
+    DB 97
+    DB 116
+    DB 116
+    DB 101
+    DB 114
+    DB 110
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_4:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_4
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_4
+display_end_4:
     MOV P0,0
     MOV [0x2002],P0
-for_3:
+for_6:
     MOV P0,[0x2002]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2002]
     CMP P0,P1
-    JGE next_4
+    JGE next_7
     MOV P0,0
     MOV [0x2004],P0
-for_5:
+for_8:
     MOV P0,[0x2004]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2004]
     CMP P0,P1
-    JGE next_6
-    MOV P0,[0x2002]
-    PUSH P0
-    MOV P0,8
-    MOV P1,P0
-    POP P0
-    DIV P0,P1
-    PUSH P0
-    MOV P0,[0x2004]
-    PUSH P0
-    MOV P0,8
-    MOV P1,P0
-    POP P0
-    DIV P0,P1
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
+    JGE next_9
+    MOV P0,0
     PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
-    MOD P0,P1
     PUSH P0
+    MOV P0,8
+    PUSH P0
+    MOV P0,[0x2004]
+    POP P1
+    DIV P0,P1
+    PUSH P0
+    MOV P0,8
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
+    DIV P0,P1
+    POP P1
+    ADD P0,P1
+    POP P1
+    MOD P0,P1
+    POP P1
+    CMP P0,P1
     MOV P0,0
-    MOV P1,P0
-    POP P0
-    JZ else_7
+    JNZ cmp_done_11
+    MOV P0,1
+cmp_done_11:
+    JZ else_10
     ; COLOR = expression
     MOV P0,[0x2006]
     MOV [0x2008],P0
-    JMP endif_8
-else_7:
+    JMP endif_11
+else_10:
     ; COLOR = expression
     MOV P0,[0x200A]
     MOV [0x2008],P0
-endif_8:
+endif_11:
     MOV P0,0
     MOV [0x200C],P0
-for_9:
+for_13:
     MOV P0,[0x200C]
     MOV P0,8
     MOV P1,P0
     MOV P0,[0x200C]
     CMP P0,P1
-    JGE next_10
+    JGE next_14
     MOV P0,0
     MOV [0x200E],P0
-for_11:
+for_15:
     MOV P0,[0x200E]
     MOV P0,8
     MOV P1,P0
     MOV P0,[0x200E]
     CMP P0,P1
-    JGE next_12
-    MOV P0,[0x2002]
-    PUSH P0
+    JGE next_16
     MOV P0,[0x200C]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x2004]
-    PUSH P0
     MOV P0,[0x200E]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2004]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV P0,[0x2008]
@@ -392,91 +265,78 @@ for_11:
     MOV P1,1
     ADD P0,P1
     MOV [0x200E],P0
-    JMP for_11
-next_12:
+    JMP for_15
+next_16:
     MOV P0,[0x200C]
     MOV P1,1
     ADD P0,P1
     MOV [0x200C],P0
-    JMP for_9
-next_10:
+    JMP for_13
+next_14:
     MOV P0,[0x2004]
     MOV P0,8
     ADD P0,P1
     MOV [0x2004],P0
-    JMP for_5
-next_6:
+    JMP for_8
+next_9:
     MOV P0,[0x2002]
     MOV P0,8
     ADD P0,P1
     MOV [0x2002],P0
-    JMP for_3
-next_4:
+    JMP for_6
+next_7:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop
     ; Disp
-    ; Display 'Drawing lines:'
-    MOV P0,68
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,119
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Drawing lines:'
+ORG 0x3300
+    DB 68
+    DB 114
+    DB 97
+    DB 119
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 108
+    DB 105
+    DB 110
+    DB 101
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3300
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_16:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_16
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_16
+display_end_16:
     MOV P0,0
     MOV [0x2004],P0
-for_13:
+for_18:
     MOV P0,[0x2004]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2004]
     CMP P0,P1
-    JGE next_14
+    JGE next_19
     MOV P0,0
     MOV [0x2002],P0
-for_15:
+for_20:
     MOV P0,[0x2002]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2002]
     CMP P0,P1
-    JGE next_16
+    JGE next_21
     MOV P0,[0x2002]
     MOV VY,P0
     MOV P0,[0x2004]
@@ -489,32 +349,32 @@ for_15:
     MOV P1,1
     ADD P0,P1
     MOV [0x2002],P0
-    JMP for_15
-next_16:
+    JMP for_20
+next_21:
     MOV P0,[0x2004]
     MOV P0,32
     ADD P0,P1
     MOV [0x2004],P0
-    JMP for_13
-next_14:
+    JMP for_18
+next_19:
     MOV P0,0
     MOV [0x2002],P0
-for_17:
+for_22:
     MOV P0,[0x2002]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2002]
     CMP P0,P1
-    JGE next_18
+    JGE next_23
     MOV P0,0
     MOV [0x2004],P0
-for_19:
+for_24:
     MOV P0,[0x2004]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2004]
     CMP P0,P1
-    JGE next_20
+    JGE next_25
     MOV P0,[0x2002]
     MOV VY,P0
     MOV P0,[0x2004]
@@ -527,67 +387,50 @@ for_19:
     MOV P1,1
     ADD P0,P1
     MOV [0x2004],P0
-    JMP for_19
-next_20:
+    JMP for_24
+next_25:
     MOV P0,[0x2002]
     MOV P0,32
     ADD P0,P1
     MOV [0x2002],P0
-    JMP for_17
-next_18:
+    JMP for_22
+next_23:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop
     ; Disp
-    ; Display 'Drawing circles:'
-    MOV P0,68
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,119
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Drawing circles:'
+ORG 0x3400
+    DB 68
+    DB 114
+    DB 97
+    DB 119
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 99
+    DB 105
+    DB 114
+    DB 99
+    DB 108
+    DB 101
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3400
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_25:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_25
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_25
+display_end_25:
     ; CENTERS = expression
     MOV P0,0
     MOV [0x2014],P0
@@ -599,119 +442,148 @@ pause_loop:
     MOV [0x2018],P0
     MOV P0,0
     MOV [0x201A],P0
-for_21:
+for_27:
     MOV P0,[0x201A]
     MOV P0,4
     MOV P1,P0
     MOV P0,[0x201A]
     CMP P0,P1
-    JGE next_22
+    JGE next_28
     ; CX = expression
+    MOV P0,[0x201A]
+    MOV P1,0x2014
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
     MOV [0x201C],P0
     ; CY = expression
     MOV P0,128
     MOV [0x201E],P0
     ; R = expression
+    MOV P0,[0x201A]
+    MOV P1,0x2016
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
     MOV [0x2020],P0
     ; CC = expression
+    MOV P0,[0x201A]
+    MOV P1,0x2018
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
     MOV [0x2022],P0
     MOV P0,[0x2020]
     NEG P0
     MOV [0x2024],P0
-for_23:
+for_29:
     MOV P0,[0x2024]
     MOV P0,[0x2020]
     ADD P0,1
     MOV P1,P0
     MOV P0,[0x2024]
     CMP P0,P1
-    JGE next_24
+    JGE next_30
     MOV P0,[0x2020]
     NEG P0
     MOV [0x2026],P0
-for_25:
+for_31:
     MOV P0,[0x2026]
     MOV P0,[0x2020]
     ADD P0,1
     MOV P1,P0
     MOV P0,[0x2026]
     CMP P0,P1
-    JGE next_26
+    JGE next_32
     ; DIST_SQ = expression
-    MOV P0,[0x2024]
-    PUSH P0
-    MOV P0,[0x2024]
-    MOV P1,P0
-    POP P0
-    MUL P0,P1
-    PUSH P0
     MOV P0,[0x2026]
     PUSH P0
     MOV P0,[0x2026]
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2024]
+    PUSH P0
+    MOV P0,[0x2024]
+    POP P1
+    MUL P0,P1
+    POP P1
     ADD P0,P1
     MOV [0x2028],P0
-    MOV P0,[0x2028]
-    PUSH P0
     MOV P0,[0x2020]
     PUSH P0
     MOV P0,[0x2020]
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
-    JZ else_27
-    ; PX = expression
-    MOV P0,[0x201C]
     PUSH P0
+    MOV P0,[0x2028]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLE cmp_done_34
+    MOV P0,1
+cmp_done_34:
+    JZ else_33
+    ; PX = expression
     MOV P0,[0x2024]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x201C]
+    POP P1
     ADD P0,P1
     MOV [0x202A],P0
     ; PY = expression
-    MOV P0,[0x201E]
-    PUSH P0
     MOV P0,[0x2026]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x201E]
+    POP P1
     ADD P0,P1
     MOV [0x202C],P0
-    MOV P0,[0x202A]
-    PUSH P0
-    MOV P0,0
-    MOV P1,P0
-    POP P0
-    PUSH P0
-    MOV P0,[0x202A]
-    PUSH P0
     MOV P0,256
-    MOV P1,P0
-    POP P0
-    MOV P1,P0
-    POP P0
     PUSH P0
     MOV P0,[0x202C]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLT cmp_done_37
+    MOV P0,1
+cmp_done_37:
     PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
-    MOV P1,P0
-    POP P0
     PUSH P0
     MOV P0,[0x202C]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGE cmp_done_38
+    MOV P0,1
+cmp_done_38:
     PUSH P0
     MOV P0,256
-    MOV P1,P0
-    POP P0
-    MOV P1,P0
-    POP P0
-    JZ else_29
+    PUSH P0
+    MOV P0,[0x202A]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLT cmp_done_39
+    MOV P0,1
+cmp_done_39:
+    PUSH P0
+    MOV P0,0
+    PUSH P0
+    MOV P0,[0x202A]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGE cmp_done_40
+    MOV P0,1
+cmp_done_40:
+    POP P1
+    AND P0,P1
+    POP P1
+    AND P0,P1
+    POP P1
+    AND P0,P1
+    JZ else_36
     MOV P0,[0x202A]
     MOV VY,P0
     MOV P0,[0x202C]
@@ -720,173 +592,131 @@ for_25:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    JMP endif_30
-else_29:
-endif_30:
-    JMP endif_28
-else_27:
-endif_28:
+    JMP endif_37
+else_36:
+endif_37:
+    JMP endif_34
+else_33:
+endif_34:
     MOV P0,[0x2026]
     MOV P1,1
     ADD P0,P1
     MOV [0x2026],P0
-    JMP for_25
-next_26:
+    JMP for_31
+next_32:
     MOV P0,[0x2024]
     MOV P1,1
     ADD P0,P1
     MOV [0x2024],P0
-    JMP for_23
-next_24:
+    JMP for_29
+next_30:
     MOV P0,[0x201A]
     MOV P1,1
     ADD P0,P1
     MOV [0x201A],P0
-    JMP for_21
-next_22:
+    JMP for_27
+next_28:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop
     ; Disp
-    ; Display 'Synchronized audio-visual:'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,122
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,45
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Synchronized audio-visual:'
+ORG 0x3500
+    DB 83
+    DB 121
+    DB 110
+    DB 99
+    DB 104
+    DB 114
+    DB 111
+    DB 110
+    DB 105
+    DB 122
+    DB 101
+    DB 100
+    DB 32
+    DB 97
+    DB 117
+    DB 100
+    DB 105
+    DB 111
+    DB 45
+    DB 118
+    DB 105
+    DB 115
+    DB 117
+    DB 97
+    DB 108
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3500
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_41:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_41
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_41
+display_end_41:
     MOV P0,200
     MOV [0x202E],P0
-for_31:
+for_43:
     MOV P0,[0x202E]
     MOV P0,801
     MOV P1,P0
     MOV P0,[0x202E]
     CMP P0,P1
-    JGE next_32
+    JGE next_44
     SPLAY
     ; BAR_HEIGHT = expression
-    MOV P0,[0x202E]
+    MOV P0,600
+    PUSH P0
+    MOV P0,256
     PUSH P0
     MOV P0,200
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x202E]
+    POP P1
     SUB P0,P1
-    PUSH P0
-    MOV P0,256
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    PUSH P0
-    MOV P0,600
-    MOV P1,P0
-    POP P0
+    POP P1
     DIV P0,P1
     MOV [0x2030],P0
-    MOV P0,256
-    PUSH P0
     MOV P0,[0x2030]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,256
+    POP P1
     SUB P0,P1
     MOV [0x2004],P0
-for_33:
+for_45:
     MOV P0,[0x2004]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2004]
     CMP P0,P1
-    JGE next_34
+    JGE next_46
     MOV P0,0
     MOV [0x2002],P0
-for_35:
+for_47:
     MOV P0,[0x2002]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2002]
     CMP P0,P1
-    JGE next_36
+    JGE next_48
     MOV P0,[0x2002]
     MOV VY,P0
     MOV P0,[0x2004]
     MOV VX,P0
-    MOV P0,[0x202E]
-    PUSH P0
     MOV P0,256
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x202E]
+    POP P1
     MOD P0,P1
     SHR P0,4
     MOV VL,P0
@@ -896,14 +726,14 @@ for_35:
     MOV P1,1
     ADD P0,P1
     MOV [0x2002],P0
-    JMP for_35
-next_36:
+    JMP for_47
+next_48:
     MOV P0,[0x2004]
     MOV P1,1
     ADD P0,P1
     MOV [0x2004],P0
-    JMP for_33
-next_34:
+    JMP for_45
+next_46:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop
@@ -911,61 +741,42 @@ pause_loop:
     MOV P0,50
     ADD P0,P1
     MOV [0x202E],P0
-    JMP for_31
-next_32:
+    JMP for_43
+next_44:
     ; Disp
-    ; Display 'Simple animation:'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Simple animation:'
+ORG 0x3600
+    DB 83
+    DB 105
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 32
+    DB 97
+    DB 110
+    DB 105
+    DB 109
+    DB 97
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3600
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_48:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_48
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_48
+display_end_48:
     ; SPRITE_X = expression
     MOV P0,0
     MOV [0x2032],P0
@@ -977,45 +788,43 @@ next_32:
     MOV [0x2036],P0
     MOV P0,0
     MOV [0x2038],P0
-for_37:
+for_50:
     MOV P0,[0x2038]
     MOV P0,51
     MOV P1,P0
     MOV P0,[0x2038]
     CMP P0,P1
-    JGE next_38
+    JGE next_51
     MOV P0,0
     MOV [0x2002],P0
-for_39:
+for_52:
     MOV P0,[0x2002]
     MOV P0,[0x2036]
     ADD P0,1
     MOV P1,P0
     MOV P0,[0x2002]
     CMP P0,P1
-    JGE next_40
+    JGE next_53
     MOV P0,0
     MOV [0x2004],P0
-for_41:
+for_54:
     MOV P0,[0x2004]
     MOV P0,[0x2036]
     ADD P0,1
     MOV P1,P0
     MOV P0,[0x2004]
     CMP P0,P1
-    JGE next_42
-    MOV P0,[0x2032]
-    PUSH P0
+    JGE next_55
     MOV P0,[0x2002]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2032]
+    POP P1
     ADD P0,P1
     MOV VY,P0
-    MOV P0,[0x2034]
-    PUSH P0
     MOV P0,[0x2004]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2034]
+    POP P1
     ADD P0,P1
     MOV VX,P0
     MOV VL,0
@@ -1025,123 +834,122 @@ for_41:
     MOV P1,1
     ADD P0,P1
     MOV [0x2004],P0
-    JMP for_41
-next_42:
+    JMP for_54
+next_55:
     MOV P0,[0x2002]
     MOV P1,1
     ADD P0,P1
     MOV [0x2002],P0
-    JMP for_39
-next_40:
+    JMP for_52
+next_53:
     ; SPRITE_X = expression
-    MOV P0,[0x2032]
-    PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2032]
+    POP P1
     ADD P0,P1
     MOV [0x2032],P0
-    MOV P0,[0x2032]
+    MOV P0,[0x2036]
     PUSH P0
     MOV P0,256
-    PUSH P0
-    MOV P0,[0x2036]
-    MOV P1,P0
-    POP P0
+    POP P1
     SUB P0,P1
-    MOV P1,P0
-    POP P0
-    JZ else_43
+    PUSH P0
+    MOV P0,[0x2032]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGT cmp_done_57
+    MOV P0,1
+cmp_done_57:
+    JZ else_56
     ; SPRITE_X = expression
     MOV P0,0
     MOV [0x2032],P0
-    JMP endif_44
-else_43:
-endif_44:
+    JMP endif_57
+else_56:
+endif_57:
     MOV P0,0
     MOV [0x2002],P0
-for_45:
+for_59:
     MOV P0,[0x2002]
     MOV P0,[0x2036]
     ADD P0,1
     MOV P1,P0
     MOV P0,[0x2002]
     CMP P0,P1
-    JGE next_46
+    JGE next_60
     MOV P0,0
     MOV [0x2004],P0
-for_47:
+for_61:
     MOV P0,[0x2004]
     MOV P0,[0x2036]
     ADD P0,1
     MOV P1,P0
     MOV P0,[0x2004]
     CMP P0,P1
-    JGE next_48
-    MOV P0,[0x2002]
-    PUSH P0
-    MOV P0,[0x2004]
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
-    PUSH P0
-    MOV P0,[0x2038]
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
+    JGE next_62
+    MOV P0,0
     PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
-    MOD P0,P1
     PUSH P0
-    MOV P0,0
-    MOV P1,P0
-    POP P0
-    JZ else_49
-    MOV P0,[0x2032]
-    PUSH P0
-    MOV P0,[0x2002]
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
-    MOV VY,P0
-    MOV P0,[0x2034]
-    PUSH P0
-    MOV P0,[0x2004]
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
-    MOV VX,P0
     MOV P0,[0x2038]
     PUSH P0
-    MOV P0,5
-    MOV P1,P0
-    POP P0
-    MUL P0,P1
+    MOV P0,[0x2004]
     PUSH P0
+    MOV P0,[0x2002]
+    POP P1
+    ADD P0,P1
+    POP P1
+    ADD P0,P1
+    POP P1
+    MOD P0,P1
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JNZ cmp_done_64
+    MOV P0,1
+cmp_done_64:
+    JZ else_63
+    MOV P0,[0x2002]
+    PUSH P0
+    MOV P0,[0x2032]
+    POP P1
+    ADD P0,P1
+    MOV VY,P0
+    MOV P0,[0x2004]
+    PUSH P0
+    MOV P0,[0x2034]
+    POP P1
+    ADD P0,P1
+    MOV VX,P0
     MOV P0,256
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,5
+    PUSH P0
+    MOV P0,[0x2038]
+    POP P1
+    MUL P0,P1
+    POP P1
     MOD P0,P1
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    JMP endif_50
-else_49:
-endif_50:
+    JMP endif_64
+else_63:
+endif_64:
     MOV P0,[0x2004]
     MOV P1,1
     ADD P0,P1
     MOV [0x2004],P0
-    JMP for_47
-next_48:
+    JMP for_61
+next_62:
     MOV P0,[0x2002]
     MOV P1,1
     ADD P0,P1
     MOV [0x2002],P0
-    JMP for_45
-next_46:
+    JMP for_59
+next_60:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop
@@ -1149,115 +957,60 @@ pause_loop:
     MOV P1,1
     ADD P0,P1
     MOV [0x2038],P0
-    JMP for_37
-next_38:
+    JMP for_50
+next_51:
     ; Disp
-    ; Display 'Sound and graphics tests completed!'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,33
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Sound and graphics tests completed!'
+ORG 0x3700
+    DB 83
+    DB 111
+    DB 117
+    DB 110
+    DB 100
+    DB 32
+    DB 97
+    DB 110
+    DB 100
+    DB 32
+    DB 103
+    DB 114
+    DB 97
+    DB 112
+    DB 104
+    DB 105
+    DB 99
+    DB 115
+    DB 32
+    DB 116
+    DB 101
+    DB 115
+    DB 116
+    DB 115
+    DB 32
+    DB 99
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 116
+    DB 101
+    DB 100
+    DB 33
+    DB 0  ; null terminator
+    MOV P0,0x3700
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_65:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_65
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_65
+display_end_65:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop

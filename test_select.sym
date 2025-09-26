@@ -1,14 +1,26 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-case_0_2 0x1119
-case_0_next_3 0x1141
-case_1_4 0x1161
-case_1_next_5 0x1189
-case_2_6 0x11A9
-case_2_next_7 0x11E9
-case_3_8 0x11ED
-case_3_next_9 0x11F1
-select_end_1 0x1230
-pause_loop 0x12D8
-halt 0x12DC
+display_loop_0 0x301A
+display_end_0 0x3035
+case_0_3 0x3066
+display_loop_4 0x310D
+display_end_4 0x3128
+case_0_next_4 0x312C
+case_1_6 0x314C
+display_loop_7 0x320D
+display_end_7 0x3228
+case_1_next_7 0x322C
+case_2_9 0x324C
+display_loop_10 0x330F
+display_end_10 0x332A
+case_2_next_10 0x332E
+case_3_12 0x3332
+case_3_next_13 0x3336
+display_loop_13 0x340F
+display_end_13 0x342A
+select_end_2 0x342D
+display_loop_14 0x3518
+display_end_14 0x3533
+pause_loop 0x3533
+halt 0x3537

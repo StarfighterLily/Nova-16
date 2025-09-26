@@ -1,4 +1,3 @@
-
 import sys
 import argparse
 import nova_cpu as cpu
@@ -215,7 +214,7 @@ class NovaDebugger:
                 return
             
             if opcode in self.opcode_map:
-                mnemonic, operands, size = disassemble_instruction_new(self.memory.memory, pc, self.opcode_map, self.register_map, self.reverse_symbol_table)
+                mnemonic, operands, size = disassemble_instruction_new(self.memory.memory, pc, self.opcode_map, self.register_map)
                 
                 if pc + size > len(self.memory.memory):
                     hex_dump = ' '.join(f'{self.memory.memory[pc + i]:02X}' for i in range(len(self.memory.memory) - pc))
@@ -259,7 +258,7 @@ class NovaDebugger:
                 continue
             
             if opcode in self.opcode_map:
-                mnemonic, operands, size = disassemble_instruction_new(self.memory.memory, pc, self.opcode_map, self.register_map, self.reverse_symbol_table)
+                mnemonic, operands, size = disassemble_instruction_new(self.memory.memory, pc, self.opcode_map, self.register_map)
                 
                 if pc + size > len(self.memory.memory):
                     hex_dump = ' '.join(f'{self.memory.memory[pc + i]:02X}' for i in range(len(self.memory.memory) - pc))
@@ -350,6 +349,23 @@ Commands:
   quit, q, exit     Exit debugger
   help, h, ?        Show this help
 """)
+
+    def print_memory(self, addr, count=16):
+        """Print memory contents in hex dump format"""
+        print(f"Memory dump at 0x{addr:04X}:")
+        for i in range(0, count, 8):
+            hex_values = []
+            ascii_values = []
+            for j in range(8):
+                if i + j < count and addr + i + j < len(self.memory.memory):
+                    byte_val = self.memory.memory[addr + i + j]
+                    hex_values.append(f"{byte_val:02X}")
+                    ascii_values.append(chr(byte_val) if 32 <= byte_val <= 126 else '.')
+                else:
+                    hex_values.append("  ")
+                    ascii_values.append(" ")
+            
+            print(f"  0x{addr + i:04X}: {' '.join(hex_values)}  {' '.join(ascii_values)}")
 
 
 def main():

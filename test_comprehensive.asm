@@ -21,85 +21,48 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    ; Display 'NoBASIC Comprehensive Test'
-    MOV P0,78
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,66
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,73
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'NoBASIC Comprehensive Test'
+ORG 0x3000
+    DB 78
+    DB 111
+    DB 66
+    DB 65
+    DB 83
+    DB 73
+    DB 67
+    DB 32
+    DB 67
+    DB 111
+    DB 109
+    DB 112
+    DB 114
+    DB 101
+    DB 104
+    DB 101
+    DB 110
+    DB 115
+    DB 105
+    DB 118
+    DB 101
+    DB 32
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     ; A = expression
     MOV P0,5
     MOV [0x2000],P0
@@ -107,309 +70,289 @@ start:
     MOV P0,10
     MOV [0x2002],P0
     ; C = expression
-    MOV P0,[0x2000]
+    MOV P0,2
     PUSH P0
     MOV P0,[0x2002]
-    PUSH P0
-    MOV P0,2
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2004],P0
     ; D = expression
-    MOV P0,[0x2004]
-    PUSH P0
     MOV P0,3
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2004]
+    POP P1
     DIV P0,P1
     MOV [0x2006],P0
     ; Disp
-    ; Display 'Expression result:'
-    MOV P0,69
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,120
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,[0x2006]
-    ; Complex assignment not implemented yet
-    ; Complex assignment not implemented yet
-    ; Complex assignment not implemented yet
-    ; Disp
-    ; Display 'List element:'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,[0x2000]
-    PUSH P0
-    MOV P0,[0x2002]
+
+; String literal: 'Expression result:'
+ORG 0x3100
+    DB 69
+    DB 120
+    DB 112
+    DB 114
+    DB 101
+    DB 115
+    DB 115
+    DB 105
+    DB 111
+    DB 110
+    DB 32
+    DB 114
+    DB 101
+    DB 115
+    DB 117
+    DB 108
+    DB 116
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    ; Display string at address in P0
     MOV P1,P0
-    POP P0
-    JZ else_1
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
+    MOV P0,[0x2006]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_2:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_2
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_2
+display_end_2:
+    ; Complex assignment not implemented yet
+    ; Complex assignment not implemented yet
+    ; Complex assignment not implemented yet
     ; Disp
-    ; Display 'A is less than B'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,66
-    MOV P1,15
-    CHAR P0,P1
-    JMP endif_2
-else_1:
-endif_2:
+
+; String literal: 'List element:'
+ORG 0x3200
+    DB 76
+    DB 105
+    DB 115
+    DB 116
+    DB 32
+    DB 101
+    DB 108
+    DB 101
+    DB 109
+    DB 101
+    DB 110
+    DB 116
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_3:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_3
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_3
+display_end_3:
+    MOV P0,3
+    MOV P1,0x2008
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_4:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_4
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_4
+display_end_4:
+    MOV P0,[0x2002]
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLT cmp_done_7
     MOV P0,1
-    MOV [0x2008],P0
-for_3:
-    MOV P0,[0x2008]
+cmp_done_7:
+    JZ else_6
+    ; Disp
+
+; String literal: 'A is less than B'
+ORG 0x3300
+    DB 65
+    DB 32
+    DB 105
+    DB 115
+    DB 32
+    DB 108
+    DB 101
+    DB 115
+    DB 115
+    DB 32
+    DB 116
+    DB 104
+    DB 97
+    DB 110
+    DB 32
+    DB 66
+    DB 0  ; null terminator
+    MOV P0,0x3300
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_8:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_8
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_8
+display_end_8:
+    JMP endif_7
+else_6:
+endif_7:
+    MOV P0,1
+    MOV [0x200A],P0
+for_10:
+    MOV P0,[0x200A]
     MOV P0,6
     MOV P1,P0
-    MOV P0,[0x2008]
+    MOV P0,[0x200A]
     CMP P0,P1
-    JGE next_4
+    JGE next_11
     ; Disp
-    ; Display 'Loop iteration:'
-    MOV P0,76
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,[0x2008]
-    MOV P0,[0x2008]
+
+; String literal: 'Loop iteration:'
+ORG 0x3400
+    DB 76
+    DB 111
+    DB 111
+    DB 112
+    DB 32
+    DB 105
+    DB 116
+    DB 101
+    DB 114
+    DB 97
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3400
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_11:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_11
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_11
+display_end_11:
+    MOV P0,[0x200A]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_12:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_12
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_12
+display_end_12:
+    MOV P0,[0x200A]
     MOV P1,1
     ADD P0,P1
-    MOV [0x2008],P0
-    JMP for_3
-next_4:
+    MOV [0x200A],P0
+    JMP for_10
+next_11:
     ; X = expression
     MOV P0,0
-    MOV [0x200A],P0
-while_5:
-    MOV P0,[0x200A]
-    PUSH P0
+    MOV [0x200C],P0
+while_14:
     MOV P0,3
-    MOV P1,P0
-    POP P0
-    CMP P0,0
-    JZ wend_6
-    ; Disp
-    ; Display 'While count:'
-    MOV P0,87
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,[0x200A]
-    ; X = expression
-    MOV P0,[0x200A]
     PUSH P0
+    MOV P0,[0x200C]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLT cmp_done_15
     MOV P0,1
+cmp_done_15:
+    CMP P0,0
+    JZ wend_15
+    ; Disp
+
+; String literal: 'While count:'
+ORG 0x3500
+    DB 87
+    DB 104
+    DB 105
+    DB 108
+    DB 101
+    DB 32
+    DB 99
+    DB 111
+    DB 117
+    DB 110
+    DB 116
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3500
+    ; Display string at address in P0
     MOV P1,P0
-    POP P0
+display_loop_16:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_16
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_16
+display_end_16:
+    MOV P0,[0x200C]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_17:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_17
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_17
+display_end_17:
+    ; X = expression
+    MOV P0,1
+    PUSH P0
+    MOV P0,[0x200C]
+    POP P1
     ADD P0,P1
-    MOV [0x200A],P0
-    JMP while_5
-wend_6:
+    MOV [0x200C],P0
+    JMP while_14
+wend_15:
 DrawShape:
     MOV P0,50
     MOV VX,P0
@@ -438,106 +381,55 @@ DrawShape:
     RET
     JMP DrawShape
     ; Disp
-    ; Display 'All tests completed successfully!'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,102
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,33
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'All tests completed successfully!'
+ORG 0x3600
+    DB 65
+    DB 108
+    DB 108
+    DB 32
+    DB 116
+    DB 101
+    DB 115
+    DB 116
+    DB 115
+    DB 32
+    DB 99
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 116
+    DB 101
+    DB 100
+    DB 32
+    DB 115
+    DB 117
+    DB 99
+    DB 99
+    DB 101
+    DB 115
+    DB 115
+    DB 102
+    DB 117
+    DB 108
+    DB 108
+    DB 121
+    DB 33
+    DB 0  ; null terminator
+    MOV P0,0x3600
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_18:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_18
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_18
+display_end_18:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop

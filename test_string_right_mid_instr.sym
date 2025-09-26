@@ -1,4 +1,28 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1011
-halt 0x1877
+display_loop_0 0x302D
+display_end_0 0x3048
+right_loop_2 0x313D
+right_end_2 0x3156
+display_loop_3 0x3222
+display_end_3 0x323D
+display_loop_4 0x3246
+display_end_4 0x3261
+mid_loop_6 0x3287
+mid_end_6 0x32A0
+display_loop_7 0x3323
+display_end_7 0x333E
+display_loop_8 0x3347
+display_end_8 0x3362
+display_loop_9 0x3528
+display_end_9 0x3543
+display_loop_10 0x354C
+display_end_10 0x3567
+display_loop_11 0x3726
+display_end_11 0x3741
+display_loop_12 0x374A
+display_end_12 0x3765
+display_loop_13 0x3828
+display_end_13 0x3843
+halt 0x3843

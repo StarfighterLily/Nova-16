@@ -110,6 +110,9 @@ class NoBasicCompiler:
                 result.append('\n')
             elif token.type != TokenType.EOF:
                 result.append(token.value)
+        # Remove trailing newlines that the new lexer adds
+        while result and result[-1] == '\n':
+            result.pop()
         return result
 
     def _compile_clrhome(self):
@@ -133,18 +136,140 @@ class NoBasicCompiler:
 
     def _parse_expression(self, tokens, i):
         """Parse expression (for backward compatibility)."""
-        # Simplified
-        return ["    ; parsed expression"], i + 1
+        # Simple expression parser for backward compatibility
+        if i >= len(tokens):
+            return [], i
+        
+        # Parse left operand
+        left_lines, i = self._parse_primary_expression(tokens, i)
+        
+        # Check for binary operator
+        if i < len(tokens) and tokens[i] in ['+', '-', '*', '/']:
+            op = tokens[i]
+            i += 1  # consume operator
+            
+            # Parse right operand
+            right_lines, i = self._parse_primary_expression(tokens, i)
+            
+            # Generate binary operation
+            lines = left_lines + ["    PUSH P0"] + right_lines + ["    POP P1"]
+            if op == '+':
+                lines.append("    ADD P0,P1")
+            elif op == '-':
+                lines.append("    SUB P0,P1")
+            elif op == '*':
+                lines.append("    MUL P0,P1")
+            elif op == '/':
+                lines.append("    DIV P0,P1")
+            
+            return lines, i
+        
+        return left_lines, i
 
     def _parse_primary_expression(self, tokens, i):
         """Parse primary expression (for backward compatibility)."""
-        # Simplified
+        if i >= len(tokens):
+            return [], i
+            
+        token = tokens[i]
+        
+        # Handle variables
+        if token in self.variables:
+            var_addr = self.variables[token]
+            lines = [f"    MOV P0,[{var_addr}]"]
+            return lines, i + 1
+        # Handle numbers
+        elif token.isdigit():
+            lines = [f"    MOV P0,{token}"]
+            return lines, i + 1
+        # Handle string literals
+        elif token.startswith('"') and token.endswith('"'):
+            string_val = token[1:-1]
+            addr = self._get_string_literal_address(string_val)
+            lines = [f"    MOV P0,{addr}"]
+            return lines, i + 1
+        
+        # Handle function calls
+        if token == 'LEN' and i + 3 < len(tokens) and tokens[i+1] == '(' and tokens[i+3] == ')':
+            # LEN(string)
+            string_token = tokens[i+2]
+            if string_token.startswith('"') and string_token.endswith('"'):
+                lines = [
+                    f"    ; LEN({string_token})",
+                    f"    MOV P0,{self._get_string_literal_address(string_token[1:-1])}",
+                    "    STRLEN P0",
+                    "    MOV P0,R0"
+                ]
+                return lines, i + 4
+        elif token == 'UPPER' and i + 3 < len(tokens) and tokens[i+1] == '(' and tokens[i+3] == ')':
+            # UPPER(string)
+            string_token = tokens[i+2]
+            if string_token.startswith('"') and string_token.endswith('"'):
+                temp_addr = f"0x{0x4000 + self.code_generator.label_counter:04X}"
+                self.code_generator.label_counter += 1
+                lines = [
+                    f"    ; UPPER({string_token})",
+                    f"    MOV P0,{self._get_string_literal_address(string_token[1:-1])}",
+                    f"    MOV P1,{temp_addr}",
+                    "    STRUPR P1,P0",
+                    f"    MOV P0,{temp_addr}"
+                ]
+                return lines, i + 4
+        elif token in ['LEFT', 'RIGHT', 'MID', 'INSTR'] and i + 5 < len(tokens):
+            # Function calls with multiple arguments
+            func_name = token
+            if func_name == 'LEFT':
+                lines = [f"    ; LEFT() call", "    CALL left_substr"]
+            elif func_name == 'RIGHT':
+                lines = [f"    ; RIGHT() call", "    CALL right_substr"]
+            elif func_name == 'MID':
+                lines = [f"    ; MID() call", "    CALL mid_substr"]
+            elif func_name == 'INSTR':
+                lines = [f"    ; INSTR() call", "    STREXT P0,P1", "    MOV P0,R0"]
+            # Skip to end of function call
+            paren_count = 0
+            j = i + 1
+            while j < len(tokens):
+                if tokens[j] == '(':
+                    paren_count += 1
+                elif tokens[j] == ')':
+                    paren_count -= 1
+                    if paren_count == 0:
+                        return lines, j + 1
+                j += 1
+            return lines, j
+        
+        # For other cases, return dummy
         return ["    ; parsed primary expression"], i + 1
+
+    def _get_string_literal_address(self, string_val):
+        """Get address for string literal (for backward compatibility)."""
+        if string_val not in self.code_generator.string_literals:
+            addr = 0x3000 + len(self.code_generator.string_literals) * 20  # Rough estimate
+            self.code_generator.string_literals[string_val] = addr
+        return self.code_generator.string_literals[string_val]
 
     def _compile_assignment(self, tokens, i):
         """Compile assignment (for backward compatibility)."""
-        # Simplified
-        return [], i + 2
+        if i >= len(tokens) or tokens[i] not in self.variables:
+            return [], i
+        
+        var_name = tokens[i]
+        i += 1  # consume variable
+        
+        if i >= len(tokens) or tokens[i] != '=':
+            return [], i
+        
+        i += 1  # consume '='
+        
+        # Parse expression
+        expr_lines, i = self._parse_expression(tokens, i)
+        
+        # Generate assignment
+        var_addr = self.variables[var_name]
+        lines = [f"    ; {var_name} = "] + expr_lines + [f"    MOV [0x{var_addr:04X}],P0"]
+        
+        return lines, i
 
     def _compile_struct(self, tokens, i):
         """Compile struct (for backward compatibility)."""

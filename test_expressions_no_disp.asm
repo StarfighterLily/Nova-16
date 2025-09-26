@@ -20,16 +20,14 @@ start:
     MOV P0,10
     MOV [0x2002],P0
     ; C = expression
-    MOV P0,[0x2000]
+    MOV P0,2
     PUSH P0
     MOV P0,[0x2002]
-    PUSH P0
-    MOV P0,2
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MOV [0x2004],P0
 

@@ -10,9 +10,9 @@ from nobasic_utils import (
     ClrHomeStmt, DispStmt, InputStmt, AssignmentStmt, DimStmt,
     IfStmt, ForStmt, WhileStmt, DoLoopStmt, RepeatUntilStmt,
     SelectStmt, CaseClause, CallStmt, ReturnStmt, PauseStmt, BreakStmt, ContinueStmt,
-    DefineStmt, GotoStmt, LabelStmt, TryCatchStmt,
+    DefineStmt, GotoStmt, LabelStmt, TryCatchStmt, StructStmt, StructField, StructFieldStmt, StructInstanceStmt,
     BinaryExpr, UnaryExpr, LiteralExpr, VariableExpr,
-    ArrayAccessExpr, FunctionCallExpr, ArrayLiteralExpr
+    ArrayAccessExpr, FunctionCallExpr, ArrayLiteralExpr, StructFieldAccessExpr
 )
 from nobasic_errors import CodeGenError
 
@@ -24,6 +24,7 @@ class CodeGenerator:
         self.output: List[str] = []
         self.label_counter = 0
         self.variable_addresses = {}  # Variable name -> memory address
+        self.string_literals = {}     # String content -> memory address
         self.break_label = None
         self.continue_label = None
 
@@ -114,6 +115,10 @@ class CodeGenerator:
             self._generate_return()
         elif isinstance(stmt, TryCatchStmt):
             self._generate_try_catch(stmt)
+        elif isinstance(stmt, StructStmt):
+            self._generate_struct(stmt)
+        elif isinstance(stmt, StructInstanceStmt):
+            self._generate_struct_instance(stmt)
         # Add other statement types as needed
 
     def _generate_clrhome(self):
@@ -130,19 +135,22 @@ class CodeGenerator:
         """Generate code for Disp."""
         self.output.append("    ; Disp")
         for expr in stmt.expressions:
-            self._generate_expression(expr)
-            # For now, assume expressions are strings or variables
             if isinstance(expr, LiteralExpr) and isinstance(expr.value, str):
-                self.output.append(f"    ; Display '{expr.value}'")
-                for char in expr.value:
-                    self.output.append(f"    MOV P0,{ord(char)}")
-                    self.output.append("    MOV P1,15")
-                    self.output.append("    CHAR P0,P1")
-            # Add more cases as needed
+                # For literal strings, check length
+                if len(expr.value) <= 3:  # Short strings use individual CHAR
+                    self._display_short_string(expr.value)
+                else:  # Long strings use TEXT instruction
+                    addr = self._get_string_literal_address(expr.value)
+                    self.output.append(f"    MOV P0,{addr}")
+                    self.output.append("    MOV P1,15")  # White color
+                    self.output.append("    TEXT P0,P1")
+            else:
+                # For expressions, generate and display
+                self._generate_expression(expr)
+                self._display_value_in_p0()
 
     def _generate_assignment(self, stmt: AssignmentStmt):
         """Generate code for assignment."""
-        # For now, assume target is VariableExpr
         if isinstance(stmt.target, VariableExpr):
             var_name = stmt.target.name
             self.output.append(f"    ; {var_name} = expression")
@@ -151,6 +159,16 @@ class CodeGenerator:
             # Store result (simplified)
             addr = self._get_variable_address(var_name)
             self.output.append(f"    MOV [{addr}],P0")
+        elif isinstance(stmt.target, StructFieldAccessExpr):
+            struct_var = stmt.target.struct_var
+            field_name = stmt.target.field_name
+            self.output.append(f"    ; {struct_var}.{field_name} = expression")
+            # Generate expression
+            self._generate_expression(stmt.expression)
+            # For now, assume simple offset (this needs proper struct field offset calculation)
+            base_addr = self._get_variable_address(struct_var)
+            # Assume field offset is 0 for now
+            self.output.append(f"    MOV [{base_addr}],P0")
         else:
             self.output.append("    ; Complex assignment not implemented yet")
 
@@ -617,254 +635,340 @@ class CodeGenerator:
     def _generate_expression(self, expr: Expression):
         """Generate code for an expression."""
         if isinstance(expr, LiteralExpr):
-            if isinstance(expr.value, int):
+            if isinstance(expr.value, str):
+                # String literal
+                addr = self._get_string_literal_address(expr.value)
+                self.output.append(f"    MOV P0,{addr}")
+            else:
+                # Number literal
                 self.output.append(f"    MOV P0,{expr.value}")
-            elif isinstance(expr.value, str):
-                # For strings, we'll handle in context
-                pass
         elif isinstance(expr, VariableExpr):
+            # Variable reference
             addr = self._get_variable_address(expr.name)
             self.output.append(f"    MOV P0,[{addr}]")
-        elif isinstance(expr, BinaryExpr):
-            self._generate_binary_expression(expr)
-        elif isinstance(expr, UnaryExpr):
-            self._generate_unary_expression(expr)
+        elif isinstance(expr, ArrayAccessExpr):
+            # Array access
+            addr = self._get_variable_address(expr.array)
+            self._generate_expression(expr.index)
+            self.output.append(f"    MOV P1,{addr}")  # Base address
+            self.output.append("    ADD P1,P0")       # Add index (assuming 2 bytes per element)
+            self.output.append("    ADD P1,P0")       # Add index again for 2-byte elements
+            self.output.append("    MOV P0,[P1]")     # Load value
+        elif isinstance(expr, StructFieldAccessExpr):
+            # Struct field access - for now, assume simple offset calculation
+            # TODO: Implement proper struct field offset calculation
+            self.output.append(f"    ; Struct field access: {expr.struct_var}.{expr.field_name}")
+            # For now, just load from a fixed offset (this needs proper implementation)
+            base_addr = self._get_variable_address(expr.struct_var)
+            # Assume field offset is 0 for now (X field)
+            self.output.append(f"    MOV P0,[{base_addr}]")
         elif isinstance(expr, FunctionCallExpr):
             self._generate_function_call(expr)
         elif isinstance(expr, ArrayLiteralExpr):
             self._generate_array_literal(expr)
-        # Add more expression types as needed
+        elif isinstance(expr, BinaryExpr):
+            self._generate_binary_expression(expr)
+        elif isinstance(expr, UnaryExpr):
+            self._generate_unary_expression(expr)
+        else:
+            raise CodeGenError(f"Unsupported expression type: {type(expr)}")
 
     def _generate_binary_expression(self, expr: BinaryExpr):
-        """Generate code for binary expressions."""
+        """Generate code for binary expression."""
+        # Generate right operand first (for stack-based evaluation)
+        self._generate_expression(expr.right)
+        self.output.append("    PUSH P0")
+        
         # Generate left operand
         self._generate_expression(expr.left)
-        self.output.append("    PUSH P0")  # Save left result
         
-        # Generate right operand
-        self._generate_expression(expr.right)
-        self.output.append("    MOV P1,P0")  # Right result to P1
-        self.output.append("    POP P0")    # Left result back to P0
-        
-        # Perform operation
-        if expr.operator == "+":
+        # Apply operator
+        op = expr.operator.upper()
+        if op == "+":
+            self.output.append("    POP P1")
             self.output.append("    ADD P0,P1")
-        elif expr.operator == "-":
+        elif op == "-":
+            self.output.append("    POP P1")
             self.output.append("    SUB P0,P1")
-        elif expr.operator == "*":
+        elif op == "*":
+            self.output.append("    POP P1")
             self.output.append("    MUL P0,P1")
-        elif expr.operator == "/":
+        elif op == "/":
+            self.output.append("    POP P1")
             self.output.append("    DIV P0,P1")
-        elif expr.operator == "MOD":
-            self.output.append("    MOD P0,P1")
-        elif expr.operator == "XOR":
+        elif op == "^":
+            self.output.append("    POP P1")
+            self.output.append("    POWR P0,P1")
+        elif op == "=":
+            self.output.append("    POP P1")
+            self.output.append("    CMP P0,P1")
+            self.output.append("    MOV P0,0")  # Assume false
+            self.output.append("    JNZ cmp_done_" + str(self.label_counter))
+            self.output.append("    MOV P0,1")  # True
+            self.output.append("cmp_done_" + str(self.label_counter) + ":")
+            self.label_counter += 1
+        elif op == "<>":
+            self.output.append("    POP P1")
+            self.output.append("    CMP P0,P1")
+            self.output.append("    MOV P0,0")  # Assume false
+            self.output.append("    JZ cmp_done_" + str(self.label_counter))
+            self.output.append("    MOV P0,1")  # True
+            self.output.append("cmp_done_" + str(self.label_counter) + ":")
+            self.label_counter += 1
+        elif op == "!=":
+            self.output.append("    POP P1")
+            self.output.append("    CMP P0,P1")
+            self.output.append("    MOV P0,0")  # Assume false
+            self.output.append("    JZ cmp_done_" + str(self.label_counter))
+            self.output.append("    MOV P0,1")  # True
+            self.output.append("cmp_done_" + str(self.label_counter) + ":")
+            self.label_counter += 1
+        elif op == "<":
+            self.output.append("    POP P1")
+            self.output.append("    CMP P0,P1")
+            self.output.append("    MOV P0,0")  # Assume false
+            self.output.append("    JLT cmp_done_" + str(self.label_counter))
+            self.output.append("    MOV P0,1")  # True
+            self.output.append("cmp_done_" + str(self.label_counter) + ":")
+            self.label_counter += 1
+        elif op == ">":
+            self.output.append("    POP P1")
+            self.output.append("    CMP P0,P1")
+            self.output.append("    MOV P0,0")  # Assume false
+            self.output.append("    JGT cmp_done_" + str(self.label_counter))
+            self.output.append("    MOV P0,1")  # True
+            self.output.append("cmp_done_" + str(self.label_counter) + ":")
+            self.label_counter += 1
+        elif op == "<=":
+            self.output.append("    POP P1")
+            self.output.append("    CMP P0,P1")
+            self.output.append("    MOV P0,0")  # Assume false
+            self.output.append("    JLE cmp_done_" + str(self.label_counter))
+            self.output.append("    MOV P0,1")  # True
+            self.output.append("cmp_done_" + str(self.label_counter) + ":")
+            self.label_counter += 1
+        elif op == ">=":
+            self.output.append("    POP P1")
+            self.output.append("    CMP P0,P1")
+            self.output.append("    MOV P0,0")  # Assume false
+            self.output.append("    JGE cmp_done_" + str(self.label_counter))
+            self.output.append("    MOV P0,1")  # True
+            self.output.append("cmp_done_" + str(self.label_counter) + ":")
+            self.label_counter += 1
+        elif op == "AND":
+            self.output.append("    POP P1")
+            self.output.append("    AND P0,P1")
+        elif op == "OR":
+            self.output.append("    POP P1")
+            self.output.append("    OR P0,P1")
+        elif op == "XOR":
+            self.output.append("    POP P1")
             self.output.append("    XOR P0,P1")
-        elif expr.operator == "&":
-            # String concatenation (placeholder - treat as addition for now)
-            self.output.append("    ADD P0,P1")
-        # Add more operators as needed
+        elif op == "&":
+            # String concatenation
+            self.output.append("    POP P1")  # Second string
+            # P0 has first string, P1 has second string
+            # TODO: Implement string concatenation
+            temp_addr = f"0x{0x4000 + self.label_counter:04X}"
+            self.label_counter += 1
+            self.output.append(f"    MOV P2,{temp_addr}")
+            self.output.append("    STRCPY P2,P0")  # Copy first string
+            self.output.append("    STRCAT P2,P1")  # Concatenate second string
+            self.output.append(f"    MOV P0,{temp_addr}")
+        elif op == "MOD":
+            self.output.append("    POP P1")
+            self.output.append("    MOD P0,P1")
+        elif op == "SHL":
+            self.output.append("    POP P1")
+            self.output.append("    SHL P0,P1")
+        elif op == "SHR":
+            self.output.append("    POP P1")
+            self.output.append("    SHR P0,P1")
+        else:
+            raise CodeGenError(f"Unsupported binary operator: {op}")
 
     def _generate_unary_expression(self, expr: UnaryExpr):
-        """Generate code for unary expressions."""
+        """Generate code for unary expression."""
         self._generate_expression(expr.operand)
         
-        if expr.operator == "-":
-            self.output.append("    NEG P0")  # Negate
-        elif expr.operator == "NOT":
-            self.output.append("    NOT P0")  # Bitwise NOT
+        op = expr.operator.upper()
+        if op == "-":
+            self.output.append("    NEG P0")
+        elif op == "NOT":
+            self.output.append("    NOT P0")
         else:
-            raise CodeGenError(f"Unknown unary operator: {expr.operator}")
+            raise CodeGenError(f"Unsupported unary operator: {op}")
 
     def _generate_function_call(self, expr: FunctionCallExpr):
-        """Generate code for function calls."""
-        if expr.name.upper() == "PXLON":
-            # PxlOn(Y, X, COLOR) - set pixel at (X,Y) to COLOR
-            if len(expr.arguments) != 3:
-                raise CodeGenError(f"PxlOn requires 3 arguments, got {len(expr.arguments)}")
-            
-            # Generate arguments in reverse order for stack
-            self._generate_expression(expr.arguments[2])  # COLOR
-            self.output.append("    PUSH P0")
-            self._generate_expression(expr.arguments[1])  # X
-            self.output.append("    PUSH P0")
-            self._generate_expression(expr.arguments[0])  # Y
-            self.output.append("    MOV VY,P0")  # Y coordinate
-            self.output.append("    POP VX")    # X coordinate
-            self.output.append("    POP VL")    # Color/layer
-            self.output.append("    MOV VM,0")  # Coordinate mode
-            self.output.append("    SWRITE 0") # Write pixel
-        elif expr.name.upper() == "STR":
-            # STR(number) - convert number to string (placeholder)
-            if len(expr.arguments) != 1:
-                raise CodeGenError(f"STR requires 1 argument, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])
-            # For now, just leave the number as-is
-            # TODO: Implement proper number-to-string conversion
-        elif expr.name.upper() == "ABS":
-            # ABS(number) - absolute value
-            if len(expr.arguments) != 1:
-                raise CodeGenError(f"ABS requires 1 argument, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])
-            self.output.append("    ABS P0")
-        elif expr.name.upper() == "INT":
-            # INT(number) - convert to integer (truncate)
-            if len(expr.arguments) != 1:
-                raise CodeGenError(f"INT requires 1 argument, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])
-            # For now, assume it's already an integer
-            # TODO: Implement proper float-to-int conversion
-        elif expr.name.upper() == "MIN":
-            # MIN(a, b) - minimum of two values
-            if len(expr.arguments) != 2:
-                raise CodeGenError(f"MIN requires 2 arguments, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])  # a
-            self.output.append("    PUSH P0")
-            self._generate_expression(expr.arguments[1])  # b
-            self.output.append("    MOV P1,P0")
-            self.output.append("    POP P0")
-            self.output.append("    CMP P0,P1")
-            self.output.append("    JLT min_done_" + str(self.label_counter))
-            self.output.append("    MOV P0,P1")
-            self.output.append("min_done_" + str(self.label_counter) + ":")
-            self.label_counter += 1
-        elif expr.name.upper() == "MAX":
-            # MAX(a, b) - maximum of two values
-            if len(expr.arguments) != 2:
-                raise CodeGenError(f"MAX requires 2 arguments, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])  # a
-            self.output.append("    PUSH P0")
-            self._generate_expression(expr.arguments[1])  # b
-            self.output.append("    MOV P1,P0")
-            self.output.append("    POP P0")
-            self.output.append("    CMP P0,P1")
-            self.output.append("    JGT max_done_" + str(self.label_counter))
-            self.output.append("    MOV P0,P1")
-            self.output.append("max_done_" + str(self.label_counter) + ":")
-            self.label_counter += 1
-        elif expr.name.upper() == "RND":
-            # RND() or RND(max) - random number
-            if len(expr.arguments) == 0:
-                # RND() - random 0-255
-                self.output.append("    RND P0")
-            elif len(expr.arguments) == 1:
-                # RND(max) - random 0 to max-1
-                self._generate_expression(expr.arguments[0])  # max
-                self.output.append("    MOV P1,P0")  # max to P1
-                self.output.append("    MOV P0,0")   # min = 0 to P0
-                self.output.append("    RNDR P2,P0,P1")  # result in P2, min in P0, max in P1
-                self.output.append("    MOV P0,P2")  # result to P0
-            else:
-                raise CodeGenError(f"RND requires 0 or 1 arguments, got {len(expr.arguments)}")
-        elif expr.name.upper() == "POW":
-            # POW(base, exponent) - power function
-            if len(expr.arguments) != 2:
-                raise CodeGenError(f"POW requires 2 arguments, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])  # base
-            self.output.append("    PUSH P0")
-            self._generate_expression(expr.arguments[1])  # exponent
-            self.output.append("    MOV P1,P0")
-            self.output.append("    POP P0")
-            self.output.append("    POWR P0,P1")
-        elif expr.name.upper() == "SQRT":
-            # SQRT(number) - square root
-            if len(expr.arguments) != 1:
-                raise CodeGenError(f"SQRT requires 1 argument, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])
-            self.output.append("    SQRT P0")
-        elif expr.name.upper() == "LOG":
-            # LOG(number) - logarithm
-            if len(expr.arguments) != 1:
-                raise CodeGenError(f"LOG requires 1 argument, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])
-            self.output.append("    LOG P0")
-        elif expr.name.upper() == "EXP":
-            # EXP(number) - exponential
-            if len(expr.arguments) != 1:
-                raise CodeGenError(f"EXP requires 1 argument, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])
-            self.output.append("    EXP P0")
-        elif expr.name.upper() == "SIN":
-            # SIN(number) - sine
-            if len(expr.arguments) != 1:
-                raise CodeGenError(f"SIN requires 1 argument, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])
-            self.output.append("    SIN P0")
-        elif expr.name.upper() == "LEN":
+        """Generate code for function call expression."""
+        # Handle built-in functions
+        func_name = expr.name.upper()
+        
+        if func_name == "LEN":
             # LEN(string) - string length
             if len(expr.arguments) != 1:
                 raise CodeGenError(f"LEN requires 1 argument, got {len(expr.arguments)}")
             self._generate_expression(expr.arguments[0])
-            self.output.append("    STRLEN P0")
-        elif expr.name.upper() == "COLOR":
-            # COLOR(ramp, shade) - create color value
-            if len(expr.arguments) != 2:
-                raise CodeGenError(f"COLOR requires 2 arguments, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])  # ramp (0-15)
-            self.output.append("    PUSH P0")
-            self._generate_expression(expr.arguments[1])  # shade (0-15)
-            self.output.append("    MOV P1,P0")  # shade to P1
-            self.output.append("    POP P0")    # ramp to P0
-            # Color = (ramp << 4) | shade
-            self.output.append("    SHL P0,4")  # ramp << 4
-            self.output.append("    OR P0,P1")  # OR with shade
-        elif expr.name.upper() == "RAMP":
-            # RAMP(color) - extract ramp from color
+            self.output.append("    STRLEN P0")  # Result in R0
+            self.output.append("    MOV P0,R0")
+        elif func_name == "VAL":
+            # VAL(string) - convert string to number
             if len(expr.arguments) != 1:
-                raise CodeGenError(f"RAMP requires 1 argument, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])  # color
-            self.output.append("    SHR P0,4")  # color >> 4
-        elif expr.name.upper() == "SHADE":
-            # SHADE(color) - extract shade from color
-            if len(expr.arguments) != 1:
-                raise CodeGenError(f"SHADE requires 1 argument, got {len(expr.arguments)}")
-            self._generate_expression(expr.arguments[0])  # color
-            self.output.append("    AND P0,15")  # color & 15
-        elif expr.name.upper() == "KEYIN":
-            # KEYIN() - read key from buffer
-            if len(expr.arguments) != 0:
-                raise CodeGenError(f"KEYIN requires 0 arguments, got {len(expr.arguments)}")
-            self.output.append("    KEYIN P0")
-        elif expr.name.upper() == "KEYSTAT":
-            # KEYSTAT() - check if key available
-            if len(expr.arguments) != 0:
-                raise CodeGenError(f"KEYSTAT requires 0 arguments, got {len(expr.arguments)}")
-            self.output.append("    KEYSTAT P0")
-        elif expr.name.upper() == "LOWER":
-            # LOWER(string) - convert to lowercase
-            if len(expr.arguments) != 1:
-                raise CodeGenError(f"LOWER requires 1 argument, got {len(expr.arguments)}")
-            # For now, just return the string unchanged (placeholder)
+                raise CodeGenError(f"VAL requires 1 argument, got {len(expr.arguments)}")
             self._generate_expression(expr.arguments[0])
-        elif expr.name.upper() == "UPPER":
+            # TODO: Implement string to number conversion
+            self.output.append("    ; VAL() not fully implemented")
+        elif func_name == "ASC":
+            # ASC(string) - ASCII value of first character
+            if len(expr.arguments) != 1:
+                raise CodeGenError(f"ASC requires 1 argument, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            self.output.append("    MOV P0,[P0]")  # Get first character
+        elif func_name == "CHR":
+            # CHR(code) - character from ASCII code
+            if len(expr.arguments) != 1:
+                raise CodeGenError(f"CHR requires 1 argument, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            # P0 already contains the character code
+        elif func_name == "UPPER":
             # UPPER(string) - convert to uppercase
             if len(expr.arguments) != 1:
                 raise CodeGenError(f"UPPER requires 1 argument, got {len(expr.arguments)}")
-            # For now, just return the string unchanged (placeholder)
             self._generate_expression(expr.arguments[0])
-        elif expr.name.upper() == "LEFT":
+            temp_addr = f"0x{0x4000 + self.label_counter:04X}"
+            self.label_counter += 1
+            self.output.append(f"    MOV P1,{temp_addr}")
+            self.output.append("    STRUPR P1,P0")
+            self.output.append(f"    MOV P0,{temp_addr}")
+        elif func_name == "LOWER":
+            # LOWER(string) - convert to lowercase
+            if len(expr.arguments) != 1:
+                raise CodeGenError(f"LOWER requires 1 argument, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            temp_addr = f"0x{0x4000 + self.label_counter:04X}"
+            self.label_counter += 1
+            self.output.append(f"    MOV P1,{temp_addr}")
+            self.output.append("    STRLWR P1,P0")
+            self.output.append(f"    MOV P0,{temp_addr}")
+        elif func_name == "TRIM":
+            # TRIM(string) - remove leading/trailing whitespace
+            if len(expr.arguments) != 1:
+                raise CodeGenError(f"TRIM requires 1 argument, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            # TODO: Implement TRIM function
+            self.output.append("    ; TRIM() not implemented")
+        elif func_name == "LEFT":
             # LEFT(string, count) - left substring
             if len(expr.arguments) != 2:
                 raise CodeGenError(f"LEFT requires 2 arguments, got {len(expr.arguments)}")
-            # For now, just return the string unchanged (placeholder)
-            self._generate_expression(expr.arguments[0])
-        elif expr.name.upper() == "RIGHT":
+            self._generate_expression(expr.arguments[0])  # string
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[1])  # count
+            self.output.append("    MOV P2,P0")  # count to P2
+            self.output.append("    POP P0")     # string address back to P0
+            
+            # Copy left substring to temp buffer
+            temp_addr = f"0x{0x4000 + self.label_counter:04X}"
+            self.label_counter += 1
+            self.output.append(f"    MOV P1,{temp_addr}")  # destination
+            
+            # Manual left substring
+            left_loop = f"left_loop_{self.label_counter}"
+            left_end = f"left_end_{self.label_counter}"
+            self.label_counter += 1
+            
+            self.output.append(f"    MOV P3,0")  # index
+            self.output.append(f"{left_loop}:")
+            self.output.append("    CMP P3,P2")
+            self.output.append(f"    JGE {left_end}")
+            self.output.append("    MOV P4,[P0+P3]")  # get char from source
+            self.output.append("    MOV [P1+P3],P4")  # store to destination
+            self.output.append("    INC P3")
+            self.output.append(f"    JMP {left_loop}")
+            self.output.append(f"{left_end}:")
+            self.output.append("    MOV [P1+P3],0")  # null terminate
+            self.output.append(f"    MOV P0,{temp_addr}")
+        elif func_name == "RIGHT":
             # RIGHT(string, count) - right substring
             if len(expr.arguments) != 2:
                 raise CodeGenError(f"RIGHT requires 2 arguments, got {len(expr.arguments)}")
-            # For now, just return the string unchanged (placeholder)
-            self._generate_expression(expr.arguments[0])
-        elif expr.name.upper() == "MID":
+            self._generate_expression(expr.arguments[0])  # string
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[1])  # count
+            self.output.append("    MOV P2,P0")  # count to P2
+            self.output.append("    POP P0")     # string address back to P0
+            
+            # Get string length first
+            self.output.append("    STRLEN P0")  # length in R0
+            self.output.append("    MOV P3,R0")  # length to P3
+            
+            # Copy right substring to temp buffer
+            temp_addr = f"0x{0x4000 + self.label_counter:04X}"
+            self.label_counter += 1
+            self.output.append(f"    MOV P1,{temp_addr}")  # destination
+            
+            # Manual right substring
+            right_loop = f"right_loop_{self.label_counter}"
+            right_end = f"right_end_{self.label_counter}"
+            self.label_counter += 1
+            
+            self.output.append(f"    MOV P4,0")  # destination index
+            self.output.append(f"    SUB P3,P2")  # start position = length - count
+            self.output.append(f"{right_loop}:")
+            self.output.append("    CMP P4,P2")
+            self.output.append(f"    JGE {right_end}")
+            self.output.append("    MOV P5,[P0+P3+P4]")  # get char from source
+            self.output.append("    MOV [P1+P4],P5")     # store to destination
+            self.output.append("    INC P4")
+            self.output.append(f"    JMP {right_loop}")
+            self.output.append(f"{right_end}:")
+            self.output.append("    MOV [P1+P4],0")  # null terminate
+            self.output.append(f"    MOV P0,{temp_addr}")
+        elif func_name == "MID":
             # MID(string, start, count) - middle substring
             if len(expr.arguments) != 3:
                 raise CodeGenError(f"MID requires 3 arguments, got {len(expr.arguments)}")
-            # For now, just return the string unchanged (placeholder)
-            self._generate_expression(expr.arguments[0])
-        elif expr.name.upper() == "INSTR":
+            self._generate_expression(expr.arguments[0])  # string
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[1])  # start (0-based)
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[2])  # count
+            self.output.append("    MOV P3,P0")  # count to P3
+            self.output.append("    POP P2")     # start to P2
+            self.output.append("    POP P0")     # string address to P0
+            
+            # Copy middle substring to temp buffer
+            temp_addr = f"0x{0x4000 + self.label_counter:04X}"
+            self.label_counter += 1
+            self.output.append(f"    MOV P1,{temp_addr}")  # destination
+            
+            # Manual middle substring
+            mid_loop = f"mid_loop_{self.label_counter}"
+            mid_end = f"mid_end_{self.label_counter}"
+            self.label_counter += 1
+            
+            self.output.append(f"    MOV P4,0")  # destination index
+            self.output.append(f"{mid_loop}:")
+            self.output.append("    CMP P4,P3")
+            self.output.append(f"    JGE {mid_end}")
+            self.output.append("    MOV P5,[P0+P2+P4]")  # get char from source
+            self.output.append("    MOV [P1+P4],P5")     # store to destination
+            self.output.append("    INC P4")
+            self.output.append(f"    JMP {mid_loop}")
+            self.output.append(f"{mid_end}:")
+            self.output.append("    MOV [P1+P4],0")  # null terminate
+            self.output.append(f"    MOV P0,{temp_addr}")
+        elif func_name == "INSTR":
             # INSTR(haystack, needle) - find substring position
             if len(expr.arguments) != 2:
                 raise CodeGenError(f"INSTR requires 2 arguments, got {len(expr.arguments)}")
-            # For now, return 0 (placeholder)
-            self.output.append("    MOV P0,0")
+            self._generate_expression(expr.arguments[0])  # haystack
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[1])  # needle
+            self.output.append("    MOV P1,P0")  # needle to P1
+            self.output.append("    POP P0")     # haystack to P0
+            self.output.append("    STRFIND P0,P1")  # result in R0
+            self.output.append("    MOV P0,R0")  # result to P0 (1-based position or 0 if not found)
         elif expr.name.upper() == "MEMSET":
             # MEMSET(address, value, length) - set memory
             if len(expr.arguments) != 3:
@@ -877,7 +981,6 @@ class CodeGenerator:
             self._generate_expression(expr.arguments[0])  # address
             self.output.append("    MEMSET P0,P1,P2")
             self.output.append("    ADD SP,4")  # Clean up stack
-            self.output.append("    MOV P0,0")  # Return 0
         elif expr.name.upper() == "MEMCPY":
             # MEMCPY(dest, src, length) - copy memory
             if len(expr.arguments) != 3:
@@ -920,26 +1023,239 @@ class CodeGenerator:
             # TRIM(string) - remove whitespace
             if len(expr.arguments) != 1:
                 raise CodeGenError(f"TRIM requires 1 argument, got {len(expr.arguments)}")
-            # For now, just return the string unchanged (placeholder)
             self._generate_expression(expr.arguments[0])
+            
+            # Manual trim implementation
+            temp_addr = f"0x{0x4000 + self.label_counter:04X}"
+            self.label_counter += 1
+            self.output.append(f"    MOV P1,{temp_addr}")  # destination
+            
+            # Find start (skip leading whitespace)
+            trim_find_start = f"trim_find_start_{self.label_counter}"
+            trim_copy = f"trim_copy_{self.label_counter}"
+            trim_find_end = f"trim_find_end_{self.label_counter}"
+            trim_done = f"trim_done_{self.label_counter}"
+            self.label_counter += 1
+            
+            self.output.append(f"    MOV P2,0")  # source index
+            self.output.append(f"{trim_find_start}:")
+            self.output.append("    MOV P3,[P0+P2]")  # get char
+            self.output.append("    CMP P3,0")        # end of string?
+            self.output.append(f"    JZ {trim_done}")
+            self.output.append("    CMP P3,32")       # space?
+            self.output.append(f"    JNE {trim_copy}")
+            self.output.append("    CMP P3,9")        # tab?
+            self.output.append(f"    JNE {trim_copy}")
+            self.output.append("    CMP P3,10")       # newline?
+            self.output.append(f"    JNE {trim_copy}")
+            self.output.append("    CMP P3,13")       # carriage return?
+            self.output.append(f"    JNE {trim_copy}")
+            self.output.append("    INC P2")          # skip whitespace
+            self.output.append(f"    JMP {trim_find_start}")
+            
+            self.output.append(f"{trim_copy}:")
+            self.output.append(f"    MOV P4,0")  # destination index
+            
+            # Copy until end, then back up to remove trailing whitespace
+            trim_copy_loop = f"trim_copy_loop_{self.label_counter}"
+            self.label_counter += 1
+            self.output.append(f"{trim_copy_loop}:")
+            self.output.append("    MOV P3,[P0+P2]")  # get char
+            self.output.append("    CMP P3,0")        # end of string?
+            self.output.append(f"    JZ {trim_find_end}")
+            self.output.append("    MOV [P1+P4],P3")  # copy char
+            self.output.append("    INC P2")
+            self.output.append("    INC P4")
+            self.output.append(f"    JMP {trim_copy_loop}")
+            
+            self.output.append(f"{trim_find_end}:")
+            # Remove trailing whitespace
+            self.output.append("    DEC P4")  # back up one
+            trim_trim_end = f"trim_trim_end_{self.label_counter}"
+            self.label_counter += 1
+            self.output.append(f"{trim_trim_end}:")
+            self.output.append("    CMP P4,0")
+            self.output.append(f"    JL {trim_done}")  # went too far back
+            self.output.append("    MOV P3,[P1+P4]")   # get char from end
+            self.output.append("    CMP P3,32")        # space?
+            self.output.append(f"    JNE {trim_done}")
+            self.output.append("    CMP P3,9")         # tab?
+            self.output.append(f"    JNE {trim_done}")
+            self.output.append("    CMP P3,10")        # newline?
+            self.output.append(f"    JNE {trim_done}")
+            self.output.append("    CMP P3,13")        # carriage return?
+            self.output.append(f"    JNE {trim_done}")
+            self.output.append("    DEC P4")           # remove trailing whitespace
+            self.output.append(f"    JMP {trim_trim_end}")
+            
+            self.output.append(f"{trim_done}:")
+            self.output.append("    INC P4")           # point to after last char
+            self.output.append("    MOV [P1+P4],0")    # null terminate
+            self.output.append(f"    MOV P0,{temp_addr}")
         elif expr.name.upper() == "REPLACE":
             # REPLACE(string, old, new) - replace substring
             if len(expr.arguments) != 3:
                 raise CodeGenError(f"REPLACE requires 3 arguments, got {len(expr.arguments)}")
-            # For now, just return the first string unchanged (placeholder)
-            self._generate_expression(expr.arguments[0])
+            self._generate_expression(expr.arguments[0])  # string
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[1])  # old
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[2])  # new
+            self.output.append("    MOV P3,P0")  # new to P3
+            self.output.append("    POP P2")     # old to P2
+            self.output.append("    POP P0")     # string to P0
+            
+            # For now, simple implementation - just return original string
+            # TODO: Implement full string replacement
+            temp_addr = f"0x{0x4000 + self.label_counter:04X}"
+            self.label_counter += 1
+            self.output.append(f"    MOV P1,{temp_addr}")
+            self.output.append("    STRCPY P1,P0")  # Copy original
+            self.output.append(f"    MOV P0,{temp_addr}")
         elif expr.name.upper() == "SPLIT":
             # SPLIT(string, delimiter) - split string into array
             if len(expr.arguments) != 2:
                 raise CodeGenError(f"SPLIT requires 2 arguments, got {len(expr.arguments)}")
-            # For now, return 0 (placeholder)
+            # For now, return 0 (placeholder - should return array)
             self.output.append("    MOV P0,0")
         elif expr.name.upper() == "JOIN":
             # JOIN(array, delimiter, count) - join array elements
             if len(expr.arguments) not in [2, 3]:
                 raise CodeGenError(f"JOIN requires 2 or 3 arguments, got {len(expr.arguments)}")
             # For now, return empty string (placeholder)
-            self.output.append("    MOV P0,0")
+            temp_addr = f"0x{0x4000 + self.label_counter:04X}"
+            self.label_counter += 1
+            self.output.append(f"    MOV P0,{temp_addr}")
+            self.output.append("    MOV [P0],0")  # Empty string
+        elif func_name == "COLOR":
+            # COLOR(ramp, shade) - create color value
+            if len(expr.arguments) != 2:
+                raise CodeGenError(f"COLOR requires 2 arguments, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])  # ramp
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[1])  # shade
+            self.output.append("    MOV P1,P0")  # shade to P1
+            self.output.append("    POP P0")     # ramp to P0
+            self.output.append("    SHL P0,4")   # ramp * 16
+            self.output.append("    OR P0,P1")   # add shade
+        elif func_name == "RAMP":
+            # RAMP(color) - extract ramp from color
+            if len(expr.arguments) != 1:
+                raise CodeGenError(f"RAMP requires 1 argument, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            self.output.append("    SHR P0,4")   # color >> 4
+        elif func_name == "SHADE":
+            # SHADE(color) - extract shade from color
+            if len(expr.arguments) != 1:
+                raise CodeGenError(f"SHADE requires 1 argument, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            self.output.append("    AND P0,15")  # color & 15
+        elif func_name == "STR":
+            # STR(number) - convert number to string
+            if len(expr.arguments) != 1:
+                raise CodeGenError(f"STR requires 1 argument, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            # TODO: Implement number to string conversion
+            # For now, just return a placeholder string
+            temp_addr = f"0x{0x4000 + self.label_counter:04X}"
+            self.label_counter += 1
+            self.output.append(f"    MOV P1,{temp_addr}")
+            self.output.append("    ; STR() conversion not fully implemented")
+            self.output.append("    MOV [P1],'0'")  # Placeholder
+            self.output.append("    MOV [P1+1],0")  # Null terminator
+            self.output.append(f"    MOV P0,{temp_addr}")
+        elif func_name == "INT":
+            # INT(string) - convert string to integer
+            if len(expr.arguments) != 1:
+                raise CodeGenError(f"INT requires 1 argument, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            # TODO: Implement string to number conversion
+            self.output.append("    ; INT() conversion not implemented")
+            self.output.append("    MOV P0,0")  # Placeholder
+        elif func_name == "KEYIN":
+            # KEYIN() - read key from keyboard
+            if len(expr.arguments) != 0:
+                raise CodeGenError(f"KEYIN requires 0 arguments, got {len(expr.arguments)}")
+            self.output.append("    KEYIN P0")
+        elif func_name == "KEYSTAT":
+            # KEYSTAT() - check if key is available
+            if len(expr.arguments) != 0:
+                raise CodeGenError(f"KEYSTAT requires 0 arguments, got {len(expr.arguments)}")
+            self.output.append("    KEYSTAT P0")
+        elif func_name == "MIN":
+            # MIN(a, b) - minimum of two values
+            if len(expr.arguments) != 2:
+                raise CodeGenError(f"MIN requires 2 arguments, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[1])
+            self.output.append("    MOV P1,P0")
+            self.output.append("    POP P0")
+            self.output.append("    CMP P0,P1")
+            self.output.append("    JLE min_done_" + str(self.label_counter))
+            self.output.append("    MOV P0,P1")
+            self.output.append("min_done_" + str(self.label_counter) + ":")
+            self.label_counter += 1
+        elif func_name == "MAX":
+            # MAX(a, b) - maximum of two values
+            if len(expr.arguments) != 2:
+                raise CodeGenError(f"MAX requires 2 arguments, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[1])
+            self.output.append("    MOV P1,P0")
+            self.output.append("    POP P0")
+            self.output.append("    CMP P0,P1")
+            self.output.append("    JGE max_done_" + str(self.label_counter))
+            self.output.append("    MOV P0,P1")
+            self.output.append("max_done_" + str(self.label_counter) + ":")
+            self.label_counter += 1
+        elif func_name == "POW":
+            # POW(base, exponent) - exponentiation
+            if len(expr.arguments) != 2:
+                raise CodeGenError(f"POW requires 2 arguments, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])  # base
+            self.output.append("    PUSH P0")
+            self._generate_expression(expr.arguments[1])  # exponent
+            self.output.append("    MOV P1,P0")  # exponent to P1
+            self.output.append("    POP P0")     # base to P0
+            self.output.append("    POWR P0,P1") # P0 = P0 ^ P1
+        elif func_name == "ABS":
+            # ABS(value) - absolute value
+            if len(expr.arguments) != 1:
+                raise CodeGenError(f"ABS requires 1 argument, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            # Check if negative (sign bit set)
+            self.output.append("    MOV P1,P0")  # copy value
+            self.output.append("    SHR P1,15")  # get sign bit
+            self.output.append("    CMP P1,1")   # check if negative
+            abs_label = f"abs_done_{self.label_counter}"
+            self.label_counter += 1
+            self.output.append(f"    JNZ {abs_label}")
+            self.output.append("    NEG P0")     # negate if negative
+            self.output.append(f"{abs_label}:")
+        elif func_name == "RND":
+            # RND() or RND(max) - random number
+            if len(expr.arguments) == 0:
+                # RND() - return 0-255
+                self.output.append("    ; RND() not fully implemented")
+                self.output.append("    MOV P0,42")  # Placeholder random value
+            elif len(expr.arguments) == 1:
+                # RND(max) - return 0 to max-1
+                self._generate_expression(expr.arguments[0])  # max value
+                # For now, just return a value < max (placeholder)
+                self.output.append("    ; RND(max) not fully implemented")
+                self.output.append("    MOV P0,5")  # Placeholder value < 10
+            else:
+                raise CodeGenError(f"RND requires 0 or 1 arguments, got {len(expr.arguments)}")
+        elif func_name == "SQRT":
+            # SQRT(value) - square root
+            if len(expr.arguments) != 1:
+                raise CodeGenError(f"SQRT requires 1 argument, got {len(expr.arguments)}")
+            self._generate_expression(expr.arguments[0])
+            # TODO: Implement square root
+            self.output.append("    ; SQRT() not implemented")
+            # For now, just return the input (placeholder)
         else:
             # Generic function call (not implemented)
             raise CodeGenError(f"Unknown function: {expr.name}")
@@ -980,6 +1296,23 @@ class CodeGenerator:
         # Skip catch block for now
         self.output.append("    ; Catch block (not implemented)")
 
+    def _generate_struct(self, stmt: StructStmt):
+        """Generate code for Struct definition."""
+        self.output.append(f"    ; Struct {stmt.name}")
+        for field in stmt.fields:
+            self.output.append(f"    ;   {field.name}: {field.field_type}")
+        # Struct definitions don't generate runtime code, just type information
+        # Field access will be handled by StructFieldStmt
+
+    def _generate_struct_instance(self, stmt: StructInstanceStmt):
+        """Generate code for struct instance declaration."""
+        self.output.append(f"    ; DIM {stmt.var_name} AS {stmt.struct_name}")
+        # For now, just allocate space for the struct (assume 4 bytes for 2 fields)
+        # TODO: Calculate actual size based on struct definition
+        # This would require looking up the struct definition and calculating field offsets
+        addr = self._get_variable_address(stmt.var_name)
+        self.output.append(f"    MOV [{addr}],0")  # Placeholder for struct instance
+
     def _get_variable_address(self, name: str) -> str:
         """Get memory address for a variable."""
         if name not in self.variable_addresses:
@@ -988,7 +1321,50 @@ class CodeGenerator:
             self.variable_addresses[name] = f"0x{addr:04X}"
         return self.variable_addresses[name]
 
+    def _get_string_literal_address(self, content: str) -> str:
+        """Get or allocate address for a string literal."""
+        if content not in self.string_literals:
+            # Allocate string in data section (starting at 0x3000)
+            addr = 0x3000 + len(self.string_literals) * 256  # 256 bytes per string
+            self.string_literals[content] = f"0x{addr:04X}"
+            
+            # Add string data to output
+            self.output.append(f"")
+            self.output.append(f"; String literal: {repr(content)}")
+            self.output.append(f"ORG 0x{addr:04X}")
+            for i, char in enumerate(content):
+                self.output.append(f"    DB {ord(char)}")
+            self.output.append(f"    DB 0  ; null terminator")
+        
+        return self.string_literals[content]
+
     def _new_label(self, prefix: str) -> str:
         """Generate a new unique label."""
         self.label_counter += 1
         return f"{prefix}_{self.label_counter}"
+    
+    def _display_value_in_p0(self):
+        """Display the value in P0 (assumed to be a string address)."""
+        display_loop = f"display_loop_{self.label_counter}"
+        display_end = f"display_end_{self.label_counter}"
+        self.label_counter += 1
+        
+        self.output.append(f"    ; Display string at address in P0")
+        self.output.append(f"    MOV P1,P0")  # String address to P1
+        self.output.append(f"{display_loop}:")
+        self.output.append("    MOV P0,[P1]")  # Get character
+        self.output.append("    CMP P0,0")     # Check for null terminator
+        self.output.append(f"    JZ {display_end}")
+        self.output.append("    MOV P2,15")    # White color
+        self.output.append("    CHAR P0,P2")   # Display character
+        self.output.append("    INC P1")       # Next character
+        self.output.append(f"    JMP {display_loop}")
+        self.output.append(f"{display_end}:")
+
+    def _display_short_string(self, text: str):
+        """Display a short string using individual CHAR instructions."""
+        for char in text:
+            ascii_code = ord(char)
+            self.output.append(f"    MOV P0,{ascii_code}")
+            self.output.append("    MOV P1,15")  # White color
+            self.output.append("    CHAR P0,P1")

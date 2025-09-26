@@ -27,149 +27,183 @@ start:
     MOV P0,10
     MOV [0x2002],P0
     ; C = expression
-    MOV P0,[0x2000]
-    PUSH P0
-    MOV P0,[0x2002]
+    MOV P0,3
     PUSH P0
     MOV P0,2
-    MOV P1,P0
-    POP P0
-    MUL P0,P1
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
     PUSH P0
-    MOV P0,3
-    MOV P1,P0
-    POP P0
+    MOV P0,[0x2002]
+    POP P1
+    MUL P0,P1
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
+    ADD P0,P1
+    POP P1
     SUB P0,P1
     MOV [0x2004],P0
     ; D = expression
-    MOV P0,[0x2000]
-    PUSH P0
-    MOV P0,[0x2002]
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
+    MOV P0,1
     PUSH P0
     MOV P0,[0x2004]
-    PUSH P0
-    MOV P0,1
-    MOV P1,P0
-    POP P0
+    POP P1
     SUB P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
+    ADD P0,P1
+    POP P1
     MUL P0,P1
     MOV [0x2006],P0
     ; Disp
-    ; Display 'A:'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'A:'
+ORG 0x3000
+    DB 65
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     MOV P0,[0x2000]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
     ; Disp
-    ; Display 'B:'
-    MOV P0,66
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'B:'
+ORG 0x3100
+    DB 66
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_2:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_2
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_2
+display_end_2:
     MOV P0,[0x2002]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_3:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_3
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_3
+display_end_3:
     ; Disp
-    ; Display 'C (A+B*2-3):'
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,43
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,66
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,42
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,50
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,45
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,51
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'C (A+B*2-3):'
+ORG 0x3200
+    DB 67
+    DB 32
+    DB 40
+    DB 65
+    DB 43
+    DB 66
+    DB 42
+    DB 50
+    DB 45
+    DB 51
+    DB 41
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_4:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_4
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_4
+display_end_4:
     MOV P0,[0x2004]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_5:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_5
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_5
+display_end_5:
     ; Disp
-    ; Display 'D ((A+B)*(C-1)):'
-    MOV P0,68
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,43
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,66
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,42
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,40
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,45
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,49
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,41
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'D ((A+B)*(C-1)):'
+ORG 0x3300
+    DB 68
+    DB 32
+    DB 40
+    DB 40
+    DB 65
+    DB 43
+    DB 66
+    DB 41
+    DB 42
+    DB 40
+    DB 67
+    DB 45
+    DB 49
+    DB 41
+    DB 41
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3300
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_6:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_6
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_6
+display_end_6:
     MOV P0,[0x2006]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_7:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_7
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_7
+display_end_7:
 
 ; Program end - infinite loop to keep display visible
 halt:

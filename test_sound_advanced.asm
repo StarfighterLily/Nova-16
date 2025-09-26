@@ -21,64 +21,41 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    ; Display 'Advanced Sound Test'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Advanced Sound Test'
+ORG 0x3000
+    DB 65
+    DB 100
+    DB 118
+    DB 97
+    DB 110
+    DB 99
+    DB 101
+    DB 100
+    DB 32
+    DB 83
+    DB 111
+    DB 117
+    DB 110
+    DB 100
+    DB 32
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     ; CHANNEL = expression
     MOV P0,0
     MOV [0x2000],P0
@@ -102,116 +79,140 @@ start:
     MOV [0x200C],P0
     MOV P0,0
     MOV [0x2000],P0
-for_1:
+for_2:
     MOV P0,[0x2000]
     MOV P0,8
     MOV P1,P0
     MOV P0,[0x2000]
     CMP P0,P1
-    JGE next_2
+    JGE next_3
     ; FREQ = expression
-    MOV P0,220
+    MOV P0,110
     PUSH P0
     MOV P0,[0x2000]
-    PUSH P0
-    MOV P0,110
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,220
+    POP P1
     ADD P0,P1
     MOV [0x2002],P0
     ; VOL = expression
-    MOV P0,128
+    MOV P0,16
     PUSH P0
     MOV P0,[0x2000]
-    PUSH P0
-    MOV P0,16
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,128
+    POP P1
     ADD P0,P1
     MOV [0x2004],P0
     ; WAVE = expression
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,4
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     MOD P0,P1
     MOV [0x2006],P0
     ; Disp
-    ; Display 'Channel'
-    MOV P0,67
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Channel'
+ORG 0x3100
+    DB 67
+    DB 104
+    DB 97
+    DB 110
+    DB 110
+    DB 101
+    DB 108
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_3:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_3
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_3
+display_end_3:
     MOV P0,[0x2000]
-    ; Display 'playing at'
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_4:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_4
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_4
+display_end_4:
+
+; String literal: 'playing at'
+ORG 0x3200
+    DB 112
+    DB 108
+    DB 97
+    DB 121
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 97
+    DB 116
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_5:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_5
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_5
+display_end_5:
     MOV P0,[0x2002]
-    ; Display 'Hz'
-    MOV P0,72
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,122
-    MOV P1,15
-    CHAR P0,P1
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_6:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_6
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_6
+display_end_6:
+
+; String literal: 'Hz'
+ORG 0x3300
+    DB 72
+    DB 122
+    DB 0  ; null terminator
+    MOV P0,0x3300
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_7:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_7
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_7
+display_end_7:
     MOV P0,[0x2000]
     MOV P1,1
     ADD P0,P1
     MOV [0x2000],P0
-    JMP for_1
-next_2:
+    JMP for_2
+next_3:
     ; TEST_FREQ = expression
     MOV P0,440
     MOV [0x200E],P0
@@ -222,182 +223,120 @@ next_2:
     MOV P0,2
     MOV [0x2012],P0
     ; Disp
-    ; Display 'Generating sound pattern'
-    MOV P0,71
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Generating sound pattern'
+ORG 0x3400
+    DB 71
+    DB 101
+    DB 110
+    DB 101
+    DB 114
+    DB 97
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 115
+    DB 111
+    DB 117
+    DB 110
+    DB 100
+    DB 32
+    DB 112
+    DB 97
+    DB 116
+    DB 116
+    DB 101
+    DB 114
+    DB 110
+    DB 0  ; null terminator
+    MOV P0,0x3400
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_8:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_8
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_8
+display_end_8:
     MOV P0,0
     MOV [0x2008],P0
-for_3:
+for_10:
     MOV P0,[0x2008]
     MOV P0,21
     MOV P1,P0
     MOV P0,[0x2008]
     CMP P0,P1
-    JGE next_4
+    JGE next_11
     ; F = expression
-    MOV P0,200
+    MOV P0,20
     PUSH P0
     MOV P0,[0x2008]
-    PUSH P0
-    MOV P0,20
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,200
+    POP P1
     ADD P0,P1
     MOV [0x200A],P0
     ; V = expression
-    MOV P0,255
+    MOV P0,10
     PUSH P0
     MOV P0,[0x2008]
-    PUSH P0
-    MOV P0,10
-    MOV P1,P0
-    POP P0
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,255
+    POP P1
     SUB P0,P1
     MOV [0x200C],P0
     MOV P0,[0x2008]
     MOV P1,1
     ADD P0,P1
     MOV [0x2008],P0
-    JMP for_3
-next_4:
+    JMP for_10
+next_11:
     ; Disp
-    ; Display 'Sound test complete!'
-    MOV P0,83
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,33
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Sound test complete!'
+ORG 0x3500
+    DB 83
+    DB 111
+    DB 117
+    DB 110
+    DB 100
+    DB 32
+    DB 116
+    DB 101
+    DB 115
+    DB 116
+    DB 32
+    DB 99
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 116
+    DB 101
+    DB 33
+    DB 0  ; null terminator
+    MOV P0,0x3500
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_11:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_11
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_11
+display_end_11:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop

@@ -21,73 +21,44 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    ; Display 'Memory Operations Test'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,79
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Memory Operations Test'
+ORG 0x3000
+    DB 77
+    DB 101
+    DB 109
+    DB 111
+    DB 114
+    DB 121
+    DB 32
+    DB 79
+    DB 112
+    DB 101
+    DB 114
+    DB 97
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 115
+    DB 32
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     ; BASE_ADDR = expression
     MOV P0,12288
     MOV [0x2000],P0
@@ -113,120 +84,78 @@ start:
     MOV P0,0
     MOV [0x200E],P0
     ; Disp
-    ; Display 'Filling memory with pattern'
-    MOV P0,70
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,119
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Filling memory with pattern'
+ORG 0x3100
+    DB 70
+    DB 105
+    DB 108
+    DB 108
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 109
+    DB 101
+    DB 109
+    DB 111
+    DB 114
+    DB 121
+    DB 32
+    DB 119
+    DB 105
+    DB 116
+    DB 104
+    DB 32
+    DB 112
+    DB 97
+    DB 116
+    DB 116
+    DB 101
+    DB 114
+    DB 110
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
     MOV P0,0
     MOV [0x2006],P0
-for_1:
+for_3:
     MOV P0,[0x2006]
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     SUB P0,P1
     ADD P0,1
     MOV P1,P0
     MOV P0,[0x2006]
     CMP P0,P1
-    JGE next_2
+    JGE next_4
     ; VALUE = expression
-    MOV P0,[0x2006]
-    PUSH P0
     MOV P0,256
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2006]
+    POP P1
     MOD P0,P1
     MOV [0x2008],P0
     MOV P0,1
     PUSH P0
     MOV P0,[0x2008]
     PUSH P0
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,[0x2006]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MEMSET P0,P1,P2
     ADD SP,4
@@ -234,107 +163,77 @@ for_1:
     MOV P1,1
     ADD P0,P1
     MOV [0x2006],P0
-    JMP for_1
-next_2:
+    JMP for_3
+next_4:
     JMP MEMCPY
     ; Disp
-    ; Display 'Verifying memory copy'
-    MOV P0,86
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,102
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Verifying memory copy'
+ORG 0x3200
+    DB 86
+    DB 101
+    DB 114
+    DB 105
+    DB 102
+    DB 121
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 109
+    DB 101
+    DB 109
+    DB 111
+    DB 114
+    DB 121
+    DB 32
+    DB 99
+    DB 111
+    DB 112
+    DB 121
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_4:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_4
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_4
+display_end_4:
     ; ERRORS = expression
     MOV P0,0
     MOV [0x200E],P0
     MOV P0,0
     MOV [0x2006],P0
-for_3:
+for_6:
     MOV P0,[0x2006]
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     SUB P0,P1
     ADD P0,1
     MOV P1,P0
     MOV P0,[0x2006]
     CMP P0,P1
-    JGE next_4
+    JGE next_7
     ; ORIGINAL = expression
     MOV P0,1
     PUSH P0
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,[0x2006]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     PUSH P0
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,[0x2006]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MEMCMP P0,P1,P2
     ADD SP,4
@@ -342,300 +241,211 @@ for_3:
     ; COPY = expression
     MOV P0,1
     PUSH P0
-    MOV P0,[0x2004]
-    PUSH P0
     MOV P0,[0x2006]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2004]
+    POP P1
     ADD P0,P1
     PUSH P0
-    MOV P0,[0x2004]
-    PUSH P0
     MOV P0,[0x2006]
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2004]
+    POP P1
     ADD P0,P1
     MEMCMP P0,P1,P2
     ADD SP,4
     MOV [0x200C],P0
-    MOV P0,[0x200A]
-    PUSH P0
     MOV P0,[0x200C]
-    MOV P1,P0
-    POP P0
-    JZ else_5
-    ; ERRORS = expression
-    MOV P0,[0x200E]
     PUSH P0
+    MOV P0,[0x200A]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JZ cmp_done_9
     MOV P0,1
-    MOV P1,P0
-    POP P0
+cmp_done_9:
+    JZ else_8
+    ; ERRORS = expression
+    MOV P0,1
+    PUSH P0
+    MOV P0,[0x200E]
+    POP P1
     ADD P0,P1
     MOV [0x200E],P0
-    JMP endif_6
-else_5:
-endif_6:
+    JMP endif_9
+else_8:
+endif_9:
     MOV P0,[0x2006]
     MOV P1,1
     ADD P0,P1
     MOV [0x2006],P0
-    JMP for_3
-next_4:
-    MOV P0,[0x200E]
-    PUSH P0
+    JMP for_6
+next_7:
     MOV P0,0
-    MOV P1,P0
-    POP P0
-    JZ else_7
-    ; Disp
-    ; Display 'Memory copy successful!'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,102
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,33
-    MOV P1,15
-    CHAR P0,P1
-    JMP endif_8
-else_7:
-    ; Disp
-    ; Display 'Memory copy errors:'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,[0x200E]
-endif_8:
-    MOV P0,[0x2002]
     PUSH P0
-    MOV P0,10
+    MOV P0,[0x200E]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JNZ cmp_done_12
+    MOV P0,1
+cmp_done_12:
+    JZ else_11
+    ; Disp
+
+; String literal: 'Memory copy successful!'
+ORG 0x3300
+    DB 77
+    DB 101
+    DB 109
+    DB 111
+    DB 114
+    DB 121
+    DB 32
+    DB 99
+    DB 111
+    DB 112
+    DB 121
+    DB 32
+    DB 115
+    DB 117
+    DB 99
+    DB 99
+    DB 101
+    DB 115
+    DB 115
+    DB 102
+    DB 117
+    DB 108
+    DB 33
+    DB 0  ; null terminator
+    MOV P0,0x3300
+    ; Display string at address in P0
     MOV P1,P0
-    POP P0
+display_loop_13:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_13
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_13
+display_end_13:
+    JMP endif_12
+else_11:
+    ; Disp
+
+; String literal: 'Memory copy errors:'
+ORG 0x3400
+    DB 77
+    DB 101
+    DB 109
+    DB 111
+    DB 114
+    DB 121
+    DB 32
+    DB 99
+    DB 111
+    DB 112
+    DB 121
+    DB 32
+    DB 101
+    DB 114
+    DB 114
+    DB 111
+    DB 114
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3400
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_14:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_14
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_14
+display_end_14:
+    MOV P0,[0x200E]
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_15:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_15
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_15
+display_end_15:
+endif_12:
+    MOV P0,10
+    PUSH P0
+    MOV P0,[0x2002]
+    POP P1
     SUB P0,P1
     PUSH P0
     MOV P0,[0x2000]
     PUSH P0
-    MOV P0,[0x2000]
-    PUSH P0
     MOV P0,10
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     ADD P0,P1
     MEMMOVE P0,P1,P2
     ADD SP,4
     ; Disp
-    ; Display 'Memory operations test complete!'
-    MOV P0,77
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,33
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Memory operations test complete!'
+ORG 0x3500
+    DB 77
+    DB 101
+    DB 109
+    DB 111
+    DB 114
+    DB 121
+    DB 32
+    DB 111
+    DB 112
+    DB 101
+    DB 114
+    DB 97
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 115
+    DB 32
+    DB 116
+    DB 101
+    DB 115
+    DB 116
+    DB 32
+    DB 99
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 116
+    DB 101
+    DB 33
+    DB 0  ; null terminator
+    MOV P0,0x3500
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_16:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_16
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_16
+display_end_16:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop

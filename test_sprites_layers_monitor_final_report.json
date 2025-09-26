@@ -1,13 +1,12 @@
 {
-  "cycle": 101,
+  "cycle": 11,
   "timestamp": "Final Report",
   "statistics": {
     "total_pixel_writes": 0,
     "layers_used": [],
     "colors_used": [],
     "instruction_counts": {
-      "SFILL": 1,
-      "CHAR": 26
+      "SFILL": 1
     },
     "memory_regions_accessed": [],
     "max_x": 0,

@@ -21,653 +21,576 @@ start:
     MOV VY,P0
     SFILL P0
     ; Disp
-    ; Display 'Testing error conditions and edge cases:'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing error conditions and edge cases:'
+ORG 0x3000
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 101
+    DB 114
+    DB 114
+    DB 111
+    DB 114
+    DB 32
+    DB 99
+    DB 111
+    DB 110
+    DB 100
+    DB 105
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 115
+    DB 32
+    DB 97
+    DB 110
+    DB 100
+    DB 32
+    DB 101
+    DB 100
+    DB 103
+    DB 101
+    DB 32
+    DB 99
+    DB 97
+    DB 115
+    DB 101
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3000
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_0:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_0
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_0
+display_end_0:
     ; Disp
-    ; Display 'Testing division by zero handling:'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,98
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,122
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing division by zero handling:'
+ORG 0x3100
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 100
+    DB 105
+    DB 118
+    DB 105
+    DB 115
+    DB 105
+    DB 111
+    DB 110
+    DB 32
+    DB 98
+    DB 121
+    DB 32
+    DB 122
+    DB 101
+    DB 114
+    DB 111
+    DB 32
+    DB 104
+    DB 97
+    DB 110
+    DB 100
+    DB 108
+    DB 105
+    DB 110
+    DB 103
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3100
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_1:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_1
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_1
+display_end_1:
     ; A = expression
     MOV P0,10
     MOV [0x2000],P0
     ; B = expression
     MOV P0,0
     MOV [0x2002],P0
-    MOV P0,[0x2002]
-    PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
-    JZ else_1
-    ; Disp
-    ; Display 'Division by zero avoided'
-    MOV P0,68
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,98
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,122
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,118
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    JMP endif_2
-else_1:
-    ; RESULT = expression
-    MOV P0,[0x2000]
     PUSH P0
     MOV P0,[0x2002]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JNZ cmp_done_4
+    MOV P0,1
+cmp_done_4:
+    JZ else_3
+    ; Disp
+
+; String literal: 'Division by zero avoided'
+ORG 0x3200
+    DB 68
+    DB 105
+    DB 118
+    DB 105
+    DB 115
+    DB 105
+    DB 111
+    DB 110
+    DB 32
+    DB 98
+    DB 121
+    DB 32
+    DB 122
+    DB 101
+    DB 114
+    DB 111
+    DB 32
+    DB 97
+    DB 118
+    DB 111
+    DB 105
+    DB 100
+    DB 101
+    DB 100
+    DB 0  ; null terminator
+    MOV P0,0x3200
+    ; Display string at address in P0
     MOV P1,P0
-    POP P0
+display_loop_5:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_5
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_5
+display_end_5:
+    JMP endif_4
+else_3:
+    ; RESULT = expression
+    MOV P0,[0x2002]
+    PUSH P0
+    MOV P0,[0x2000]
+    POP P1
     DIV P0,P1
     MOV [0x2004],P0
     ; Disp
-    PUSH P0
     MOV P0,[0x2004]
-    MOV P1,P0
-    POP P0
+    MOV P1,0x4006
+    ; STR() conversion not fully implemented
+    MOV [P1],'0'
+    MOV [P1+1],0
+    MOV P0,0x4006
+    PUSH P0
+
+; String literal: 'Division result: '
+ORG 0x3300
+    DB 68
+    DB 105
+    DB 118
+    DB 105
+    DB 115
+    DB 105
+    DB 111
+    DB 110
+    DB 32
+    DB 114
+    DB 101
+    DB 115
+    DB 117
+    DB 108
+    DB 116
+    DB 58
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x3300
+    POP P1
     ADD P0,P1
-endif_2:
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_7:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_7
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_7
+display_end_7:
+endif_4:
     ; Disp
-    ; Display 'Testing array operations:'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,121
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing array operations:'
+ORG 0x3400
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 97
+    DB 114
+    DB 114
+    DB 97
+    DB 121
+    DB 32
+    DB 111
+    DB 112
+    DB 101
+    DB 114
+    DB 97
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3400
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_8:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_8
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_8
+display_end_8:
     ; TEST_ARRAY = expression
     MOV P0,0
     MOV [0x2006],P0
     MOV P0,0
     MOV [0x2008],P0
-for_3:
+for_10:
     MOV P0,[0x2008]
     MOV P0,5
     MOV P1,P0
     MOV P0,[0x2008]
     CMP P0,P1
-    JGE next_4
+    JGE next_11
+    MOV P0,4
+    PUSH P0
     MOV P0,[0x2008]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLE cmp_done_13
+    MOV P0,1
+cmp_done_13:
     PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
     PUSH P0
     MOV P0,[0x2008]
-    PUSH P0
-    MOV P0,4
-    MOV P1,P0
-    POP P0
-    MOV P1,P0
-    POP P0
-    JZ else_5
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGE cmp_done_14
+    MOV P0,1
+cmp_done_14:
+    POP P1
+    AND P0,P1
+    JZ else_12
     ; VAL = expression
+    MOV P0,[0x2008]
+    MOV P1,0x2006
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
     MOV [0x200A],P0
     ; Disp
+    MOV P0,[0x200A]
+    MOV P1,0x400F
+    ; STR() conversion not fully implemented
+    MOV [P1],'0'
+    MOV [P1+1],0
+    MOV P0,0x400F
+    PUSH P0
+
+; String literal: '] = '
+ORG 0x3500
+    DB 93
+    DB 32
+    DB 61
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x3500
     PUSH P0
     MOV P0,[0x2008]
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
+    MOV P1,0x4010
+    ; STR() conversion not fully implemented
+    MOV [P1],'0'
+    MOV [P1+1],0
+    MOV P0,0x4010
     PUSH P0
-    MOV P1,P0
-    POP P0
+
+; String literal: 'Array['
+ORG 0x3600
+    DB 65
+    DB 114
+    DB 114
+    DB 97
+    DB 121
+    DB 91
+    DB 0  ; null terminator
+    MOV P0,0x3600
+    POP P1
     ADD P0,P1
-    PUSH P0
-    MOV P0,[0x200A]
-    MOV P1,P0
-    POP P0
+    POP P1
     ADD P0,P1
-    JMP endif_6
-else_5:
-endif_6:
+    POP P1
+    ADD P0,P1
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_17:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_17
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_17
+display_end_17:
+    JMP endif_13
+else_12:
+endif_13:
     MOV P0,[0x2008]
     MOV P1,1
     ADD P0,P1
     MOV [0x2008],P0
-    JMP for_3
-next_4:
+    JMP for_10
+next_11:
     ; Disp
-    ; Display 'Testing large numbers:'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,98
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing large numbers:'
+ORG 0x3700
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 108
+    DB 97
+    DB 114
+    DB 103
+    DB 101
+    DB 32
+    DB 110
+    DB 117
+    DB 109
+    DB 98
+    DB 101
+    DB 114
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3700
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_18:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_18
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_18
+display_end_18:
     ; BIG_NUM = expression
     MOV P0,32767
     MOV [0x200C],P0
     ; Disp
-    PUSH P0
     MOV P0,[0x200C]
-    MOV P1,P0
-    POP P0
+    MOV P1,0x4013
+    ; STR() conversion not fully implemented
+    MOV [P1],'0'
+    MOV [P1+1],0
+    MOV P0,0x4013
+    PUSH P0
+
+; String literal: 'Big number: '
+ORG 0x3800
+    DB 66
+    DB 105
+    DB 103
+    DB 32
+    DB 110
+    DB 117
+    DB 109
+    DB 98
+    DB 101
+    DB 114
+    DB 58
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x3800
+    POP P1
     ADD P0,P1
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_20:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_20
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_20
+display_end_20:
     ; NEG_NUM = expression
     MOV P0,32768
     NEG P0
     MOV [0x200E],P0
     ; Disp
-    PUSH P0
     MOV P0,[0x200E]
-    MOV P1,P0
-    POP P0
+    MOV P1,0x4015
+    ; STR() conversion not fully implemented
+    MOV [P1],'0'
+    MOV [P1+1],0
+    MOV P0,0x4015
+    PUSH P0
+
+; String literal: 'Negative number: '
+ORG 0x3900
+    DB 78
+    DB 101
+    DB 103
+    DB 97
+    DB 116
+    DB 105
+    DB 118
+    DB 101
+    DB 32
+    DB 110
+    DB 117
+    DB 109
+    DB 98
+    DB 101
+    DB 114
+    DB 58
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x3900
+    POP P1
     ADD P0,P1
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_22:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_22
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_22
+display_end_22:
     ; Disp
-    ; Display 'Testing color bounds:'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,98
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing color bounds:'
+ORG 0x3A00
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 99
+    DB 111
+    DB 108
+    DB 111
+    DB 114
+    DB 32
+    DB 98
+    DB 111
+    DB 117
+    DB 110
+    DB 100
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3A00
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_23:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_23
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_23
+display_end_23:
     MOV P0,0
     MOV [0x2010],P0
-for_7:
+for_25:
     MOV P0,[0x2010]
     MOV P0,256
     MOV P1,P0
     MOV P0,[0x2010]
     CMP P0,P1
-    JGE next_8
+    JGE next_26
+    MOV P0,255
+    PUSH P0
     MOV P0,[0x2010]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLE cmp_done_28
+    MOV P0,1
+cmp_done_28:
     PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
     PUSH P0
     MOV P0,[0x2010]
-    PUSH P0
-    MOV P0,255
-    MOV P1,P0
-    POP P0
-    MOV P1,P0
-    POP P0
-    JZ else_9
-    MOV P0,10
-    PUSH P0
-    MOV P0,[0x2010]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGE cmp_done_29
+    MOV P0,1
+cmp_done_29:
+    POP P1
+    AND P0,P1
+    JZ else_27
+    MOV P0,5
     PUSH P0
     MOV P0,25
-    MOV P1,P0
-    POP P0
-    DIV P0,P1
     PUSH P0
-    MOV P0,5
-    MOV P1,P0
-    POP P0
+    MOV P0,[0x2010]
+    POP P1
+    DIV P0,P1
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,10
+    POP P1
     ADD P0,P1
     MOV VY,P0
     MOV P0,200
@@ -676,116 +599,96 @@ for_7:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    JMP endif_10
-else_9:
-endif_10:
+    JMP endif_28
+else_27:
+endif_28:
     MOV P0,[0x2010]
     MOV P0,25
     ADD P0,P1
     MOV [0x2010],P0
-    JMP for_7
-next_8:
+    JMP for_25
+next_26:
     ; Disp
-    ; Display 'Testing loop bounds:'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,98
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing loop bounds:'
+ORG 0x3B00
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 108
+    DB 111
+    DB 111
+    DB 112
+    DB 32
+    DB 98
+    DB 111
+    DB 117
+    DB 110
+    DB 100
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3B00
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_30:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_30
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_30
+display_end_30:
     MOV P0,10
     MOV [0x2008],P0
-for_11:
+for_32:
     MOV P0,[0x2008]
     MOV P0,1
     MOV P1,P0
     MOV P0,[0x2008]
     CMP P0,P1
-    JGE next_12
+    JGE next_33
+    MOV P0,10
+    PUSH P0
     MOV P0,[0x2008]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLE cmp_done_35
+    MOV P0,1
+cmp_done_35:
     PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
     PUSH P0
     MOV P0,[0x2008]
-    PUSH P0
-    MOV P0,10
-    MOV P1,P0
-    POP P0
-    MOV P1,P0
-    POP P0
-    JZ else_13
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGE cmp_done_36
+    MOV P0,1
+cmp_done_36:
+    POP P1
+    AND P0,P1
+    JZ else_34
     ; X = expression
-    MOV P0,50
-    PUSH P0
-    MOV P0,10
+    MOV P0,5
     PUSH P0
     MOV P0,[0x2008]
-    MOV P1,P0
-    POP P0
-    SUB P0,P1
     PUSH P0
-    MOV P0,5
-    MOV P1,P0
-    POP P0
+    MOV P0,10
+    POP P1
+    SUB P0,P1
+    POP P1
     MUL P0,P1
-    MOV P1,P0
-    POP P0
+    PUSH P0
+    MOV P0,50
+    POP P1
     ADD P0,P1
     MOV [0x2012],P0
     MOV P0,[0x2012]
@@ -796,282 +699,297 @@ for_11:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    JMP endif_14
-else_13:
-endif_14:
+    JMP endif_35
+else_34:
+endif_35:
     MOV P0,[0x2008]
     MOV P0,1
     NEG P0
     ADD P0,P1
     MOV [0x2008],P0
-    JMP for_11
-next_12:
+    JMP for_32
+next_33:
     ; Disp
-    ; Display 'Testing complex conditionals:'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,120
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'Testing complex conditionals:'
+ORG 0x3C00
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 99
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 120
+    DB 32
+    DB 99
+    DB 111
+    DB 110
+    DB 100
+    DB 105
+    DB 116
+    DB 105
+    DB 111
+    DB 110
+    DB 97
+    DB 108
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x3C00
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_37:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_37
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_37
+display_end_37:
     ; SCORE = expression
     MOV P0,75
     MOV [0x2016],P0
-    MOV P0,[0x2016]
-    PUSH P0
     MOV P0,90
-    MOV P1,P0
-    POP P0
-    JZ else_15
-    ; GRADE = expression
-    MOV [0x2018],P0
-    JMP endif_16
-else_15:
-    MOV P0,[0x2016]
     PUSH P0
+    MOV P0,[0x2016]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGE cmp_done_40
+    MOV P0,1
+cmp_done_40:
+    JZ else_39
+    ; GRADE = expression
+
+; String literal: 'A'
+ORG 0x3D00
+    DB 65
+    DB 0  ; null terminator
+    MOV P0,0x3D00
+    MOV [0x2018],P0
+    JMP endif_40
+else_39:
     MOV P0,80
-    MOV P1,P0
-    POP P0
-    JZ else_17
-    ; GRADE = expression
-    MOV [0x2018],P0
-    JMP endif_18
-else_17:
-    MOV P0,[0x2016]
     PUSH P0
+    MOV P0,[0x2016]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGE cmp_done_43
+    MOV P0,1
+cmp_done_43:
+    JZ else_42
+    ; GRADE = expression
+
+; String literal: 'B'
+ORG 0x3E00
+    DB 66
+    DB 0  ; null terminator
+    MOV P0,0x3E00
+    MOV [0x2018],P0
+    JMP endif_43
+else_42:
     MOV P0,70
-    MOV P1,P0
-    POP P0
-    JZ else_19
-    ; GRADE = expression
-    MOV [0x2018],P0
-    JMP endif_20
-else_19:
-    ; GRADE = expression
-    MOV [0x2018],P0
-endif_20:
-endif_18:
-endif_16:
-    ; Disp
     PUSH P0
     MOV P0,[0x2016]
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
-    PUSH P0
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
-    PUSH P0
-    MOV P0,[0x2018]
-    MOV P1,P0
-    POP P0
-    ADD P0,P1
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGE cmp_done_46
+    MOV P0,1
+cmp_done_46:
+    JZ else_45
+    ; GRADE = expression
+
+; String literal: 'C'
+ORG 0x3F00
+    DB 67
+    DB 0  ; null terminator
+    MOV P0,0x3F00
+    MOV [0x2018],P0
+    JMP endif_46
+else_45:
+    ; GRADE = expression
+
+; String literal: 'F'
+ORG 0x4000
+    DB 70
+    DB 0  ; null terminator
+    MOV P0,0x4000
+    MOV [0x2018],P0
+endif_46:
+endif_43:
+endif_40:
     ; Disp
-    ; Display 'Testing graphics bounds:'
-    MOV P0,84
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,114
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,104
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,105
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,98
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,117
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,110
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,58
-    MOV P1,15
-    CHAR P0,P1
+    MOV P0,[0x2018]
+    PUSH P0
+
+; String literal: ', Grade: '
+ORG 0x4100
+    DB 44
+    DB 32
+    DB 71
+    DB 114
+    DB 97
+    DB 100
+    DB 101
+    DB 58
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x4100
+    PUSH P0
+    MOV P0,[0x2016]
+    MOV P1,0x402F
+    ; STR() conversion not fully implemented
+    MOV [P1],'0'
+    MOV [P1+1],0
+    MOV P0,0x402F
+    PUSH P0
+
+; String literal: 'Score: '
+ORG 0x4200
+    DB 83
+    DB 99
+    DB 111
+    DB 114
+    DB 101
+    DB 58
+    DB 32
+    DB 0  ; null terminator
+    MOV P0,0x4200
+    POP P1
+    ADD P0,P1
+    POP P1
+    ADD P0,P1
+    POP P1
+    ADD P0,P1
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_48:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_48
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_48
+display_end_48:
+    ; Disp
+
+; String literal: 'Testing graphics bounds:'
+ORG 0x4300
+    DB 84
+    DB 101
+    DB 115
+    DB 116
+    DB 105
+    DB 110
+    DB 103
+    DB 32
+    DB 103
+    DB 114
+    DB 97
+    DB 112
+    DB 104
+    DB 105
+    DB 99
+    DB 115
+    DB 32
+    DB 98
+    DB 111
+    DB 117
+    DB 110
+    DB 100
+    DB 115
+    DB 58
+    DB 0  ; null terminator
+    MOV P0,0x4300
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_49:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_49
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_49
+display_end_49:
     MOV P0,5
     NEG P0
     MOV [0x2012],P0
-for_21:
+for_51:
     MOV P0,[0x2012]
     MOV P0,261
     MOV P1,P0
     MOV P0,[0x2012]
     CMP P0,P1
-    JGE next_22
+    JGE next_52
     MOV P0,5
     NEG P0
     MOV [0x201A],P0
-for_23:
+for_53:
     MOV P0,[0x201A]
     MOV P0,261
     MOV P1,P0
     MOV P0,[0x201A]
     CMP P0,P1
-    JGE next_24
-    MOV P0,[0x2012]
-    PUSH P0
-    MOV P0,0
-    MOV P1,P0
-    POP P0
-    PUSH P0
-    MOV P0,[0x2012]
-    PUSH P0
+    JGE next_54
     MOV P0,256
-    MOV P1,P0
-    POP P0
-    MOV P1,P0
-    POP P0
     PUSH P0
     MOV P0,[0x201A]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLT cmp_done_56
+    MOV P0,1
+cmp_done_56:
     PUSH P0
     MOV P0,0
-    MOV P1,P0
-    POP P0
-    MOV P1,P0
-    POP P0
     PUSH P0
     MOV P0,[0x201A]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGE cmp_done_57
+    MOV P0,1
+cmp_done_57:
     PUSH P0
     MOV P0,256
-    MOV P1,P0
-    POP P0
-    MOV P1,P0
-    POP P0
-    JZ else_25
+    PUSH P0
+    MOV P0,[0x2012]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JLT cmp_done_58
+    MOV P0,1
+cmp_done_58:
+    PUSH P0
+    MOV P0,0
+    PUSH P0
+    MOV P0,[0x2012]
+    POP P1
+    CMP P0,P1
+    MOV P0,0
+    JGE cmp_done_59
+    MOV P0,1
+cmp_done_59:
+    POP P1
+    AND P0,P1
+    POP P1
+    AND P0,P1
+    POP P1
+    AND P0,P1
+    JZ else_55
     MOV P0,[0x2012]
     MOV VY,P0
     MOV P0,[0x201A]
@@ -1080,113 +998,68 @@ for_23:
     MOV VL,P0
     MOV VM,0
     SWRITE P0
-    JMP endif_26
-else_25:
-endif_26:
+    JMP endif_56
+else_55:
+endif_56:
     MOV P0,[0x201A]
     MOV P0,10
     ADD P0,P1
     MOV [0x201A],P0
-    JMP for_23
-next_24:
+    JMP for_53
+next_54:
     MOV P0,[0x2012]
     MOV P0,10
     ADD P0,P1
     MOV [0x2012],P0
-    JMP for_21
-next_22:
+    JMP for_51
+next_52:
     ; Disp
-    ; Display 'All edge case tests completed!'
-    MOV P0,65
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,103
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,97
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,115
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,32
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,99
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,111
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,109
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,112
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,108
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,116
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,101
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,100
-    MOV P1,15
-    CHAR P0,P1
-    MOV P0,33
-    MOV P1,15
-    CHAR P0,P1
+
+; String literal: 'All edge case tests completed!'
+ORG 0x4400
+    DB 65
+    DB 108
+    DB 108
+    DB 32
+    DB 101
+    DB 100
+    DB 103
+    DB 101
+    DB 32
+    DB 99
+    DB 97
+    DB 115
+    DB 101
+    DB 32
+    DB 116
+    DB 101
+    DB 115
+    DB 116
+    DB 115
+    DB 32
+    DB 99
+    DB 111
+    DB 109
+    DB 112
+    DB 108
+    DB 101
+    DB 116
+    DB 101
+    DB 100
+    DB 33
+    DB 0  ; null terminator
+    MOV P0,0x4400
+    ; Display string at address in P0
+    MOV P1,P0
+display_loop_60:
+    MOV P0,[P1]
+    CMP P0,0
+    JZ display_end_60
+    MOV P2,15
+    CHAR P0,P2
+    INC P1
+    JMP display_loop_60
+display_end_60:
     ; Pause - halt execution
 pause_loop:
     JMP pause_loop

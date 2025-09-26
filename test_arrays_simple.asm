@@ -22,11 +22,26 @@ start:
     ; Complex assignment not implemented yet
     ; Complex assignment not implemented yet
     ; X = expression
-    MOV [0x2002],P0
-    ; Y = expression
+    MOV P0,0
+    MOV P1,0x2002
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
     MOV [0x2004],P0
-    ; Z = expression
+    ; Y = expression
+    MOV P0,1
+    MOV P1,0x2002
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
     MOV [0x2006],P0
+    ; Z = expression
+    MOV P0,2
+    MOV P1,0x2002
+    ADD P1,P0
+    ADD P1,P0
+    MOV P0,[P1]
+    MOV [0x2008],P0
 
 ; Program end - infinite loop to keep display visible
 halt:
