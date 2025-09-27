@@ -151,7 +151,7 @@ class Mov(BaseInstruction):
     
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
-        source_value = cpu.get_operand_value(operands[1], operands[0])
+        source_value = cpu.get_operand_value(operands[1])
         cpu.set_operand_value(operands[0], source_value, operands[1])
 
 # Arithmetic operations
@@ -990,7 +990,7 @@ class Popa(BaseInstruction):
 class Enter(BaseInstruction):
     """ENTER instruction - enter subroutine (stack frame)"""
     def __init__(self):
-        opcode_val = 0x9D  # ENTER
+        opcode_val = 0x9B  # ENTER
         super().__init__("ENTER", opcode_val)
     
     def execute(self, cpu):
@@ -1013,18 +1013,15 @@ class Enter(BaseInstruction):
 class Leave(BaseInstruction):
     """LEAVE instruction - leave subroutine (stack frame)"""
     def __init__(self):
-        opcode_val = 0x9E  # LEAVE
+        opcode_val = 0x9C  # LEAVE
         super().__init__("LEAVE", opcode_val)
     
     def execute(self, cpu):
-        # Restore stack pointer from frame pointer
-        cpu.Pregisters[8] = cpu.Pregisters[9]
+        # Restore frame pointer from memory
+        old_fp = cpu.memory.read_word(cpu.Pregisters[9])
         
-        # Pop old frame pointer
-        sp = int(cpu.Pregisters[8])
-        old_fp = cpu.memory.read_word(sp)
-        sp = (sp + 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
+        # Restore stack pointer to frame pointer (deallocate locals)
+        cpu.Pregisters[8] = cpu.Pregisters[9]
         cpu.Pregisters[9] = old_fp
 
 # Control flow - jumps
@@ -1294,21 +1291,22 @@ class Cmp(BaseInstruction):
     
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
-        dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
-        result = dest_value - source_value
+        op1 = cpu.get_operand_value(operands[0])
+        op2 = cpu.get_operand_value(operands[1])
+        result = op1 - op2
         
-        # Set flags based on destination operand type
+        # Set flags based on operation (like SUB but without storing result)
         if operands[0]['type'] == 'register' and operands[0]['reg_type'] == 'R':
-            # 8-bit comparison
-            cpu._set_overflow_flag_8bit(dest_value, source_value, result, is_subtraction=True)
-            cpu._last_operation_was_cmp = True
-            cpu._set_flags_8bit(result & 0xFF, result)
+            masked_result = result & 0xFF
+            cpu._set_overflow_flag_8bit(op1, op2, result, is_subtraction=True)
+            cpu._set_flags_8bit(masked_result, result)
         else:
-            # 16-bit comparison
-            cpu._set_overflow_flag_16bit(dest_value, source_value, result, is_subtraction=True)
-            cpu._last_operation_was_cmp = True
-            cpu._set_flags_16bit(result & 0xFFFF, result)
+            masked_result = result & 0xFFFF
+            cpu._set_overflow_flag_16bit(op1, op2, result, is_subtraction=True)
+            cpu._set_flags_16bit(masked_result, result)
+        
+        # Mark that last operation was CMP for correct carry flag handling
+        cpu._last_operation_was_cmp = True
 
 # Call
 class Call(BaseInstruction):
@@ -1326,44 +1324,6 @@ class Call(BaseInstruction):
         sp = (sp - 2) & 0xFFFF
         cpu.Pregisters[8] = sp
         cpu.memory.write_word(sp, cpu.pc)
-        
-        # Jump to target
-        cpu.pc = target_address
-        cpu.invalidate_prefetch()
-        cpu.invalidate_instruction_cache()
-
-class Calli(BaseInstruction):
-    """CALLI instruction - call indirect"""
-    def __init__(self):
-        opcode_val = 0x9B  # CALLI
-        super().__init__("CALLI", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        # Get address from register/memory
-        target_address = cpu.get_operand_value(operands[0])
-        
-        # Push return address to stack
-        sp = int(cpu.Pregisters[8])
-        sp = (sp - 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        cpu.memory.write_word(sp, cpu.pc)
-        
-        # Jump to target
-        cpu.pc = target_address
-        cpu.invalidate_prefetch()
-        cpu.invalidate_instruction_cache()
-
-class Jmpi(BaseInstruction):
-    """JMPI instruction - jump indirect"""
-    def __init__(self):
-        opcode_val = 0x9C  # JMPI
-        super().__init__("JMPI", opcode_val)
-    
-    def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        # Get address from register/memory
-        target_address = cpu.get_operand_value(operands[0])
         
         # Jump to target
         cpu.pc = target_address
@@ -1408,6 +1368,122 @@ class Int(BaseInstruction):
         vector_addr = 0x0100 + (interrupt_number * 4)
         cpu.pc = cpu.memory.read_word(vector_addr)
         cpu.invalidate_prefetch()
+
+# Advanced control flow and loops
+class Callz(BaseInstruction):
+    """CALLZ instruction - call if zero"""
+    def __init__(self):
+        opcode_val = 0x9D  # CALLZ
+        super().__init__("CALLZ", opcode_val)
+    
+    def execute(self, cpu):
+        if cpu.flags[7]:  # Zero flag
+            operands = cpu.parse_operands(1)
+            target_address = cpu.get_operand_value(operands[0])
+            
+            # Push return address to stack
+            sp = int(cpu.Pregisters[8])
+            sp = (sp - 2) & 0xFFFF
+            cpu.Pregisters[8] = sp
+            cpu.memory.write_word(sp, cpu.pc)
+            
+            # Jump to target
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+            cpu.invalidate_instruction_cache()
+
+class Callnz(BaseInstruction):
+    """CALLNZ instruction - call if not zero"""
+    def __init__(self):
+        opcode_val = 0x9E  # CALLNZ
+        super().__init__("CALLNZ", opcode_val)
+    
+    def execute(self, cpu):
+        if not cpu.flags[7]:  # Not zero flag
+            operands = cpu.parse_operands(1)
+            target_address = cpu.get_operand_value(operands[0])
+            
+            # Push return address to stack
+            sp = int(cpu.Pregisters[8])
+            sp = (sp - 2) & 0xFFFF
+            cpu.Pregisters[8] = sp
+            cpu.memory.write_word(sp, cpu.pc)
+            
+            # Jump to target
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
+            cpu.invalidate_instruction_cache()
+
+class Retn(BaseInstruction):
+    """RETN instruction - return with value"""
+    def __init__(self):
+        opcode_val = 0xA2  # RETN
+        super().__init__("RETN", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)  # Return value register
+        
+        # Check stack bounds
+        if cpu.Pregisters[8] >= 0xFFFF:
+            raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
+        
+        # Pop return address into PC (like RET)
+        pc_value = cpu.memory.read_word(cpu.Pregisters[8])
+        cpu.pc = pc_value
+        sp = int(cpu.Pregisters[8])
+        sp = (sp + 2) & 0xFFFF
+        cpu.Pregisters[8] = sp
+        
+        cpu.invalidate_prefetch()
+        cpu.invalidate_instruction_cache()
+        
+        # Pop PC from stack
+        if cpu.Pregisters[8] >= 0xFFFF:
+            raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
+        cpu.pc = cpu.memory.read_word(cpu.Pregisters[8])
+        sp = int(cpu.Pregisters[8])
+        sp = (sp + 2) & 0xFFFF
+        cpu.Pregisters[8] = sp
+        
+        cpu.invalidate_prefetch()
+        cpu.invalidate_instruction_cache()
+
+class Loopz(BaseInstruction):
+    """LOOPZ instruction - loop while zero"""
+    def __init__(self):
+        opcode_val = 0xA3  # LOOPZ
+        super().__init__("LOOPZ", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        
+        # Get current counter value
+        counter = cpu.get_operand_value(operands[0])
+        
+        # Check if counter != 0
+        if counter != 0:
+            # Decrement register
+            counter -= 1
+            cpu.set_operand_value(operands[0], counter)
+            # Jump to target
+            cpu.pc = cpu.get_operand_value(operands[1])
+        # If counter == 0, continue to next instruction
+
+class While(BaseInstruction):
+    """WHILE instruction - while loop start"""
+    def __init__(self):
+        opcode_val = 0xA4  # WHILE
+        super().__init__("WHILE", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        condition = cpu.get_operand_value(operands[0])
+        
+        if condition == 0:
+            # Skip to end of loop - for now, assume next instruction
+            cpu.pc = (cpu.pc + 2) & 0xFFFF  # Skip mode byte and operand
+            cpu.invalidate_prefetch()
+            cpu.invalidate_instruction_cache()
 
 # Graphics operations
 class Sblend(BaseInstruction):
@@ -2582,7 +2658,7 @@ class Bcda(BaseInstruction):
         cpu.set_operand_value(operands[0], result & 0xFFFF)
 
 class Bcds(BaseInstruction):
-    """BCDS instruction - BCD adjust after subtraction"""
+    """BCDS instruction - BCD subtract with borrow"""
     def __init__(self):
         opcode_val = 0x4F  # BCDS
         super().__init__("BCDS", opcode_val)
@@ -2602,16 +2678,16 @@ class Bcds(BaseInstruction):
         # Adjust for BCD subtraction
         if cpu.decimal_flag:
             # Check if adjustment is needed for low digit
-            if (result & 0x0F) > 9:
+            if result & 0x0F > 9:
                 result -= 0x06
             
             # Check if adjustment is needed for high digit
-            if ((result >> 4) & 0x0F) > 9:
+            if (result >> 4) & 0x0F > 9:
                 result -= 0x60
             
-            # Handle borrow
+            # Handle carry
             if result < 0:
-                result -= 0x60
+                result += 0x100
         
         cpu.set_operand_value(operands[0], result & 0xFFFF)
 
@@ -2744,7 +2820,7 @@ class Bcdsub(BaseInstruction):
         if cpu.decimal_flag:
             if result & 0x0F > 9:
                 result -= 0x06
-            if (result >> 4) & 0x0F > 9:
+            if ((result >> 4) & 0x0F) > 9:
                 result -= 0x60
         
         cpu.set_operand_value(operands[0], result & 0xFFFF)
@@ -3155,11 +3231,13 @@ def create_instruction_table():
         Popf(),     # 0x1B
         Pusha(),    # 0x1C
         Popa(),     # 0x1D
-        Enter(),    # 0x9D
-        Leave(),    # 0x9E
-        Stc(),      # 0x9F
-        Clc(),      # 0xA0
-        Cmc(),      # 0xA1
+        Enter(),    # 0x9B
+        Leave(),    # 0x9C
+        Callz(),    # 0x9D
+        Callnz(),   # 0x9E
+        Retn(),     # 0xA2
+        Loopz(),    # 0xA0
+        While(),    # 0xA1
 
         # Control flow - jumps
         Jmp(),      # 0x1E
@@ -3186,11 +3264,13 @@ def create_instruction_table():
 
         # Call
         Call(),     # 0x2F
-        Calli(),    # 0x9B
-        Jmpi(),     # 0x9C
 
         # Interrupt
         Int(),      # 0x30
+
+        # Advanced control flow and loops
+        Retn(),     # 0xA2
+        While(),    # 0xA4
 
         # Graphics operations
         Sblend(),   # 0x31

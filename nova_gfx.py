@@ -5,6 +5,7 @@ class GFX:
     def __init__( self, width = 256, height = 256 ):
         self.width = width
         self.height = height
+        self.total_pixels = width * height  # Cache for bounds checking
         self.screen = np.zeros( ( self.height, self.width ), dtype=np.uint8 )
         self.Vregisters = np.zeros( 4, dtype=np.uint8 )  # VX, VY, VM (video mode), VC (video color)
         # Keep vmode for backward compatibility, but it will sync with Vregisters[2]
@@ -232,29 +233,32 @@ class GFX:
         self.Vregisters[2] = value & 0xFF
 
     def blend_pixel(self, existing, new):
-        """Apply current blend mode to combine existing and new pixel values"""
-        # Ensure inputs are in valid range and use float for calculations
+        """Apply current blend mode to combine existing and new pixel values - optimized integer version"""
+        # Use integer arithmetic for better performance
         existing = max(0, min(255, int(existing)))
         new = max(0, min(255, int(new)))
-        alpha = max(0, min(255, int(self.blend_alpha))) / 255.0
+        alpha = max(0, min(255, int(self.blend_alpha)))
         
         if self.blend_mode == 0:  # Normal (overwrite)
             return new
         elif self.blend_mode == 1:  # Additive
-            result = existing + (new * alpha)
-            return min(255, int(result))
+            # result = existing + (new * alpha) / 255
+            result = existing + ((new * alpha + 127) // 255)  # Proper rounding for /255
+            return min(255, result)
         elif self.blend_mode == 2:  # Subtractive
-            result = existing - (new * alpha)
-            return max(0, int(result))
+            # result = existing - (new * alpha) / 255
+            result = existing - ((new * alpha + 127) // 255)  # Proper rounding for /255
+            return max(0, result)
         elif self.blend_mode == 3:  # Multiply
-            result = (existing * new * alpha) / 255.0
-            return min(255, int(result))
+            # result = (existing * new * alpha) / (255 * 255)
+            result = (existing * new * alpha) >> 16  # Shift by 16 for / (255*255)
+            return min(255, result)
         elif self.blend_mode == 4:  # Screen
-            # Screen: 1 - (1-a) * (1-b)
+            # Screen: 255 - ((255-existing) * (255-new) * alpha) / (255 * 255)
             inv_existing = 255 - existing
             inv_new = 255 - new
-            result = 255 - (inv_existing * inv_new * alpha) / 255.0
-            return min(255, int(result))
+            result = 255 - ((inv_existing * inv_new * alpha) >> 16)
+            return min(255, max(0, result))
         else:
             return new  # Default to normal
 
@@ -574,6 +578,28 @@ class GFX:
             y = int( self.Vregisters[ 1 ] )
             if 0 <= x < self.width and 0 <= y < self.height:
                 self._set_pixel_to_layer(x, y, value)
+    
+    def _set_pixel_fast(self, x, y, value):
+        """Fast pixel setting - assumes bounds are already checked"""
+        vl = self.VL
+        if vl == 0:
+            # Write to layer 0 and main screen with blending
+            existing = self.layer_0[y, x]
+            blended = self.blend_pixel(existing, value)
+            self.layer_0[y, x] = blended
+            self.screen[y, x] = blended
+        elif 1 <= vl <= 4:
+            # Write to background layer with blending
+            existing = self.background_layers[vl - 1][y, x]
+            blended = self.blend_pixel(existing, value)
+            self.background_layers[vl - 1][y, x] = blended
+            self.layers_dirty = True
+        elif 5 <= vl <= 8:
+            # Write to sprite layer with blending
+            existing = self.sprite_layers[vl - 5][y, x]
+            blended = self.blend_pixel(existing, value)
+            self.sprite_layers[vl - 5][y, x] = blended
+            self.layers_dirty = True
     
     def _set_pixel_to_layer(self, x, y, value):
         """Set a pixel to the current layer specified by VL register with blending"""

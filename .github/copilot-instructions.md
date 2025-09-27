@@ -1,4 +1,8 @@
 # NOVA-16 Development Guidelines
+Make no assumptions about implementation; always check before you write code.
+Double-check your work; small mistakes can cause big issues.
+Write piecemeal and test frequently to catch errors early.
+Use the provided tools for assembly, debugging, and testing.
 
 ## Core Architecture
 NOVA-16 is a custom 16-bit CPU emulator with Princeton architecture featuring 64KB unified memory. All components (CPU, graphics, sound, keyboard) share a single memory reference for tight integration.

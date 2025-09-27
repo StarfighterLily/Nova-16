@@ -14,6 +14,9 @@ class CPU:
         self.gfx = gfx
         self.keyboard_device = keyboard
         
+        # Set CPU reference in memory for cache invalidation
+        self.memory.cpu = self
+        
         # Initialize sound system
         if sound_system is None:
             self.sound = sound.NovaSound()
@@ -93,6 +96,9 @@ class CPU:
         # Pre-computed register lookup table for O(1) access
         self._register_lookup = self._build_register_lookup_table()
         
+        # Pre-computed parity lookup table for fast parity calculation
+        self._parity_table = self._build_parity_table()
+        
         # Register value cache for performance
         self.register_cache = {}  # Cache register values
         self.register_cache_size = 64
@@ -104,10 +110,10 @@ class CPU:
         
         # Operand parsing cache for performance optimization
         self.operand_cache = {}  # Cache parsed operands by (pc, mode_byte)
-        self.operand_cache_size = 256  # Maximum cache entries
+        self.operand_cache_size = 1024  # Maximum cache entries
         
         # Memory prefetch optimization
-        self.prefetch_buffer = np.zeros(16, dtype=np.uint8)  # 16-byte prefetch buffer
+        self.prefetch_buffer = np.zeros(64, dtype=np.uint8)  # 64-byte prefetch buffer
         self.prefetch_pc = 0  # PC when buffer was loaded
         self.prefetch_valid = False  # Is the buffer valid?
         
@@ -854,22 +860,22 @@ class CPU:
             original_result = result
         
         # Zero flag (Z) - result is zero
-        self.zero_flag = (result & 0xFF) == 0
+        self.flags[7] = 1 if (result & 0xFF) == 0 else 0
         
         # Carry flag (C) - for subtraction (CMP), set when borrow occurs (val1 < val2)
         # For other operations, overflow/underflow occurred
         if hasattr(self, '_last_operation_was_cmp') and self._last_operation_was_cmp:
-            self.carry_flag = original_result < 0  # Borrow occurred
+            self.flags[6] = 1 if original_result < 0 else 0  # Borrow occurred
             self._last_operation_was_cmp = False
         else:
-            self.carry_flag = original_result > 0xFF or original_result < 0
+            self.flags[6] = 1 if original_result > 0xFF or original_result < 0 else 0
         
         # Sign flag (S) - result is negative (bit 7 set)
-        self.sign_flag = (result & 0x80) != 0
+        self.flags[1] = 1 if (result & 0x80) != 0 else 0
         
         # Parity flag (P) - even number of 1s in result
         parity = bin(result & 0xFF).count('1') % 2
-        self.parity_flag = parity == 0
+        self.flags[8] = 1 if parity == 0 else 0
 
     def _set_flags_16bit(self, result, original_result=None):
         """Set flags for 16-bit operations using readable property names"""
@@ -877,22 +883,21 @@ class CPU:
             original_result = result
             
         # Zero flag (Z) - result is zero
-        self.zero_flag = (result & 0xFFFF) == 0
+        self.flags[7] = 1 if (result & 0xFFFF) == 0 else 0
         
         # Carry flag (C) - for subtraction (CMP), set when borrow occurs (val1 < val2)
         # For other operations, overflow/underflow occurred
         if hasattr(self, '_last_operation_was_cmp') and self._last_operation_was_cmp:
-            self.carry_flag = original_result < 0  # Borrow occurred
+            self.flags[6] = 1 if original_result < 0 else 0  # Borrow occurred
             self._last_operation_was_cmp = False
         else:
-            self.carry_flag = original_result > 0xFFFF or original_result < 0
+            self.flags[6] = 1 if original_result > 0xFFFF or original_result < 0 else 0
         
         # Sign flag (S) - result is negative (bit 15 set)
-        self.sign_flag = (result & 0x8000) != 0
+        self.flags[1] = 1 if (result & 0x8000) != 0 else 0
         
         # Parity flag (P) - even number of 1s in low byte
-        parity = bin(result & 0xFF).count('1') % 2
-        self.parity_flag = parity == 0
+        self.flags[8] = self._parity_table[result & 0xFF]
 
     def _set_overflow_flag_8bit(self, op1, op2, result, is_subtraction=False):
         """Set overflow flag for 8-bit operations using readable property name"""
@@ -902,7 +907,7 @@ class CPU:
         else:
             # Overflow in addition: (pos + pos = neg) or (neg + neg = pos)
             overflow = ((op1 & 0x80) == (op2 & 0x80)) and ((op1 & 0x80) != (result & 0x80))
-        self.overflow_flag = overflow
+        self.flags[2] = 1 if overflow else 0
 
     def _set_overflow_flag_16bit(self, op1, op2, result, is_subtraction=False):
         """Set overflow flag for 16-bit operations using readable property name"""
@@ -912,7 +917,7 @@ class CPU:
         else:
             # Overflow in addition: (pos + pos = neg) or (neg + neg = pos)
             overflow = ((op1 & 0x8000) == (op2 & 0x8000)) and ((op1 & 0x8000) != (result & 0x8000))
-        self.overflow_flag = overflow
+        self.flags[2] = 1 if overflow else 0
 
     # ========================================
     # BCD (Binary Coded Decimal) OPERATIONS
@@ -1310,6 +1315,19 @@ class CPU:
         lookup[0xFE] = (1, 'V')  # VY
         
         return lookup
+    
+    def _build_parity_table(self):
+        """Build parity lookup table for fast parity flag calculation"""
+        table = [0] * 256
+        for i in range(256):
+            # Count number of 1 bits using efficient method
+            count = 0
+            n = i
+            while n:
+                count += n & 1
+                n >>= 1
+            table[i] = (count % 2) == 0  # True if even parity
+        return table
 
     # Optimized register lookup - O(1) performance
     def reg_index(self, reg_code):
@@ -1347,7 +1365,7 @@ class CPU:
         # Enable prefetch optimization
         if (self.prefetch_valid and 
             self.pc >= self.prefetch_pc and 
-            self.pc < self.prefetch_pc + 16):
+            self.pc < self.prefetch_pc + 64):
             offset = self.pc - self.prefetch_pc
             value = self.prefetch_buffer[offset]
             self.pc = (self.pc + 1) & 0xFFFF
@@ -1359,7 +1377,7 @@ class CPU:
             # Try prefetch again
             if (self.prefetch_valid and 
                 self.pc >= self.prefetch_pc and 
-                self.pc < self.prefetch_pc + 16):
+                self.pc < self.prefetch_pc + 64):
                 offset = self.pc - self.prefetch_pc
                 value = self.prefetch_buffer[offset]
                 self.pc = (self.pc + 1) & 0xFFFF
@@ -1371,15 +1389,15 @@ class CPU:
         return int(value)
     
     def _fill_prefetch_buffer(self):
-        """Fill the prefetch buffer with 16 bytes starting from current PC"""
+        """Fill the prefetch buffer with 64 bytes starting from current PC"""
         self.prefetch_pc = self.pc
-        end_addr = min(self.pc + 16, len(self.memory.memory))
+        end_addr = min(self.pc + 64, len(self.memory.memory))
         buffer_size = end_addr - self.pc
         
         # Fill buffer with available bytes
         self.prefetch_buffer[:buffer_size] = self.memory.memory[self.pc:end_addr]
         # Zero out unused buffer space
-        if buffer_size < 16:
+        if buffer_size < 64:
             self.prefetch_buffer[buffer_size:] = 0
         self.prefetch_valid = True
     
@@ -1418,7 +1436,7 @@ class CPU:
         # Check if we can fetch both bytes from prefetch buffer
         if (self.prefetch_valid and 
             self.pc >= self.prefetch_pc and 
-            self.pc + 1 < self.prefetch_pc + 16):
+            self.pc + 1 < self.prefetch_pc + 64):
             offset = self.pc - self.prefetch_pc
             high = self.prefetch_buffer[offset]
             low = self.prefetch_buffer[offset + 1]
@@ -1552,25 +1570,28 @@ class CPU:
             self.profile_data['operand_parses'] = self.profile_data.get('operand_parses', 0) + 1
         
         # Check cache first
-        # cache_key = (self.pc - 1, self._current_mode_byte, num_operands)  # PC-1 because mode byte was already fetched
-        # if cache_key in self.operand_cache:
-        #     cached_operands = self.operand_cache[cache_key]
-        #     # Update PC as if we parsed the operands
-        #     for operand in cached_operands:
-        #         if operand['type'] == 'register':
-        #             self.pc = (self.pc + 1) & 0xFFFF  # Skip register code
-        #         elif operand['type'] == 'immediate':
-        #             if operand.get('size') == 16:
-        #                 self.pc = (self.pc + 2) & 0xFFFF  # Skip 16-bit immediate
-        #             else:
-        #                 self.pc = (self.pc + 1) & 0xFFFF  # Skip 8-bit immediate
-        #         elif operand['type'] == 'memory':
-        #             if operand.get('direct', False) and not operand.get('indexed', False):
-        #                 self.pc = (self.pc + 2) & 0xFFFF  # Skip direct address
-        #             elif not operand.get('direct', False) and not operand.get('indexed', False):
-        #                 self.pc = (self.pc + 1) & 0xFFFF  # Skip register code
-        #             # Handle other memory modes...
-        #     return cached_operands
+        cache_key = (self.pc - 1, self._current_mode_byte, num_operands)  # PC-1 because mode byte was already fetched
+        if cache_key in self.operand_cache:
+            cached_operands = self.operand_cache[cache_key]
+            # Update PC as if we parsed the operands
+            for operand in cached_operands:
+                if operand['type'] == 'register':
+                    self.pc = (self.pc + 1) & 0xFFFF  # Skip register code
+                elif operand['type'] == 'immediate':
+                    if operand.get('size') == 16:
+                        self.pc = (self.pc + 2) & 0xFFFF  # Skip 16-bit immediate
+                    else:
+                        self.pc = (self.pc + 1) & 0xFFFF  # Skip 8-bit immediate
+                elif operand['type'] == 'memory':
+                    if operand.get('direct', False) and not operand.get('indexed', False):
+                        self.pc = (self.pc + 2) & 0xFFFF  # Skip direct address
+                    elif not operand.get('direct', False) and not operand.get('indexed', False):
+                        self.pc = (self.pc + 1) & 0xFFFF  # Skip register code
+                    elif not operand.get('direct', False) and operand.get('indexed', False):
+                        self.pc = (self.pc + 2) & 0xFFFF  # Skip register code + index
+                    elif operand.get('direct', False) and operand.get('indexed', False):
+                        self.pc = (self.pc + 3) & 0xFFFF  # Skip address + index
+            return cached_operands
         
         operands = []
         for i in range(num_operands):
@@ -1630,13 +1651,13 @@ class CPU:
             operands.append(operand)
         
         # Cache the parsed operands
-        # if len(self.operand_cache) < self.operand_cache_size:
-        #     self.operand_cache[cache_key] = operands.copy()
-        # elif len(self.operand_cache) >= self.operand_cache_size:
-        #     # Simple LRU: remove oldest entry
-        #     oldest_key = next(iter(self.operand_cache))
-        #     del self.operand_cache[oldest_key]
-        #     self.operand_cache[cache_key] = operands.copy()
+        if len(self.operand_cache) < self.operand_cache_size:
+            self.operand_cache[cache_key] = operands.copy()
+        elif len(self.operand_cache) >= self.operand_cache_size:
+            # Simple LRU: remove oldest entry
+            oldest_key = next(iter(self.operand_cache))
+            del self.operand_cache[oldest_key]
+            self.operand_cache[cache_key] = operands.copy()
         
         return operands
 

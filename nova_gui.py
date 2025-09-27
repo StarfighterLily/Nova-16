@@ -25,7 +25,7 @@ class CPUController:
         self.stop_event = threading.Event()
         
         # Frame-rate limiting optimization
-        self.target_fps = 120
+        self.target_fps = 60
         self.frame_time = 1.0 / self.target_fps
         self.last_screen_update = 0
         self.force_update = False

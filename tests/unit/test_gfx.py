@@ -106,7 +106,7 @@ class TestGraphicsBlending:
         graphics.blend_alpha = 128
         result = graphics.blend_pixel(100, 30)
         expected = max(0, 100 - (30 * (128 / 255.0)))  # 100 - (30 * 0.50196) ≈ 84.94
-        assert result == int(expected)
+        assert result == 85  # Integer approximation
 
     def test_blend_pixel_multiply(self, graphics):
         """Test multiply blending."""

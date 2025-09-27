@@ -1,0 +1,220 @@
+{
+  "session_start": 1758925907.1222818,
+  "total_cycles": 49999,
+  "total_reads": 24,
+  "total_writes": 10,
+  "read_accesses": {
+    "4160": 1,
+    "4161": 1,
+    "4162": 1,
+    "4163": 1,
+    "4164": 1,
+    "4165": 1,
+    "4166": 1,
+    "4167": 1,
+    "4168": 1,
+    "256": 5,
+    "65531": 5,
+    "65533": 5
+  },
+  "write_accesses": {
+    "65533": 5,
+    "65531": 5,
+    "256": 0,
+    "4160": 0,
+    "4161": 0,
+    "4162": 0,
+    "4163": 0,
+    "4164": 0,
+    "4165": 0,
+    "4166": 0,
+    "4167": 0,
+    "4168": 0
+  },
+  "access_timestamps": {
+    "4160": [
+      16
+    ],
+    "4161": [
+      17
+    ],
+    "4162": [
+      17
+    ],
+    "4163": [
+      17
+    ],
+    "4164": [
+      17
+    ],
+    "4165": [
+      18
+    ],
+    "4166": [
+      18
+    ],
+    "4167": [
+      18
+    ],
+    "4168": [
+      18
+    ],
+    "256": [
+      8425,
+      16840,
+      25255,
+      33670,
+      42085
+    ],
+    "65533": [
+      8425,
+      8426,
+      16840,
+      16841,
+      25255,
+      25256,
+      33670,
+      33671,
+      42085,
+      42086
+    ],
+    "65531": [
+      8425,
+      8426,
+      16840,
+      16841,
+      25255,
+      25256,
+      33670,
+      33671,
+      42085,
+      42086
+    ]
+  },
+  "memory_regions": {
+    "zero_page": [
+      0,
+      255
+    ],
+    "interrupt_vectors": [
+      256,
+      287
+    ],
+    "general_memory": [
+      288,
+      61439
+    ],
+    "sprite_control": [
+      61440,
+      61695
+    ],
+    "stack_area": [
+      65280,
+      65535
+    ]
+  },
+  "region_stats": {
+    "General Memory": {
+      "reads": 9,
+      "writes": 0
+    },
+    "Interrupt Vectors": {
+      "reads": 5,
+      "writes": 0
+    },
+    "Stack Area": {
+      "reads": 10,
+      "writes": 10
+    }
+  },
+  "hotspots": [
+    {
+      "address": 65531,
+      "total_accesses": 10,
+      "reads": 5,
+      "writes": 5,
+      "region": "Stack Area"
+    },
+    {
+      "address": 65533,
+      "total_accesses": 10,
+      "reads": 5,
+      "writes": 5,
+      "region": "Stack Area"
+    },
+    {
+      "address": 256,
+      "total_accesses": 5,
+      "reads": 5,
+      "writes": 0,
+      "region": "Interrupt Vectors"
+    },
+    {
+      "address": 4160,
+      "total_accesses": 1,
+      "reads": 1,
+      "writes": 0,
+      "region": "General Memory"
+    },
+    {
+      "address": 4161,
+      "total_accesses": 1,
+      "reads": 1,
+      "writes": 0,
+      "region": "General Memory"
+    },
+    {
+      "address": 4162,
+      "total_accesses": 1,
+      "reads": 1,
+      "writes": 0,
+      "region": "General Memory"
+    },
+    {
+      "address": 4163,
+      "total_accesses": 1,
+      "reads": 1,
+      "writes": 0,
+      "region": "General Memory"
+    },
+    {
+      "address": 4164,
+      "total_accesses": 1,
+      "reads": 1,
+      "writes": 0,
+      "region": "General Memory"
+    },
+    {
+      "address": 4165,
+      "total_accesses": 1,
+      "reads": 1,
+      "writes": 0,
+      "region": "General Memory"
+    },
+    {
+      "address": 4166,
+      "total_accesses": 1,
+      "reads": 1,
+      "writes": 0,
+      "region": "General Memory"
+    },
+    {
+      "address": 4167,
+      "total_accesses": 1,
+      "reads": 1,
+      "writes": 0,
+      "region": "General Memory"
+    },
+    {
+      "address": 4168,
+      "total_accesses": 1,
+      "reads": 1,
+      "writes": 0,
+      "region": "General Memory"
+    }
+  ],
+  "access_patterns": [],
+  "memory_bandwidth": 59,
+  "peak_memory_usage": 121,
+  "average_access_rate": 0.0006800136002720054
+}

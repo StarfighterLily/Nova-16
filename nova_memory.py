@@ -16,6 +16,11 @@ class Memory:
         if address < 0 or address + bytes > self.size:
             raise IndexError(f"Write address out of bounds: {address}")
         
+        # Invalidate instruction cache and prefetch if CPU exists (for self-modifying code)
+        if hasattr(self, 'cpu') and self.cpu:
+            self.cpu.invalidate_instruction_cache()
+            self.cpu.invalidate_prefetch()
+        
         # Check if writing to sprite memory region (0xF000-0xF0FF)
         if 0xF000 <= address <= 0xF0FF and self.gfx_system:
             self.gfx_system.sprites_dirty = True  # Mark sprites as needing re-render

@@ -200,10 +200,11 @@ class KeyboardSimulator:
                 if not self.running:
                     break
                     
-                if len(item) == 1 or item in ['enter', 'f1', 'f2', 'escape']:
-                    self.keyboard.press_key(item)
-                else:
-                    self.keyboard.type_string(item)
+                if self.keyboard is not None:
+                    if len(item) == 1 or item in ['enter', 'f1', 'f2', 'escape']:
+                        self.keyboard.press_key(item)
+                    else:
+                        self.keyboard.type_string(item)
                     
                 time.sleep(0.5)  # Delay between inputs
                 

@@ -45,14 +45,14 @@ def test_gui_integration():
 
         if vx == 100 and vy == 120 and vl == 1 and vmode == 0:
             print("    ✓ Graphics registers updated correctly")
-            return True
+            assert True
         else:
             print("    ✗ Graphics registers not updated correctly")
-            return False
+            assert False
 
     except Exception as e:
         print(f"    ✗ Error: {e}")
-        return False
+        assert False
 
 def test_forth_graphics_program():
     """Test a complete FORTH graphics program"""
@@ -76,10 +76,10 @@ def test_forth_graphics_program():
         interpreter.interpret(graphics_program)
         print("    ✓ Graphics program executed successfully")
 
-        return True
+        assert True
     except Exception as e:
         print(f"    ✗ Error executing graphics program: {e}")
-        return False
+        assert False
 
 def main():
     """Run GUI integration tests"""
