@@ -538,7 +538,7 @@ class CodeGenerator:
         """Build core instruction mnemonic (no variants for new prefixed system)"""
         return instruction
     
-    def encode_operand_new(self, operand: str, operand_type: str, symbol_table: Dict[str, str]) -> List[int]:
+    def encode_operand_new(self, operand: str, operand_type: str, symbol_table: Dict[str, str], opcode: int, location_counter: int) -> List[int]:
         """Encode operand for new prefixed system"""
         operand = operand.strip()
         
@@ -614,6 +614,8 @@ class CodeGenerator:
                 elif symbol_table and operand in symbol_table:
                     symbol_val = symbol_table[operand].strip()
                     val = int(symbol_val, 16) if symbol_val.startswith('0x') else int(symbol_val)
+                    if opcode in [0x2B, 0x2C, 0x2D]:  # BR, BRZ, BRNZ
+                        val = val - location_counter
                 else:
                     val = int(operand)
             except ValueError:
@@ -682,7 +684,7 @@ class CodeGenerator:
         else:
             raise Exception(f"Unsupported operand type: {operand_type}")
     
-    def generate_instruction(self, asm_line: AssemblyLine, symbol_table: Dict[str, str]) -> List[int]:
+    def generate_instruction(self, asm_line: AssemblyLine, symbol_table: Dict[str, str], location_counter: int) -> List[int]:
         """Generate machine code for new prefixed operand instruction"""
         if not asm_line.instruction:
             return []
@@ -712,7 +714,7 @@ class CodeGenerator:
         # Encode operands
         for i, operand in enumerate(asm_line.operands):
             if i < len(operand_types):
-                operand_bytes = self.encode_operand_new(operand, operand_types[i], symbol_table)
+                operand_bytes = self.encode_operand_new(operand, operand_types[i], symbol_table, int(opcode_str, 16), location_counter)
                 result.extend(operand_bytes)
         
         return result
@@ -1034,7 +1036,7 @@ class Assembler:
                 continue
             
             try:
-                instruction_bytes = self.code_generator.generate_instruction(line, symbol_table)
+                instruction_bytes = self.code_generator.generate_instruction(line, symbol_table, location_counter)
                 code.extend(instruction_bytes)
                 location_counter += len(instruction_bytes)
                 print(f"Line {line.line_num}: {[f'0x{b:02X}' for b in instruction_bytes]}")

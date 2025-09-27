@@ -374,7 +374,9 @@ class GFX:
             layer_num = self.VL
         
         if layer_num == 0:
+            self.layer_0.fill(value)
             self.screen.fill(value)
+            self.layers_dirty = True
         elif 1 <= layer_num <= 4:
             self.background_layers[layer_num - 1].fill(value)
             self.layers_dirty = True

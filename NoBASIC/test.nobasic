@@ -1,0 +1,5 @@
+ClrDraw
+x = 11
+y = 22
+PxlOn(x, y, 33)
+Pause
