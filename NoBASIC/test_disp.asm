@@ -1,0 +1,3 @@
+MOV R1, 0
+ADD R1, R1, None
+HLT

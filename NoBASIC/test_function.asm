@@ -1,0 +1,4 @@
+MOV R1, 0
+MOV P0, 288
+MOV [P0], None
+HLT

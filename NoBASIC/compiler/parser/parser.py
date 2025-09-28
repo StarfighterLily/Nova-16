@@ -10,7 +10,7 @@ from .ast import (
     Program, Statement, Expression, ClrDrawStmt, PxlOnStmt, PxlOffStmt,
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
-    InputStmt, DispStmt, PauseStmt, AssignmentStmt, IfStmt, ForStmt,
+    InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, LiteralExpr, VariableExpr,
     ListAccessExpr, MatrixAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr,
     GroupingExpr, DataType
@@ -235,15 +235,32 @@ class Parser:
         return SetChannelStmt(channel)
 
     def input_statement(self) -> InputStmt:
-        """Parse Input(prompt, variable)"""
+        """Parse Input "prompt", variable or Input(prompt, variable) or Input variable"""
         self.advance()  # consume INPUT
-        self.consume(TokenType.LPAREN, "Expected '(' after Input")
-        prompt = self.expression()
-        self.consume(TokenType.COMMA, "Expected ',' after prompt")
-        var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
-        variable = var_token.lexeme
-        self.consume(TokenType.RPAREN, "Expected ')' after variable")
-        return InputStmt(prompt, variable)
+
+        # Check if it's a function call syntax: input(prompt, variable)
+        if self.check(TokenType.LPAREN):
+            self.consume(TokenType.LPAREN, "Expected '(' after Input")
+            prompt = self.expression()
+            self.consume(TokenType.COMMA, "Expected ',' after prompt")
+            var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
+            variable = var_token.lexeme
+            self.consume(TokenType.RPAREN, "Expected ')' after variable")
+            return InputStmt(prompt, variable)
+        else:
+            # TI-83/84 style: Input "prompt", variable or Input variable
+            if self.check(TokenType.STRING_LITERAL):
+                prompt = self.expression()  # Parse the string literal
+                self.consume(TokenType.COMMA, "Expected ',' after prompt")
+                var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
+                variable = var_token.lexeme
+            else:
+                # No prompt, just variable
+                prompt = None
+                var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
+                variable = var_token.lexeme
+
+            return InputStmt(prompt, variable)
 
     def disp_statement(self) -> DispStmt:
         """Parse Disp "text" or Disp expression"""
@@ -251,16 +268,19 @@ class Parser:
         text = self.expression()
         return DispStmt(text)
 
-    def assignment_statement(self) -> AssignmentStmt:
-        """Parse variable = expression"""
-        var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
-        variable = var_token.lexeme
-        self.consume(TokenType.EQUAL, "Expected '=' after variable")
-        expression = self.expression()
-        return AssignmentStmt(variable, expression)
+    def assignment_statement(self) -> Statement:
+        """Parse assignment or function call statement."""
+        variable = self.assignable_expression()
+        if isinstance(variable, FunctionCallExpr) and not self.check(TokenType.EQUAL):
+            # This is actually a function call statement
+            return FunctionCallStmt(variable)
+        else:
+            self.consume(TokenType.EQUAL, "Expected '=' after variable")
+            expression = self.expression()
+            return AssignmentStmt(variable, expression)
 
-    def if_statement(self) -> IfStmt:
-        """Parse If condition Then statements [Else statements] End"""
+    def if_statement(self, consume_end: bool = True) -> IfStmt:
+        """Parse If condition Then statements [Else [If] statements] [End]"""
         self.advance()  # consume IF
         condition = self.expression()
         self.consume(TokenType.THEN, "Expected 'Then' after condition")
@@ -271,11 +291,17 @@ class Parser:
 
         else_branch = None
         if self.match(TokenType.ELSE):
-            else_branch = []
-            while not self.check(TokenType.END):
-                else_branch.append(self.statement())
+            if self.check(TokenType.IF):
+                # Else if - parse as nested if statement without consuming end
+                else_branch = [self.if_statement(consume_end=False)]
+            else:
+                # Regular else
+                else_branch = []
+                while not self.check(TokenType.END):
+                    else_branch.append(self.statement())
 
-        self.consume(TokenType.END, "Expected 'End' after if statement")
+        if consume_end:
+            self.consume(TokenType.END, "Expected 'End' after if statement")
         return IfStmt(condition, then_branch, else_branch)
 
     def for_statement(self) -> ForStmt:
@@ -354,10 +380,32 @@ class Parser:
 
     def logical_and(self) -> Expression:
         """Parse logical AND expressions."""
-        expr = self.equality()
+        expr = self.bitwise_or()
 
         while self.match(TokenType.AND):
             operator = "and"
+            right = self.bitwise_or()
+            expr = BinaryExpr(expr, operator, right)
+
+        return expr
+
+    def bitwise_or(self) -> Expression:
+        """Parse bitwise OR expressions."""
+        expr = self.bitwise_and()
+
+        while self.match(TokenType.BITWISE_OR):
+            operator = "|"
+            right = self.bitwise_and()
+            expr = BinaryExpr(expr, operator, right)
+
+        return expr
+
+    def bitwise_and(self) -> Expression:
+        """Parse bitwise AND expressions."""
+        expr = self.equality()
+
+        while self.match(TokenType.BITWISE_AND):
+            operator = "&"
             right = self.equality()
             expr = BinaryExpr(expr, operator, right)
 
@@ -387,9 +435,20 @@ class Parser:
 
     def term(self) -> Expression:
         """Parse addition and subtraction."""
-        expr = self.factor()
+        expr = self.shift()
 
         while self.match(TokenType.PLUS, TokenType.MINUS):
+            operator = self.previous().lexeme
+            right = self.shift()
+            expr = BinaryExpr(expr, operator, right)
+
+        return expr
+
+    def shift(self) -> Expression:
+        """Parse shift operations."""
+        expr = self.factor()
+
+        while self.match(TokenType.SHIFT_LEFT, TokenType.SHIFT_RIGHT):
             operator = self.previous().lexeme
             right = self.factor()
             expr = BinaryExpr(expr, operator, right)
@@ -428,17 +487,55 @@ class Parser:
         return self.call()
 
     def call(self) -> Expression:
-        """Parse function calls and primary expressions."""
+        """Parse function calls, array access, and primary expressions."""
         expr = self.primary()
 
         if self.match(TokenType.LPAREN):
-            arguments = []
-            if not self.check(TokenType.RPAREN):
-                arguments.append(self.expression())
-                while self.match(TokenType.COMMA):
+            # Check if this is list or matrix access (TI-83/84 style)
+            if isinstance(expr, VariableExpr):
+                if self.is_list_name(expr.name):
+                    # List access: L1(1)
+                    index = self.expression()
+                    self.consume(TokenType.RPAREN, "Expected ')' after list index")
+                    return ListAccessExpr(expr.name, index)
+                elif self.is_matrix_name(expr.name):
+                    # Matrix access: MatA(1,2)
+                    row = self.expression()
+                    self.consume(TokenType.COMMA, "Expected ',' after row index")
+                    col = self.expression()
+                    self.consume(TokenType.RPAREN, "Expected ')' after matrix indices")
+                    return MatrixAccessExpr(expr.name, row, col)
+                else:
+                    # Function call
+                    arguments = []
+                    if not self.check(TokenType.RPAREN):
+                        arguments.append(self.expression())
+                        while self.match(TokenType.COMMA):
+                            arguments.append(self.expression())
+                    self.consume(TokenType.RPAREN, "Expected ')' after arguments")
+                    return FunctionCallExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), arguments)
+            else:
+                # Function call on expression
+                arguments = []
+                if not self.check(TokenType.RPAREN):
                     arguments.append(self.expression())
-            self.consume(TokenType.RPAREN, "Expected ')' after arguments")
-            return FunctionCallExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), arguments)
+                    while self.match(TokenType.COMMA):
+                        arguments.append(self.expression())
+                self.consume(TokenType.RPAREN, "Expected ')' after arguments")
+                return FunctionCallExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), arguments)
+        elif self.match(TokenType.LBRACKET):
+            # Array access
+            indices = []
+            indices.append(self.expression())
+            if self.match(TokenType.COMMA):
+                # Matrix access: mat[row, col]
+                indices.append(self.expression())
+                self.consume(TokenType.RBRACKET, "Expected ']' after matrix indices")
+                return MatrixAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0], indices[1])
+            else:
+                # List access: arr[index]
+                self.consume(TokenType.RBRACKET, "Expected ']' after array index")
+                return ListAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0])
 
         return expr
 
@@ -448,19 +545,32 @@ class Parser:
             return LiteralExpr(self.previous().literal, DataType.NUMBER)
         elif self.match(TokenType.STRING_LITERAL):
             return LiteralExpr(self.previous().literal, DataType.STRING)
-        elif self.match(TokenType.IDENTIFIER):
+        elif self.match(TokenType.IDENTIFIER, TokenType.DIM, TokenType.GETKEY):
             name = self.previous().lexeme
             return self.parse_identifier_or_function(name)
-        elif self._is_function_token(self.peek().type):
-            # Function name token
-            token = self.advance()
-            return self.parse_identifier_or_function(token.lexeme)
         elif self.match(TokenType.LPAREN):
             expr = self.expression()
             self.consume(TokenType.RPAREN, "Expected ')' after expression")
             return GroupingExpr(expr)
 
         raise self.error("Expected expression")
+
+    def is_list_name(self, name: str) -> bool:
+        """Check if name is a TI-83/84 style list name (L followed by digits)."""
+        if not name.startswith('L'):
+            return False
+        try:
+            int(name[1:])
+            return True  # Any L\d+ is a potential list name
+        except ValueError:
+            return False
+
+    def is_matrix_name(self, name: str) -> bool:
+        """Check if name is a TI-83/84 style matrix name (Mat followed by letter)."""
+        if not name.startswith('Mat'):
+            return False
+        letter = name[3:]
+        return len(letter) == 1 and letter.isalpha()  # Any MatX is a potential matrix name
 
     def _is_function_token(self, token_type: TokenType) -> bool:
         """Check if token type is a built-in function."""
@@ -472,30 +582,87 @@ class Parser:
         }
         return token_type in function_tokens
 
+    def _is_builtin_function_name(self, name: str) -> bool:
+        """Check if name is a built-in function name."""
+        return name.upper() in [
+            # Original math functions
+            "SIN", "COS", "TAN", "SQRT", "ABS", "RND", "LEN", "LENGTH",
+            "MIN", "MAX", "LOG", "LN", "EXP", "POW", "INT", "ROUND",
+            # Extended math functions
+            "ATAN", "ASIN", "ACOS", "DEG", "RAD", "FLOOR", "CEIL", "TRUNC", "FRAC", "INTGR", "POWR",
+            # String functions
+            "STRLEN", "STRCPY", "STRCAT", "STRCMP", "STRUPR", "STRLWR", "STRREV",
+            "STRFIND", "STRFINDI", "STREXT", "STREXTI",
+            # Bit manipulation functions
+            "BTST", "BSET", "BCLR", "BFLIP", "CLZ", "CTZ", "POPCNT",
+            # Memory functions
+            "MEMCPY", "MEMSET", "MEMTEST", "MEMMOVE", "MEMCMP", "MEMSWAP",
+            # Enhanced arithmetic
+            "ADC", "SBC", "MULH", "DIVH", "SWAP", "XCHNG", "MOVZ", "MOVNZ", "LEA",
+            # Type conversion
+            "ITOB", "BTOI", "ITOS", "STOI",
+            # Shift and rotate functions
+            "SHL", "SHR", "SAL", "SAR", "ROL", "ROR", "RCL", "RCR",
+            # Bitwise logical functions
+            "BAND", "BOR", "BXOR", "BNOT"
+        ]
+
     def parse_identifier_or_function(self, name: str) -> Expression:
-        """Parse identifier, list access, matrix access, or function call."""
+        """Parse identifier - just return variable expression."""
+        return VariableExpr(name)
+
+    def assignable_expression(self) -> Expression:
+        """Parse expressions that can be assigned to (variables, list/matrix access)."""
+        expr = self.primary()
+
         if self.match(TokenType.LPAREN):
-            if self.check(TokenType.RPAREN):
-                # Empty parentheses - function call with no args
-                self.advance()  # consume RPAREN
-                return FunctionCallExpr(name, [])
-            else:
-                # Parse first expression
-                expr1 = self.expression()
-                if self.match(TokenType.COMMA):
-                    # Matrix access or function with multiple args
-                    expr2 = self.expression()
-                    self.consume(TokenType.RPAREN, "Expected ')' after matrix access")
-                    return MatrixAccessExpr(name, expr1, expr2)
+            # Check if this is list or matrix access (TI-83/84 style)
+            if isinstance(expr, VariableExpr):
+                if self.is_list_name(expr.name):
+                    # List access: L1(1)
+                    index = self.expression()
+                    self.consume(TokenType.RPAREN, "Expected ')' after list index")
+                    return ListAccessExpr(expr.name, index)
+                elif self.is_matrix_name(expr.name):
+                    # Matrix access: MatA(1,2)
+                    row = self.expression()
+                    self.consume(TokenType.COMMA, "Expected ',' after row index")
+                    col = self.expression()
+                    self.consume(TokenType.RPAREN, "Expected ')' after matrix indices")
+                    return MatrixAccessExpr(expr.name, row, col)
                 else:
-                    # List access or function call with one arg
+                    # Function call - not assignable
+                    arguments = []
+                    if not self.check(TokenType.RPAREN):
+                        arguments.append(self.expression())
+                        while self.match(TokenType.COMMA):
+                            arguments.append(self.expression())
                     self.consume(TokenType.RPAREN, "Expected ')' after arguments")
-                    if name.startswith('L') and name[1:].isdigit():
-                        return ListAccessExpr(name, expr1)
-                    else:
-                        return FunctionCallExpr(name, [expr1])
-        else:
-            return VariableExpr(name)
+                    return FunctionCallExpr(expr.name, arguments)
+            else:
+                # Function call on expression - not assignable
+                arguments = []
+                if not self.check(TokenType.RPAREN):
+                    arguments.append(self.expression())
+                    while self.match(TokenType.COMMA):
+                        arguments.append(self.expression())
+                self.consume(TokenType.RPAREN, "Expected ')' after arguments")
+                return FunctionCallExpr(str(expr), arguments)
+
+        # Check for array access with brackets: arr[index] or mat[row, col]
+        if self.match(TokenType.LBRACKET):
+            indices = [self.expression()]
+            if self.match(TokenType.COMMA):
+                # Matrix access: mat[row, col]
+                indices.append(self.expression())
+                self.consume(TokenType.RBRACKET, "Expected ']' after matrix indices")
+                return MatrixAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0], indices[1])
+            else:
+                # List access: arr[index]
+                self.consume(TokenType.RBRACKET, "Expected ']' after array index")
+                return ListAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0])
+
+        return expr
 
     # Helper methods
     def advance(self) -> Token:

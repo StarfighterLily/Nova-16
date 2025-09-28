@@ -71,7 +71,8 @@ class TestParser:
         assert len(program.statements) == 1
         stmt = program.statements[0]
         assert isinstance(stmt, AssignmentStmt)
-        assert stmt.variable == "x"
+        assert isinstance(stmt.variable, VariableExpr)
+        assert stmt.variable.name == "x"
         assert isinstance(stmt.expression, LiteralExpr)
         assert stmt.expression.value == 42
 
@@ -81,7 +82,8 @@ class TestParser:
         assert len(program.statements) == 1
         stmt = program.statements[0]
         assert isinstance(stmt, AssignmentStmt)
-        assert stmt.variable == "x"
+        assert isinstance(stmt.variable, VariableExpr)
+        assert stmt.variable.name == "x"
         assert isinstance(stmt.expression, BinaryExpr)
         assert stmt.expression.operator == "+"
         assert isinstance(stmt.expression.left, LiteralExpr)
@@ -156,7 +158,8 @@ class TestParser:
         assert isinstance(stmt, RepeatStmt)
         assert len(stmt.body) == 1
         assert isinstance(stmt.body[0], AssignmentStmt)
-        assert stmt.body[0].variable == "x"
+        assert isinstance(stmt.body[0].variable, VariableExpr)
+        assert stmt.body[0].variable.name == "x"
         assert isinstance(stmt.condition, BinaryExpr)
         assert stmt.condition.operator == "="
         assert isinstance(stmt.condition.left, VariableExpr)
@@ -232,7 +235,7 @@ class TestParser:
         program = self.parse_source("x = sin(30)")
         expr = program.statements[0].expression
         assert isinstance(expr, FunctionCallExpr)
-        assert expr.name == "SIN"
+        assert expr.name == "sin"
         assert len(expr.arguments) == 1
         assert isinstance(expr.arguments[0], LiteralExpr)
         assert expr.arguments[0].value == 30
@@ -309,7 +312,7 @@ class TestParser:
         # First statement: x = not y
         not_expr = program.statements[0].expression
         assert isinstance(not_expr, UnaryExpr)
-        assert not_expr.operator == "NOT"
+        assert not_expr.operator == "not"
         # Second statement: z = -a
         neg_expr = program.statements[1].expression
         assert isinstance(neg_expr, UnaryExpr)
@@ -385,7 +388,8 @@ class TestParser:
         assert len(program.statements) == 100
         for i, stmt in enumerate(program.statements):
             assert isinstance(stmt, AssignmentStmt)
-            assert stmt.variable == f"x{i}"
+            assert isinstance(stmt.variable, VariableExpr)
+            assert stmt.variable.name == f"x{i}"
             assert stmt.expression.value == i
 
     def test_expression_precedence_complex(self):
@@ -681,7 +685,7 @@ class TestParser:
 
     def test_graphics_with_expressions(self):
         """Test graphics commands with complex expressions."""
-        program = self.parse_source("pxlon(x + 10, y * 2, color / 2)\nline(x1, y1, x2 + 100, y2)")
+        program = self.parse_source("pxlon(x + 10, y * 2, color / 2)\nline(x1, y1, x2 + 100, y2, 15)")
         assert len(program.statements) == 2
         assert isinstance(program.statements[0], PxlOnStmt)
         assert isinstance(program.statements[1], LineStmt)

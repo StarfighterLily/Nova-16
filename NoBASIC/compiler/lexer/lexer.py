@@ -68,8 +68,14 @@ class Lexer:
         if char == "<" and self.match("="):
             self.add_token(TokenType.LESS_EQUAL)
             return
+        if char == "<" and self.match("<"):
+            self.add_token(TokenType.SHIFT_LEFT)
+            return
         if char == ">" and self.match("="):
             self.add_token(TokenType.GREATER_EQUAL)
+            return
+        if char == ">" and self.match(">"):
+            self.add_token(TokenType.SHIFT_RIGHT)
             return
 
         # Strings (must check before single char tokens)
@@ -158,11 +164,8 @@ class Lexer:
 
     def add_token(self, token_type: TokenType, literal: Optional[Any] = None):
         """Add a token to the token list."""
-        # For literals, the lexeme is the source text
-        if token_type in [TokenType.NUMBER_LITERAL, TokenType.STRING_LITERAL, TokenType.IDENTIFIER]:
-            lexeme = self.source[self.start_position:self.position]
-        else:
-            lexeme = token_type.value if token_type.value else ""
+        # For all tokens, use the source text as lexeme to preserve case
+        lexeme = self.source[self.start_position:self.position]
         self.tokens.append(Token(token_type, lexeme, literal, self.line, self.column))
 
     def advance(self) -> str:

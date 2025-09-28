@@ -8,7 +8,7 @@ from ..parser.ast import (
     Program, Statement, Expression, ClrDrawStmt, PxlOnStmt, PxlOffStmt,
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
-    InputStmt, DispStmt, PauseStmt, AssignmentStmt, IfStmt, ForStmt,
+    InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, LiteralExpr, VariableExpr,
     ListAccessExpr, MatrixAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr,
     GroupingExpr
@@ -89,6 +89,8 @@ class CodeGenerator:
             self.generate_disp(stmt)
         elif isinstance(stmt, PauseStmt):
             self.generate_pause()
+        elif isinstance(stmt, FunctionCallStmt):
+            self.generate_function_call_statement(stmt)
         elif isinstance(stmt, AssignmentStmt):
             self.generate_assignment(stmt)
         elif isinstance(stmt, IfStmt):
@@ -106,6 +108,8 @@ class CodeGenerator:
 
     def generate_clr_draw(self):
         """Generate ClrDraw code."""
+        self.output.append("; ClrDraw - simplified")
+        self.output.append("MOV VM, 0")  # Coordinate mode
         self.output.append("MOV VL, 0")  # Layer 0
         self.output.append("SFILL 0x00")
 
@@ -222,13 +226,31 @@ class CodeGenerator:
 
     def generate_input(self, stmt: InputStmt):
         """Generate Input(prompt, variable) code."""
-        # Simplified - would need text input handling
-        self.output.append("; Input - simplified")
+        # Display prompt if provided
+        if stmt.prompt is not None:
+            # For now, just evaluate the prompt expression (simplified)
+            self.generate_expression(stmt.prompt, "R0")
+            self.output.append("; Display prompt - simplified")
+
+        # Wait for and read input
+        input_label = self.new_label()
+        self.output.append(f"{input_label}:")
+        self.output.append("KEYSTAT R0")
+        self.output.append("CMP R0, 0")
+        self.output.append(f"JZ {input_label}")  # Wait for key
+        self.output.append("KEYIN R0")  # Read the key
+
+        # Store in variable
+        var_addr = self.get_variable_address(stmt.variable)
+        self.output.append(f"MOV P0, {var_addr}")
+        self.output.append(f"MOV [P0], R0")
 
     def generate_disp(self, stmt: DispStmt):
-        """Generate Disp "text" code."""
-        # Simplified - would need text display
-        self.output.append("; Display - simplified")
+        """Generate Disp expression code."""
+        # For now, just evaluate the expression - DISP is for console output
+        # In a real implementation, this would output to a console
+        self.generate_expression(stmt.text, "R1")
+        # Could add TEXT call here, but for now just evaluate
 
     def generate_pause(self):
         """Generate optimized Pause code."""
@@ -239,14 +261,68 @@ class CodeGenerator:
         self.output.append("CMP R0, 0")
         self.output.append(f"JZ {pause_label}")  # Loop until key pressed
 
+    def generate_function_call_statement(self, stmt: FunctionCallStmt):
+        """Generate code for a function call statement."""
+        # Evaluate the function call but discard the result
+        self.generate_expression(stmt.function_call, "R0")
+
     def generate_assignment(self, stmt: AssignmentStmt):
         """Generate optimized assignment code."""
         value_reg = self.generate_expression(stmt.expression, "R1")
-        var_addr = self.get_variable_address(stmt.variable)
 
-        # Optimize: use direct register addressing when possible
-        self.output.append(f"MOV P0, {var_addr}")
+        if isinstance(stmt.variable, VariableExpr):
+            # Simple variable assignment
+            var_addr = self.get_variable_address(stmt.variable)
+            self.output.append(f"MOV P0, {var_addr}")
+            self.output.append(f"MOV [P0], {value_reg}")
+        elif isinstance(stmt.variable, ListAccessExpr):
+            # Array element assignment
+            self.generate_list_store(stmt.variable, value_reg)
+        elif isinstance(stmt.variable, MatrixAccessExpr):
+            # Matrix element assignment
+            self.generate_matrix_store(stmt.variable, value_reg)
+        else:
+            raise TypeError(f"Unsupported assignment target: {type(stmt.variable)}")
+
+    def generate_list_access(self, expr: ListAccessExpr, target_reg: str) -> str:
+        """Generate code to load from a list element."""
+        # For now, assume L1 starts at 0x1000, L2 at 0x1100, etc.
+        list_num = int(expr.list_name[1])  # L1 -> 1
+        base_addr = 0x1000 + (list_num - 1) * 0x100
+        
+        index_reg = self.generate_expression(expr.index, "R2")
+        # Address = base_addr + index * 2 (since 16-bit values)
+        self.output.append(f"MOV {target_reg}, {index_reg}")
+        self.output.append(f"SHL {target_reg}, {target_reg}, 1")  # Multiply by 2
+        self.output.append(f"ADD {target_reg}, {target_reg}, {base_addr}")
+        self.output.append(f"MOV P0, {target_reg}")
+        self.output.append(f"MOV {target_reg}, [P0]")
+        return target_reg
+
+    def generate_list_store(self, expr: ListAccessExpr, value_reg: str):
+        """Generate code to store to a list element."""
+        list_num = int(expr.list_name[1])  # L1 -> 1
+        base_addr = 0x1000 + (list_num - 1) * 0x100
+        
+        index_reg = self.generate_expression(expr.index, "R2")
+        # Address = base_addr + index * 2
+        self.output.append(f"MOV P0, {index_reg}")
+        self.output.append(f"SHL P0, P0, 1")  # Multiply by 2
+        self.output.append(f"ADD P0, P0, {base_addr}")
         self.output.append(f"MOV [P0], {value_reg}")
+
+    def generate_matrix_access(self, expr: MatrixAccessExpr, target_reg: str) -> str:
+        """Generate code to load from a matrix element."""
+        # Simplified: assume MatA starts at 0x2000
+        base_addr = 0x2000
+        # For now, just return 0
+        self.output.append(f"MOV {target_reg}, 0")
+        return target_reg
+
+    def generate_matrix_store(self, expr: MatrixAccessExpr, value_reg: str):
+        """Generate code to store to a matrix element."""
+        # Simplified: do nothing for now
+        pass
 
     def generate_if(self, stmt: IfStmt):
         """Generate optimized If-Then-Else code."""
@@ -359,7 +435,7 @@ class CodeGenerator:
             if expr.data_type.name == "NUMBER":  # Use .name to get enum name
                 # Optimize for common values
                 if expr.value == 0:
-                    self.output.append(f"MOV {target_reg}, 0")  # Use MOV instead of XOR
+                    self.output.append(f"XOR {target_reg}, {target_reg}")  # Zero register
                 elif expr.value == 1:
                     self.output.append(f"MOV {target_reg}, 1")
                 elif expr.value in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
@@ -376,6 +452,10 @@ class CodeGenerator:
                 return target_reg
         elif isinstance(expr, VariableExpr):
             return self.load_variable(expr.name, target_reg)
+        elif isinstance(expr, ListAccessExpr):
+            return self.generate_list_access(expr, target_reg)
+        elif isinstance(expr, MatrixAccessExpr):
+            return self.generate_matrix_access(expr, target_reg)
         elif isinstance(expr, BinaryExpr):
             return self.generate_binary_expression(expr, target_reg)
         elif isinstance(expr, UnaryExpr):
@@ -411,6 +491,18 @@ class CodeGenerator:
             self.output.append(f"SHL {target_reg}, {left_reg}, {right_reg}")
         elif expr.operator == ">>" or expr.operator == "SHR":
             self.output.append(f"SHR {target_reg}, {left_reg}, {right_reg}")
+        elif expr.operator == "<<<" or expr.operator == "SAL":
+            self.output.append(f"SAL {target_reg}, {left_reg}, {right_reg}")
+        elif expr.operator == ">>>" or expr.operator == "SAR":
+            self.output.append(f"SAR {target_reg}, {left_reg}, {right_reg}")
+        elif expr.operator == "<@" or expr.operator == "ROL":
+            self.output.append(f"ROL {target_reg}, {left_reg}, {right_reg}")
+        elif expr.operator == "@>" or expr.operator == "ROR":
+            self.output.append(f"ROR {target_reg}, {left_reg}, {right_reg}")
+        elif expr.operator == "<@@" or expr.operator == "RCL":
+            self.output.append(f"RCL {target_reg}, {left_reg}, {right_reg}")
+        elif expr.operator == "@@>" or expr.operator == "RCR":
+            self.output.append(f"RCR {target_reg}, {left_reg}, {right_reg}")
         elif expr.operator == "<" or expr.operator == ">" or expr.operator == "=" or expr.operator == "<>" or expr.operator == "<=" or expr.operator == ">=":
             # Use CMP for comparisons and set target_reg based on result
             self.output.append(f"CMP {left_reg}, {right_reg}")
@@ -479,9 +571,55 @@ class CodeGenerator:
             self.output.append(f"ABS {target_reg}, {arg_reg}")
         elif func_name == "RND":
             self.output.append(f"RND {target_reg}")
-        elif func_name == "LEN" or func_name == "LENGTH":
-            # For string length - simplified
-            self.output.append(f"MOV {target_reg}, #0")
+        elif func_name == "LEN" or func_name == "LENGTH" or func_name == "STRLEN":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"STRLEN {target_reg}, {arg_reg}")
+        elif func_name == "STRCPY":
+            dest_reg = self.generate_expression(expr.arguments[0], "R1")
+            src_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"STRCPY {dest_reg}, {src_reg}")
+            self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+        elif func_name == "STRCAT":
+            dest_reg = self.generate_expression(expr.arguments[0], "R1")
+            src_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"STRCAT {dest_reg}, {src_reg}")
+            self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+        elif func_name == "STRCMP":
+            str1_reg = self.generate_expression(expr.arguments[0], "R1")
+            str2_reg = self.generate_expression(expr.arguments[1], "R2")
+            len_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"STRCMP {target_reg}, {str1_reg}, {str2_reg}, {len_reg}")
+        elif func_name == "STRUPR":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"STRUPR {target_reg}, {arg_reg}")
+        elif func_name == "STRLWR":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"STRLWR {target_reg}, {arg_reg}")
+        elif func_name == "STRREV":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"STRREV {target_reg}, {arg_reg}")
+        elif func_name == "STRFIND":
+            haystack_reg = self.generate_expression(expr.arguments[0], "R1")
+            needle_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"STRFIND {target_reg}, {haystack_reg}, {needle_reg}")
+        elif func_name == "STRFINDI":
+            haystack_reg = self.generate_expression(expr.arguments[0], "R1")
+            needle_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"STRFINDI {target_reg}, {haystack_reg}, {needle_reg}")
+        elif func_name == "STREXT":
+            dest_reg = self.generate_expression(expr.arguments[0], "R1")
+            haystack_reg = self.generate_expression(expr.arguments[1], "R2")
+            needle_reg = self.generate_expression(expr.arguments[2], "R3")
+            len_reg = self.generate_expression(expr.arguments[3], "R4")
+            self.output.append(f"STREXT {dest_reg}, {haystack_reg}, {needle_reg}, {len_reg}")
+            self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+        elif func_name == "STREXTI":
+            dest_reg = self.generate_expression(expr.arguments[0], "R1")
+            haystack_reg = self.generate_expression(expr.arguments[1], "R2")
+            needle_reg = self.generate_expression(expr.arguments[2], "R3")
+            len_reg = self.generate_expression(expr.arguments[3], "R4")
+            self.output.append(f"STREXTI {dest_reg}, {haystack_reg}, {needle_reg}, {len_reg}")
+            self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
         elif func_name == "MIN":
             left_reg = self.generate_expression(expr.arguments[0], "R1")
             right_reg = self.generate_expression(expr.arguments[1], "R2")
@@ -490,10 +628,303 @@ class CodeGenerator:
             left_reg = self.generate_expression(expr.arguments[0], "R1")
             right_reg = self.generate_expression(expr.arguments[1], "R2")
             self.output.append(f"MAX {target_reg}, {left_reg}, {right_reg}")
-        else:
-            # Fallback for unimplemented functions
-            self.output.append(f"MOV {target_reg}, #0")
-        return target_reg
+        elif func_name == "ATAN":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"ATAN {target_reg}, {arg_reg}")
+        elif func_name == "ASIN":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"ASIN {target_reg}, {arg_reg}")
+        elif func_name == "ACOS":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"ACOS {target_reg}, {arg_reg}")
+        elif func_name == "DEG":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"DEG {target_reg}, {arg_reg}")
+        elif func_name == "RAD":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"RAD {target_reg}, {arg_reg}")
+        elif func_name == "FLOOR":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"FLOOR {target_reg}, {arg_reg}")
+        elif func_name == "CEIL":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"CEIL {target_reg}, {arg_reg}")
+        elif func_name == "ROUND":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"ROUND {target_reg}, {arg_reg}")
+        elif func_name == "TRUNC":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"TRUNC {target_reg}, {arg_reg}")
+        elif func_name == "FRAC":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"FRAC {target_reg}, {arg_reg}")
+        elif func_name == "INTGR":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"INTGR {target_reg}, {arg_reg}")
+        elif func_name == "POWR":
+            left_reg = self.generate_expression(expr.arguments[0], "R1")
+            right_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"POWR {target_reg}, {left_reg}, {right_reg}")
+        elif func_name == "LOG":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"LOG {target_reg}, {arg_reg}")
+        elif func_name == "EXP":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"EXP {target_reg}, {arg_reg}")
+        elif func_name == "BTST":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            bit_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"BTST {target_reg}, {value_reg}, {bit_reg}")
+        elif func_name == "BSET":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            bit_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"BSET {target_reg}, {value_reg}, {bit_reg}")
+        elif func_name == "BCLR":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            bit_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"BCLR {target_reg}, {value_reg}, {bit_reg}")
+        elif func_name == "BFLIP":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            bit_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"BFLIP {target_reg}, {value_reg}, {bit_reg}")
+        elif func_name == "CLZ":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"CLZ {target_reg}, {arg_reg}")
+        elif func_name == "CTZ":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"CTZ {target_reg}, {arg_reg}")
+        elif func_name == "POPCNT":
+            arg_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"POPCNT {target_reg}, {arg_reg}")
+        elif func_name == "MEMCPY":
+            dest_reg = self.generate_expression(expr.arguments[0], "R1")
+            src_reg = self.generate_expression(expr.arguments[1], "R2")
+            len_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"MEMCPY {dest_reg}, {src_reg}, {len_reg}")
+            self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+        elif func_name == "MEMSET":
+            addr_reg = self.generate_expression(expr.arguments[0], "R1")
+            value_reg = self.generate_expression(expr.arguments[1], "R2")
+            len_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"MEMSET {addr_reg}, {value_reg}, {len_reg}")
+            self.output.append(f"MOV {target_reg}, {addr_reg}")  # Return address
+        elif func_name == "MEMTEST":
+            addr1_reg = self.generate_expression(expr.arguments[0], "R1")
+            addr2_reg = self.generate_expression(expr.arguments[1], "R2")
+            len_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"MEMTEST {target_reg}, {addr1_reg}, {addr2_reg}, {len_reg}")
+        elif func_name == "MEMMOVE":
+            dest_reg = self.generate_expression(expr.arguments[0], "R1")
+            src_reg = self.generate_expression(expr.arguments[1], "R2")
+            len_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"MEMMOVE {dest_reg}, {src_reg}, {len_reg}")
+            self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+        elif func_name == "MEMCMP":
+            result_reg = self.generate_expression(expr.arguments[0], "R1")
+            addr1_reg = self.generate_expression(expr.arguments[1], "R2")
+            addr2_reg = self.generate_expression(expr.arguments[2], "R3")
+            len_reg = self.generate_expression(expr.arguments[3], "R4")
+            self.output.append(f"MEMCMP {result_reg}, {addr1_reg}, {addr2_reg}, {len_reg}")
+            self.output.append(f"MOV {target_reg}, {result_reg}")  # Return result
+        elif func_name == "MEMSWAP":
+            addr1_reg = self.generate_expression(expr.arguments[0], "R1")
+            addr2_reg = self.generate_expression(expr.arguments[1], "R2")
+            len_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"MEMSWAP {addr1_reg}, {addr2_reg}, {len_reg}")
+            self.output.append(f"MOV {target_reg}, {addr1_reg}")  # Return first address
+        elif func_name == "ADC":
+            result_reg = self.generate_expression(expr.arguments[0], "R1")
+            a_reg = self.generate_expression(expr.arguments[1], "R2")
+            b_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"ADC {result_reg}, {a_reg}, {b_reg}")
+            self.output.append(f"MOV {target_reg}, {result_reg}")
+        elif func_name == "SBC":
+            result_reg = self.generate_expression(expr.arguments[0], "R1")
+            a_reg = self.generate_expression(expr.arguments[1], "R2")
+            b_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"SBC {result_reg}, {a_reg}, {b_reg}")
+            self.output.append(f"MOV {target_reg}, {result_reg}")
+        elif func_name == "MULH":
+            result_reg = self.generate_expression(expr.arguments[0], "R1")
+            a_reg = self.generate_expression(expr.arguments[1], "R2")
+            b_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"MULH {result_reg}, {a_reg}, {b_reg}")
+            self.output.append(f"MOV {target_reg}, {result_reg}")
+        elif func_name == "DIVH":
+            result_reg = self.generate_expression(expr.arguments[0], "R1")
+            a_reg = self.generate_expression(expr.arguments[1], "R2")
+            b_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"DIVH {result_reg}, {a_reg}, {b_reg}")
+            self.output.append(f"MOV {target_reg}, {result_reg}")
+        elif func_name == "SWAP":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"SWAP {value_reg}")
+            self.output.append(f"MOV {target_reg}, {value_reg}")
+        elif func_name == "XCHNG":
+            a_reg = self.generate_expression(expr.arguments[0], "R1")
+            b_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"XCHNG {a_reg}, {b_reg}")
+            self.output.append(f"MOV {target_reg}, {a_reg}")
+        elif func_name == "MOVZ":
+            dest_reg = self.generate_expression(expr.arguments[0], "R1")
+            src_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"MOVZ {dest_reg}, {src_reg}")
+            self.output.append(f"MOV {target_reg}, {dest_reg}")
+        elif func_name == "MOVNZ":
+            dest_reg = self.generate_expression(expr.arguments[0], "R1")
+            src_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"MOVNZ {dest_reg}, {src_reg}")
+            self.output.append(f"MOV {target_reg}, {dest_reg}")
+        elif func_name == "LEA":
+            dest_reg = self.generate_expression(expr.arguments[0], "R1")
+            src_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"LEA {dest_reg}, {src_reg}")
+            self.output.append(f"MOV {target_reg}, {dest_reg}")
+        elif func_name == "SHL":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            shift_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"SHL {target_reg}, {value_reg}, {shift_reg}")
+        elif func_name == "SHR":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            shift_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"SHR {target_reg}, {value_reg}, {shift_reg}")
+        elif func_name == "SAL":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            shift_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"SAL {target_reg}, {value_reg}, {shift_reg}")
+        elif func_name == "SAR":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            shift_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"SAR {target_reg}, {value_reg}, {shift_reg}")
+        elif func_name == "ROL":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            shift_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"ROL {target_reg}, {value_reg}, {shift_reg}")
+        elif func_name == "ROR":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            shift_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"ROR {target_reg}, {value_reg}, {shift_reg}")
+        elif func_name == "RCL":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            shift_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"RCL {target_reg}, {value_reg}, {shift_reg}")
+        elif func_name == "RCR":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            shift_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"RCR {target_reg}, {value_reg}, {shift_reg}")
+        elif func_name == "BAND":
+            a_reg = self.generate_expression(expr.arguments[0], "R1")
+            b_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"AND {target_reg}, {a_reg}, {b_reg}")
+        elif func_name == "BOR":
+            a_reg = self.generate_expression(expr.arguments[0], "R1")
+            b_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"OR {target_reg}, {a_reg}, {b_reg}")
+        elif func_name == "BXOR":
+            a_reg = self.generate_expression(expr.arguments[0], "R1")
+            b_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"XOR {target_reg}, {a_reg}, {b_reg}")
+        elif func_name == "BNOT":
+            value_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"NOT {target_reg}, {value_reg}")
+        elif func_name == "ITOB":
+            result_reg = self.generate_expression(expr.arguments[0], "R1")
+            value_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"ITOB {result_reg}, {value_reg}")
+            self.output.append(f"MOV {target_reg}, {result_reg}")
+        elif func_name == "BTOI":
+            result_reg = self.generate_expression(expr.arguments[0], "R1")
+            binary_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"BTOI {result_reg}, {binary_reg}")
+            self.output.append(f"MOV {target_reg}, {result_reg}")
+        elif func_name == "ITOS":
+            result_reg = self.generate_expression(expr.arguments[0], "R1")
+            value_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"ITOS {result_reg}, {value_reg}")
+            self.output.append(f"MOV {target_reg}, {result_reg}")
+        elif func_name == "STOI":
+            result_reg = self.generate_expression(expr.arguments[0], "R1")
+            string_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"STOI {result_reg}, {string_reg}")
+            self.output.append(f"MOV {target_reg}, {result_reg}")
+        elif func_name == "SUB":
+            string_reg = self.generate_expression(expr.arguments[0], "R1")
+            start_reg = self.generate_expression(expr.arguments[1], "R2")
+            len_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"STREXT {target_reg}, {string_reg}, {start_reg}, {len_reg}")
+        elif func_name == "CLRDRAW":
+            self.output.append("MOV VM, 0")  # Clear screen mode
+            self.output.append("SFILL 0")    # Fill with black
+        elif func_name == "SETLAYER":
+            layer_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"MOV VL, {layer_reg}")
+        elif func_name == "PXLON":
+            x_reg = self.generate_expression(expr.arguments[0], "R1")
+            y_reg = self.generate_expression(expr.arguments[1], "R2")
+            color_reg = self.generate_expression(expr.arguments[2], "R3")
+            self.output.append(f"MOV VX, {x_reg}")
+            self.output.append(f"MOV VY, {y_reg}")
+            self.output.append(f"MOV VC, {color_reg}")
+            self.output.append("SWRITE VC")
+        elif func_name == "PXLOFF":
+            x_reg = self.generate_expression(expr.arguments[0], "R1")
+            y_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"MOV VX, {x_reg}")
+            self.output.append(f"MOV VY, {y_reg}")
+            self.output.append("SWRITE 0")
+        elif func_name == "LINE":
+            x1_reg = self.generate_expression(expr.arguments[0], "R1")
+            y1_reg = self.generate_expression(expr.arguments[1], "R2")
+            x2_reg = self.generate_expression(expr.arguments[2], "R3")
+            y2_reg = self.generate_expression(expr.arguments[3], "R4")
+            color_reg = self.generate_expression(expr.arguments[4], "R5")
+            self.output.append(f"MOV VX, {x1_reg}")
+            self.output.append(f"MOV VY, {y1_reg}")
+            self.output.append(f"SLINE {x2_reg}, {y2_reg}, {color_reg}")
+        elif func_name == "CIRCLE":
+            x_reg = self.generate_expression(expr.arguments[0], "R1")
+            y_reg = self.generate_expression(expr.arguments[1], "R2")
+            radius_reg = self.generate_expression(expr.arguments[2], "R3")
+            color_reg = self.generate_expression(expr.arguments[3], "R4")
+            self.output.append(f"MOV VX, {x_reg}")
+            self.output.append(f"MOV VY, {y_reg}")
+            self.output.append(f"SCIRC {radius_reg}, {color_reg}")
+        elif func_name == "TEXT":
+            x_reg = self.generate_expression(expr.arguments[0], "R1")
+            y_reg = self.generate_expression(expr.arguments[1], "R2")
+            text_reg = self.generate_expression(expr.arguments[2], "R3")
+            color_reg = self.generate_expression(expr.arguments[3], "R4")
+            self.output.append(f"MOV VX, {x_reg}")
+            self.output.append(f"MOV VY, {y_reg}")
+            self.output.append(f"TEXT {text_reg}, {color_reg}")
+        elif func_name == "RECT":
+            x1_reg = self.generate_expression(expr.arguments[0], "R1")
+            y1_reg = self.generate_expression(expr.arguments[1], "R2")
+            x2_reg = self.generate_expression(expr.arguments[2], "R3")
+            y2_reg = self.generate_expression(expr.arguments[3], "R4")
+            fill_reg = self.generate_expression(expr.arguments[4], "R5")
+            self.output.append(f"MOV VX, {x1_reg}")
+            self.output.append(f"MOV VY, {y1_reg}")
+            self.output.append(f"SRECT {x2_reg}, {y2_reg}, {fill_reg}")
+        elif func_name == "SUM":
+            # For now, just return 0 - proper list handling needs more work
+            self.output.append(f"MOV {target_reg}, 0")
+        elif func_name == "MEAN":
+            # For now, just return 0 - proper list handling needs more work
+            self.output.append(f"MOV {target_reg}, 0")
+        elif func_name == "DIM":
+            # For now, just return 0 - proper list handling needs more work
+            self.output.append(f"MOV {target_reg}, 0")
+        elif func_name == "GETKEY":
+            self.output.append("KEYIN R0")
+            self.output.append(f"MOV {target_reg}, R0")
+        elif func_name == "PAUSE":
+            # Wait for key press
+            self.output.append("KEYSTAT R0")
+            label = self.new_label()
+            self.output.append(f"JZ {label}")
+            self.output.append(f"{label}:")
+            self.output.append("KEYIN R0")  # Consume the key
 
     def load_variable(self, name: str, target_reg: str = "R0") -> str:
         """Load a variable into a register."""
@@ -502,8 +933,16 @@ class CodeGenerator:
         self.output.append(f"MOV {target_reg}, [P0]")
         return target_reg
 
-    def get_variable_address(self, name: str) -> int:
+    def get_variable_address(self, variable) -> int:
         """Get the memory address for a variable."""
+        # Handle both string names and VariableExpr objects
+        if isinstance(variable, str):
+            name = variable
+        elif hasattr(variable, 'name'):
+            name = variable.name
+        else:
+            raise TypeError(f"Expected string or VariableExpr, got {type(variable)}")
+
         if name not in self.variable_addresses:
             self.variable_addresses[name] = self.next_address
             self.next_address += 2  # 16-bit variables

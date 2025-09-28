@@ -72,6 +72,10 @@ class TokenType(Enum):
     LESS_EQUAL = "<="
     GREATER = ">"
     GREATER_EQUAL = ">="
+    BITWISE_AND = "&"
+    BITWISE_OR = "|"
+    SHIFT_LEFT = "<<"
+    SHIFT_RIGHT = ">>"
     AND = "AND"
     OR = "OR"
     NOT = "NOT"
@@ -79,9 +83,12 @@ class TokenType(Enum):
     # Delimiters
     LPAREN = "("
     RPAREN = ")"
+    LBRACKET = "["
+    RBRACKET = "]"
     COMMA = ","
     QUOTE = "\""
     COLON = ":"
+    AT = "@"
 
     # Literals
     NUMBER_LITERAL = "NUMBER_LITERAL"
@@ -145,21 +152,6 @@ KEYWORDS = {
     "goto": TokenType.GOTO,
     "dim": TokenType.DIM,
     "let": TokenType.LET,
-    "sin": TokenType.SIN,
-    "cos": TokenType.COS,
-    "tan": TokenType.TAN,
-    "sqrt": TokenType.SQRT,
-    "abs": TokenType.ABS,
-    "int": TokenType.INT,
-    "round": TokenType.ROUND,
-    "rand": TokenType.RAND,
-    "length": TokenType.LENGTH,
-    "sub": TokenType.SUB,
-    "concat": TokenType.CONCAT,
-    "sum": TokenType.SUM,
-    "mean": TokenType.MEAN,
-    "memread": TokenType.MEMREAD,
-    "memwrite": TokenType.MEMWRITE,
     "and": TokenType.AND,
     "or": TokenType.OR,
     "not": TokenType.NOT,
@@ -177,9 +169,14 @@ SINGLE_CHAR_TOKENS = {
     ">": TokenType.GREATER,
     "(": TokenType.LPAREN,
     ")": TokenType.RPAREN,
+    "[": TokenType.LBRACKET,
+    "]": TokenType.RBRACKET,
     ",": TokenType.COMMA,
     "\"": TokenType.QUOTE,
     ":": TokenType.COLON,
+    "@": TokenType.AT,
+    "&": TokenType.BITWISE_AND,
+    "|": TokenType.BITWISE_OR,
 }
 
 # Multi-character operators
@@ -187,4 +184,6 @@ MULTI_CHAR_OPERATORS = {
     "<>": TokenType.NOT_EQUAL,
     "<=": TokenType.LESS_EQUAL,
     ">=": TokenType.GREATER_EQUAL,
+    "<<": TokenType.SHIFT_LEFT,
+    ">>": TokenType.SHIFT_RIGHT,
 }

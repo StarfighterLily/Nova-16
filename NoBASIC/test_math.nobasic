@@ -1,0 +1,3 @@
+x = sin(30) + cos(45)
+y = sqrt(16) * abs(-3)
+z = int(3.14) + round(2.7)

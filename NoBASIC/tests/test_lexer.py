@@ -107,10 +107,10 @@ class TestLexer:
         tokens = self.lexer.tokenize(source)
 
         expected_types = [
-            TokenType.SIN, TokenType.COS, TokenType.TAN, TokenType.SQRT,
-            TokenType.ABS, TokenType.INT, TokenType.ROUND, TokenType.RAND,
-            TokenType.LENGTH, TokenType.SUB, TokenType.CONCAT,
-            TokenType.SUM, TokenType.MEAN, TokenType.MEMREAD, TokenType.MEMWRITE,
+            TokenType.IDENTIFIER, TokenType.IDENTIFIER, TokenType.IDENTIFIER, TokenType.IDENTIFIER,
+            TokenType.IDENTIFIER, TokenType.IDENTIFIER, TokenType.IDENTIFIER, TokenType.IDENTIFIER,
+            TokenType.IDENTIFIER, TokenType.IDENTIFIER, TokenType.IDENTIFIER,
+            TokenType.IDENTIFIER, TokenType.IDENTIFIER, TokenType.IDENTIFIER, TokenType.IDENTIFIER,
             TokenType.EOF
         ]
 
@@ -196,7 +196,7 @@ class TestLexer:
     def test_unexpected_character(self):
         """Test error for unexpected character."""
         with pytest.raises(LexerError, match="Unexpected character"):
-            self.lexer.tokenize("@")
+            self.lexer.tokenize("#")
 
     def test_max_identifier_length(self):
         """Test very long identifiers."""
@@ -331,7 +331,7 @@ class TestLexer:
     def test_invalid_characters_in_identifiers(self):
         """Test invalid characters in identifiers."""
         with pytest.raises(LexerError):
-            self.lexer.tokenize("var@name")
+            self.lexer.tokenize("var#name")
 
     def test_underscore_in_identifiers(self):
         """Test underscores in identifiers."""
@@ -451,7 +451,7 @@ class TestLexer:
 
         expected_types = [
             TokenType.IDENTIFIER, TokenType.EQUAL, TokenType.NUMBER_LITERAL,
-            TokenType.PLUS, TokenType.SIN, TokenType.LPAREN, TokenType.IDENTIFIER,
+            TokenType.PLUS, TokenType.IDENTIFIER, TokenType.LPAREN, TokenType.IDENTIFIER,
             TokenType.RPAREN, TokenType.EOF
         ]
 

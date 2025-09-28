@@ -81,9 +81,9 @@ class TestSemanticAnalyzer:
         assert self.analyzer.symbol_table.get_variable_type("x") == DataType.NUMBER
 
     def test_string_arithmetic_error(self):
-        """Test error for arithmetic on strings."""
-        with pytest.raises(SemanticError, match="Cannot perform arithmetic on strings"):
-            self.parse_and_analyze('x = "hello" + 1')
+        """Test that string + number is allowed (TI-BASIC concatenation)."""
+        program = self.parse_and_analyze('x = "hello" + 1')
+        assert self.analyzer.symbol_table.get_variable_type("x") == DataType.STRING
 
     def test_if_statement_analysis(self):
         """Test semantic analysis of if statements."""
@@ -266,13 +266,26 @@ class TestSemanticAnalyzer:
         program = self.parse_and_analyze("result = (a + b) * c - d / e")
         assert self.analyzer.symbol_table.get_variable_type("result") == DataType.NUMBER
 
-        # Invalid string in arithmetic
-        with pytest.raises(SemanticError):
-            self.parse_and_analyze('result = "text" + 1')
+        # String concatenation (TI-BASIC style)
+        program = self.parse_and_analyze('result = "text" + 1')
+        assert self.analyzer.symbol_table.get_variable_type("result") == DataType.STRING
 
 
 class TestSymbolTable:
     """Test cases for the SymbolTable class."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.lexer = Lexer()
+        self.parser = Parser()
+        self.analyzer = SemanticAnalyzer()
+
+    def parse_and_analyze(self, source: str) -> Program:
+        """Helper to parse and analyze source code."""
+        tokens = self.lexer.tokenize(source)
+        program = self.parser.parse(tokens)
+        self.analyzer.analyze(program)
+        return program
 
     def test_variable_operations(self):
         """Test basic variable operations."""
@@ -319,9 +332,9 @@ class TestSymbolTable:
         assert self.analyzer.symbol_table.get_variable_type("len") == DataType.NUMBER
 
     def test_invalid_string_length(self):
-        """Test error for length on non-string."""
-        with pytest.raises(SemanticError):
-            self.parse_and_analyze("len = length(123)")  # length expects string
+        """Test length function allows numbers (TI-BASIC style coercion)."""
+        program = self.parse_and_analyze("len = length(123)")  # Should work with coercion
+        assert self.analyzer.symbol_table.get_variable_type("len") == DataType.NUMBER
 
     def test_comparison_operations(self):
         """Test semantic analysis of comparison operations."""

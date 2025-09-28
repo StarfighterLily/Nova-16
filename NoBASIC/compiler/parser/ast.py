@@ -146,7 +146,7 @@ class GetKeyStmt(Statement):
 @dataclass
 class InputStmt(Statement):
     """Input(prompt, variable) statement."""
-    prompt: Expression
+    prompt: Optional[Expression]
     variable: str
 
 
@@ -163,9 +163,15 @@ class PauseStmt(Statement):
 
 
 @dataclass
+class FunctionCallStmt(Statement):
+    """Function call statement."""
+    function_call: Expression  # This should be a FunctionCallExpr
+
+
+@dataclass
 class AssignmentStmt(Statement):
-    """variable = expression statement."""
-    variable: str
+    """expression = expression statement."""
+    variable: Expression
     expression: Expression
 
 

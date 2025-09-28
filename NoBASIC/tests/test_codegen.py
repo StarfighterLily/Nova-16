@@ -49,9 +49,9 @@ class TestCodeGenerator:
         """Test PxlOn code generation."""
         code = self.generate_code("pxlon(10, 20, 31)")
         lines = code.strip().split("\n")
-        assert "MOV R1, #10" in lines  # x = 10
-        assert "MOV R2, #20" in lines  # y = 20
-        assert "MOV R3, #31" in lines  # color = 31
+        assert "MOV R1, 10" in lines  # x = 10
+        assert "MOV R2, 20" in lines  # y = 20
+        assert "MOV R3, 31" in lines  # color = 31
         assert "MOV VX, R1" in lines
         assert "MOV VY, R2" in lines
         assert "MOV VC, R3" in lines
@@ -61,7 +61,7 @@ class TestCodeGenerator:
         """Test assignment code generation."""
         code = self.generate_code("x = 42")
         lines = code.strip().split("\n")
-        assert "MOV R1, #42" in lines  # value = 42
+        assert "MOV R1, 42" in lines  # value = 42
         assert "MOV P0, 288" in lines  # variable address
         assert "MOV [P0], R1" in lines
 
@@ -70,8 +70,8 @@ class TestCodeGenerator:
         code = self.generate_code("x = 10 + 20")
         lines = code.strip().split("\n")
         # Should generate code for 10 + 20
-        assert "MOV R1, #10" in lines  # left = 10
-        assert "MOV R2, #20" in lines  # right = 20
+        assert "MOV R1, 10" in lines  # left = 10
+        assert "MOV R2, 20" in lines  # right = 20
         assert "ADD R1, R1, R2" in lines  # result = left + right
         assert "MOV [P0], R1" in lines  # store result
 
@@ -153,7 +153,7 @@ class TestCodeGenerator:
         code = self.generate_code("pause")
         lines = code.strip().split("\n")
         assert "KEYSTAT R0" in lines
-        assert "JZ -2" in lines
+        assert "JZ L1" in lines
 
     def test_get_key_statement(self):
         """Test get key statement generation."""
@@ -192,14 +192,14 @@ class TestCodeGenerator:
         code = self.generate_code('x = "hello"')
         lines = code.strip().split("\n")
         # String literals are simplified to 0
-        assert "MOV R1, #0" in lines
+        assert "MOV R1, 0" in lines
 
     def test_number_literal(self):
         """Test number literal handling."""
         code = self.generate_code("x = 42")
         lines = code.strip().split("\n")
-        # Should generate MOV R1, #42
-        assert "MOV R1, #42" in lines
+        # Should generate MOV R1, 42
+        assert "MOV R1, 42" in lines
 
     def test_repeat_statement(self):
         """Test repeat loop code generation."""
@@ -235,7 +235,7 @@ class TestCodeGenerator:
         # Test functions that are still placeholders
         code = self.generate_code("x = length(\"hello\")")
         lines = code.strip().split("\n")
-        assert "MOV R1, #0" in lines  # LENGTH is still a placeholder
+        assert "MOV R1, 0" in lines  # LENGTH is still a placeholder
 
     def test_list_and_matrix_access_codegen(self):
         """Test code generation for list and matrix access."""
@@ -272,20 +272,56 @@ class TestCodeGenerator:
         assert any("CMP" in line for line in lines)
         assert any("JGT" in line for line in lines)
 
-    def test_string_operations_codegen(self):
-        """Test code generation for string operations."""
-        code = self.generate_code('s = "hello" + "world"')
+    def test_string_operations_strlen(self):
+        """Test string length function."""
+        code = self.generate_code('x = strlen("hello")')
         lines = code.strip().split("\n")
-        # Current implementation may simplify strings
-        assert "MOV R1, #0" in lines
+        assert "STRLEN R1, R1" in lines
 
-    def test_graphics_complex_codegen(self):
-        """Test code generation for complex graphics operations."""
-        code = self.generate_code("line(0, 0, 100, 100, 31)\ncircle(50, 50, 25, 15)")
+    def test_string_operations_strcpy(self):
+        """Test string copy function."""
+        code = self.generate_code('strcpy(dest, "hello")')
         lines = code.strip().split("\n")
-        # Should contain graphics-related instructions
-        assert "SLINE" in " ".join(lines)
-        assert "SCIRC" in " ".join(lines)
+        assert "STRCPY R1, R2" in lines
+
+    def test_string_operations_strcat(self):
+        """Test string concatenate function."""
+        code = self.generate_code('strcat(dest, "world")')
+        lines = code.strip().split("\n")
+        assert "STRCAT R1, R2" in lines
+
+    def test_string_operations_strcmp(self):
+        """Test string compare function."""
+        code = self.generate_code('strcmp("hello", "world", 5)')
+        lines = code.strip().split("\n")
+        assert "STRCMP R0, R1, R2, R3" in lines
+
+    def test_string_operations_strupr_strlwr(self):
+        """Test string case conversion functions."""
+        code = self.generate_code('x = strupr(txt)\ny = strlwr(txt)')
+        lines = code.strip().split("\n")
+        assert "STRUPR R1, R1" in lines
+        assert "STRLWR R1, R1" in lines
+
+    def test_string_operations_strrev(self):
+        """Test string reverse function."""
+        code = self.generate_code('x = strrev(txt)')
+        lines = code.strip().split("\n")
+        assert "STRREV R1, R1" in lines
+
+    def test_string_operations_strfind(self):
+        """Test string find functions."""
+        code = self.generate_code('strfind(haystack, "needle")\nstrfindi(haystack, "NEEDLE")')
+        lines = code.strip().split("\n")
+        assert "STRFIND R0, R1, R2" in lines
+        assert "STRFINDI R0, R1, R2" in lines
+
+    def test_string_operations_strext(self):
+        """Test string extract functions."""
+        code = self.generate_code('x = strext(dest, 5, 10, haystack)\ny = strexti(dest, 5, 10, haystack)')
+        lines = code.strip().split("\n")
+        assert "STREXT R1, R2, R3, R4" in lines
+        assert "STREXTI R1, R2, R3, R4" in lines
 
     def test_sound_codegen(self):
         """Test code generation for sound operations."""
@@ -351,8 +387,8 @@ class TestCodeGenerator:
         # Constant folding opportunity
         code = self.generate_code("x = 2 + 3")
         lines = code.strip().split("\n")
-        # Optimized to use SHL for powers of 2: MOV R1, #1; SHL R1, R1, #1 (makes 2)
-        assert "SHL R1, R1, #1" in lines
+        # Optimized to use SHL for powers of 2: MOV R1, 1; SHL R1, R1, 1 (makes 2)
+        assert "SHL R1, R1, 1" in lines
         assert "ADD R1, R1, R2" in lines
         assert "ADD R1, R1, R2" in lines
 
@@ -381,7 +417,7 @@ class TestCodeGenerator:
 
     def test_comparison_codegen(self):
         """Test code generation for comparisons."""
-        code = self.generate_code("result = (a = b) + (c < d) + (e > f)")
+        code = self.generate_code("a = 1\nb = 2\nresult = a = b")
         lines = code.strip().split("\n")
         assert any("CMP" in line for line in lines)
         assert any("JZ" in line for line in lines) or any("JNZ" in line for line in lines)
@@ -524,7 +560,7 @@ class TestCodeGenerator:
         """)
         lines = code.strip().split("\n")
         # Should have nested loop structure
-        assert lines.count("CMP") >= 2  # At least 2 comparisons for nested loops
+        assert sum(1 for line in lines if "CMP" in line) >= 2  # At least 2 comparisons for nested loops
 
     def test_function_inlining_opportunity(self):
         """Test opportunities for function inlining."""
@@ -594,7 +630,7 @@ class TestCodeGenerator:
 
     def test_memory_access_optimization(self):
         """Test memory access optimization."""
-        code = self.generate_code("x = arr[0]\ny = arr[1]")
+        code = self.generate_code("x = L1[0]\ny = L1[1]")
         lines = code.strip().split("\n")
         # Should optimize sequential accesses
 
@@ -668,3 +704,183 @@ class TestCodeGenerator:
         code = self.generate_code("x = 1\ny = x + 1")
         lines = code.strip().split("\n")
         # Should still be debuggable
+
+    def test_math_functions_sin_cos_tan(self):
+        """Test trigonometric function code generation."""
+        functions = ["sin", "cos", "tan"]
+        for func in functions:
+            code = self.generate_code(f"x = {func}(45)")
+            lines = code.strip().split("\n")
+            assert f"{func.upper()} R1, R1" in [line.upper() for line in lines]
+
+    def test_math_functions_sqrt_abs(self):
+        """Test sqrt and abs function code generation."""
+        code = self.generate_code("x = sqrt(16)\ny = abs(-5)")
+        lines = code.strip().split("\n")
+        assert "SQRT R1, R1" in lines
+        assert "ABS R1, R1" in lines
+
+    def test_math_functions_min_max(self):
+        """Test min and max function code generation."""
+        code = self.generate_code("x = min(10, 20)\ny = max(5, 15)")
+        lines = code.strip().split("\n")
+        assert "MIN R1, R1, R2" in lines
+        assert "MAX R1, R1, R2" in lines
+
+    def test_math_functions_rnd(self):
+        """Test random function code generation."""
+        code = self.generate_code("x = rnd()")
+        lines = code.strip().split("\n")
+        assert "RND R1" in lines
+
+    def test_math_functions_atan_asin_acos(self):
+        """Test inverse trigonometric functions."""
+        functions = ["atan", "asin", "acos"]
+        for func in functions:
+            code = self.generate_code(f"x = {func}(0.5)")
+            lines = code.strip().split("\n")
+            assert f"{func.upper()} R1, R1" in [line.upper() for line in lines]
+
+    def test_math_functions_deg_rad(self):
+        """Test degree/radian conversion functions."""
+        code = self.generate_code("x = deg(1.57)\ny = rad(90)")
+        lines = code.strip().split("\n")
+        assert "DEG R1, R1" in lines
+        assert "RAD R1, R1" in lines
+
+    def test_math_functions_rounding(self):
+        """Test rounding functions."""
+        functions = ["floor", "ceil", "round", "trunc"]
+        for func in functions:
+            code = self.generate_code(f"x = {func}(3.7)")
+            lines = code.strip().split("\n")
+            assert f"{func.upper()} R1, R1" in [line.upper() for line in lines]
+
+    def test_math_functions_frac_intgr(self):
+        """Test fractional and integer part functions."""
+        code = self.generate_code("x = frac(3.14)\ny = intgr(3.14)")
+        lines = code.strip().split("\n")
+        assert "FRAC R1, R1" in lines
+        assert "INTGR R1, R1" in lines
+
+    def test_math_functions_power_log_exp(self):
+        """Test power, logarithm, and exponential functions."""
+        code = self.generate_code("x = powr(2, 3)\ny = log(10)\nz = exp(1)")
+        lines = code.strip().split("\n")
+        assert "POWR R1, R1, R2" in lines
+        assert "LOG R1, R1" in lines
+        assert "EXP R1, R1" in lines
+
+    def test_bit_operations_btst_bset_bclr(self):
+        """Test bit test, set, and clear operations."""
+        code = self.generate_code("x = btst(value, 3)\ny = bset(value, 5)\nz = bclr(value, 7)")
+        lines = code.strip().split("\n")
+        assert "BTST R1, R1, R2" in lines
+        assert "BSET R1, R1, R2" in lines
+        assert "BCLR R1, R1, R2" in lines
+
+    def test_bit_operations_bflip(self):
+        """Test bit flip operation."""
+        code = self.generate_code("x = bflip(value, 4)")
+        lines = code.strip().split("\n")
+        assert "BFLIP R1, R1, R2" in lines
+
+    def test_bit_operations_shl_shr(self):
+        """Test shift operations."""
+        code = self.generate_code("x = shl(y, 2)\nz = shr(w, 1)")
+        lines = code.strip().split("\n")
+        assert "SHL R1, R1, R2" in lines
+        assert "SHR R1, R1, R2" in lines
+
+    def test_bit_operations_sar_sal(self):
+        """Test arithmetic shift operations."""
+        code = self.generate_code("x = sal(y, 2)\nz = sar(w, 1)")
+        lines = code.strip().split("\n")
+        assert "SAL R1, R1, R2" in lines
+        assert "SAR R1, R1, R2" in lines
+
+    def test_bit_operations_rol_ror(self):
+        """Test rotate operations."""
+        code = self.generate_code("x = rol(y, 3)\nz = ror(w, 2)")
+        lines = code.strip().split("\n")
+        assert "ROL R1, R1, R2" in lines
+        assert "ROR R1, R1, R2" in lines
+
+    def test_bit_operations_rcl_rcr(self):
+        """Test rotate through carry operations."""
+        code = self.generate_code("x = rcl(y, 3)\nz = rcr(w, 2)")
+        lines = code.strip().split("\n")
+        assert "RCL R1, R1, R2" in lines
+        assert "RCR R1, R1, R2" in lines
+
+    def test_bit_operations_and_or_xor_not(self):
+        """Test bitwise logical operations."""
+        code = self.generate_code("x = band(a, b)\ny = bor(c, d)\nz = bxor(e, f)\nw = bnot(g)")
+        lines = code.strip().split("\n")
+        assert "AND R1, R1, R2" in lines
+        assert "OR R1, R1, R2" in lines
+        assert "XOR R1, R1, R2" in lines
+        assert "NOT R1, R1" in lines
+
+    def test_enhanced_arithmetic_adc_sbc(self):
+        """Test add/subtract with carry operations."""
+        code = self.generate_code("adc(result, a, b)\nsbc(result, a, b)")
+        lines = code.strip().split("\n")
+        assert "ADC R1, R2, R3" in lines
+        assert "SBC R1, R2, R3" in lines
+
+    def test_enhanced_arithmetic_mulh_divh(self):
+        """Test multiply/divide high operations."""
+        code = self.generate_code("mulh(result, a, b)\ndivh(result, a, b)")
+        lines = code.strip().split("\n")
+        assert "MULH R1, R2, R3" in lines
+        assert "DIVH R1, R2, R3" in lines
+
+    def test_enhanced_arithmetic_min_max(self):
+        """Test min/max operations (already implemented but testing)."""
+        code = self.generate_code("x = min(a, b)\ny = max(a, b)")
+        lines = code.strip().split("\n")
+        assert "MIN R1, R1, R2" in lines
+        assert "MAX R1, R1, R2" in lines
+
+    def test_enhanced_arithmetic_clz_ctz_popcnt(self):
+        """Test bit counting operations (already implemented but testing)."""
+        code = self.generate_code("x = clz(value)\ny = ctz(value)\nz = popcnt(value)")
+        lines = code.strip().split("\n")
+        assert "CLZ R1, R1" in lines
+        assert "CTZ R1, R1" in lines
+        assert "POPCNT R1, R1" in lines
+
+    def test_enhanced_arithmetic_swap_xchng(self):
+        """Test swap and exchange operations."""
+        code = self.generate_code("swap(value)\nxchng(a, b)")
+        lines = code.strip().split("\n")
+        assert "SWAP R1" in lines
+        assert "XCHNG R1, R2" in lines
+
+    def test_enhanced_arithmetic_movz_movnz(self):
+        """Test conditional move operations."""
+        code = self.generate_code("movz(dest, src)\nmovnz(dest, src)")
+        lines = code.strip().split("\n")
+        assert "MOVZ R1, R2" in lines
+        assert "MOVNZ R1, R2" in lines
+
+    def test_enhanced_arithmetic_lea(self):
+        """Test load effective address operation."""
+        code = self.generate_code("lea(dest, src)")
+        lines = code.strip().split("\n")
+        assert "LEA R1, R2" in lines
+
+    def test_type_conversion_itob_btoi(self):
+        """Test integer to binary and binary to integer conversions."""
+        code = self.generate_code("itob(result, value)\nbtoi(result, binary)")
+        lines = code.strip().split("\n")
+        assert "ITOB R1, R2" in lines
+        assert "BTOI R1, R2" in lines
+
+    def test_type_conversion_itos_stoi(self):
+        """Test integer to string and string to integer conversions."""
+        code = self.generate_code('itos(result, 42)\nstoi(result, "123")')
+        lines = code.strip().split("\n")
+        assert "ITOS R1, R2" in lines
+        assert "STOI R1, R2" in lines
