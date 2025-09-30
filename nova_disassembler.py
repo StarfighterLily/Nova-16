@@ -254,6 +254,8 @@ def disassemble_instruction_new(bytecode, pc, opcode_map, register_map):
             return "VM"
         elif reg_num == 0xE2:
             return "VL"
+        elif reg_num == 0xC8:
+            return "VC"
         elif reg_num == 0xE3:
             return "TT"
         elif reg_num == 0xE4:

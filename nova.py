@@ -94,7 +94,7 @@ def run_headless(program_path, max_cycles=10000, enable_memory_profiling=False, 
         print("Sound: Disabled")
     
     # Check if there's any graphics output
-    screen = gfx.get_screen()
+    screen = gfx.screen
     non_zero_pixels = (screen != 0).sum()
     print(f"Graphics: {non_zero_pixels} non-black pixels on screen")
     

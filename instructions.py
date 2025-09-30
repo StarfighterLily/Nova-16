@@ -151,7 +151,7 @@ class Mov(BaseInstruction):
     
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         cpu.set_operand_value(operands[0], source_value, operands[1])
 
 # Arithmetic operations
@@ -164,7 +164,7 @@ class Add(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         result = dest_value + source_value
         cpu.set_operand_value(operands[0], result)
         # Set flags based on destination operand type and masked result
@@ -186,7 +186,7 @@ class Sub(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         result = dest_value - source_value
         cpu.set_operand_value(operands[0], result)
         # Set flags based on destination operand type and masked result
@@ -360,7 +360,7 @@ class Mulh(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         result = dest_value * source_value
         # Store high 16 bits of 32-bit result
         high_result = (result >> 16) & 0xFFFF
@@ -376,7 +376,7 @@ class Divh(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         
         if source_value == 0:
             raise RuntimeError("Division by zero")
@@ -399,7 +399,7 @@ class Min(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         result = min(dest_value, source_value)
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
@@ -413,7 +413,7 @@ class Max(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         result = max(dest_value, source_value)
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
@@ -554,7 +554,7 @@ class And(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         result = dest_value & source_value
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
@@ -568,7 +568,7 @@ class Or(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         result = dest_value | source_value
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
@@ -582,7 +582,7 @@ class Xor(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         result = dest_value ^ source_value
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
@@ -812,8 +812,8 @@ class Movz(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         if cpu.zero_flag:
-            source_value = cpu.get_operand_value(operands[1])
-            cpu.set_operand_value(operands[0], source_value)
+            source_value = cpu.get_operand_value(operands[1], operands[0])
+            cpu.set_operand_value(operands[0], source_value, operands[1])
             cpu._set_flags_16bit(source_value, source_value)
         # If not zero, do nothing and don't change flags
 
@@ -826,8 +826,8 @@ class Movnz(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         if not cpu.zero_flag:
-            source_value = cpu.get_operand_value(operands[1])
-            cpu.set_operand_value(operands[0], source_value)
+            source_value = cpu.get_operand_value(operands[1], operands[0])
+            cpu.set_operand_value(operands[0], source_value, operands[1])
             cpu._set_flags_16bit(source_value, source_value)
         # If zero, do nothing and don't change flags
 
@@ -849,8 +849,8 @@ class Lea(BaseInstruction):
             cpu._set_flags_16bit(address, address)
         else:
             # If source is not memory, treat like MOV
-            source_value = cpu.get_operand_value(operands[1])
-            cpu.set_operand_value(operands[0], source_value)
+            source_value = cpu.get_operand_value(operands[1], operands[0])
+            cpu.set_operand_value(operands[0], source_value, operands[1])
             cpu._set_flags_16bit(source_value, source_value)
 
 # Stack operations
@@ -1292,7 +1292,7 @@ class Cmp(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         op1 = cpu.get_operand_value(operands[0])
-        op2 = cpu.get_operand_value(operands[1])
+        op2 = cpu.get_operand_value(operands[1], operands[0])
         result = op1 - op2
         
         # Set flags based on operation (like SUB but without storing result)
@@ -1739,6 +1739,7 @@ class Char(BaseInstruction):
         char_code = cpu.get_operand_value(operands[0])
         color = cpu.gfx.Vregisters[3]  # VC register
         x = cpu.gfx.Vregisters[0]
+        x = int(x)
         y = cpu.gfx.Vregisters[1]
         cpu.gfx.draw_char(char_code, x, y, color)
         # Advance cursor by 8 pixels
@@ -2632,7 +2633,7 @@ class Bcda(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         
         # Perform addition first
         result = dest_value + source_value
@@ -2666,7 +2667,7 @@ class Bcds(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
         dest_value = cpu.get_operand_value(operands[0])
-        source_value = cpu.get_operand_value(operands[1])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
         
         # Perform subtraction first
         result = dest_value - source_value

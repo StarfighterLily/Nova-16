@@ -39,7 +39,8 @@ LOOP:
 LOOP2:
     JMP LOOP2        ; Repeat
 
-TXT: DEFSTR "De Nova Stella"
+TXT:
+    DEFSTR "De Nova Stella"
 
 TIMER_HANDLER:       ; Timer interrupt handler
     SROL 0, -1        ; Roll screen -1 pixel

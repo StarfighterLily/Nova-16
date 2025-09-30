@@ -85,7 +85,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         import subprocess
         result = subprocess.run([
             sys.executable, assembler_path, str(output_file)
-        ], capture_output=True, text=True, cwd=os.path.dirname(assembler_path))
+        ], capture_output=True, text=True)
 
         # Check if binary was created (assembler may output to stdout/stderr but still succeed)
         if not binary_file.exists():

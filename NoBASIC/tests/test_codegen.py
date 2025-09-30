@@ -72,7 +72,7 @@ class TestCodeGenerator:
         # Should generate code for 10 + 20
         assert "MOV R1, 10" in lines  # left = 10
         assert "MOV R2, 20" in lines  # right = 20
-        assert "ADD R1, R1, R2" in lines  # result = left + right
+        assert "ADD R1, R2" in lines  # result = left + right
         assert "MOV [P0], R1" in lines  # store result
 
     def test_variable_usage(self):
@@ -120,9 +120,9 @@ class TestCodeGenerator:
             code = self.generate_code(f"x = 5 {op} 3")
             lines = code.strip().split("\n")
             if op == "+":
-                assert "ADD R1, R1, R2" in lines
+                assert "ADD R1, R2" in lines
             elif op == "-":
-                assert "SUB R1, R1, R2" in lines
+                assert "SUB R1, R2" in lines
             # * and / are simplified
 
     def test_multiple_statements(self):
@@ -389,8 +389,8 @@ class TestCodeGenerator:
         lines = code.strip().split("\n")
         # Optimized to use SHL for powers of 2: MOV R1, 1; SHL R1, R1, 1 (makes 2)
         assert "SHL R1, R1, 1" in lines
-        assert "ADD R1, R1, R2" in lines
-        assert "ADD R1, R1, R2" in lines
+        assert "ADD R1, R2" in lines
+        assert "ADD R1, R2" in lines
 
     def test_advanced_math_codegen(self):
         """Test code generation for advanced math functions."""

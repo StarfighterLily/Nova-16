@@ -1,0 +1,6 @@
+ClrDraw
+PxlOn(50, 50, 255)
+Line(10, 10, 100, 100, 128)
+Circle(128, 128, 30, 64)
+Text(10, 200, "Hello Star!", 255)
+Pause

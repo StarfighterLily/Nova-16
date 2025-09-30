@@ -1,0 +1,4 @@
+MOV R1, 10
+MOV R2, 20
+ADD R1, R2
+HLT

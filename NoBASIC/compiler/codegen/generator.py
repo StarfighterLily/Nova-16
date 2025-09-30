@@ -176,6 +176,7 @@ class CodeGenerator:
 
     def generate_set_layer(self, stmt: SetLayerStmt):
         """Generate SetLayer(layer) code."""
+        self.output.append("MOV VM, 0")  # Coordinate mode for pixel operations
         self.generate_expression(stmt.layer, "VL")
         # VL is already set by the expression generation
 
@@ -472,33 +473,89 @@ class CodeGenerator:
         right_reg = self.generate_expression(expr.right, "R2")
 
         if expr.operator == "+":
-            self.output.append(f"ADD {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"ADD {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"ADD {target_reg}, {right_reg}")
         elif expr.operator == "-":
-            self.output.append(f"SUB {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"SUB {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"SUB {target_reg}, {right_reg}")
         elif expr.operator == "*":
-            self.output.append(f"MUL {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"MUL {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"MUL {target_reg}, {right_reg}")
         elif expr.operator == "/":
-            self.output.append(f"DIV {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"DIV {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"DIV {target_reg}, {right_reg}")
         elif expr.operator == "%" or expr.operator == "MOD":
-            self.output.append(f"MOD {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"MOD {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"MOD {target_reg}, {right_reg}")
         elif expr.operator == "&" or expr.operator == "AND":
-            self.output.append(f"AND {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"AND {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"AND {target_reg}, {right_reg}")
         elif expr.operator == "|" or expr.operator == "OR":
-            self.output.append(f"OR {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"OR {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"OR {target_reg}, {right_reg}")
         elif expr.operator == "^" or expr.operator == "XOR":
-            self.output.append(f"XOR {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"XOR {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"XOR {target_reg}, {right_reg}")
         elif expr.operator == "<<" or expr.operator == "SHL":
-            self.output.append(f"SHL {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"SHL {target_reg}, {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"SHL {target_reg}, {target_reg}, {right_reg}")
         elif expr.operator == ">>" or expr.operator == "SHR":
-            self.output.append(f"SHR {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"SHR {target_reg}, {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"SHR {target_reg}, {target_reg}, {right_reg}")
         elif expr.operator == "<<<" or expr.operator == "SAL":
-            self.output.append(f"SAL {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"SAL {target_reg}, {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"SAL {target_reg}, {target_reg}, {right_reg}")
         elif expr.operator == ">>>" or expr.operator == "SAR":
-            self.output.append(f"SAR {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"SAR {target_reg}, {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"SAR {target_reg}, {target_reg}, {right_reg}")
         elif expr.operator == "<@" or expr.operator == "ROL":
-            self.output.append(f"ROL {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"ROL {target_reg}, {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"ROL {target_reg}, {target_reg}, {right_reg}")
         elif expr.operator == "@>" or expr.operator == "ROR":
-            self.output.append(f"ROR {target_reg}, {left_reg}, {right_reg}")
+            if left_reg == target_reg:
+                self.output.append(f"ROR {target_reg}, {target_reg}, {right_reg}")
+            else:
+                self.output.append(f"MOV {target_reg}, {left_reg}")
+                self.output.append(f"ROR {target_reg}, {target_reg}, {right_reg}")
         elif expr.operator == "<@@" or expr.operator == "RCL":
             self.output.append(f"RCL {target_reg}, {left_reg}, {right_reg}")
         elif expr.operator == "@@>" or expr.operator == "RCR":

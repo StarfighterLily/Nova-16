@@ -835,6 +835,27 @@ class GFX:
         # Mark layers as dirty if drawing to a non-main layer
         if self.VL != 0:
             self.layers_dirty = True
+        else:
+            # For main layer (VL=0), update screen directly since it's both the layer and the final output
+            if background is None:
+                # Only update foreground pixels on screen
+                for row in range(8):
+                    byte_data = char_data[row]
+                    for col in range(8):
+                        pixel_x = x + col
+                        pixel_y = y + row
+                        if 0 <= pixel_x < self.width and 0 <= pixel_y < self.height:
+                            if byte_data & (0x80 >> col):
+                                self.screen[pixel_y, pixel_x] = color
+            else:
+                # Update entire character area on screen
+                char_matrix = np.zeros((8, 8), dtype=bool)
+                for row in range(8):
+                    byte_data = char_data[row]
+                    for col in range(8):
+                        char_matrix[row, col] = (byte_data & (0x80 >> col)) != 0
+                char_bitmap = np.where(char_matrix, color, background)
+                self.screen[y:y+8, x:x+8] = char_bitmap
     
     def draw_string(self, text, x, y, color=0xFF, background=None, char_spacing=8):
         """Draw a string at the specified position (8x8 characters)"""
