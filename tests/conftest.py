@@ -7,8 +7,9 @@ import numpy as np
 import sys
 import os
 
-# Add the project root to Python path for imports
+# Add the project root and NoBASIC folder to Python path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'NoBASIC'))
 
 import nova_memory as mem
 import nova_cpu as cpu_mod
