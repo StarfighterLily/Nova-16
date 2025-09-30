@@ -132,7 +132,6 @@ def main():
             print("Memory profiling enabled")
         
         print(f"Nova-16 Emulator")
-        print(f"CPU: Standard Python implementation")
         if snd:
             print(f"Sound: {snd.max_channels} channels, {snd.sample_rate}Hz")
         else:
