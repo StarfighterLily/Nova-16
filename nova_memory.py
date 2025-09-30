@@ -1,4 +1,5 @@
 import numpy as np
+from collections import OrderedDict
 
 class Memory:
     def __init__( self, size = 65536 ):
@@ -10,6 +11,127 @@ class Memory:
         
         # Sprite system hook - will be set by CPU during initialization
         self.gfx_system = None
+
+        # ========================================
+        # MEMORY CACHING OPTIMIZATIONS - Phase 2
+        # ========================================
+        
+        # Zero page cache (0x0000-0x00FF) - frequently accessed variables
+        self.zero_page_cache = np.zeros(256, dtype=np.uint8)
+        self.zero_page_dirty = False  # Track if cache needs sync to main memory
+        
+        # Interrupt vector cache (0x0100-0x011F) - 8 vectors × 4 bytes each
+        self.interrupt_vector_cache = np.zeros(32, dtype=np.uint8)
+        self.interrupt_vector_dirty = False
+        
+        # General purpose LRU cache for hot memory locations
+        self.lru_cache = OrderedDict()  # {address: value}
+        self.lru_cache_max_size = 512  # Cache up to 512 recently accessed bytes
+        
+        # Cache write-back optimization
+        self.write_back_batch_size = 16  # Batch write operations
+        self.pending_write_back = set()  # Addresses that need write-back
+        
+        # Cache statistics for performance monitoring
+        self.cache_hits = 0
+        self.cache_misses = 0
+
+    # ========================================
+    # CACHE MANAGEMENT METHODS
+    # ========================================
+    
+    def _sync_zero_page_to_memory(self):
+        """Sync zero page cache to main memory"""
+        if self.zero_page_dirty:
+            self.memory[0:256] = self.zero_page_cache
+            self.zero_page_dirty = False
+    
+    def _sync_zero_page_from_memory(self):
+        """Sync zero page cache from main memory"""
+        self.zero_page_cache[:] = self.memory[0:256]
+        self.zero_page_dirty = False
+    
+    def _sync_interrupt_vectors_to_memory(self):
+        """Sync interrupt vector cache to main memory"""
+        if self.interrupt_vector_dirty:
+            self.memory[0x100:0x120] = self.interrupt_vector_cache
+            self.interrupt_vector_dirty = False
+    
+    def _sync_interrupt_vectors_from_memory(self):
+        """Sync interrupt vector cache from main memory"""
+        self.interrupt_vector_cache[:] = self.memory[0x100:0x120]
+        self.interrupt_vector_dirty = False
+    
+    def _lru_cache_get(self, address):
+        """Get value from LRU cache if present"""
+        if address in self.lru_cache:
+            # Move to end (most recently used)
+            self.lru_cache.move_to_end(address)
+            self.cache_hits += 1
+            return self.lru_cache[address]
+        self.cache_misses += 1
+        return None
+    
+    def _lru_cache_put(self, address, value):
+        """Put value in LRU cache"""
+        if address in self.lru_cache:
+            self.lru_cache.move_to_end(address)
+        else:
+            if len(self.lru_cache) >= self.lru_cache_max_size:
+                # Remove least recently used
+                self.lru_cache.popitem(last=False)
+        self.lru_cache[address] = value
+    
+    def _lru_cache_invalidate(self, address):
+        """Remove address from LRU cache"""
+        if address in self.lru_cache:
+            del self.lru_cache[address]
+    
+    def _sync_caches_after_load(self):
+        """Sync caches with main memory after loading a program"""
+        # Sync zero page cache
+        self.zero_page_cache[:] = self.memory[0:256]
+        self.zero_page_dirty = False
+        
+        # Sync interrupt vector cache
+        self.interrupt_vector_cache[:] = self.memory[0x100:0x120]
+        self.interrupt_vector_dirty = False
+        
+        # Clear LRU cache since memory content has changed
+        self.lru_cache.clear()
+        self.pending_write_back.clear()
+    
+    def _lazy_write_back(self):
+        """Perform lazy write-back of dirty cache lines to main memory"""
+        # Write back zero page if dirty
+        if self.zero_page_dirty:
+            self.memory[0:256] = self.zero_page_cache
+            self.zero_page_dirty = False
+        
+        # Write back interrupt vectors if dirty
+        if self.interrupt_vector_dirty:
+            self.memory[0x100:0x120] = self.interrupt_vector_cache
+            self.interrupt_vector_dirty = False
+        
+        # Write back pending LRU cache entries
+        for addr in list(self.pending_write_back):
+            if addr in self.lru_cache:
+                self.memory[addr] = self.lru_cache[addr]
+        
+        self.pending_write_back.clear()
+    
+    def _check_write_back_needed(self):
+        """Check if write-back is needed based on batch size"""
+        if len(self.pending_write_back) >= self.write_back_batch_size:
+            self._lazy_write_back()
+    
+    def flush_cache(self):
+        """Force write-back of all dirty cache lines"""
+        self._lazy_write_back()
+    
+    def ensure_memory_consistency(self):
+        """Ensure memory consistency by flushing all caches before critical operations"""
+        self.flush_cache()
 
     def write( self, address, value, bytes=1 ):
         # Check bounds
@@ -26,36 +148,65 @@ class Memory:
             self.gfx_system.sprites_dirty = True  # Mark sprites as needing re-render
         
         if bytes == 1:
-            self.memory[ address ] = value & 0xFF
+            self.write_byte(address, value)
         elif bytes == 2:
             # Big-endian for Nova-16: store high byte first, then low byte
-            self.memory[ address ] = ( value >> 8 ) & 0xFF
-            self.memory[ address + 1 ] = value & 0xFF
+            self.write_byte(address, (value >> 8) & 0xFF)
+            self.write_byte(address + 1, value & 0xFF)
         else:
             # For multi-byte writes, store in big-endian order
             for i in range( bytes ):
-                self.memory[ address + i ] = ( value >> ( 8 * (bytes - 1 - i) ) ) & 0xFF
+                self.write_byte(address + i, (value >> (8 * (bytes - 1 - i))) & 0xFF)
 
     def read( self, address, bytes=1 ):
         address = int(address)
         bytes = int(bytes)
         if address < 0 or address + bytes > self.size:
             raise IndexError(f"Read address out of bounds: {address}")
-        return self.memory[ address:address + bytes ]
+        
+        # Ensure cache consistency for multi-byte reads
+        if bytes > 1:
+            self.flush_cache()
+        
+        # For multi-byte reads, use the optimized byte-by-byte method for cache consistency
+        if bytes == 1:
+            return np.array([self.read_byte(address)])
+        else:
+            result = []
+            for i in range(bytes):
+                result.append(self.read_byte(address + i))
+            return np.array(result)
     
     # ========================================
     # OPTIMIZED MEMORY ACCESS METHODS - Phase 1
     # ========================================
     
     def read_byte(self, address):
-        """Optimized single byte read without array overhead"""
+        """Optimized single byte read with lazy write-back caching"""
         addr = int(address)
         if addr < 0 or addr >= self.size:
             raise IndexError(f"Address out of bounds: {addr}")
-        return int(self.memory[addr]) & 0xFF
+        
+        # Check zero page cache (0x0000-0x00FF)
+        if 0 <= addr <= 0xFF:
+            return int(self.zero_page_cache[addr])
+        
+        # Check interrupt vector cache (0x0100-0x011F)
+        elif 0x100 <= addr <= 0x11F:
+            return int(self.interrupt_vector_cache[addr - 0x100])
+        
+        # Check LRU cache first
+        cached_value = self._lru_cache_get(addr)
+        if cached_value is not None:
+            return cached_value
+        
+        # Read from main memory and cache it
+        value = int(self.memory[addr])
+        self._lru_cache_put(addr, value)
+        return value
     
     def read_word(self, address):
-        """Optimized 16-bit read without array overhead (big-endian for Nova-16)"""
+        """Optimized 16-bit read with caching (big-endian for Nova-16)"""
         addr = int(address)
         if addr < 0:
             raise IndexError(f"Address out of bounds for word read: {addr}")
@@ -66,24 +217,51 @@ class Memory:
             else:
                 raise IndexError(f"Address out of bounds for word read: {addr}")
         
-        high_byte = int(self.memory[addr]) & 0xFF
-        low_byte = int(self.memory[addr + 1]) & 0xFF
+        # For cached regions, read byte by byte to maintain cache consistency
+        high_byte = self.read_byte(addr)
+        low_byte = self.read_byte(addr + 1)
         return (high_byte << 8) | low_byte
     
     def write_byte(self, address, value):
-        """Optimized single byte write without method overhead"""
+        """Optimized single byte write with lazy write-back caching"""
         addr = int(address)
         if addr < 0 or addr >= self.size:
             raise IndexError(f"Address out of bounds: {addr}")
         
+        val = int(value) & 0xFF
+        
         # Check if writing to sprite memory region (0xF000-0xF0FF)
         if 0xF000 <= addr <= 0xF0FF and self.gfx_system:
             self.gfx_system.sprites_dirty = True
-            
-        self.memory[addr] = int(value) & 0xFF
+        
+        # Update zero page cache (0x0000-0x00FF) - lazy write-back
+        if 0 <= addr <= 0xFF:
+            self.zero_page_cache[addr] = val
+            self.zero_page_dirty = True
+        
+        # Update interrupt vector cache (0x0100-0x011F) - lazy write-back
+        elif 0x100 <= addr <= 0x11F:
+            self.interrupt_vector_cache[addr - 0x100] = val
+            self.interrupt_vector_dirty = True
+        
+        else:
+            # For non-cached regions, write directly to main memory
+            self.memory[addr] = val
+        
+        # Update LRU cache and mark for lazy write-back
+        self._lru_cache_put(addr, val)
+        self.pending_write_back.add(addr)
+        
+        # Check if we need to do write-back
+        self._check_write_back_needed()
+        
+        # Invalidate instruction cache and prefetch if CPU exists (for self-modifying code)
+        if hasattr(self, 'cpu') and self.cpu:
+            self.cpu.invalidate_instruction_cache()
+            self.cpu.invalidate_prefetch()
     
     def write_word(self, address, value):
-        """Optimized 16-bit write without method overhead (big-endian for Nova-16)"""
+        """Optimized 16-bit write with caching (big-endian for Nova-16)"""
         addr = int(address)
         if addr < 0 or addr >= self.size - 1:
             raise IndexError(f"Address out of bounds for word write: {addr}")
@@ -93,13 +271,19 @@ class Memory:
             self.gfx_system.sprites_dirty = True
             
         val = int(value) & 0xFFFF  # Ensure value is within 16-bit bounds
-        self.memory[addr] = (val >> 8) & 0xFF      # High byte first
-        self.memory[addr + 1] = val & 0xFF         # Low byte second
+        
+        # Write byte by byte to maintain cache consistency
+        self.write_byte(addr, (val >> 8) & 0xFF)      # High byte first
+        self.write_byte(addr + 1, val & 0xFF)         # Low byte second
     
     def read_bytes_direct(self, address, count):
         """Optimized multi-byte read returning list of ints"""
         if address + count > self.size:
             raise IndexError(f"Read beyond memory bounds: {address + count} > {self.size}")
+        
+        # Ensure cache consistency for direct reads
+        self.flush_cache()
+        
         return [int(self.memory[address + i]) for i in range(count)]
 
     def dump( self ):
@@ -116,6 +300,9 @@ class Memory:
         if not file_path:
             return 0x0000
             
+        # Clear LRU cache before loading new program
+        self.lru_cache.clear()
+        
         # Check if there's a corresponding .org file with segment information
         org_file_path = file_path.replace('.bin', '.org')
         try:
@@ -133,6 +320,10 @@ class Memory:
             # Convert bytes to numpy array and copy to memory
             for i in range(load_size):
                 self.memory[i] = data[i]
+        
+        # Sync caches after loading
+        self._sync_caches_after_load()
+        
         return 0x0000
     
     def load_with_org_info(self, bin_file_path, org_file_path):
@@ -142,6 +333,9 @@ class Memory:
         Returns the entry point (first segment's start address).
         """
         print(f"Loading {bin_file_path} with ORG information from {org_file_path}")
+        
+        # Clear LRU cache before loading new program
+        self.lru_cache.clear()
         
         # Read the binary data
         with open(bin_file_path, 'rb') as bin_file:
@@ -191,6 +385,9 @@ class Memory:
                 except Exception as e:
                     raise ValueError(f"Unexpected error loading segment from line {line_num}: {e}")
         
+        # Sync caches after loading
+        self._sync_caches_after_load()
+        
         return entry_point
 
 
@@ -236,6 +433,22 @@ class Memory:
         load_size = min(len(program_data), self.size - address)
         self.memory[address:address + load_size] = np.frombuffer(program_data[:load_size], dtype=np.uint8)
         return address
+
+    def get_cache_stats(self):
+        """Get cache performance statistics"""
+        total_accesses = self.cache_hits + self.cache_misses
+        hit_rate = (self.cache_hits / total_accesses * 100) if total_accesses > 0 else 0
+        
+        return {
+            'cache_hits': self.cache_hits,
+            'cache_misses': self.cache_misses,
+            'total_cache_accesses': total_accesses,
+            'cache_hit_rate': hit_rate,
+            'zero_page_dirty': self.zero_page_dirty,
+            'interrupt_vector_dirty': self.interrupt_vector_dirty,
+            'pending_write_back_count': len(self.pending_write_back),
+            'lru_cache_size': len(self.lru_cache)
+        }
 
     def write_bytes_direct(self, address, data):
         """Write multiple bytes directly to memory"""

@@ -1,0 +1,7 @@
+# Symbol table
+# Format: <symbol> <value>
+SETUP 0x1000
+LOOP 0x1030
+LOOP2 0x106F
+TXT 0x1073
+TIMER_HANDLER 0x1082

@@ -6,7 +6,7 @@ class GFX:
         self.width = width
         self.height = height
         self.total_pixels = width * height  # Cache for bounds checking
-        self.screen = np.zeros( ( self.height, self.width ), dtype=np.uint8 )
+        self._screen = np.zeros( ( self.height, self.width ), dtype=np.uint8 )  # Private screen buffer
         self.Vregisters = np.zeros( 4, dtype=np.uint8 )  # VX, VY, VM (video mode), VC (video color)
         # Keep vmode for backward compatibility, but it will sync with Vregisters[2]
         self.vmode = 0
@@ -66,6 +66,18 @@ class GFX:
         
         # Sprite rendering optimization
         self.sprites_dirty = False  # Track if sprites need re-rendering
+
+    @property
+    def screen(self):
+        """Lazy evaluation of final screen buffer with compositing"""
+        if self.auto_composite and self.layers_dirty:
+            self.composite_layers()
+            self.layers_dirty = False
+        return self._screen
+
+    @screen.setter
+    def screen(self, value):
+        self._screen = value
 
     def roll_x( self, roll_x ):
         # Roll the current layer by roll_x pixels horizontally, pixels roll over to the opposite side
@@ -481,23 +493,23 @@ class GFX:
         """Composite all visible layers into the main screen buffer"""
         # Start with layer 0 as the base (if visible)
         if self.layer_visibility.get(0, True):
-            self.screen[:, :] = self.layer_0[:, :]
+            self._screen[:, :] = self.layer_0[:, :]
         else:
-            self.screen.fill(0)
+            self._screen.fill(0)
         
         # Add background layers (1-4) on top
         for i, layer in enumerate(self.background_layers):
             layer_num = i + 1
             if self.layer_visibility.get(layer_num, True):  # Check visibility
                 mask = layer != 0  # Non-zero pixels are opaque
-                self.screen[mask] = layer[mask]
+                self._screen[mask] = layer[mask]
         
         # Add sprite layers (5-8) on top
         for i, layer in enumerate(self.sprite_layers):
             layer_num = i + 5
             if self.layer_visibility.get(layer_num, True):  # Check visibility
                 mask = layer != 0  # Non-zero pixels are opaque
-                self.screen[mask] = layer[mask]
+                self._screen[mask] = layer[mask]
         
         # Mark layers as clean
         self.layers_dirty = False
@@ -604,25 +616,44 @@ class GFX:
             self.layers_dirty = True
     
     def _set_pixel_to_layer(self, x, y, value):
-        """Set a pixel to the current layer specified by VL register with blending"""
-        if self.VL == 0:
+        """Set a pixel to the current layer specified by VL register with blending - optimized with fast paths"""
+        vl = self.VL
+        
+        # Fast path: no blending needed (most common case)
+        if self.blend_mode == 0 and self.blend_alpha == 255:
+            if vl == 0:
+                # Write to layer 0 and main screen directly
+                self.layer_0[y, x] = value
+                self._screen[y, x] = value  # Direct write to avoid triggering property getter
+            elif 1 <= vl <= 4:
+                # Write to background layer directly
+                self.background_layers[vl - 1][y, x] = value
+                self.layers_dirty = True
+            elif 5 <= vl <= 8:
+                # Write to sprite layer directly
+                self.sprite_layers[vl - 5][y, x] = value
+                self.layers_dirty = True
+            return
+        
+        # Slow path: full blending required
+        if vl == 0:
             # Write to layer 0 and main screen with blending
             existing = self.layer_0[y, x]
             blended = self.blend_pixel(existing, value)
             self.layer_0[y, x] = blended
-            self.screen[y, x] = blended  # Also update final screen
-        elif 1 <= self.VL <= 4:
+            self._screen[y, x] = blended  # Direct write to avoid triggering property getter
+        elif 1 <= vl <= 4:
             # Write to background layer with blending
-            existing = self.background_layers[self.VL - 1][y, x]
+            existing = self.background_layers[vl - 1][y, x]
             blended = self.blend_pixel(existing, value)
-            self.background_layers[self.VL - 1][y, x] = blended
-            self.layers_dirty = True  # Mark layers as needing recomposition
-        elif 5 <= self.VL <= 8:
+            self.background_layers[vl - 1][y, x] = blended
+            self.layers_dirty = True
+        elif 5 <= vl <= 8:
             # Write to sprite layer with blending
-            existing = self.sprite_layers[self.VL - 5][y, x]
+            existing = self.sprite_layers[vl - 5][y, x]
             blended = self.blend_pixel(existing, value)
-            self.sprite_layers[self.VL - 5][y, x] = blended
-            self.layers_dirty = True  # Mark layers as needing recomposition
+            self.sprite_layers[vl - 5][y, x] = blended
+            self.layers_dirty = True
 
     def roll_x( self, roll_x ):
         # Roll the current layer by roll_x pixels horizontally, pixels roll over to the opposite side
