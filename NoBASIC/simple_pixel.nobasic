@@ -1,0 +1,4 @@
+SetLayer(0)
+ClrDraw
+PxlOn(5, 5, 255)
+Pause

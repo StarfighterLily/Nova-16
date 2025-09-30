@@ -1,0 +1,5 @@
+ORG 0x0200
+
+SWRITE 0x42
+
+HLT

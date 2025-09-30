@@ -1627,7 +1627,7 @@ class CPU:
                     idx, typ = self.reg_index(reg_code)
                     if typ not in ['P', 'R']:
                         raise Exception(f"Invalid register type {typ} for indirect addressing")
-                    operand['address'] = self.Pregisters[idx] if typ == 'P' else self.Rregisters[idx]
+                    operand['indirect'] = True
                     operand['reg_type'] = typ
                     operand['reg_idx'] = idx
                 elif not direct and indexed:
@@ -1637,8 +1637,7 @@ class CPU:
                     idx, typ = self.reg_index(reg_code)
                     if typ not in ['P', 'R']:
                         raise Exception(f"Invalid register type {typ} for indexed addressing")
-                    base_addr = self.Pregisters[idx] if typ == 'P' else self.Rregisters[idx]
-                    operand['address'] = (base_addr + index) & 0xFFFF
+                    operand['indexed'] = True
                     operand['reg_type'] = typ
                     operand['reg_idx'] = idx
                     operand['index'] = index
@@ -1687,15 +1686,26 @@ class CPU:
         elif operand['type'] == 'immediate':
             return operand['value']
         elif operand['type'] == 'memory':
+            # Calculate address at access time
+            if 'address' in operand:
+                address = operand['address']
+            elif 'indirect' in operand:
+                address = self.Pregisters[operand['reg_idx']] if operand['reg_type'] == 'P' else self.Rregisters[operand['reg_idx']]
+            elif 'indexed' in operand:
+                base = self.Pregisters[operand['reg_idx']] if operand['reg_type'] == 'P' else self.Rregisters[operand['reg_idx']]
+                address = (base + operand['index']) & 0xFFFF
+            else:
+                raise Exception("Invalid memory operand")
+            
             # Determine read size based on destination operand
             if dest_operand and dest_operand['type'] == 'register':
                 if dest_operand['reg_type'] == 'R':
-                    return self.memory.read_byte(operand['address'])
+                    return self.memory.read_byte(address)
                 else:  # P register
-                    return self.memory.read_word(operand['address'])
+                    return self.memory.read_word(address)
             else:
                 # Default to word for backward compatibility
-                return self.memory.read_word(operand['address'])
+                return self.memory.read_word(address)
         else:
             raise Exception(f"Unknown operand type: {operand['type']}")
 
@@ -1708,20 +1718,31 @@ class CPU:
             # if cache_key in self.register_cache:
             #     del self.register_cache[cache_key]
         elif operand['type'] == 'memory':
+            # Calculate address at access time
+            if 'address' in operand:
+                address = operand['address']
+            elif 'indirect' in operand:
+                address = self.Pregisters[operand['reg_idx']] if operand['reg_type'] == 'P' else self.Rregisters[operand['reg_idx']]
+            elif 'indexed' in operand:
+                base = self.Pregisters[operand['reg_idx']] if operand['reg_type'] == 'P' else self.Rregisters[operand['reg_idx']]
+                address = (base + operand['index']) & 0xFFFF
+            else:
+                raise Exception("Invalid memory operand")
+            
             # Determine write size based on source operand or value size
             if source_operand and source_operand['type'] == 'immediate':
                 if source_operand.get('size') == 8:
-                    self.memory.write_byte(operand['address'], value)
+                    self.memory.write_byte(address, value)
                 else:  # 16-bit or unknown
-                    self.memory.write_word(operand['address'], value)
+                    self.memory.write_word(address, value)
             elif source_operand and source_operand['type'] == 'register':
                 if source_operand['reg_type'] == 'R':
-                    self.memory.write_byte(operand['address'], value)
+                    self.memory.write_byte(address, value)
                 else:  # P register or other
-                    self.memory.write_word(operand['address'], value)
+                    self.memory.write_word(address, value)
             else:
                 # Default to word for backward compatibility
-                self.memory.write_word(operand['address'], value)
+                self.memory.write_word(address, value)
         else:
             raise Exception(f"Cannot set value for operand type: {operand['type']}")
 

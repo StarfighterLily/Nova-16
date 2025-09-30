@@ -1,0 +1,6 @@
+ORG 0x0200
+
+MOV VC, 0x42
+SWRITE VC
+
+HLT

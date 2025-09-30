@@ -1,7 +1,7 @@
-SetLayer(0)
+SetLayer(1)
 // Fill screen one pixel at a time with nested For loops
 
-z = 1
+z = 0
 
 For y = 0 To 255
     For x = 0 To 255
@@ -9,5 +9,3 @@ For y = 0 To 255
         z = z + 1
     Next
 Next
-
-Pause

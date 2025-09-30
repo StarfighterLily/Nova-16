@@ -22,7 +22,7 @@ MOV R1, [0x0104]      ; Load byte from 0x0104 to R1 (should be 0x42)
 MOV P1, [0x0100]      ; Load word from 0x0100 to P1 (should be 0xABCD)
 
 ; Test 7: MOV memory to memory (via register)
-MOV R2, [0x0106]      ; Load byte from 0x0106 to R2 (should be 0x34, low byte)
+MOV R2, [0x0107]      ; Load byte from 0x0107 to R2 (should be 0x34, low byte)
 MOV [0x0108], R2      ; Store to 0x0108
 
 ; Test 8: Check if values are correct

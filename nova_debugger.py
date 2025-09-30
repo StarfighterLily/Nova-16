@@ -184,7 +184,7 @@ class NovaDebugger:
         print("PC: 0x{:04X}".format(self.cpu.pc))
         print("R0-R9:", ' '.join(f"R{i}:0x{int(val):02X}  " for i, val in enumerate(self.cpu.Rregisters[:10])))
         print("P0-P9:", ' '.join(f"P{i}:0x{int(val):04X}" for i, val in enumerate(self.cpu.Pregisters[:10])))
-        print(f"VM: 0x{self.gpu.Vregisters[2]:04X} VX: 0x{self.gpu.Vregisters[0]:04X} VY: 0x{self.gpu.Vregisters[1]:04X} VL: 0x{self.gpu.VL:04X}")
+        print(f"VM: 0x{self.gpu.Vregisters[2]:04X} VX: 0x{self.gpu.Vregisters[0]:04X} VY: 0x{self.gpu.Vregisters[1]:04X} VL: 0x{self.gpu.VL:04X} VC: 0x{self.gpu.Vregisters[3]:04X}")
         print(f"SA: 0x{self.sound.SA:04X} SF: 0x{self.sound.SF:04X} SV: 0x{self.sound.SV:04X} SW: 0x{self.sound.SW:04X}")
         print(f"TT: 0x{self.cpu.timer[0]:04X} TM: 0x{self.cpu.timer[1]:04X} TC: 0x{self.cpu.timer[2]:04X} TS: 0x{self.cpu.timer[3]:04X}")
         # Show flags if available

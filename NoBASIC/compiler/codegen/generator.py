@@ -24,6 +24,65 @@ class CodeGenerator:
         self.variable_addresses: Dict[str, int] = {}
         self.next_address = 0x0120  # Start after interrupt vectors
         self.strings: List[Tuple[str, str]] = []  # List of (label, string_value)
+        self.loop_nesting_level = 0
+        
+        # Register allocation tracking
+        self.register_usage: Dict[str, bool] = {
+            'R0': False, 'R1': False, 'R2': False, 'R3': False, 'R4': False,
+            'R5': False, 'R6': False, 'R7': False, 'R8': False, 'R9': False,
+            'P0': False, 'P1': False, 'P2': False, 'P3': False, 'P4': False,
+            'P5': False, 'P6': False, 'P7': False, 'SP': False, 'FP': False,
+            'VX': False, 'VY': False, 'VM': False, 'VL': False, 'VC': False,
+            'SA': False, 'SF': False, 'SV': False, 'SW': False,
+            'TT': False, 'TM': False, 'TC': False, 'TS': False
+        }
+        
+        # Preferred register order for allocation (R registers first, then P registers)
+        self.allocation_order = [
+            'R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9',
+            'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7'
+        ]
+
+    def allocate_register(self, preferred_reg: str = None) -> str:
+        """Allocate an unused register, preferring the specified register if available."""
+        # Try preferred register first
+        if preferred_reg and not self.register_usage[preferred_reg]:
+            self.register_usage[preferred_reg] = True
+            return preferred_reg
+        
+        # Try allocation order
+        for reg in self.allocation_order:
+            if not self.register_usage[reg]:
+                self.register_usage[reg] = True
+                return reg
+        
+        raise RuntimeError("No available registers for allocation")
+
+    def deallocate_register(self, reg: str):
+        """Deallocate a register, marking it as available."""
+        if reg in self.register_usage:
+            self.register_usage[reg] = False
+
+    def with_temporary_register(self, preferred_reg: str = None):
+        """Context manager for temporary register allocation."""
+        reg = self.allocate_register(preferred_reg)
+        try:
+            yield reg
+        finally:
+            self.deallocate_register(reg)
+
+    def get_loop_registers(self) -> Tuple[str, str, str]:
+        """Get the appropriate registers for the current loop nesting level.
+        
+        Returns:
+            Tuple of (current_reg, end_reg, step_reg) for the current nesting level.
+        """
+        # Use different register sets for different nesting levels
+        # Level 0: P1, P2, P3
+        # Level 1: P4, P5, P6  
+        # Level 2: P7, P8, P9
+        base_reg_num = 1 + (self.loop_nesting_level * 3)
+        return (f"P{base_reg_num}", f"P{base_reg_num + 1}", f"P{base_reg_num + 2}")
 
     def generate(self, program: Program) -> str:
         """
@@ -39,6 +98,13 @@ class CodeGenerator:
         self.label_counter = 0
         self.variable_addresses = {}
         self.next_address = 0x0120
+
+        # Set ORG to 0x0200 (past interrupt vectors)
+        self.output.append("ORG 0x0200")
+        
+        # Initialize stack
+        self.output.append("MOV SP, 0xF000")  # Initialize stack pointer
+        self.output.append("MOV FP, SP")      # Initialize frame pointer
 
         # Generate code for all statements
         for stmt in program.statements:
@@ -109,20 +175,25 @@ class CodeGenerator:
     def generate_clr_draw(self):
         """Generate ClrDraw code."""
         self.output.append("; ClrDraw - simplified")
-        self.output.append("MOV VM, 0")  # Coordinate mode
+        self.output.append("MOV VM, 1")  # Memory mode
         self.output.append("MOV VL, 0")  # Layer 0
         self.output.append("SFILL 0x00")
 
     def generate_pxl_on(self, stmt: PxlOnStmt):
         """Generate PxlOn(x, y, color) code."""
-        x_reg = self.generate_expression(stmt.x, "R1")
-        y_reg = self.generate_expression(stmt.y, "R2")
-        color_reg = self.generate_expression(stmt.color, "R3")
-
-        self.output.append(f"MOV VX, {x_reg}")
-        self.output.append(f"MOV VY, {y_reg}")
-        self.output.append(f"MOV VC, {color_reg}")
+        # Use coordinate mode addressing
+        x_reg = self.generate_expression(stmt.x)  # Allocate register automatically
+        y_reg = self.generate_expression(stmt.y)  # Allocate register automatically
+        self.output.append(f"MOV VX, {x_reg}")  # VX = x coordinate
+        self.output.append(f"MOV VY, {y_reg}")  # VY = y coordinate
+        color_reg = self.generate_expression(stmt.color)  # Allocate register automatically
+        self.output.append(f"MOV VC, {color_reg}")  # Use the allocated color register
         self.output.append("SWRITE VC")
+        
+        # Deallocate registers
+        self.deallocate_register(x_reg)
+        self.deallocate_register(y_reg)
+        self.deallocate_register(color_reg)
 
     def generate_pxl_off(self, stmt: PxlOffStmt):
         """Generate PxlOff(x, y) code."""
@@ -136,28 +207,47 @@ class CodeGenerator:
 
     def generate_line(self, stmt: LineStmt):
         """Generate Line drawing code using SLINE opcode."""
-        x1_reg = self.generate_expression(stmt.x1, "R1")
-        y1_reg = self.generate_expression(stmt.y1, "R2")
-        x2_reg = self.generate_expression(stmt.x2, "R3")
-        y2_reg = self.generate_expression(stmt.y2, "R4")
+        x1_reg = self.generate_expression(stmt.x1)
+        y1_reg = self.generate_expression(stmt.y1)
+        x2_reg = self.generate_expression(stmt.x2)
+        y2_reg = self.generate_expression(stmt.y2)
 
         # Set up coordinates
         self.output.append(f"MOV VX, {x1_reg}")
         self.output.append(f"MOV VY, {y1_reg}")
-        color_reg = self.generate_expression(stmt.color, "VC")
+        color_reg = self.generate_expression(stmt.color)
+        self.output.append(f"MOV VC, {color_reg}")
 
         # Use SLINE opcode
         self.output.append(f"SLINE {x2_reg}, {y2_reg}")
+        
+        # Deallocate registers
+        self.deallocate_register(x1_reg)
+        self.deallocate_register(y1_reg)
+        self.deallocate_register(x2_reg)
+        self.deallocate_register(y2_reg)
+        self.deallocate_register(color_reg)
 
     def generate_circle(self, stmt: CircleStmt):
         """Generate Circle drawing code using SCIRC opcode."""
-        x_reg = self.generate_expression(stmt.x, "VX")
-        y_reg = self.generate_expression(stmt.y, "VY")
-        radius_reg = self.generate_expression(stmt.radius, "R1")
-        color_reg = self.generate_expression(stmt.color, "VC")
+        x_reg = self.generate_expression(stmt.x)
+        y_reg = self.generate_expression(stmt.y)
+        radius_reg = self.generate_expression(stmt.radius)
+        color_reg = self.generate_expression(stmt.color)
+
+        # Set coordinates and color
+        self.output.append(f"MOV VX, {x_reg}")
+        self.output.append(f"MOV VY, {y_reg}")
+        self.output.append(f"MOV VC, {color_reg}")
 
         # Use SCIRC opcode
         self.output.append(f"SCIRC {radius_reg}, 1")  # 1 for filled
+        
+        # Deallocate registers
+        self.deallocate_register(x_reg)
+        self.deallocate_register(y_reg)
+        self.deallocate_register(radius_reg)
+        self.deallocate_register(color_reg)
 
     def generate_text(self, stmt: TextStmt):
         """Generate Text rendering code using TEXT opcode."""
@@ -269,7 +359,7 @@ class CodeGenerator:
 
     def generate_assignment(self, stmt: AssignmentStmt):
         """Generate optimized assignment code."""
-        value_reg = self.generate_expression(stmt.expression, "R1")
+        value_reg = self.generate_expression(stmt.expression, "P1")  # Prefer P register for 16-bit storage
 
         if isinstance(stmt.variable, VariableExpr):
             # Simple variable assignment
@@ -354,43 +444,79 @@ class CodeGenerator:
         """Generate optimized For loop code."""
         loop_label = self.new_label()
         end_label = self.new_label()
+        
+        # Get registers for this nesting level
+        current_reg, end_reg, step_reg = self.get_loop_registers()
+        
+        # Increment nesting level for inner constructs
+        self.loop_nesting_level += 1
+
+        # Allocate loop_reg, preferring current_reg
+        preferred = [current_reg] + ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']
+        loop_reg = None
+        for reg in preferred:
+            if not self.register_usage.get(reg, False):
+                loop_reg = reg
+                break
+        if not loop_reg:
+            loop_reg = self.allocate_register()
+        self.register_usage[loop_reg] = True
+
+        # Allocate end_reg, avoiding conflicts
+        if end_reg == loop_reg or self.register_usage.get(end_reg, False):
+            end_reg = self.allocate_register()
+        self.register_usage[end_reg] = True
+
+        # Allocate step_reg, avoiding conflicts
+        if step_reg == loop_reg or step_reg == end_reg or self.register_usage.get(step_reg, False):
+            step_reg = self.allocate_register()
+        self.register_usage[step_reg] = True
 
         # Initialize variable
         start_reg = self.generate_expression(stmt.start)
         var_addr = self.get_variable_address(stmt.variable)
+        self.output.append(f"MOV {loop_reg}, {start_reg}")
         self.output.append(f"MOV P0, {var_addr}")
-        self.output.append(f"MOV [P0], {start_reg}")
+        self.output.append(f"MOV [P0], {loop_reg}")
 
         self.output.append(f"{loop_label}:")
 
-        # Load current value and check condition
-        current_reg = self.load_variable(stmt.variable, "P1")
-        end_reg = self.generate_expression(stmt.end, "P2")
-        self.output.append(f"CMP {current_reg}, {end_reg}")
+        # Update memory for expressions
+        self.output.append(f"MOV P0, {var_addr}")
+        self.output.append(f"MOV [P0], {loop_reg}")
 
-        # For ascending loops (default), exit when current > end
-        self.output.append(f"JGT {end_label}")
+        # Check condition
+        end_reg_loaded = self.generate_expression(stmt.end, end_reg)
+        self.output.append(f"CMP {loop_reg}, {end_reg_loaded}")
+
+        # For ascending loops, exit when current > end (unsigned comparison)
+        body_label = self.new_label()
+        self.output.append(f"JC {body_label}")  # current < end
+        self.output.append(f"JZ {body_label}")  # current == end
+        self.output.append(f"JMP {end_label}")  # current > end
+        self.output.append(f"{body_label}:")
 
         # Loop body
         for s in stmt.body:
             self.generate_statement(s)
 
         # Increment
-        # Reload current value since it may have been overwritten
-        current_reg = self.load_variable(stmt.variable, "P1")
         if stmt.step:
-            step_reg = self.generate_expression(stmt.step, "P3")
-            self.output.append(f"ADD {current_reg}, {current_reg}, {step_reg}")
+            step_reg_loaded = self.generate_expression(stmt.step, step_reg)
+            self.output.append(f"ADD {loop_reg}, {step_reg_loaded}")
         else:
             # Optimize: use INC for step=1
-            self.output.append(f"INC {current_reg}")
-
-        # Store back
-        self.output.append(f"MOV P0, {var_addr}")
-        self.output.append(f"MOV [P0], {current_reg}")
+            self.output.append(f"INC {loop_reg}")
 
         self.output.append(f"JMP {loop_label}")
         self.output.append(f"{end_label}:")
+
+        self.deallocate_register(loop_reg)
+        self.deallocate_register(end_reg)
+        self.deallocate_register(step_reg)
+        
+        # Decrement nesting level
+        self.loop_nesting_level -= 1
 
     def generate_while(self, stmt: WhileStmt):
         """Generate optimized While loop code."""
@@ -430,167 +556,193 @@ class CodeGenerator:
         """Generate Label code."""
         self.output.append(f"{stmt.label}:")
 
-    def generate_expression(self, expr: Expression, target_reg: str = "R0") -> str:
+    def generate_expression(self, expr: Expression, preferred_reg: str = None) -> str:
         """Generate code for an expression and return the register containing the result."""
-        if isinstance(expr, LiteralExpr):
-            if expr.data_type.name == "NUMBER":  # Use .name to get enum name
-                # Optimize for common values
-                if expr.value == 0:
-                    self.output.append(f"XOR {target_reg}, {target_reg}")  # Zero register
-                elif expr.value == 1:
-                    self.output.append(f"MOV {target_reg}, 1")
-                elif expr.value in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
-                    # Use shifts for powers of 2
-                    shift_amount = expr.value.bit_length() - 1
-                    self.output.append(f"MOV {target_reg}, 1")
-                    self.output.append(f"SHL {target_reg}, {target_reg}, {shift_amount}")
-                else:
-                    self.output.append(f"MOV {target_reg}, {expr.value}")
-                return target_reg
-            else:
-                # String literals would need to be stored in memory
-                self.output.append(f"MOV {target_reg}, 0")  # Simplified
-                return target_reg
-        elif isinstance(expr, VariableExpr):
-            return self.load_variable(expr.name, target_reg)
-        elif isinstance(expr, ListAccessExpr):
-            return self.generate_list_access(expr, target_reg)
-        elif isinstance(expr, MatrixAccessExpr):
-            return self.generate_matrix_access(expr, target_reg)
-        elif isinstance(expr, BinaryExpr):
-            return self.generate_binary_expression(expr, target_reg)
-        elif isinstance(expr, UnaryExpr):
-            return self.generate_unary_expression(expr, target_reg)
-        elif isinstance(expr, FunctionCallExpr):
-            return self.generate_function_call(expr, target_reg)
+        if preferred_reg and self.register_usage.get(preferred_reg, False):
+            # preferred_reg is already allocated, use it
+            target_reg = preferred_reg
         else:
-            self.output.append(f"MOV {target_reg}, 0")  # Default
-            return target_reg
+            # Allocate a new register
+            target_reg = self.allocate_register(preferred_reg)
+        
+        try:
+            if isinstance(expr, LiteralExpr):
+                if expr.data_type.name == "NUMBER":  # Use .name to get enum name
+                    # Optimize for common values
+                    if expr.value == 0:
+                        self.output.append(f"XOR {target_reg}, {target_reg}")  # Zero register
+                    elif expr.value == 1:
+                        self.output.append(f"MOV {target_reg}, 1")
+                    elif expr.value in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
+                        # Use shifts for powers of 2
+                        shift_amount = expr.value.bit_length() - 1
+                        self.output.append(f"MOV {target_reg}, 1")
+                        self.output.append(f"SHL {target_reg}, {shift_amount}")
+                    else:
+                        self.output.append(f"MOV {target_reg}, {expr.value}")
+                    return target_reg
+                else:
+                    # String literals would need to be stored in memory
+                    self.output.append(f"MOV {target_reg}, 0")  # Simplified
+                    return target_reg
+            elif isinstance(expr, VariableExpr):
+                return self.load_variable(expr.name, target_reg)
+            elif isinstance(expr, ListAccessExpr):
+                return self.generate_list_access(expr, target_reg)
+            elif isinstance(expr, MatrixAccessExpr):
+                return self.generate_matrix_access(expr, target_reg)
+            elif isinstance(expr, BinaryExpr):
+                return self.generate_binary_expression(expr, target_reg)
+            elif isinstance(expr, UnaryExpr):
+                return self.generate_unary_expression(expr, target_reg)
+            elif isinstance(expr, FunctionCallExpr):
+                return self.generate_function_call(expr, target_reg)
+            else:
+                self.output.append(f"MOV {target_reg}, 0")  # Default
+                return target_reg
+        except Exception as e:
+            # If anything goes wrong and we allocated the register here, deallocate it
+            if not (preferred_reg and self.register_usage.get(preferred_reg, False)):
+                self.deallocate_register(target_reg)
+            raise
 
     def generate_binary_expression(self, expr: BinaryExpr, target_reg: str) -> str:
         """Generate optimized code for binary expressions."""
-        left_reg = self.generate_expression(expr.left, "R1")
-        right_reg = self.generate_expression(expr.right, "R2")
+        # Allocate registers for operands, avoiding the target register
+        available_regs = [r for r in self.allocation_order if r != target_reg]
+        
+        left_reg = self.allocate_register(available_regs[0] if available_regs else None)
+        right_reg = self.allocate_register(available_regs[1] if len(available_regs) > 1 else None)
+        
+        try:
+            left_result = self.generate_expression(expr.left, left_reg)
+            right_result = self.generate_expression(expr.right, right_reg)
 
-        if expr.operator == "+":
-            if left_reg == target_reg:
-                self.output.append(f"ADD {target_reg}, {right_reg}")
+            if expr.operator == "+":
+                if left_result == target_reg:
+                    self.output.append(f"ADD {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"ADD {target_reg}, {right_result}")
+            elif expr.operator == "-":
+                if left_result == target_reg:
+                    self.output.append(f"SUB {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"SUB {target_reg}, {right_result}")
+            elif expr.operator == "*":
+                if left_result == target_reg:
+                    self.output.append(f"MUL {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"MUL {target_reg}, {right_result}")
+            elif expr.operator == "/":
+                if left_result == target_reg:
+                    self.output.append(f"DIV {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"DIV {target_reg}, {right_result}")
+            elif expr.operator == "%" or expr.operator == "MOD":
+                if left_result == target_reg:
+                    self.output.append(f"MOD {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"MOD {target_reg}, {right_result}")
+            elif expr.operator == "&" or expr.operator == "AND":
+                if left_result == target_reg:
+                    self.output.append(f"AND {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"AND {target_reg}, {right_result}")
+            elif expr.operator == "|" or expr.operator == "OR":
+                if left_result == target_reg:
+                    self.output.append(f"OR {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"OR {target_reg}, {right_result}")
+            elif expr.operator == "^" or expr.operator == "XOR":
+                if left_result == target_reg:
+                    self.output.append(f"XOR {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"XOR {target_reg}, {right_result}")
+            elif expr.operator == "<<" or expr.operator == "SHL":
+                if left_result == target_reg:
+                    self.output.append(f"SHL {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"SHL {target_reg}, {right_result}")
+            elif expr.operator == ">>" or expr.operator == "SHR":
+                if left_result == target_reg:
+                    self.output.append(f"SHR {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"SHR {target_reg}, {right_result}")
+            elif expr.operator == "<<<" or expr.operator == "SAL":
+                if left_result == target_reg:
+                    self.output.append(f"SAL {target_reg}, {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"SAL {target_reg}, {target_reg}, {right_result}")
+            elif expr.operator == ">>>" or expr.operator == "SAR":
+                if left_result == target_reg:
+                    self.output.append(f"SAR {target_reg}, {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"SAR {target_reg}, {target_reg}, {right_result}")
+            elif expr.operator == "<@" or expr.operator == "ROL":
+                if left_result == target_reg:
+                    self.output.append(f"ROL {target_reg}, {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"ROL {target_reg}, {target_reg}, {right_result}")
+            elif expr.operator == "@>" or expr.operator == "ROR":
+                if left_result == target_reg:
+                    self.output.append(f"ROR {target_reg}, {target_reg}, {right_result}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {left_result}")
+                    self.output.append(f"ROR {target_reg}, {target_reg}, {right_result}")
+            elif expr.operator == "<@@" or expr.operator == "RCL":
+                self.output.append(f"RCL {target_reg}, {left_result}, {right_result}")
+            elif expr.operator == "@@>" or expr.operator == "RCR":
+                self.output.append(f"RCR {target_reg}, {left_result}, {right_result}")
+            elif expr.operator == "<" or expr.operator == ">" or expr.operator == "=" or expr.operator == "<>" or expr.operator == "<=" or expr.operator == ">=":
+                # Use CMP for comparisons and set target_reg based on result
+                self.output.append(f"CMP {left_result}, {right_result}")
+                
+                true_label = self.new_label()
+                end_label = self.new_label()
+                
+                # Set default to false
+                self.output.append(f"MOV {target_reg}, 0")
+                
+                # Jump to set true if condition met
+                if expr.operator == "<":
+                    self.output.append(f"JLT {true_label}")
+                elif expr.operator == ">":
+                    self.output.append(f"JGT {true_label}")
+                elif expr.operator == "=":
+                    self.output.append(f"JZ {true_label}")
+                elif expr.operator == "<>":
+                    self.output.append(f"JNZ {true_label}")
+                elif expr.operator == "<=":
+                    self.output.append(f"JLE {true_label}")
+                elif expr.operator == ">=":
+                    self.output.append(f"JGE {true_label}")
+                
+                self.output.append(f"JMP {end_label}")
+                self.output.append(f"{true_label}:")
+                self.output.append(f"MOV {target_reg}, 1")
+                self.output.append(f"{end_label}:")
             else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"ADD {target_reg}, {right_reg}")
-        elif expr.operator == "-":
-            if left_reg == target_reg:
-                self.output.append(f"SUB {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"SUB {target_reg}, {right_reg}")
-        elif expr.operator == "*":
-            if left_reg == target_reg:
-                self.output.append(f"MUL {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"MUL {target_reg}, {right_reg}")
-        elif expr.operator == "/":
-            if left_reg == target_reg:
-                self.output.append(f"DIV {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"DIV {target_reg}, {right_reg}")
-        elif expr.operator == "%" or expr.operator == "MOD":
-            if left_reg == target_reg:
-                self.output.append(f"MOD {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"MOD {target_reg}, {right_reg}")
-        elif expr.operator == "&" or expr.operator == "AND":
-            if left_reg == target_reg:
-                self.output.append(f"AND {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"AND {target_reg}, {right_reg}")
-        elif expr.operator == "|" or expr.operator == "OR":
-            if left_reg == target_reg:
-                self.output.append(f"OR {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"OR {target_reg}, {right_reg}")
-        elif expr.operator == "^" or expr.operator == "XOR":
-            if left_reg == target_reg:
-                self.output.append(f"XOR {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"XOR {target_reg}, {right_reg}")
-        elif expr.operator == "<<" or expr.operator == "SHL":
-            if left_reg == target_reg:
-                self.output.append(f"SHL {target_reg}, {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"SHL {target_reg}, {target_reg}, {right_reg}")
-        elif expr.operator == ">>" or expr.operator == "SHR":
-            if left_reg == target_reg:
-                self.output.append(f"SHR {target_reg}, {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"SHR {target_reg}, {target_reg}, {right_reg}")
-        elif expr.operator == "<<<" or expr.operator == "SAL":
-            if left_reg == target_reg:
-                self.output.append(f"SAL {target_reg}, {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"SAL {target_reg}, {target_reg}, {right_reg}")
-        elif expr.operator == ">>>" or expr.operator == "SAR":
-            if left_reg == target_reg:
-                self.output.append(f"SAR {target_reg}, {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"SAR {target_reg}, {target_reg}, {right_reg}")
-        elif expr.operator == "<@" or expr.operator == "ROL":
-            if left_reg == target_reg:
-                self.output.append(f"ROL {target_reg}, {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"ROL {target_reg}, {target_reg}, {right_reg}")
-        elif expr.operator == "@>" or expr.operator == "ROR":
-            if left_reg == target_reg:
-                self.output.append(f"ROR {target_reg}, {target_reg}, {right_reg}")
-            else:
-                self.output.append(f"MOV {target_reg}, {left_reg}")
-                self.output.append(f"ROR {target_reg}, {target_reg}, {right_reg}")
-        elif expr.operator == "<@@" or expr.operator == "RCL":
-            self.output.append(f"RCL {target_reg}, {left_reg}, {right_reg}")
-        elif expr.operator == "@@>" or expr.operator == "RCR":
-            self.output.append(f"RCR {target_reg}, {left_reg}, {right_reg}")
-        elif expr.operator == "<" or expr.operator == ">" or expr.operator == "=" or expr.operator == "<>" or expr.operator == "<=" or expr.operator == ">=":
-            # Use CMP for comparisons and set target_reg based on result
-            self.output.append(f"CMP {left_reg}, {right_reg}")
+                # Fallback
+                self.output.append(f"MOV {target_reg}, #0")
+                
+        finally:
+            # Always deallocate the operand registers
+            self.deallocate_register(left_reg)
+            self.deallocate_register(right_reg)
             
-            true_label = self.new_label()
-            end_label = self.new_label()
-            
-            # Set default to false
-            self.output.append(f"MOV {target_reg}, 0")
-            
-            # Jump to set true if condition met
-            if expr.operator == "<":
-                self.output.append(f"JLT {true_label}")
-            elif expr.operator == ">":
-                self.output.append(f"JGT {true_label}")
-            elif expr.operator == "=":
-                self.output.append(f"JZ {true_label}")
-            elif expr.operator == "<>":
-                self.output.append(f"JNZ {true_label}")
-            elif expr.operator == "<=":
-                self.output.append(f"JLE {true_label}")
-            elif expr.operator == ">=":
-                self.output.append(f"JGE {true_label}")
-            
-            self.output.append(f"JMP {end_label}")
-            self.output.append(f"{true_label}:")
-            self.output.append(f"MOV {target_reg}, 1")
-            self.output.append(f"{end_label}:")
-        else:
-            # Fallback
-            self.output.append(f"MOV {target_reg}, #0")
         return target_reg
 
     def generate_unary_expression(self, expr: UnaryExpr, target_reg: str) -> str:
@@ -986,8 +1138,14 @@ class CodeGenerator:
     def load_variable(self, name: str, target_reg: str = "R0") -> str:
         """Load a variable into a register."""
         addr = self.get_variable_address(name)
-        self.output.append(f"MOV P0, {addr}")
-        self.output.append(f"MOV {target_reg}, [P0]")
+        if target_reg.startswith('R'):
+            # For 8-bit R registers, read the low byte (stored at addr + 1)
+            self.output.append(f"MOV P0, {addr + 1}")
+            self.output.append(f"MOV {target_reg}, [P0]")
+        else:
+            # For 16-bit P registers, read the full word
+            self.output.append(f"MOV P0, {addr}")
+            self.output.append(f"MOV {target_reg}, [P0]")
         return target_reg
 
     def get_variable_address(self, variable) -> int:

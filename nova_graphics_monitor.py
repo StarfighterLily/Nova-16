@@ -22,7 +22,7 @@ import numpy as np
 class GraphicsState:
     """Tracks detailed graphics state for debugging"""
     def __init__(self):
-        self.video_registers = {'VX': 0, 'VY': 0, 'VM': 0, 'VL': 0}
+        self.video_registers = {'VX': 0, 'VY': 0, 'VM': 0, 'VL': 0, "VC": 0}
         self.layers_changed = set()
         self.pixels_written = []  # List of (cycle, layer, x, y, color) tuples
         self.memory_operations = []  # List of (cycle, operation, address, value) tuples
@@ -61,7 +61,7 @@ class AdvancedGraphicsMonitor:
         # State tracking
         self.graphics_state = GraphicsState()
         self.last_layer_states = {}
-        self.last_video_registers = {'VX': 0, 'VY': 0, 'VM': 0, 'VL': 0}
+        self.last_video_registers = {'VX': 0, 'VY': 0, 'VM': 0, 'VL': 0, "VC": 0}
         self.instruction_hooks = {
             'SWRITE', 'SREAD', 'SFILL', 'SCOPY', 'SROLX', 'SROLY', 
             'TEXT', 'CHAR', 'SPBLIT', 'SPRITE'
@@ -119,7 +119,8 @@ class AdvancedGraphicsMonitor:
             'VX': getattr(gfx, 'Vregisters', [0, 0, 0])[0] if hasattr(gfx, 'Vregisters') else 0,
             'VY': getattr(gfx, 'Vregisters', [0, 0, 0])[1] if hasattr(gfx, 'Vregisters') else 0,
             'VM': getattr(gfx, 'vmode', 0),
-            'VL': getattr(gfx, 'VL', 0)
+            'VL': getattr(gfx, 'VL', 0),
+            'VC': getattr(gfx, 'Vregisters', [0, 0, 0])[3] if hasattr(gfx, 'Vregisters') else 0,
         }
         
         for reg, value in current_registers.items():

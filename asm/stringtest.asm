@@ -2,7 +2,7 @@ ORG 0x1000
 
 START:
     STI
-    MOV R0, 0x1F
+    MOV VC, 0x1F
     MOV VX, 0
     MOV VY, 0
     MOV VM, 0
@@ -16,8 +16,10 @@ MAIN:
     JMP MAIN
 
 DO:
-    TEXT STR, R0    ; Print string at STR address with color in R0
-    INC R0
+    MOV VX, 0
+    MOV VY, 0
+    TEXT STR    ; Print string at STR address with color in R0
+    INC VC
     IRET
 
 STR: DEFSTR "This is a very long string test to test the string wrapping functionality of the Nova-16 system."

@@ -1,0 +1,9 @@
+// Simple loop test
+
+SetLayer(1)
+
+For i = 0 To 2
+    PxlOn(i * 10, 10, 100 + i)
+Next
+
+Pause
