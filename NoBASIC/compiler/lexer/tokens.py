@@ -42,6 +42,7 @@ class TokenType(Enum):
     GOTO = "GOTO"
     DIM = "DIM"
     LET = "LET"
+    STRUCT = "STRUCT"
 
     # Built-in functions
     SIN = "SIN"
@@ -89,6 +90,7 @@ class TokenType(Enum):
     QUOTE = "\""
     COLON = ":"
     AT = "@"
+    DOT = "."
 
     # Literals
     NUMBER_LITERAL = "NUMBER_LITERAL"
@@ -152,6 +154,7 @@ KEYWORDS = {
     "goto": TokenType.GOTO,
     "dim": TokenType.DIM,
     "let": TokenType.LET,
+    "struct": TokenType.STRUCT,
     "and": TokenType.AND,
     "or": TokenType.OR,
     "not": TokenType.NOT,
@@ -175,6 +178,7 @@ SINGLE_CHAR_TOKENS = {
     "\"": TokenType.QUOTE,
     ":": TokenType.COLON,
     "@": TokenType.AT,
+    ".": TokenType.DOT,
     "&": TokenType.BITWISE_AND,
     "|": TokenType.BITWISE_OR,
 }

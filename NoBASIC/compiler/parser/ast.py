@@ -13,6 +13,17 @@ class DataType(Enum):
     STRING = "string"
     LIST = "list"
     MATRIX = "matrix"
+    STRUCT = "struct"
+
+
+@dataclass
+class StructType:
+    """User-defined struct type."""
+    name: str
+    fields: List[str]  # Field names (all 16-bit)
+    
+    def __str__(self):
+        return f"struct {self.name}"
 
 
 @dataclass
@@ -219,6 +230,13 @@ class LabelStmt(Statement):
     label: str
 
 
+@dataclass
+class StructDeclarationStmt(Statement):
+    """STRUCT name field1 field2 ... END statement."""
+    name: str
+    fields: List[str]
+
+
 # Expressions
 @dataclass
 class LiteralExpr(Expression):
@@ -246,6 +264,13 @@ class MatrixAccessExpr(Expression):
     matrix_name: str
     row: Expression
     col: Expression
+
+
+@dataclass
+class MemberAccessExpr(Expression):
+    """Member access: struct.field"""
+    object: Expression
+    member: str
 
 
 @dataclass

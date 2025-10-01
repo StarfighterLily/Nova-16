@@ -1,0 +1,20 @@
+// Simple struct test
+// Test struct declaration and member access
+
+STRUCT Point
+    x
+    y
+    color
+END
+
+// Set values
+Point.x = 100
+Point.y = 120
+Point.color = 31
+
+// Draw pixel at point
+PxlOn(Point.x, Point.y, Point.color)
+
+// Display the values
+Disp "Point created!"
+Pause

@@ -9,9 +9,9 @@ from ..parser.ast import (
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
-    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, LiteralExpr, VariableExpr,
-    ListAccessExpr, MatrixAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr,
-    GroupingExpr
+    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, LiteralExpr, VariableExpr,
+    ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr,
+    GroupingExpr, StructType
 )
 
 
@@ -52,6 +52,11 @@ class CodeGenerator:
         self.var_reg: Dict[str, str] = {}  # variable name -> register
         self.var_lifetime: Dict[str, Tuple[int, int]] = {}  # var -> (start, end)
         self.statement_counter = 0
+        
+        # Struct support
+        self.struct_types: Dict[str, StructType] = {}  # struct_name -> StructType
+        self.struct_bases: Dict[str, int] = {}  # instance_name -> base_address
+        self.struct_instances: Dict[str, str] = {}  # var_name -> struct_name
 
     def allocate_register(self, preferred_reg: str = None) -> str:
         """Allocate an unused register, preferring the specified register if available."""
@@ -134,10 +139,11 @@ class CodeGenerator:
                 self.var_lifetime[var_name] = (start, self.statement_counter)
         elif isinstance(stmt, IfStmt):
             self.collect_lifetimes_expr(stmt.condition)
-            for body_stmt in stmt.then_body:
+            for body_stmt in stmt.then_branch:
                 self.collect_lifetimes_stmt(body_stmt)
-            for body_stmt in stmt.else_body:
-                self.collect_lifetimes_stmt(body_stmt)
+            if stmt.else_branch:
+                for body_stmt in stmt.else_branch:
+                    self.collect_lifetimes_stmt(body_stmt)
         elif isinstance(stmt, WhileStmt):
             self.collect_lifetimes_expr(stmt.condition)
             for body_stmt in stmt.body:
@@ -162,6 +168,8 @@ class CodeGenerator:
                 self.var_lifetime[var_name] = (min(start, current_counter), max(end, current_counter))
         elif isinstance(expr, ListAccessExpr):
             self.collect_lifetimes_expr(expr.index)
+        elif isinstance(expr, MemberAccessExpr):
+            self.collect_lifetimes_expr(expr.object)
         elif isinstance(expr, MatrixAccessExpr):
             self.collect_lifetimes_expr(expr.row)
             self.collect_lifetimes_expr(expr.col)
@@ -169,7 +177,7 @@ class CodeGenerator:
             self.collect_lifetimes_expr(expr.left)
             self.collect_lifetimes_expr(expr.right)
         elif isinstance(expr, UnaryExpr):
-            self.collect_lifetimes_expr(expr.operand)
+            self.collect_lifetimes_expr(expr.expression)
         elif isinstance(expr, FunctionCallExpr):
             for arg in expr.arguments:
                 self.collect_lifetimes_expr(arg)
@@ -333,6 +341,13 @@ class CodeGenerator:
             self.generate_goto(stmt)
         elif isinstance(stmt, LabelStmt):
             self.generate_label(stmt)
+        elif isinstance(stmt, StructDeclarationStmt):
+            self.generate_struct_declaration(stmt)
+
+    def generate_struct_declaration(self, stmt: StructDeclarationStmt):
+        """Register struct type (no assembly code generated)."""
+        self.struct_types[stmt.name] = StructType(stmt.name, stmt.fields)
+        self.output.append(f"; Struct {stmt.name} declared with fields: {', '.join(stmt.fields)}")
 
     def generate_clr_draw(self):
         """Generate ClrDraw code."""
@@ -580,6 +595,9 @@ class CodeGenerator:
                 var_addr = self.get_variable_address(stmt.variable)
                 self.output.append(f"MOV P0, {var_addr}")
                 self.output.append(f"MOV [P0], {value_reg}")
+        elif isinstance(stmt.variable, MemberAccessExpr):
+            # Struct member assignment
+            self.generate_member_store(stmt.variable, value_reg)
         elif isinstance(stmt.variable, ListAccessExpr):
             # Array element assignment
             self.generate_list_store(stmt.variable, value_reg)
@@ -628,6 +646,96 @@ class CodeGenerator:
         """Generate code to store to a matrix element."""
         # Simplified: do nothing for now
         pass
+
+    def generate_member_access(self, expr: MemberAccessExpr, target_reg: str) -> str:
+        """Generate code to load from a struct member."""
+        if isinstance(expr.object, VariableExpr):
+            var_name = expr.object.name
+            
+            # Check if this is a struct instance
+            if var_name in self.struct_instances:
+                struct_name = self.struct_instances[var_name]
+                struct_def = self.struct_types[struct_name]
+                base_addr = self.struct_bases[var_name]
+                
+                # Calculate field offset
+                field_index = struct_def.fields.index(expr.member)
+                field_offset = field_index * 2  # 2 bytes per field
+                field_addr = base_addr + field_offset
+                
+                # CRITICAL: Struct fields are 16-bit words. Nova-16 is BIG-ENDIAN.
+                # We MUST load into a 16-bit register first, then extract low byte if needed.
+                self.output.append(f"; Load {var_name}.{expr.member}")
+                self.output.append(f"MOV P0, {field_addr}")
+                
+                if target_reg.startswith('R'):
+                    # Target is 8-bit - load full word into P1, extract low byte
+                    self.output.append(f"MOV P1, [P0]")
+                    self.output.append(f"MOV {target_reg}, :P1")  # Extract low byte
+                else:
+                    # Target is 16-bit - direct load
+                    self.output.append(f"MOV {target_reg}, [P0]")
+                
+                return target_reg
+            else:
+                # Auto-allocate struct instance on first use
+                # Try to infer struct type from context (if only one struct defined)
+                if len(self.struct_types) == 1:
+                    struct_name = list(self.struct_types.keys())[0]
+                    self.allocate_struct_instance(var_name, struct_name)
+                    return self.generate_member_access(expr, target_reg)
+                else:
+                    raise RuntimeError(f"Cannot determine struct type for '{var_name}'")
+        else:
+            raise RuntimeError(f"Member access only supported on variable expressions")
+
+    def generate_member_store(self, expr: MemberAccessExpr, value_reg: str):
+        """Generate code to store to a struct member."""
+        if isinstance(expr.object, VariableExpr):
+            var_name = expr.object.name
+            
+            # Check if this is a struct instance
+            if var_name in self.struct_instances:
+                struct_name = self.struct_instances[var_name]
+                struct_def = self.struct_types[struct_name]
+                base_addr = self.struct_bases[var_name]
+                
+                # Calculate field offset
+                field_index = struct_def.fields.index(expr.member)
+                field_offset = field_index * 2  # 2 bytes per field
+                field_addr = base_addr + field_offset
+                
+                # Store field value
+                self.output.append(f"; Store to {var_name}.{expr.member}")
+                self.output.append(f"MOV P0, {field_addr}")
+                self.output.append(f"MOV [P0], {value_reg}")
+            else:
+                # Auto-allocate struct instance on first use
+                # Try to infer struct type from context (if only one struct defined)
+                if len(self.struct_types) == 1:
+                    struct_name = list(self.struct_types.keys())[0]
+                    self.allocate_struct_instance(var_name, struct_name)
+                    self.generate_member_store(expr, value_reg)
+                else:
+                    raise RuntimeError(f"Cannot determine struct type for '{var_name}'")
+        else:
+            raise RuntimeError(f"Member access only supported on variable expressions")
+
+    def allocate_struct_instance(self, var_name: str, struct_name: str) -> int:
+        """Allocate memory for a struct instance."""
+        if var_name in self.struct_bases:
+            return self.struct_bases[var_name]
+        
+        struct_def = self.struct_types[struct_name]
+        field_count = len(struct_def.fields)
+        
+        base_addr = self.next_address
+        self.struct_bases[var_name] = base_addr
+        self.struct_instances[var_name] = struct_name
+        self.next_address += field_count * 2  # 2 bytes per field
+        
+        self.output.append(f"; Allocate struct {var_name} ({struct_name}) at 0x{base_addr:04X}")
+        return base_addr
 
     def generate_if(self, stmt: IfStmt):
         """Generate optimized If-Then-Else code."""
@@ -816,6 +924,8 @@ class CodeGenerator:
                     return target_reg
             elif isinstance(expr, VariableExpr):
                 return self.load_variable(expr.name, target_reg)
+            elif isinstance(expr, MemberAccessExpr):
+                return self.generate_member_access(expr, target_reg)
             elif isinstance(expr, ListAccessExpr):
                 return self.generate_list_access(expr, target_reg)
             elif isinstance(expr, MatrixAccessExpr):
@@ -1027,16 +1137,24 @@ class CodeGenerator:
 
     def generate_unary_expression(self, expr: UnaryExpr, target_reg: str) -> str:
         """Generate code for unary expressions."""
-        operand_reg = self.generate_expression(expr.expression, "R1")
+        operand_reg = self.generate_expression(expr.expression, target_reg)
 
         if expr.operator == "-":
-            self.output.append(f"NEG {target_reg}, {operand_reg}")
+            # NEG modifies in place, so move to target first if needed
+            if operand_reg != target_reg:
+                self.output.append(f"MOV {target_reg}, {operand_reg}")
+            self.output.append(f"NEG {target_reg}")
         elif expr.operator == "NOT":
-            self.output.append(f"NOT {target_reg}, {operand_reg}")
+            if operand_reg != target_reg:
+                self.output.append(f"MOV {target_reg}, {operand_reg}")
+            self.output.append(f"NOT {target_reg}")
         elif expr.operator == "ABS":
-            self.output.append(f"ABS {target_reg}, {operand_reg}")
+            if operand_reg != target_reg:
+                self.output.append(f"MOV {target_reg}, {operand_reg}")
+            self.output.append(f"ABS {target_reg}")
         else:
-            self.output.append(f"MOV {target_reg}, {operand_reg}")
+            if operand_reg != target_reg:
+                self.output.append(f"MOV {target_reg}, {operand_reg}")
         return target_reg
 
     def generate_function_call(self, expr: FunctionCallExpr, target_reg: str) -> str:

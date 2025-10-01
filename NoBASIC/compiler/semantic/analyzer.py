@@ -6,11 +6,11 @@ from typing import Dict, Set
 from ..utils.error import SemanticError
 from ..parser.ast import (
     Program, Statement, Expression, AssignmentStmt, IfStmt, ForStmt,
-    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, FunctionCallStmt, VariableExpr, ListAccessExpr, MatrixAccessExpr,
-    FunctionCallExpr, LiteralExpr, BinaryExpr, UnaryExpr, GroupingExpr,
+    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, FunctionCallStmt, VariableExpr, ListAccessExpr, MatrixAccessExpr,
+    MemberAccessExpr, FunctionCallExpr, LiteralExpr, BinaryExpr, UnaryExpr, GroupingExpr,
     PxlOnStmt, PxlOffStmt, LineStmt, CircleStmt, TextStmt,
     SetLayerStmt, SpriteOnStmt, SpriteOffStmt, PlayToneStmt,
-    PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt, DataType
+    PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt, DataType, StructType
 )
 
 
@@ -22,6 +22,8 @@ class SymbolTable:
         self.lists: Set[str] = set()
         self.matrices: Set[str] = set()
         self.labels: Set[str] = set()
+        self.structs: Dict[str, StructType] = {}
+        self.struct_instances: Dict[str, str] = {}  # var_name -> struct_name
 
     def define_variable(self, name: str, data_type: DataType):
         """Define a variable."""
@@ -30,6 +32,26 @@ class SymbolTable:
     def get_variable_type(self, name: str) -> DataType:
         """Get the type of a variable."""
         return self.variables.get(name, DataType.NUMBER)  # Default to NUMBER
+    
+    def define_struct(self, name: str, fields: list):
+        """Define a struct type."""
+        self.structs[name] = StructType(name, fields)
+    
+    def get_struct(self, name: str) -> StructType:
+        """Get a struct type definition."""
+        return self.structs.get(name)
+    
+    def is_struct(self, name: str) -> bool:
+        """Check if name is a struct type."""
+        return name in self.structs
+    
+    def define_struct_instance(self, var_name: str, struct_name: str):
+        """Define a struct instance variable."""
+        self.struct_instances[var_name] = struct_name
+    
+    def get_struct_instance_type(self, var_name: str) -> str:
+        """Get the struct type name for a variable."""
+        return self.struct_instances.get(var_name)
 
     def is_list(self, name: str) -> bool:
         """Check if name is a list."""
@@ -116,6 +138,8 @@ class SemanticAnalyzer:
             self.analyze_goto(stmt)
         elif isinstance(stmt, LabelStmt):
             self.analyze_label(stmt)
+        elif isinstance(stmt, StructDeclarationStmt):
+            self.analyze_struct_declaration(stmt)
         elif isinstance(stmt, FunctionCallStmt):
             self.analyze_function_call_statement(stmt)
         elif isinstance(stmt, (PxlOnStmt, PxlOffStmt, LineStmt, CircleStmt, TextStmt,
@@ -176,6 +200,22 @@ class SemanticAnalyzer:
         """Analyze a label statement."""
         self.symbol_table.define_label(stmt.label)
 
+    def analyze_struct_declaration(self, stmt: StructDeclarationStmt):
+        """Analyze a struct declaration."""
+        # Check if struct name is already defined
+        if self.symbol_table.is_struct(stmt.name):
+            raise SemanticError(f"Struct '{stmt.name}' is already defined", 0, 0)
+        
+        # Check for duplicate field names
+        field_set = set()
+        for field in stmt.fields:
+            if field in field_set:
+                raise SemanticError(f"Duplicate field '{field}' in struct '{stmt.name}'", 0, 0)
+            field_set.add(field)
+        
+        # Define the struct
+        self.symbol_table.define_struct(stmt.name, stmt.fields)
+
     def analyze_graphics_sound_statement(self, stmt):
         """Analyze graphics/sound statements with expressions."""
         # Just analyze all expressions in the statement
@@ -218,6 +258,33 @@ class SemanticAnalyzer:
             if row_type != DataType.NUMBER or col_type != DataType.NUMBER:
                 raise SemanticError(f"Matrix indices must be numeric", self.filename)
             return DataType.NUMBER
+        elif isinstance(expr, MemberAccessExpr):
+            # Analyze struct member access
+            object_type = self.analyze_expression(expr.object)
+            
+            # Check if object is a struct instance
+            if isinstance(expr.object, VariableExpr):
+                var_name = expr.object.name
+                struct_name = self.symbol_table.get_struct_instance_type(var_name)
+                
+                if not struct_name:
+                    # Auto-infer struct type if only one struct is defined
+                    if len(self.symbol_table.structs) == 1:
+                        struct_name = list(self.symbol_table.structs.keys())[0]
+                        self.symbol_table.define_struct_instance(var_name, struct_name)
+                    else:
+                        raise SemanticError(f"Variable '{var_name}' is not a struct instance", self.filename)
+                
+                if struct_name:
+                    struct_def = self.symbol_table.get_struct(struct_name)
+                    if struct_def and expr.member in struct_def.fields:
+                        return DataType.NUMBER  # All struct fields are 16-bit numbers
+                    else:
+                        raise SemanticError(f"Struct '{struct_name}' has no field '{expr.member}'", self.filename)
+                else:
+                    raise SemanticError(f"Variable '{var_name}' is not a struct instance", self.filename)
+            else:
+                raise SemanticError(f"Cannot access member of non-struct expression", self.filename)
         elif isinstance(expr, BinaryExpr):
             left_type = self.analyze_expression(expr.left)
             right_type = self.analyze_expression(expr.right)
@@ -393,6 +460,29 @@ class SemanticAnalyzer:
         if isinstance(expr, VariableExpr):
             # Variables are dynamically typed
             self.symbol_table.define_variable(expr.name, value_type)
+        elif isinstance(expr, MemberAccessExpr):
+            # Struct member assignment
+            if isinstance(expr.object, VariableExpr):
+                var_name = expr.object.name
+                struct_name = self.symbol_table.get_struct_instance_type(var_name)
+                
+                if not struct_name:
+                    # Auto-infer struct type if only one struct is defined
+                    if len(self.symbol_table.structs) == 1:
+                        struct_name = list(self.symbol_table.structs.keys())[0]
+                        self.symbol_table.define_struct_instance(var_name, struct_name)
+                    else:
+                        raise SemanticError(f"Variable '{var_name}' is not a struct instance", 0, 0)
+                
+                struct_def = self.symbol_table.get_struct(struct_name)
+                if not struct_def or expr.member not in struct_def.fields:
+                    raise SemanticError(f"Struct '{struct_name}' has no field '{expr.member}'", 0, 0)
+                
+                # Struct fields must be numbers
+                if value_type != DataType.NUMBER:
+                    raise SemanticError(f"Struct fields can only hold numeric values", 0, 0)
+            else:
+                raise SemanticError(f"Cannot assign to member of non-struct expression", 0, 0)
         elif isinstance(expr, ListAccessExpr):
             # Check that the list exists and index is valid
             list_name = expr.list_name

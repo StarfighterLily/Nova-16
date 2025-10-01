@@ -1,0 +1,66 @@
+// Moving sprite with struct - V2 with visible animation
+// Bouncing ball demo using structs with delay
+
+STRUCT Sprite
+    x
+    y
+    vx
+    vy
+    color
+    active
+END
+
+SetLayer(1)
+ClrDraw
+
+// Initialize sprite
+Sprite.x = 128
+Sprite.y = 128
+Sprite.vx = 2
+Sprite.vy = 2
+Sprite.color = 31
+Sprite.active = 1
+
+// Game loop - 100 iterations
+For frame = 0 To 100
+    // Clear previous position
+    PxlOff(Sprite.x, Sprite.y)
+    
+    // Update position
+    Sprite.x = Sprite.x + Sprite.vx
+    Sprite.y = Sprite.y + Sprite.vy
+    
+    // Boundary checking - bounce off walls
+    If Sprite.x > 250 Then
+        Sprite.vx = -2
+        Sprite.x = 250
+    End
+    
+    If Sprite.x < 5 Then
+        Sprite.vx = 2
+        Sprite.x = 5
+    End
+    
+    If Sprite.y > 250 Then
+        Sprite.vy = -2
+        Sprite.y = 250
+    End
+    
+    If Sprite.y < 5 Then
+        Sprite.vy = 2
+        Sprite.y = 5
+    End
+    
+    // Draw at new position
+    PxlOn(Sprite.x, Sprite.y, Sprite.color)
+    
+    // Delay loop to make animation visible
+    For delay = 0 To 5000
+        // Empty delay loop
+        x = delay
+    Next
+Next
+
+ClrDraw
+Disp "Done!"
+Pause

@@ -1,0 +1,273 @@
+ORG 0x0200
+MOV SP, 0xF000
+MOV FP, SP
+; Struct Ball declared with fields: x, y, vx, vy, color
+MOV VM, 0
+MOV VL, 1
+; ClrDraw
+MOV VL, 1
+SFILL 0x00
+MOV P1, 1
+SHL P1, 7
+; Allocate struct Ball (Ball) at 0x0120
+; Store to Ball.x
+MOV P0, 288
+MOV [P0], P1
+MOV P1, 1
+SHL P1, 7
+; Store to Ball.y
+MOV P0, 290
+MOV [P0], P1
+MOV P1, 1
+SHL P1, 3
+; Store to Ball.vx
+MOV P0, 292
+MOV [P0], P1
+MOV P1, 6
+; Store to Ball.vy
+MOV P0, 294
+MOV [P0], P1
+MOV P1, 31
+; Store to Ball.color
+MOV P0, 296
+MOV [P0], P1
+XOR R2, R2
+MOV P2, R2
+L1:
+MOV R0, 50
+CMP P2, R0
+JC L3
+JZ L3
+JMP L2
+L3:
+; Load Ball.x
+MOV P0, 288
+MOV R3, [P0]
+; Load Ball.y
+MOV P0, 290
+MOV R4, [P0]
+MOV VX, R3
+MOV VY, R4
+; Load Ball.color
+MOV P0, 296
+MOV R5, [P0]
+MOV VC, R5
+SWRITE VC
+; Load Ball.x
+MOV P0, 288
+MOV R4, [P0]
+MOV R5, 1
+MOV R3, R4
+ADD R3, R5
+; Load Ball.y
+MOV P0, 290
+MOV R4, [P0]
+MOV VX, R3
+MOV VY, R4
+; Load Ball.color
+MOV P0, 296
+MOV R5, [P0]
+MOV VC, R5
+SWRITE VC
+; Load Ball.x
+MOV P0, 288
+MOV R3, [P0]
+; Load Ball.y
+MOV P0, 290
+MOV R5, [P0]
+MOV R6, 1
+MOV R4, R5
+ADD R4, R6
+MOV VX, R3
+MOV VY, R4
+; Load Ball.color
+MOV P0, 296
+MOV R5, [P0]
+MOV VC, R5
+SWRITE VC
+; Load Ball.x
+MOV P0, 288
+MOV R4, [P0]
+MOV R5, 1
+MOV R3, R4
+ADD R3, R5
+; Load Ball.y
+MOV P0, 290
+MOV R5, [P0]
+MOV R6, 1
+MOV R4, R5
+ADD R4, R6
+MOV VX, R3
+MOV VY, R4
+; Load Ball.color
+MOV P0, 296
+MOV R5, [P0]
+MOV VC, R5
+SWRITE VC
+XOR R4, R4
+MOV P4, R4
+L4:
+MOV R3, 30000
+CMP P4, R3
+JC L6
+JZ L6
+JMP L5
+L6:
+MOV R5, P4
+MOV R6, 1
+SHL R6, 1
+MOV P1, R5
+MUL P1, R6
+MOV P5, P1
+MOV R5, P5
+MOV R6, 1
+MOV P1, R5
+ADD P1, R6
+MOV P5, P1
+MOV R5, P5
+MOV R6, 1
+MOV P1, R5
+SUB P1, R6
+MOV P5, P1
+INC P4
+JMP L4
+L5:
+; Load Ball.x
+MOV P0, 288
+MOV R3, [P0]
+; Load Ball.vx
+MOV P0, 292
+MOV R5, [P0]
+MOV P1, R3
+ADD P1, R5
+; Store to Ball.x
+MOV P0, 288
+MOV [P0], P1
+; Load Ball.y
+MOV P0, 290
+MOV R3, [P0]
+; Load Ball.vy
+MOV P0, 294
+MOV R5, [P0]
+MOV P1, R3
+ADD P1, R5
+; Store to Ball.y
+MOV P0, 290
+MOV [P0], P1
+; Load Ball.x
+MOV P0, 288
+MOV R5, [P0]
+MOV R6, 245
+CMP R5, R6
+MOV R3, 0
+JGT L9
+JMP L10
+L9:
+MOV R3, 1
+L10:
+CMP R3, 0
+JZ L7
+XOR R5, R5
+; Load Ball.vx
+MOV P0, 292
+MOV R6, [P0]
+MOV P1, R5
+SUB P1, R6
+; Store to Ball.vx
+MOV P0, 292
+MOV [P0], P1
+MOV P1, 245
+; Store to Ball.x
+MOV P0, 288
+MOV [P0], P1
+L7:
+; Load Ball.x
+MOV P0, 288
+MOV R6, [P0]
+MOV R7, 10
+CMP R6, R7
+MOV R5, 0
+JLT L13
+JMP L14
+L13:
+MOV R5, 1
+L14:
+CMP R5, 0
+JZ L11
+XOR R6, R6
+; Load Ball.vx
+MOV P0, 292
+MOV R7, [P0]
+MOV P1, R6
+SUB P1, R7
+; Store to Ball.vx
+MOV P0, 292
+MOV [P0], P1
+MOV P1, 10
+; Store to Ball.x
+MOV P0, 288
+MOV [P0], P1
+L11:
+; Load Ball.y
+MOV P0, 290
+MOV R7, [P0]
+MOV R8, 245
+CMP R7, R8
+MOV R6, 0
+JGT L17
+JMP L18
+L17:
+MOV R6, 1
+L18:
+CMP R6, 0
+JZ L15
+XOR R7, R7
+; Load Ball.vy
+MOV P0, 294
+MOV R8, [P0]
+MOV P1, R7
+SUB P1, R8
+; Store to Ball.vy
+MOV P0, 294
+MOV [P0], P1
+MOV P1, 245
+; Store to Ball.y
+MOV P0, 290
+MOV [P0], P1
+L15:
+; Load Ball.y
+MOV P0, 290
+MOV R8, [P0]
+MOV R9, 10
+CMP R8, R9
+MOV R7, 0
+JLT L21
+JMP L22
+L21:
+MOV R7, 1
+L22:
+CMP R7, 0
+JZ L19
+XOR R8, R8
+; Load Ball.vy
+MOV P0, 294
+MOV R9, [P0]
+MOV P1, R8
+SUB P1, R9
+; Store to Ball.vy
+MOV P0, 294
+MOV [P0], P1
+MOV P1, 10
+; Store to Ball.y
+MOV P0, 290
+MOV [P0], P1
+L19:
+INC P2
+JMP L1
+L2:
+XOR VX, VX
+XOR VY, VY
+MOV VC, 15
+TEXT STR22
+HLT
+STR22: DEFSTR "Ball bounced!"

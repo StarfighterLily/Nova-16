@@ -11,8 +11,8 @@ from .ast import (
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
-    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, LiteralExpr, VariableExpr,
-    ListAccessExpr, MatrixAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr,
+    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, LiteralExpr, VariableExpr,
+    ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr,
     GroupingExpr, DataType
 )
 
@@ -101,6 +101,8 @@ class Parser:
             return self.repeat_statement()
         elif token.type == TokenType.GOTO:
             return self.goto_statement()
+        elif token.type == TokenType.STRUCT:
+            return self.struct_declaration()
         elif token.type == TokenType.IDENTIFIER and self.check_next(TokenType.COLON):
             return self.label_statement()
         elif token.type == TokenType.IDENTIFIER:
@@ -363,6 +365,28 @@ class Parser:
         self.consume(TokenType.COLON, "Expected ':' after label")
         return LabelStmt(label)
 
+    def struct_declaration(self) -> StructDeclarationStmt:
+        """Parse STRUCT name field1 field2 ... END"""
+        self.consume(TokenType.STRUCT, "Expected 'STRUCT'")
+        name_token = self.consume(TokenType.IDENTIFIER, "Expected struct name")
+        name = name_token.lexeme
+        
+        fields = []
+        while not self.check(TokenType.END) and not self.is_at_end():
+            field_token = self.consume(TokenType.IDENTIFIER, "Expected field name")
+            fields.append(field_token.lexeme)
+        
+        self.consume(TokenType.END, "Expected 'END' after struct fields")
+        
+        # Enforce max 10 fields constraint
+        if len(fields) > 10:
+            raise self.error(f"Struct '{name}' has {len(fields)} fields, maximum is 10")
+        
+        if len(fields) == 0:
+            raise self.error(f"Struct '{name}' must have at least one field")
+        
+        return StructDeclarationStmt(name, fields)
+
     def expression(self) -> Expression:
         """Parse an expression."""
         return self.logical_or()
@@ -487,8 +511,13 @@ class Parser:
         return self.call()
 
     def call(self) -> Expression:
-        """Parse function calls, array access, and primary expressions."""
+        """Parse function calls, array access, member access, and primary expressions."""
         expr = self.primary()
+
+        # Handle member access (obj.field)
+        while self.match(TokenType.DOT):
+            member_token = self.consume(TokenType.IDENTIFIER, "Expected member name after '.'")
+            expr = MemberAccessExpr(expr, member_token.lexeme)
 
         if self.match(TokenType.LPAREN):
             # Check if this is list or matrix access (TI-83/84 style)
@@ -612,8 +641,13 @@ class Parser:
         return VariableExpr(name)
 
     def assignable_expression(self) -> Expression:
-        """Parse expressions that can be assigned to (variables, list/matrix access)."""
+        """Parse expressions that can be assigned to (variables, list/matrix access, member access)."""
         expr = self.primary()
+
+        # Handle member access (obj.field)
+        while self.match(TokenType.DOT):
+            member_token = self.consume(TokenType.IDENTIFIER, "Expected member name after '.'")
+            expr = MemberAccessExpr(expr, member_token.lexeme)
 
         if self.match(TokenType.LPAREN):
             # Check if this is list or matrix access (TI-83/84 style)

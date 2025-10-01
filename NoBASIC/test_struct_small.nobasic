@@ -1,0 +1,52 @@
+// Bouncing sprite - VALUES UNDER 127 to avoid signed byte issues
+// Struct test with small coordinates
+
+STRUCT Ball
+    x
+    y
+    vx
+    vy
+END
+
+SetLayer(0)
+ClrDraw
+
+// Start at small coordinates (under 127)
+Ball.x = 60
+Ball.y = 60
+Ball.vx = 3
+Ball.vy = 2
+
+// 30 frames of animation
+For frame = 0 To 30
+    // Draw ball (2x2 red pixels)
+    PxlOn(Ball.x, Ball.y, 31)
+    PxlOn(Ball.x + 1, Ball.y, 31)
+    PxlOn(Ball.x, Ball.y + 1, 31)
+    PxlOn(Ball.x + 1, Ball.y + 1, 31)
+    
+    // Update position
+    Ball.x = Ball.x + Ball.vx
+    Ball.y = Ball.y + Ball.vy
+    
+    // Bounce at 120 (well under 127)
+    If Ball.x > 120 Then
+        Ball.vx = 0 - Ball.vx
+    End
+    
+    If Ball.y > 120 Then
+        Ball.vy = 0 - Ball.vy
+    End
+    
+    If Ball.x < 10 Then
+        Ball.vx = 0 - Ball.vx
+    End
+    
+    If Ball.y < 10 Then
+        Ball.vy = 0 - Ball.vy
+    End
+    
+    Pause
+Next
+
+Text(0, 0, "Trail drawn!", 15)

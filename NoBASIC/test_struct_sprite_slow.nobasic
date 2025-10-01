@@ -1,0 +1,65 @@
+// Bouncing sprite with VISIBLE, SLOW movement
+// Uses delay loop with actual work to slow down
+
+STRUCT Ball
+    x
+    y
+    vx
+    vy
+    color
+END
+
+SetLayer(1)
+ClrDraw
+
+// Initialize ball in center
+Ball.x = 128
+Ball.y = 128
+Ball.vx = 8      // Fast - 8 pixels per frame
+Ball.vy = 6
+Ball.color = 31  // Bright red
+
+// Animation loop - only 50 frames to keep it manageable
+For frame = 0 To 50
+    // Draw ball at current position (2x2 pixels)
+    PxlOn(Ball.x, Ball.y, Ball.color)
+    PxlOn(Ball.x + 1, Ball.y, Ball.color)
+    PxlOn(Ball.x, Ball.y + 1, Ball.color)
+    PxlOn(Ball.x + 1, Ball.y + 1, Ball.color)
+    
+    // DELAY LOOP - Do actual work to burn cycles
+    For d = 0 To 30000
+        // Do some math to prevent optimization
+        temp = d * 2
+        temp = temp + 1
+        temp = temp - 1
+    Next
+    
+    // Update position with LARGE velocity
+    Ball.x = Ball.x + Ball.vx
+    Ball.y = Ball.y + Ball.vy
+    
+    // Bounce off walls
+    If Ball.x > 245 Then
+        Ball.vx = 0 - Ball.vx
+        Ball.x = 245
+    End
+    
+    If Ball.x < 10 Then
+        Ball.vx = 0 - Ball.vx
+        Ball.x = 10
+    End
+    
+    If Ball.y > 245 Then
+        Ball.vy = 0 - Ball.vy
+        Ball.y = 245
+    End
+    
+    If Ball.y < 10 Then
+        Ball.vy = 0 - Ball.vy
+        Ball.y = 10
+    End
+Next
+
+// Show completion message
+Text(0, 0, "Ball bounced!", 15)
