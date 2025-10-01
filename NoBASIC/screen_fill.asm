@@ -55,4 +55,7 @@ L5:
 INC P2
 JMP L1
 L2:
+; ClrDraw
+MOV VL, 1
+SFILL 0x00
 HLT

@@ -42,6 +42,16 @@ class CodeGenerator:
             'R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9',
             'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7'
         ]
+        
+        # Preferred register order for variable allocation (P registers for 16-bit)
+        self.var_allocation_order = [
+            'P2', 'P3', 'P4', 'P5', 'P6', 'P7'  # Skip P0, P1 for temps
+        ]
+
+        # Variable register allocation
+        self.var_reg: Dict[str, str] = {}  # variable name -> register
+        self.var_lifetime: Dict[str, Tuple[int, int]] = {}  # var -> (start, end)
+        self.statement_counter = 0
 
     def allocate_register(self, preferred_reg: str = None) -> str:
         """Allocate an unused register, preferring the specified register if available."""
@@ -84,6 +94,146 @@ class CodeGenerator:
         base_reg_num = 1 + (self.loop_nesting_level * 3)
         return (f"P{base_reg_num}", f"P{base_reg_num + 1}", f"P{base_reg_num + 2}")
 
+    def collect_lifetimes(self, program: Program):
+        """Collect variable lifetimes by traversing the AST."""
+        for stmt in program.statements:
+            self.collect_lifetimes_stmt(stmt)
+
+    def collect_lifetimes_stmt(self, stmt):
+        """Collect lifetimes for a statement."""
+        self.statement_counter += 1
+        current_counter = self.statement_counter
+
+        if isinstance(stmt, AssignmentStmt):
+            if hasattr(stmt.variable, 'name'):
+                var_name = stmt.variable.name
+            else:
+                var_name = stmt.variable
+            current_counter = self.statement_counter
+            if var_name not in self.var_lifetime:
+                self.var_lifetime[var_name] = (current_counter, current_counter)
+            else:
+                start, _ = self.var_lifetime[var_name]
+                self.var_lifetime[var_name] = (start, current_counter)
+            self.collect_lifetimes_expr(stmt.expression)
+        elif isinstance(stmt, ForStmt):
+            # Loop variable defined at for
+            var_name = stmt.variable
+            if var_name not in self.var_lifetime:
+                self.var_lifetime[var_name] = (current_counter, current_counter)
+            else:
+                start, _ = self.var_lifetime[var_name]
+                self.var_lifetime[var_name] = (start, current_counter)
+            self.collect_lifetimes_expr(stmt.start)
+            self.collect_lifetimes_expr(stmt.end)
+            if stmt.step:
+                self.collect_lifetimes_expr(stmt.step)
+            for body_stmt in stmt.body:
+                self.collect_lifetimes_stmt(body_stmt)
+            # Extend lifetime to end of loop
+            if var_name in self.var_lifetime:
+                start, _ = self.var_lifetime[var_name]
+                self.var_lifetime[var_name] = (start, self.statement_counter)
+        elif isinstance(stmt, IfStmt):
+            self.collect_lifetimes_expr(stmt.condition)
+            for body_stmt in stmt.then_body:
+                self.collect_lifetimes_stmt(body_stmt)
+            for body_stmt in stmt.else_body:
+                self.collect_lifetimes_stmt(body_stmt)
+        elif isinstance(stmt, WhileStmt):
+            self.collect_lifetimes_expr(stmt.condition)
+            for body_stmt in stmt.body:
+                self.collect_lifetimes_stmt(body_stmt)
+        elif isinstance(stmt, RepeatStmt):
+            for body_stmt in stmt.body:
+                self.collect_lifetimes_stmt(body_stmt)
+            self.collect_lifetimes_expr(stmt.condition)
+        else:
+            # For other statements, collect from expressions
+            self.collect_lifetimes_expr_from_stmt(stmt)
+
+    def collect_lifetimes_expr(self, expr):
+        """Collect lifetimes from expressions."""
+        if isinstance(expr, VariableExpr):
+            var_name = expr.name
+            current_counter = self.statement_counter
+            if var_name not in self.var_lifetime:
+                self.var_lifetime[var_name] = (current_counter, current_counter)
+            else:
+                start, end = self.var_lifetime[var_name]
+                self.var_lifetime[var_name] = (min(start, current_counter), max(end, current_counter))
+        elif isinstance(expr, BinaryExpr):
+            self.collect_lifetimes_expr(expr.left)
+            self.collect_lifetimes_expr(expr.right)
+        elif isinstance(expr, UnaryExpr):
+            self.collect_lifetimes_expr(expr.operand)
+        elif isinstance(expr, FunctionCallExpr):
+            for arg in expr.arguments:
+                self.collect_lifetimes_expr(arg)
+        elif isinstance(expr, GroupingExpr):
+            self.collect_lifetimes_expr(expr.expression)
+        # Literals don't have variables
+
+    def collect_lifetimes_expr_from_stmt(self, stmt):
+        """Collect lifetimes from statements that have expressions."""
+        if isinstance(stmt, PxlOnStmt):
+            self.collect_lifetimes_expr(stmt.x)
+            self.collect_lifetimes_expr(stmt.y)
+            self.collect_lifetimes_expr(stmt.color)
+        elif isinstance(stmt, PxlOffStmt):
+            self.collect_lifetimes_expr(stmt.x)
+            self.collect_lifetimes_expr(stmt.y)
+        elif isinstance(stmt, LineStmt):
+            self.collect_lifetimes_expr(stmt.x1)
+            self.collect_lifetimes_expr(stmt.y1)
+            self.collect_lifetimes_expr(stmt.x2)
+            self.collect_lifetimes_expr(stmt.y2)
+            self.collect_lifetimes_expr(stmt.color)
+        elif isinstance(stmt, CircleStmt):
+            self.collect_lifetimes_expr(stmt.x)
+            self.collect_lifetimes_expr(stmt.y)
+            self.collect_lifetimes_expr(stmt.radius)
+            self.collect_lifetimes_expr(stmt.color)
+        elif isinstance(stmt, TextStmt):
+            self.collect_lifetimes_expr(stmt.x)
+            self.collect_lifetimes_expr(stmt.y)
+            self.collect_lifetimes_expr(stmt.color)
+        elif isinstance(stmt, SetLayerStmt):
+            self.collect_lifetimes_expr(stmt.layer)
+        elif isinstance(stmt, PlayToneStmt):
+            self.collect_lifetimes_expr(stmt.frequency)
+            self.collect_lifetimes_expr(stmt.duration)
+            self.collect_lifetimes_expr(stmt.volume)
+        elif isinstance(stmt, PlayWaveStmt):
+            self.collect_lifetimes_expr(stmt.frequency)
+            self.collect_lifetimes_expr(stmt.volume)
+        elif isinstance(stmt, SetChannelStmt):
+            self.collect_lifetimes_expr(stmt.channel)
+        elif isinstance(stmt, DispStmt):
+            self.collect_lifetimes_expr(stmt.expression)
+        # Others don't have expressions
+
+    def assign_registers(self):
+        """Assign registers to variables using linear scan register allocation."""
+        # Sort variables by start time
+        vars_sorted = sorted(self.var_lifetime.items(), key=lambda x: x[1][0])
+        
+        active = []  # List of (end_time, reg)
+        
+        for var, (start, end) in vars_sorted:
+            # Expire old intervals
+            active = [(e, r) for e, r in active if e > start]
+            
+            # Try to allocate a register
+            available_regs = [r for r in self.var_allocation_order if not any(r == ar for _, ar in active)]
+            if available_regs:
+                reg = available_regs[0]
+                self.var_reg[var] = reg
+                active.append((end, reg))
+                # Mark as used
+                self.register_usage[reg] = True
+            # If no register, leave in memory
+
     def generate(self, program: Program) -> str:
         """
         Generate assembly code from the AST.
@@ -98,6 +248,15 @@ class CodeGenerator:
         self.label_counter = 0
         self.variable_addresses = {}
         self.next_address = 0x0120
+        self.var_reg = {}
+        self.var_lifetime = {}
+        self.statement_counter = 0
+
+        # First pass: collect lifetimes
+        self.collect_lifetimes(program)
+
+        # Assign registers to variables
+        self.assign_registers()
 
         # Set ORG to 0x0200 (past interrupt vectors)
         self.output.append("ORG 0x0200")
@@ -174,9 +333,8 @@ class CodeGenerator:
 
     def generate_clr_draw(self):
         """Generate ClrDraw code."""
-        self.output.append("; ClrDraw - simplified")
-        self.output.append("MOV VM, 1")  # Memory mode
-        self.output.append("MOV VL, 0")  # Layer 0
+        self.output.append("; ClrDraw")
+        self.output.append("MOV VL, 1")  # Layer 1
         self.output.append("SFILL 0x00")
 
     def generate_pxl_on(self, stmt: PxlOnStmt):
@@ -362,10 +520,17 @@ class CodeGenerator:
         value_reg = self.generate_expression(stmt.expression, "P1")  # Prefer P register for 16-bit storage
 
         if isinstance(stmt.variable, VariableExpr):
-            # Simple variable assignment
-            var_addr = self.get_variable_address(stmt.variable)
-            self.output.append(f"MOV P0, {var_addr}")
-            self.output.append(f"MOV [P0], {value_reg}")
+            var_name = stmt.variable.name
+            if var_name in self.var_reg:
+                # Store to register
+                reg = self.var_reg[var_name]
+                if reg != value_reg:
+                    self.output.append(f"MOV {reg}, {value_reg}")
+            else:
+                # Store to memory
+                var_addr = self.get_variable_address(stmt.variable)
+                self.output.append(f"MOV P0, {var_addr}")
+                self.output.append(f"MOV [P0], {value_reg}")
         elif isinstance(stmt.variable, ListAccessExpr):
             # Array element assignment
             self.generate_list_store(stmt.variable, value_reg)
@@ -451,16 +616,22 @@ class CodeGenerator:
         # Increment nesting level for inner constructs
         self.loop_nesting_level += 1
 
-        # Allocate loop_reg, preferring current_reg
-        preferred = [current_reg] + ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']
-        loop_reg = None
-        for reg in preferred:
-            if not self.register_usage.get(reg, False):
-                loop_reg = reg
-                break
-        if not loop_reg:
-            loop_reg = self.allocate_register()
-        self.register_usage[loop_reg] = True
+        # Allocate loop_reg
+        is_register_allocated = stmt.variable in self.var_reg
+        if is_register_allocated:
+            loop_reg = self.var_reg[stmt.variable]
+            self.register_usage[loop_reg] = True
+        else:
+            # Allocate loop_reg, preferring current_reg
+            preferred = [current_reg] + ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']
+            loop_reg = None
+            for reg in preferred:
+                if not self.register_usage.get(reg, False):
+                    loop_reg = reg
+                    break
+            if not loop_reg:
+                loop_reg = self.allocate_register()
+            self.register_usage[loop_reg] = True
 
         # Allocate end_reg, avoiding conflicts
         if end_reg == loop_reg or self.register_usage.get(end_reg, False):
@@ -474,16 +645,19 @@ class CodeGenerator:
 
         # Initialize variable
         start_reg = self.generate_expression(stmt.start)
-        var_addr = self.get_variable_address(stmt.variable)
         self.output.append(f"MOV {loop_reg}, {start_reg}")
-        self.output.append(f"MOV P0, {var_addr}")
-        self.output.append(f"MOV [P0], {loop_reg}")
+        if not is_register_allocated:
+            var_addr = self.get_variable_address(stmt.variable)
+            self.output.append(f"MOV P0, {var_addr}")
+            self.output.append(f"MOV [P0], {loop_reg}")
 
         self.output.append(f"{loop_label}:")
 
-        # Update memory for expressions
-        self.output.append(f"MOV P0, {var_addr}")
-        self.output.append(f"MOV [P0], {loop_reg}")
+        # Update memory for expressions if not register allocated
+        if not is_register_allocated:
+            var_addr = self.get_variable_address(stmt.variable)
+            self.output.append(f"MOV P0, {var_addr}")
+            self.output.append(f"MOV [P0], {loop_reg}")
 
         # Check condition
         end_reg_loaded = self.generate_expression(stmt.end, end_reg)
@@ -511,7 +685,8 @@ class CodeGenerator:
         self.output.append(f"JMP {loop_label}")
         self.output.append(f"{end_label}:")
 
-        self.deallocate_register(loop_reg)
+        if not is_register_allocated:
+            self.deallocate_register(loop_reg)
         self.deallocate_register(end_reg)
         self.deallocate_register(step_reg)
         
@@ -690,7 +865,7 @@ class CodeGenerator:
                 else:
                     self.output.append(f"MOV {target_reg}, {left_result}")
                     self.output.append(f"SAR {target_reg}, {target_reg}, {right_result}")
-            elif expr.operator == "<@" or expr.operator == "ROL":
+            elif expr.operator == "<@>" or expr.operator == "ROL":
                 if left_result == target_reg:
                     self.output.append(f"ROL {target_reg}, {target_reg}, {right_result}")
                 else:
@@ -1137,6 +1312,12 @@ class CodeGenerator:
 
     def load_variable(self, name: str, target_reg: str = "R0") -> str:
         """Load a variable into a register."""
+        if name in self.var_reg:
+            reg = self.var_reg[name]
+            if reg != target_reg:
+                self.output.append(f"MOV {target_reg}, {reg}")
+            return target_reg
+        # Not in register, load from memory
         addr = self.get_variable_address(name)
         if target_reg.startswith('R'):
             # For 8-bit R registers, read the low byte (stored at addr + 1)

@@ -9,3 +9,5 @@ For y = 0 To 255
         z = z + 1
     Next
 Next
+
+ClrDraw
