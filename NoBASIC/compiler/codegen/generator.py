@@ -357,12 +357,13 @@ class CodeGenerator:
 
     def generate_pxl_on(self, stmt: PxlOnStmt):
         """Generate PxlOn(x, y, color) code."""
-        # Use coordinate mode addressing
-        x_reg = self.generate_expression(stmt.x)  # Allocate register automatically
-        y_reg = self.generate_expression(stmt.y)  # Allocate register automatically
+        # Use coordinate mode addressing - let register allocation choose freely
+        # to avoid conflicts with loop variables
+        x_reg = self.generate_expression(stmt.x)
+        y_reg = self.generate_expression(stmt.y)
         self.output.append(f"MOV VX, {x_reg}")  # VX = x coordinate
         self.output.append(f"MOV VY, {y_reg}")  # VY = y coordinate
-        color_reg = self.generate_expression(stmt.color)  # Allocate register automatically
+        color_reg = self.generate_expression(stmt.color)
         self.output.append(f"MOV VC, {color_reg}")  # Use the allocated color register
         self.output.append("SWRITE VC")
         
@@ -373,6 +374,7 @@ class CodeGenerator:
 
     def generate_pxl_off(self, stmt: PxlOffStmt):
         """Generate PxlOff(x, y) code."""
+        # Allocate registers for x and y to avoid conflicts with struct members
         x_reg = self.generate_expression(stmt.x)
         y_reg = self.generate_expression(stmt.y)
 
@@ -380,6 +382,10 @@ class CodeGenerator:
         self.output.append(f"MOV VY, {y_reg}")
         self.output.append("MOV VC, 0")
         self.output.append("SWRITE VC")
+        
+        # Deallocate registers
+        self.deallocate_register(x_reg)
+        self.deallocate_register(y_reg)
 
     def generate_line(self, stmt: LineStmt):
         """Generate Line drawing code using SLINE opcode."""
@@ -427,9 +433,14 @@ class CodeGenerator:
 
     def generate_text(self, stmt: TextStmt):
         """Generate Text rendering code using TEXT opcode."""
-        x_reg = self.generate_expression(stmt.x, "VX")
-        y_reg = self.generate_expression(stmt.y, "VY")
-        color_reg = self.generate_expression(stmt.color, "VC")
+        x_reg = self.generate_expression(stmt.x)
+        y_reg = self.generate_expression(stmt.y)
+        color_reg = self.generate_expression(stmt.color)
+        
+        # Set graphics registers
+        self.output.append(f"MOV VX, {x_reg}")
+        self.output.append(f"MOV VY, {y_reg}")
+        self.output.append(f"MOV VC, {color_reg}")
 
         # Handle text expression
         if isinstance(stmt.text, LiteralExpr) and stmt.text.data_type.name == "STRING":
@@ -438,16 +449,16 @@ class CodeGenerator:
             self.output.append(f"TEXT {label}")
         elif isinstance(stmt.text, VariableExpr) and stmt.text.name.upper().startswith("STR"):
             # String variable - load address and display
-            text_addr_reg = self.generate_expression(stmt.text, "P1")
+            text_addr_reg = self.generate_expression(stmt.text)
             self.output.append(f"TEXT {text_addr_reg}")
         elif isinstance(stmt.text, BinaryExpr) and stmt.text.operator == "+":
             # Likely string concatenation - evaluate to get address
-            text_addr_reg = self.generate_expression(stmt.text, "P1")
+            text_addr_reg = self.generate_expression(stmt.text)
             self.output.append(f"TEXT {text_addr_reg}")
         else:
             # For numeric expressions, convert to string first
-            text_value_reg = self.generate_expression(stmt.text, "R1")
-            string_reg = self.allocate_register("P1")  # Use P register for string address
+            text_value_reg = self.generate_expression(stmt.text)
+            string_reg = self.allocate_register()  # Use P register for string address
             self.output.append(f"ITOS {string_reg}, {text_value_reg}")  # Convert number to string
             self.output.append(f"TEXT {string_reg}")  # Display the converted string
             self.deallocate_register(string_reg)
@@ -455,8 +466,8 @@ class CodeGenerator:
     def generate_set_layer(self, stmt: SetLayerStmt):
         """Generate SetLayer(layer) code."""
         self.output.append("MOV VM, 0")  # Coordinate mode for pixel operations
-        self.generate_expression(stmt.layer, "VL")
-        # VL is already set by the expression generation
+        layer_reg = self.generate_expression(stmt.layer)
+        self.output.append(f"MOV VL, {layer_reg}")
 
     def generate_sprite_on(self, stmt: SpriteOnStmt):
         """Generate SpriteOn(spriteId, x, y) code."""
@@ -470,12 +481,14 @@ class CodeGenerator:
 
     def generate_play_tone(self, stmt: PlayToneStmt):
         """Generate optimized PlayTone code."""
-        freq_reg = self.generate_expression(stmt.frequency, "SF")
-        dur_reg = self.generate_expression(stmt.duration, "R1")
-        vol_reg = self.generate_expression(stmt.volume, "SV")
-
-        # Set waveform to default (0)
-        self.output.append("MOV SW, 0")
+        freq_reg = self.generate_expression(stmt.frequency)
+        dur_reg = self.generate_expression(stmt.duration)
+        vol_reg = self.generate_expression(stmt.volume)
+        
+        # Set sound registers
+        self.output.append(f"MOV SF, {freq_reg}")
+        self.output.append(f"MOV SV, {vol_reg}")
+        self.output.append("MOV SW, 0")  # Set waveform to default (0)
         self.output.append("SPLAY")
 
         # Duration handling could use timer, but simplified for now
@@ -483,10 +496,14 @@ class CodeGenerator:
 
     def generate_play_wave(self, stmt: PlayWaveStmt):
         """Generate optimized PlayWave code."""
-        wave_reg = self.generate_expression(stmt.waveform, "SW")
-        freq_reg = self.generate_expression(stmt.frequency, "SF")
-        vol_reg = self.generate_expression(stmt.volume, "SV")
-
+        wave_reg = self.generate_expression(stmt.waveform)
+        freq_reg = self.generate_expression(stmt.frequency)
+        vol_reg = self.generate_expression(stmt.volume)
+        
+        # Set sound registers
+        self.output.append(f"MOV SW, {wave_reg}")
+        self.output.append(f"MOV SF, {freq_reg}")
+        self.output.append(f"MOV SV, {vol_reg}")
         self.output.append("SPLAY")
 
     def generate_stop_sound(self):
@@ -663,20 +680,25 @@ class CodeGenerator:
                 field_offset = field_index * 2  # 2 bytes per field
                 field_addr = base_addr + field_offset
                 
-                # CRITICAL: Struct fields are 16-bit words. Nova-16 is BIG-ENDIAN.
-                # We MUST load into a 16-bit register first, then extract low byte if needed.
+                # CRITICAL: Struct fields are 16-bit unsigned values.
+                # ALWAYS load into 16-bit P registers to preserve unsigned values!
+                # This fixes signed comparison issues with values > 127.
                 self.output.append(f"; Load {var_name}.{expr.member}")
                 self.output.append(f"MOV P0, {field_addr}")
                 
-                if target_reg.startswith('R'):
-                    # Target is 8-bit - load full word into P1, extract low byte
-                    self.output.append(f"MOV P1, [P0]")
-                    self.output.append(f"MOV {target_reg}, :P1")  # Extract low byte
-                else:
-                    # Target is 16-bit - direct load
+                # If target_reg is a P register, use it directly
+                # If target_reg is an R register, we cannot use it (would lose unsigned value)
+                # In that case, just use P1 and return it (caller will handle the mismatch)
+                if target_reg.startswith('P'):
+                    # Target is already a P register, use it
                     self.output.append(f"MOV {target_reg}, [P0]")
-                
-                return target_reg
+                    return target_reg
+                else:
+                    # Target is an R register, but we need P for unsigned values
+                    # Use P1 as a temporary and return it
+                    # The caller's target_reg will be unused but that's OK
+                    self.output.append(f"MOV P1, [P0]")
+                    return 'P1'
             else:
                 # Auto-allocate struct instance on first use
                 # Try to infer struct type from context (if only one struct defined)
@@ -789,6 +811,8 @@ class CodeGenerator:
             if not loop_reg:
                 loop_reg = self.allocate_register()
             self.register_usage[loop_reg] = True
+            # Register the loop variable so the body knows where it is
+            self.var_reg[stmt.variable] = loop_reg
 
         # Allocate end_reg, avoiding conflicts
         if end_reg == loop_reg or self.register_usage.get(end_reg, False):
@@ -843,6 +867,9 @@ class CodeGenerator:
         self.output.append(f"{end_label}:")
 
         if not is_register_allocated:
+            # Remove from var_reg since we allocated it
+            if stmt.variable in self.var_reg:
+                del self.var_reg[stmt.variable]
             self.deallocate_register(loop_reg)
         self.deallocate_register(end_reg)
         self.deallocate_register(step_reg)
@@ -890,12 +917,12 @@ class CodeGenerator:
 
     def generate_expression(self, expr: Expression, preferred_reg: str = None) -> str:
         """Generate code for an expression and return the register containing the result."""
-        if preferred_reg and self.register_usage.get(preferred_reg, False):
-            # preferred_reg is already allocated, use it
-            target_reg = preferred_reg
-        else:
-            # Allocate a new register
+        if preferred_reg and not self.register_usage.get(preferred_reg, False):
+            # Preferred register is available, use it
             target_reg = self.allocate_register(preferred_reg)
+        else:
+            # No preferred register or it's busy, allocate any available register
+            target_reg = self.allocate_register()
         
         try:
             if isinstance(expr, LiteralExpr):

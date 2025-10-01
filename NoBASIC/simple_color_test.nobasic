@@ -1,5 +1,0 @@
-ClrDraw
-color = 10
-PxlOn(5, 5, color)
-color = 20
-PxlOn(10, 10, color)

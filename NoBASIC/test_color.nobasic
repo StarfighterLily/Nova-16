@@ -1,4 +1,0 @@
-SetLayer(1)
-z = 15
-PxlOn(10, 10, z)
-Pause

@@ -114,13 +114,13 @@ class Parser:
         """Parse PxlOn(x, y, color)"""
         self.advance()  # consume PXLON
         self.consume(TokenType.LPAREN, "Expected '(' after PxlOn")
-        x = self.expression()
+        x_expr = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after x")
-        y = self.expression()
+        y_expr = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after y")
-        color = self.expression()
+        color_expr = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after color")
-        return PxlOnStmt(x, y, color)
+        return PxlOnStmt(x=x_expr, y=y_expr, color=color_expr)
 
     def pxl_off_statement(self) -> PxlOffStmt:
         """Parse PxlOff(x, y)"""
