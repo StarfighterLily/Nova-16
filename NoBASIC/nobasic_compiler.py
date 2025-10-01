@@ -103,7 +103,9 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         print(f"Compilation error: {e}")
         sys.exit(1)
     except Exception as e:
+        import traceback
         print(f"Unexpected error: {e}")
+        print(traceback.format_exc())
         sys.exit(1)
 
 

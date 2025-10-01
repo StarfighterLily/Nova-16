@@ -1,0 +1,9 @@
+// Test program for partially implemented features
+
+ClrDraw
+
+// Test DISP statement
+Disp 42
+
+// Test PAUSE
+Pause

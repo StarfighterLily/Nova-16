@@ -1,3 +1,3 @@
 # Symbol table
 # Format: <symbol> <value>
-L1 0x0210
+STR0 0x0222

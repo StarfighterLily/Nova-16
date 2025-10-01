@@ -105,16 +105,14 @@ class CodeGenerator:
         current_counter = self.statement_counter
 
         if isinstance(stmt, AssignmentStmt):
-            if hasattr(stmt.variable, 'name'):
+            if isinstance(stmt.variable, VariableExpr):
                 var_name = stmt.variable.name
-            else:
-                var_name = stmt.variable
-            current_counter = self.statement_counter
-            if var_name not in self.var_lifetime:
-                self.var_lifetime[var_name] = (current_counter, current_counter)
-            else:
-                start, _ = self.var_lifetime[var_name]
-                self.var_lifetime[var_name] = (start, current_counter)
+                current_counter = self.statement_counter
+                if var_name not in self.var_lifetime:
+                    self.var_lifetime[var_name] = (current_counter, current_counter)
+                else:
+                    start, _ = self.var_lifetime[var_name]
+                    self.var_lifetime[var_name] = (start, current_counter)
             self.collect_lifetimes_expr(stmt.expression)
         elif isinstance(stmt, ForStmt):
             # Loop variable defined at for
@@ -162,6 +160,11 @@ class CodeGenerator:
             else:
                 start, end = self.var_lifetime[var_name]
                 self.var_lifetime[var_name] = (min(start, current_counter), max(end, current_counter))
+        elif isinstance(expr, ListAccessExpr):
+            self.collect_lifetimes_expr(expr.index)
+        elif isinstance(expr, MatrixAccessExpr):
+            self.collect_lifetimes_expr(expr.row)
+            self.collect_lifetimes_expr(expr.col)
         elif isinstance(expr, BinaryExpr):
             self.collect_lifetimes_expr(expr.left)
             self.collect_lifetimes_expr(expr.right)
@@ -210,7 +213,7 @@ class CodeGenerator:
         elif isinstance(stmt, SetChannelStmt):
             self.collect_lifetimes_expr(stmt.channel)
         elif isinstance(stmt, DispStmt):
-            self.collect_lifetimes_expr(stmt.expression)
+            self.collect_lifetimes_expr(stmt.text)
         # Others don't have expressions
 
     def assign_registers(self):
@@ -413,14 +416,26 @@ class CodeGenerator:
         y_reg = self.generate_expression(stmt.y, "VY")
         color_reg = self.generate_expression(stmt.color, "VC")
 
-        # Handle text expression - for strings, create a label
+        # Handle text expression
         if isinstance(stmt.text, LiteralExpr) and stmt.text.data_type.name == "STRING":
+            # For string literals, create a label and display directly
             label = self.add_string_literal(stmt.text.value)
             self.output.append(f"TEXT {label}")
+        elif isinstance(stmt.text, VariableExpr) and stmt.text.name.upper().startswith("STR"):
+            # String variable - load address and display
+            text_addr_reg = self.generate_expression(stmt.text, "P1")
+            self.output.append(f"TEXT {text_addr_reg}")
+        elif isinstance(stmt.text, BinaryExpr) and stmt.text.operator == "+":
+            # Likely string concatenation - evaluate to get address
+            text_addr_reg = self.generate_expression(stmt.text, "P1")
+            self.output.append(f"TEXT {text_addr_reg}")
         else:
-            # For other expressions, evaluate to register (not properly implemented)
-            text_reg = self.generate_expression(stmt.text, "R1")
-            self.output.append(f"TEXT {text_reg}")  # This won't work properly
+            # For numeric expressions, convert to string first
+            text_value_reg = self.generate_expression(stmt.text, "R1")
+            string_reg = self.allocate_register("P1")  # Use P register for string address
+            self.output.append(f"ITOS {string_reg}, {text_value_reg}")  # Convert number to string
+            self.output.append(f"TEXT {string_reg}")  # Display the converted string
+            self.deallocate_register(string_reg)
 
     def generate_set_layer(self, stmt: SetLayerStmt):
         """Generate SetLayer(layer) code."""
@@ -477,9 +492,15 @@ class CodeGenerator:
         """Generate Input(prompt, variable) code."""
         # Display prompt if provided
         if stmt.prompt is not None:
-            # For now, just evaluate the prompt expression (simplified)
-            self.generate_expression(stmt.prompt, "R0")
-            self.output.append("; Display prompt - simplified")
+            # Handle prompt display
+            if isinstance(stmt.prompt, LiteralExpr) and stmt.prompt.data_type.name == "STRING":
+                # For string literals, display directly
+                prompt_label = self.add_string_literal(stmt.prompt.value)
+                self.output.append(f"TEXT {prompt_label}, 15")  # White color
+            else:
+                # For expressions, evaluate and try to display (simplified for now)
+                prompt_reg = self.generate_expression(stmt.prompt, "R1")
+                self.output.append(f"TEXT {prompt_reg}, 15")  # This may not work properly for non-strings
 
         # Wait for and read input
         input_label = self.new_label()
@@ -496,10 +517,38 @@ class CodeGenerator:
 
     def generate_disp(self, stmt: DispStmt):
         """Generate Disp expression code."""
-        # For now, just evaluate the expression - DISP is for console output
-        # In a real implementation, this would output to a console
-        self.generate_expression(stmt.text, "R1")
-        # Could add TEXT call here, but for now just evaluate
+        # Check if this is a string expression
+        if isinstance(stmt.text, LiteralExpr) and stmt.text.data_type.name == "STRING":
+            # String literal - create label and display
+            label = self.add_string_literal(stmt.text.value)
+            self.output.append("MOV VX, 0")  # Set X coordinate
+            self.output.append("MOV VY, 0")  # Set Y coordinate  
+            self.output.append("MOV VC, 15")  # Set color to white
+            self.output.append(f"TEXT {label}")  # Display text
+        elif isinstance(stmt.text, VariableExpr) and stmt.text.name.upper().startswith("STR"):
+            # String variable - load address and display
+            text_addr_reg = self.generate_expression(stmt.text, "P1")
+            self.output.append("MOV VX, 0")  # Set X coordinate
+            self.output.append("MOV VY, 0")  # Set Y coordinate  
+            self.output.append("MOV VC, 15")  # Set color to white
+            self.output.append(f"TEXT {text_addr_reg}")  # Display text
+        elif isinstance(stmt.text, BinaryExpr) and stmt.text.operator == "+":
+            # Likely string concatenation - evaluate to get address
+            text_addr_reg = self.generate_expression(stmt.text, "P1")
+            self.output.append("MOV VX, 0")  # Set X coordinate
+            self.output.append("MOV VY, 0")  # Set Y coordinate  
+            self.output.append("MOV VC, 15")  # Set color to white
+            self.output.append(f"TEXT {text_addr_reg}")  # Display text
+        else:
+            # Numeric expression - evaluate and convert to string
+            value_reg = self.generate_expression(stmt.text, "R1")
+            string_reg = self.allocate_register("P1")  # Use a P register for string address
+            self.output.append(f"ITOS {string_reg}, {value_reg}")  # Convert to string
+            self.output.append("MOV VX, 0")  # Set X coordinate
+            self.output.append("MOV VY, 0")  # Set Y coordinate  
+            self.output.append("MOV VC, 15")  # Set color to white
+            self.output.append(f"TEXT {string_reg}")  # Display text
+            self.deallocate_register(string_reg)
 
     def generate_pause(self):
         """Generate optimized Pause code."""
@@ -756,9 +805,14 @@ class CodeGenerator:
                     else:
                         self.output.append(f"MOV {target_reg}, {expr.value}")
                     return target_reg
+                elif expr.data_type.name == "STRING":
+                    # String literals: create DEFSTR label and load address
+                    label = self.add_string_literal(expr.value)
+                    self.output.append(f"MOV {target_reg}, {label}")
+                    return target_reg
                 else:
-                    # String literals would need to be stored in memory
-                    self.output.append(f"MOV {target_reg}, 0")  # Simplified
+                    # Other types - default to zero
+                    self.output.append(f"MOV {target_reg}, 0")
                     return target_reg
             elif isinstance(expr, VariableExpr):
                 return self.load_variable(expr.name, target_reg)
@@ -783,6 +837,57 @@ class CodeGenerator:
 
     def generate_binary_expression(self, expr: BinaryExpr, target_reg: str) -> str:
         """Generate optimized code for binary expressions."""
+        # Check if this is string concatenation (detect by checking if operands are string literals or string variables)
+        # For now, we detect this heuristically - if we see string literals or Str variables with + operator
+        is_string_concat = False
+        if expr.operator == "+":
+            # Check left operand
+            left_is_string = False
+            right_is_string = False
+            
+            if isinstance(expr.left, LiteralExpr) and expr.left.data_type.name == "STRING":
+                left_is_string = True
+            elif isinstance(expr.left, VariableExpr) and expr.left.name.upper().startswith("STR"):
+                left_is_string = True
+                
+            if isinstance(expr.right, LiteralExpr) and expr.right.data_type.name == "STRING":
+                right_is_string = True
+            elif isinstance(expr.right, VariableExpr) and expr.right.name.upper().startswith("STR"):
+                right_is_string = True
+                
+            is_string_concat = left_is_string or right_is_string
+        
+        if is_string_concat:
+            # String concatenation: allocate temporary buffer and use STRCAT
+            # Allocate registers for operands
+            left_reg = self.allocate_register("P2")
+            right_reg = self.allocate_register("P3")
+            
+            try:
+                # Generate left and right operands (these will be string addresses)
+                left_result = self.generate_expression(expr.left, left_reg)
+                right_result = self.generate_expression(expr.right, right_reg)
+                
+                # Allocate temporary buffer for result (use next_address space)
+                buffer_addr = self.next_address
+                self.next_address += 256  # Reserve 256 bytes for concatenated string
+                
+                # Copy left string to buffer
+                self.output.append(f"MOV P0, {buffer_addr}")  # Destination
+                self.output.append(f"STRCPY P0, {left_result}")  # Copy left string
+                
+                # Concatenate right string to buffer
+                self.output.append(f"STRCAT P0, {right_result}")  # Append right string
+                
+                # Return buffer address in target register
+                self.output.append(f"MOV {target_reg}, {buffer_addr}")
+                
+                return target_reg
+            finally:
+                self.deallocate_register(left_reg)
+                self.deallocate_register(right_reg)
+        
+        # Numeric operations (original code)
         # Allocate registers for operands, avoiding the target register
         available_regs = [r for r in self.allocation_order if r != target_reg]
         
@@ -1291,23 +1396,104 @@ class CodeGenerator:
             self.output.append(f"MOV VY, {y1_reg}")
             self.output.append(f"SRECT {x2_reg}, {y2_reg}, {fill_reg}")
         elif func_name == "SUM":
-            # For now, just return 0 - proper list handling needs more work
-            self.output.append(f"MOV {target_reg}, 0")
+            # Sum all elements in the list
+            list_expr = expr.arguments[0]
+            if isinstance(list_expr, VariableExpr) and list_expr.name.upper().startswith('L'):
+                try:
+                    list_num = int(list_expr.name[1:])
+                    base_addr = 0x1000 + (list_num - 1) * 0x100
+                    size = 100
+                    # Initialize sum
+                    self.output.append(f"MOV {target_reg}, 0")
+                    # Use R1 for index, R2 for value, P2 for address
+                    index_reg = "R1"
+                    value_reg = "R2"
+                    addr_reg = "P2"
+                    self.output.append(f"MOV {index_reg}, 0")
+                    loop_label = self.new_label()
+                    end_label = self.new_label()
+                    self.output.append(f"{loop_label}:")
+                    self.output.append(f"CMP {index_reg}, {size}")
+                    self.output.append(f"JGE {end_label}")
+                    # Calculate address
+                    self.output.append(f"MOV {addr_reg}, {index_reg}")
+                    self.output.append(f"SHL {addr_reg}, {addr_reg}, 1")
+                    self.output.append(f"ADD {addr_reg}, {addr_reg}, {base_addr}")
+                    # Load value
+                    self.output.append(f"MOV P0, {addr_reg}")
+                    self.output.append(f"MOV {value_reg}, [P0]")
+                    # Add to sum
+                    self.output.append(f"ADD {target_reg}, {target_reg}, {value_reg}")
+                    # Increment index
+                    self.output.append(f"INC {index_reg}")
+                    self.output.append(f"JMP {loop_label}")
+                    self.output.append(f"{end_label}:")
+                except ValueError:
+                    self.output.append(f"MOV {target_reg}, 0")
+            else:
+                self.output.append(f"MOV {target_reg}, 0")
         elif func_name == "MEAN":
-            # For now, just return 0 - proper list handling needs more work
-            self.output.append(f"MOV {target_reg}, 0")
+            # Calculate average of list elements
+            list_expr = expr.arguments[0]
+            if isinstance(list_expr, VariableExpr) and list_expr.name.upper().startswith('L'):
+                try:
+                    list_num = int(list_expr.name[1:])
+                    base_addr = 0x1000 + (list_num - 1) * 0x100
+                    size = 100
+                    # Initialize sum
+                    self.output.append(f"MOV {target_reg}, 0")
+                    # Use R1 for index, R2 for value, P2 for address
+                    index_reg = "R1"
+                    value_reg = "R2"
+                    addr_reg = "P2"
+                    self.output.append(f"MOV {index_reg}, 0")
+                    loop_label = self.new_label()
+                    end_label = self.new_label()
+                    self.output.append(f"{loop_label}:")
+                    self.output.append(f"CMP {index_reg}, {size}")
+                    self.output.append(f"JGE {end_label}")
+                    # Calculate address
+                    self.output.append(f"MOV {addr_reg}, {index_reg}")
+                    self.output.append(f"SHL {addr_reg}, {addr_reg}, 1")
+                    self.output.append(f"ADD {addr_reg}, {addr_reg}, {base_addr}")
+                    # Load value
+                    self.output.append(f"MOV P0, {addr_reg}")
+                    self.output.append(f"MOV {value_reg}, [P0]")
+                    # Add to sum
+                    self.output.append(f"ADD {target_reg}, {target_reg}, {value_reg}")
+                    # Increment index
+                    self.output.append(f"INC {index_reg}")
+                    self.output.append(f"JMP {loop_label}")
+                    self.output.append(f"{end_label}:")
+                    # Divide by size
+                    self.output.append(f"MOV R3, {size}")
+                    self.output.append(f"DIV {target_reg}, {target_reg}, R3")
+                except ValueError:
+                    self.output.append(f"MOV {target_reg}, 0")
+            else:
+                self.output.append(f"MOV {target_reg}, 0")
         elif func_name == "DIM":
-            # For now, just return 0 - proper list handling needs more work
-            self.output.append(f"MOV {target_reg}, 0")
+            # Return the size of the list (default 100 elements)
+            list_expr = expr.arguments[0]
+            if isinstance(list_expr, VariableExpr) and list_expr.name.upper().startswith('L'):
+                try:
+                    list_num = int(list_expr.name[1:])
+                    size = 100  # Default size per list
+                    self.output.append(f"MOV {target_reg}, {size}")
+                except ValueError:
+                    self.output.append(f"MOV {target_reg}, 0")
+            else:
+                self.output.append(f"MOV {target_reg}, 0")
         elif func_name == "GETKEY":
             self.output.append("KEYIN R0")
             self.output.append(f"MOV {target_reg}, R0")
         elif func_name == "PAUSE":
             # Wait for key press
-            self.output.append("KEYSTAT R0")
             label = self.new_label()
-            self.output.append(f"JZ {label}")
             self.output.append(f"{label}:")
+            self.output.append("KEYSTAT R0")
+            self.output.append("CMP R0, 0")
+            self.output.append(f"JZ {label}")  # Loop until key is available
             self.output.append("KEYIN R0")  # Consume the key
 
     def load_variable(self, name: str, target_reg: str = "R0") -> str:
