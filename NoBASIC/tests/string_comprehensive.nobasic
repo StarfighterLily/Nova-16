@@ -1,0 +1,34 @@
+// Comprehensive string test
+// Test 1: String literal display
+Disp "Test 1: Literal"
+
+// Test 2: String variable assignment and display
+Str1 = "Hello"
+Disp Str1
+
+// Test 3: String concatenation with literals
+Str2 = "World" + "!"
+Disp Str2
+
+// Test 4: String concatenation with variables
+Str3 = Str1 + " " + Str2
+Disp Str3
+
+// Test 5: String in Text() command
+Text(10, 20, "Display Text", 15)
+
+// Test 6: String variable in Text() command
+Text(10, 40, Str1, 10)
+
+// Test 7: Concatenated string in Text() command
+Text(10, 60, "Prefix: " + Str1, 5)
+
+// Test 8: Complex nested concatenation
+Str4 = "A" + "B" + "C"
+Str5 = Str4 + "D" + "E"
+Disp Str5
+
+// Test 9: Input with string prompt
+Input "Enter value: ", x
+
+Disp "All tests passed!"

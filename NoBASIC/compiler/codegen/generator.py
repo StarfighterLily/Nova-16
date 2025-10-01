@@ -598,7 +598,14 @@ class CodeGenerator:
 
     def generate_assignment(self, stmt: AssignmentStmt):
         """Generate optimized assignment code."""
-        value_reg = self.generate_expression(stmt.expression, "P1")  # Prefer P register for 16-bit storage
+        # Check if we're assigning a string - if so, ensure we use P register
+        is_string_assignment = False
+        if isinstance(stmt.variable, VariableExpr):
+            is_string_assignment = stmt.variable.name.upper().startswith("STR")
+        
+        # Generate the value - prefer P register for strings or 16-bit values
+        preferred_reg = "P1" if is_string_assignment else "P1"
+        value_reg = self.generate_expression(stmt.expression, preferred_reg)
 
         if isinstance(stmt.variable, VariableExpr):
             var_name = stmt.variable.name
@@ -827,6 +834,7 @@ class CodeGenerator:
         # Initialize variable
         start_reg = self.generate_expression(stmt.start)
         self.output.append(f"MOV {loop_reg}, {start_reg}")
+        self.deallocate_register(start_reg)  # Free up the temporary register
         if not is_register_allocated:
             var_addr = self.get_variable_address(stmt.variable)
             self.output.append(f"MOV P0, {var_addr}")
@@ -842,7 +850,12 @@ class CodeGenerator:
 
         # Check condition
         end_reg_loaded = self.generate_expression(stmt.end, end_reg)
-        self.output.append(f"CMP {loop_reg}, {end_reg_loaded}")
+        if end_reg_loaded != end_reg:
+            # We got a different register, deallocate it after use
+            self.output.append(f"CMP {loop_reg}, {end_reg_loaded}")
+            self.deallocate_register(end_reg_loaded)
+        else:
+            self.output.append(f"CMP {loop_reg}, {end_reg_loaded}")
 
         # For ascending loops, exit when current > end (unsigned comparison)
         body_label = self.new_label()
@@ -859,6 +872,8 @@ class CodeGenerator:
         if stmt.step:
             step_reg_loaded = self.generate_expression(stmt.step, step_reg)
             self.output.append(f"ADD {loop_reg}, {step_reg_loaded}")
+            if step_reg_loaded != step_reg:
+                self.deallocate_register(step_reg_loaded)
         else:
             # Optimize: use INC for step=1
             self.output.append(f"INC {loop_reg}")
@@ -915,15 +930,53 @@ class CodeGenerator:
         """Generate Label code."""
         self.output.append(f"{stmt.label}:")
 
+    def is_string_expression(self, expr: Expression) -> bool:
+        """Check if an expression will produce a string address (16-bit)."""
+        if isinstance(expr, LiteralExpr):
+            return expr.data_type.name == "STRING"
+        elif isinstance(expr, VariableExpr):
+            # String variables (Str1, Str2, etc.) hold string addresses
+            return expr.name.upper().startswith("STR")
+        elif isinstance(expr, BinaryExpr):
+            # String concatenation with + operator, or nested string operations
+            if expr.operator == "+":
+                return self.is_string_expression(expr.left) or self.is_string_expression(expr.right)
+        return False
+
     def generate_expression(self, expr: Expression, preferred_reg: str = None) -> str:
         """Generate code for an expression and return the register containing the result."""
+        # Check if this expression will produce a string address (needs P register)
+        needs_p_register = self.is_string_expression(expr)
+        
+        # If we need a P register but preferred_reg is an R register, ignore the preference
+        if needs_p_register and preferred_reg and preferred_reg.startswith('R'):
+            preferred_reg = None
+        
+        # If we need a P register and no preferred_reg, ensure we get a P register
+        if needs_p_register and not preferred_reg:
+            # Find first available P register
+            for reg in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']:
+                if not self.register_usage.get(reg, False):
+                    preferred_reg = reg
+                    break
+        
         if preferred_reg and not self.register_usage.get(preferred_reg, False):
             # Preferred register is available, use it
             target_reg = self.allocate_register(preferred_reg)
         else:
-            # No preferred register or it's busy, allocate any available register
-            target_reg = self.allocate_register()
-        
+            # No preferred register or it's busy
+            if needs_p_register:
+                # Force allocation from P registers only
+                for reg in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']:
+                    if not self.register_usage.get(reg, False):
+                        target_reg = self.allocate_register(reg)
+                        break
+                else:
+                    raise RuntimeError("No available P registers for string expression")
+            else:
+                # Allocate any available register
+                target_reg = self.allocate_register()
+                
         try:
             if isinstance(expr, LiteralExpr):
                 if expr.data_type.name == "NUMBER":  # Use .name to get enum name
@@ -941,7 +994,11 @@ class CodeGenerator:
                         self.output.append(f"MOV {target_reg}, {expr.value}")
                     return target_reg
                 elif expr.data_type.name == "STRING":
-                    # String literals: create DEFSTR label and load address
+                    # String literals: create DEFSTR label and load address (16-bit, needs P register)
+                    # If we somehow got an R register, we need to fix it
+                    if target_reg.startswith('R'):
+                        self.deallocate_register(target_reg)
+                        target_reg = self.allocate_register('P1')
                     label = self.add_string_literal(expr.value)
                     self.output.append(f"MOV {target_reg}, {label}")
                     return target_reg
@@ -974,37 +1031,37 @@ class CodeGenerator:
 
     def generate_binary_expression(self, expr: BinaryExpr, target_reg: str) -> str:
         """Generate optimized code for binary expressions."""
-        # Check if this is string concatenation (detect by checking if operands are string literals or string variables)
-        # For now, we detect this heuristically - if we see string literals or Str variables with + operator
+        # Check if this is string concatenation using our helper
         is_string_concat = False
         if expr.operator == "+":
-            # Check left operand
-            left_is_string = False
-            right_is_string = False
-            
-            if isinstance(expr.left, LiteralExpr) and expr.left.data_type.name == "STRING":
-                left_is_string = True
-            elif isinstance(expr.left, VariableExpr) and expr.left.name.upper().startswith("STR"):
-                left_is_string = True
-                
-            if isinstance(expr.right, LiteralExpr) and expr.right.data_type.name == "STRING":
-                right_is_string = True
-            elif isinstance(expr.right, VariableExpr) and expr.right.name.upper().startswith("STR"):
-                right_is_string = True
-                
-            is_string_concat = left_is_string or right_is_string
+            is_string_concat = self.is_string_expression(expr.left) or self.is_string_expression(expr.right)
         
         if is_string_concat:
             # String concatenation: allocate temporary buffer and use STRCAT
-            # Allocate registers for operands
-            left_reg = self.allocate_register("P2")
-            right_reg = self.allocate_register("P3")
+            # Ensure target_reg is a P register (string addresses are 16-bit)
+            if target_reg.startswith('R'):
+                self.deallocate_register(target_reg)
+                target_reg = self.allocate_register('P1')
+            
+            # Generate left operand
+            left_result = self.generate_expression(expr.left)
+            # Immediately move to a safe temporary if needed
+            if left_result != 'P2':
+                self.output.append(f"MOV P2, {left_result}")
+                self.deallocate_register(left_result)
+                left_result = 'P2'
+                self.register_usage['P2'] = True
+            
+            # Generate right operand (left_result is now in P2)
+            right_result = self.generate_expression(expr.right)
+            # Immediately move to a safe temporary if needed
+            if right_result != 'P3':
+                self.output.append(f"MOV P3, {right_result}")
+                self.deallocate_register(right_result)
+                right_result = 'P3'
+                self.register_usage['P3'] = True
             
             try:
-                # Generate left and right operands (these will be string addresses)
-                left_result = self.generate_expression(expr.left, left_reg)
-                right_result = self.generate_expression(expr.right, right_reg)
-                
                 # Allocate temporary buffer for result (use next_address space)
                 buffer_addr = self.next_address
                 self.next_address += 256  # Reserve 256 bytes for concatenated string
@@ -1021,8 +1078,9 @@ class CodeGenerator:
                 
                 return target_reg
             finally:
-                self.deallocate_register(left_reg)
-                self.deallocate_register(right_reg)
+                # Deallocate the temporary registers
+                self.deallocate_register('P2')
+                self.deallocate_register('P3')
         
         # Numeric operations (original code)
         # Allocate registers for operands, avoiding the target register
@@ -1642,7 +1700,12 @@ class CodeGenerator:
             self.output.append("KEYIN R0")  # Consume the key
 
     def load_variable(self, name: str, target_reg: str = "R0") -> str:
-        """Load a variable into a register."""
+        """Load a variable into a register. For string variables, ensure we use P registers."""
+        # String variables need P registers (16-bit addresses)
+        if name.upper().startswith("STR") and target_reg.startswith('R'):
+            # Force use of a P register for string variables
+            target_reg = 'P1'
+            
         if name in self.var_reg:
             reg = self.var_reg[name]
             if reg != target_reg:

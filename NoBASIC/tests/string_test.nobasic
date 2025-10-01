@@ -1,0 +1,12 @@
+// Test string operations
+Disp "Hello World"
+
+Str1 = "Testing"
+Disp Str1
+
+Str2 = "String"
+Str3 = Str1 + " " + Str2
+Disp Str3
+
+Text(10, 20, "Display", 5)
+Text(30, 40, Str1, 10)

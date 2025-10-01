@@ -11,5 +11,6 @@ For y = 0 To 255
 Next
 Pause
 ClrDraw
-Str1 = "Done"
-Disp Str1
+Disp "Done"
+Disp "Another line"
+Disp "And another."
