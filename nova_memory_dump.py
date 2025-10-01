@@ -55,35 +55,36 @@ def run_headless(program_path, max_cycles=10000):
     
     print(f"Execution finished after {cycle + 1} cycles")
     
-# Memory dump after execution
-def dump_memory_range(memory, start, end, label):
-    print(f"\n{label} (0x{start:04X}-0x{end:04X}):")
-    for addr in range(start, end, 2):
-        if addr + 1 < end:
-            value = (memory[addr] << 8) | memory[addr + 1]
-            print(f"  0x{addr:04X}: 0x{value:04X}")
+    # Memory dump after execution
+    def dump_memory_range(memory, start, end, label):
+        print(f"\n{label} (0x{start:04X}-0x{end:04X}):")
+        for addr in range(start, end, 2):
+            if addr + 1 < end:
+                value = (memory[addr] << 8) | memory[addr + 1]
+                print(f"  0x{addr:04X}: 0x{value:04X}")
 
-# After main loop
-dump_memory_range(memory.data, 0x2000, 0x2020, "BENCHMARK RESULTS")
-
-print(f"Final PC: 0x{proc.pc:04X}")
-print("Final register states:")
-print(f"R0-R9: {[f'0x{r:04X}' for r in proc.Rregisters[:10]]}")
-print(f"P0-P9: {[f'0x{r:04X}' for r in proc.Pregisters[:10]]}")
-print(f"VX,VY: 0x{gfx.Vregisters[0]:04X}, 0x{gfx.Vregisters[1]:04X}")
-
-# Sound system info
-print(f"Sound: SA=0x{proc.sound.get_register('SA'):04X}, SF=0x{proc.sound.get_register('SF'):02X}, SV=0x{proc.sound.get_register('SV'):02X}, SW=0x{proc.sound.get_register('SW'):02X}")
-
-# Check if there's any graphics output
-screen = gfx.get_screen()
-non_zero_pixels = (screen != 0).sum()
-    print(f"Graphics: {non_zero_pixels} non-black pixels on screen")
+    # Sync caches before dumping
+    mem._sync_zero_page_to_memory()
+    mem._sync_interrupt_vectors_to_memory()
     
+    dump_memory_range(mem.memory, 0x0000, 0x0010, "ZERO PAGE")
+
+    print(f"Final PC: 0x{proc.pc:04X}")
+    print("Final register states:")
+    print(f"R0-R9: {[f'0x{r:02X}' for r in proc.Rregisters[:10]]}")
+    print(f"P0-P9: {[f'0x{r:04X}' for r in proc.Pregisters[:10]]}")
+    print(f"VX,VY,VC: 0x{gfx.Vregisters[0]:04X}, 0x{gfx.Vregisters[1]:04X}, 0x{gfx.Vregisters[2]:02X}")
+
+    # Sound system info
+    print(f"Sound: SA=0x{proc.sound.get_register('SA'):04X}, SF=0x{proc.sound.get_register('SF'):02X}, SV=0x{proc.sound.get_register('SV'):02X}, SW=0x{proc.sound.get_register('SW'):02X}")
+
+    # Check if there's any graphics output
+    screen = gfx.get_screen()
+    non_zero_pixels = (screen != 0).sum()
+    print(f"Graphics: {non_zero_pixels} non-black pixels on screen")
+
     # Cleanup sound system
     snd.cleanup()
-    
-    return proc, mem, gfx
 
 def main():
     parser = argparse.ArgumentParser(description='Nova-16 CPU Emulator')

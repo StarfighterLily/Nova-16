@@ -1,5 +1,12 @@
-ClrDraw
-x = 11
-y = 22
-PxlOn(x, y, 33)
-Pause
+// Simple NoBASIC test program
+A = 10
+B = 20
+C = 30
+D = 40
+E = 50
+F = 60
+G = 70
+H = 80
+I = 90
+J = 100
+K = 110  // This should spill since P0-P9 are used

@@ -52,7 +52,7 @@ python nova_disassembler.py program.bin
 ### Register Usage
 - **R0-R9**: 8-bit general purpose registers
 - **P0-P9**: 16-bit general purpose registers
-- **Special**: VX/VY (graphics coords), VM (video mode), VL (video layer)
+- **Special**: VX/VY (graphics coords), VM (video mode), VL (video layer), VC (video color)
 - **Sound**: SA (address), SF (frequency), SV (volume), SW (waveform)
 - **Timer**: TT (timer), TM (match), TC (control), TS (speed)
 - **Stack**: SP (P8), FP (P9) - stack grows downward from 0xFFFF
@@ -68,7 +68,7 @@ python nova_disassembler.py program.bin
 ```asm
 ; Graphics system
 MOV VM, 0           ; Coordinate mode (VX,VY = x,y coords)
-MOV VL, 1           ; Active layer (1-8)
+MOV VL, 0           ; Active layer (0-8)
 MOV VX, 100         ; X coordinate
 MOV VY, 120         ; Y coordinate
 SWRITE 0x1F         ; Write pixel/color
