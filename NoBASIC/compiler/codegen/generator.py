@@ -1,9 +1,12 @@
 """
 NoBASIC Code Generator
 Generates Nova-16 assembly code from AST.
+
+Enhanced with fine-grained liveness analysis for optimal register allocation.
+Registers are freed immediately after their last use to minimize register pressure.
 """
 
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Set, Optional
 from ..parser.ast import (
     Program, Statement, Expression, ClrDrawStmt, PxlOnStmt, PxlOffStmt,
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
@@ -13,6 +16,55 @@ from ..parser.ast import (
     ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr,
     GroupingExpr, StructType
 )
+
+
+class LivenessTracker:
+    """
+    Tracks register liveness at a fine-grained level.
+    Determines when each register value is last used and can be freed.
+    """
+    
+    def __init__(self):
+        # Maps register to a list of "last use" positions in the expression tree
+        self.register_last_use: Dict[str, int] = {}
+        self.current_position = 0
+        # Track which registers are managed by us (temporary) vs external (variables)
+        self.managed_registers: Set[str] = set()
+        
+    def allocate_temp(self, reg: str):
+        """Mark a register as a managed temporary."""
+        self.managed_registers.add(reg)
+        self.register_last_use[reg] = self.current_position
+        
+    def use_register(self, reg: str):
+        """Update the last use position for a register."""
+        self.register_last_use[reg] = self.current_position
+        self.current_position += 1
+        
+    def mark_dead(self, reg: str) -> bool:
+        """
+        Mark a register as dead (no longer needed).
+        Returns True if the register can be freed.
+        """
+        if reg in self.managed_registers:
+            self.managed_registers.discard(reg)
+            self.register_last_use.pop(reg, None)
+            return True
+        return False
+        
+    def get_dead_registers(self, after_position: int) -> Set[str]:
+        """Get all registers that are dead after the given position."""
+        dead = set()
+        for reg, last_use in self.register_last_use.items():
+            if last_use <= after_position and reg in self.managed_registers:
+                dead.add(reg)
+        return dead
+        
+    def reset(self):
+        """Reset the tracker for a new statement or scope."""
+        self.register_last_use.clear()
+        self.managed_registers.clear()
+        self.current_position = 0
 
 
 class CodeGenerator:
@@ -57,18 +109,27 @@ class CodeGenerator:
         self.struct_types: Dict[str, StructType] = {}  # struct_name -> StructType
         self.struct_bases: Dict[str, int] = {}  # instance_name -> base_address
         self.struct_instances: Dict[str, str] = {}  # var_name -> struct_name
+        
+        # Liveness analysis for fine-grained register management
+        self.liveness = LivenessTracker()
+        # Track registers that should be automatically freed after use
+        self.auto_free_registers: Set[str] = set()
 
     def allocate_register(self, preferred_reg: str = None) -> str:
         """Allocate an unused register, preferring the specified register if available."""
         # Try preferred register first
         if preferred_reg and not self.register_usage[preferred_reg]:
             self.register_usage[preferred_reg] = True
+            self.liveness.allocate_temp(preferred_reg)
+            self.auto_free_registers.add(preferred_reg)
             return preferred_reg
         
         # Try allocation order
         for reg in self.allocation_order:
             if not self.register_usage[reg]:
                 self.register_usage[reg] = True
+                self.liveness.allocate_temp(reg)
+                self.auto_free_registers.add(reg)
                 return reg
         
         raise RuntimeError("No available registers for allocation")
@@ -77,6 +138,52 @@ class CodeGenerator:
         """Deallocate a register, marking it as available."""
         if reg in self.register_usage:
             self.register_usage[reg] = False
+            self.liveness.mark_dead(reg)
+            self.auto_free_registers.discard(reg)
+            
+    def smart_deallocate(self, reg: str, is_last_use: bool = True):
+        """
+        Intelligently deallocate a register only if it's truly no longer needed.
+        
+        Args:
+            reg: Register to potentially deallocate
+            is_last_use: If True, this is the last use of the register's value
+        """
+        # Only deallocate if this is truly the last use
+        # Check if it's a register that was allocated (not a variable register)
+        if is_last_use and reg in self.register_usage and self.register_usage[reg]:
+            # Don't free variable registers (they stay allocated throughout)
+            if reg not in self.var_reg.values():
+                self.deallocate_register(reg)
+                self.output.append(f"; Free {reg} (last use)")
+            
+    def generate_and_free_args(self, arguments: List[Expression], preferred_regs: List[str] = None) -> List[str]:
+        """
+        Generate code for function arguments and prepare them for auto-freeing.
+        Returns a list of registers containing the argument values.
+        These registers will be automatically freed when smart_deallocate is called.
+        
+        Args:
+            arguments: List of argument expressions
+            preferred_regs: List of preferred registers for each argument
+            
+        Returns:
+            List of registers containing argument values
+        """
+        if preferred_regs is None:
+            preferred_regs = [f"R{i+1}" for i in range(len(arguments))]
+            
+        arg_regs = []
+        for i, arg in enumerate(arguments):
+            pref = preferred_regs[i] if i < len(preferred_regs) else None
+            arg_reg = self.generate_expression(arg, pref)
+            arg_regs.append(arg_reg)
+        return arg_regs
+        
+    def free_args(self, arg_regs: List[str]):
+        """Free all argument registers after they've been used."""
+        for reg in arg_regs:
+            self.smart_deallocate(reg, is_last_use=True)
 
     def with_temporary_register(self, preferred_reg: str = None):
         """Context manager for temporary register allocation."""
@@ -907,6 +1014,74 @@ class CodeGenerator:
         """Generate Label code."""
         self.output.append(f"{stmt.label}:")
 
+    def fold_constants(self, operator: str, left_val, right_val):
+        """
+        Evaluate constant expressions at compile time.
+        
+        Returns the computed value, or None if the operation cannot be folded.
+        """
+        try:
+            if operator == "+":
+                return left_val + right_val
+            elif operator == "-":
+                return left_val - right_val
+            elif operator == "*":
+                return left_val * right_val
+            elif operator == "/":
+                if right_val == 0:
+                    return None  # Avoid division by zero at compile time
+                return int(left_val / right_val)  # Integer division
+            elif operator == "%" or operator == "MOD":
+                if right_val == 0:
+                    return None
+                return left_val % right_val
+            elif operator == "&" or operator == "AND":
+                return int(left_val) & int(right_val)
+            elif operator == "|" or operator == "OR":
+                return int(left_val) | int(right_val)
+            elif operator == "^" or operator == "XOR":
+                return int(left_val) ^ int(right_val)
+            elif operator == "<<" or operator == "SHL":
+                return int(left_val) << int(right_val)
+            elif operator == ">>" or operator == "SHR":
+                return int(left_val) >> int(right_val)
+            elif operator == "<":
+                return 1 if left_val < right_val else 0
+            elif operator == ">":
+                return 1 if left_val > right_val else 0
+            elif operator == "=":
+                return 1 if left_val == right_val else 0
+            elif operator == "<>":
+                return 1 if left_val != right_val else 0
+            elif operator == "<=":
+                return 1 if left_val <= right_val else 0
+            elif operator == ">=":
+                return 1 if left_val >= right_val else 0
+            else:
+                # Unknown operator, cannot fold
+                return None
+        except (ValueError, TypeError, ZeroDivisionError):
+            # Cannot fold this expression
+            return None
+
+    def fold_unary_constant(self, operator: str, value):
+        """
+        Evaluate constant unary expressions at compile time.
+        
+        Returns the computed value, or None if the operation cannot be folded.
+        """
+        try:
+            if operator == "-":
+                return -value
+            elif operator == "NOT":
+                return ~int(value)  # Bitwise NOT
+            elif operator == "ABS":
+                return abs(value)
+            else:
+                return None
+        except (ValueError, TypeError):
+            return None
+
     def is_string_expression(self, expr: Expression) -> bool:
         """Check if an expression will produce a string address (16-bit)."""
         if isinstance(expr, LiteralExpr):
@@ -1010,6 +1185,7 @@ class CodeGenerator:
                 target_reg = self.allocate_register()
                 
         try:
+            result_reg = None
             if isinstance(expr, LiteralExpr):
                 if expr.data_type.name == "NUMBER":  # Use .name to get enum name
                     # Optimize for common values
@@ -1024,7 +1200,7 @@ class CodeGenerator:
                         self.output.append(f"SHL {target_reg}, {shift_amount}")
                     else:
                         self.output.append(f"MOV {target_reg}, {expr.value}")
-                    return target_reg
+                    result_reg = target_reg
                 elif expr.data_type.name == "STRING":
                     # String literals: create DEFSTR label and load address (16-bit, needs P register)
                     # If we somehow got an R register, we need to fix it
@@ -1033,28 +1209,31 @@ class CodeGenerator:
                         target_reg = self.allocate_register('P1')
                     label = self.add_string_literal(expr.value)
                     self.output.append(f"MOV {target_reg}, {label}")
-                    return target_reg
+                    result_reg = target_reg
                 else:
                     # Other types - default to zero
                     self.output.append(f"MOV {target_reg}, 0")
-                    return target_reg
+                    result_reg = target_reg
             elif isinstance(expr, VariableExpr):
-                return self.load_variable(expr.name, target_reg)
+                result_reg = self.load_variable(expr.name, target_reg)
             elif isinstance(expr, MemberAccessExpr):
-                return self.generate_member_access(expr, target_reg)
+                result_reg = self.generate_member_access(expr, target_reg)
             elif isinstance(expr, ListAccessExpr):
-                return self.generate_list_access(expr, target_reg)
+                result_reg = self.generate_list_access(expr, target_reg)
             elif isinstance(expr, MatrixAccessExpr):
-                return self.generate_matrix_access(expr, target_reg)
+                result_reg = self.generate_matrix_access(expr, target_reg)
             elif isinstance(expr, BinaryExpr):
-                return self.generate_binary_expression(expr, target_reg)
+                result_reg = self.generate_binary_expression(expr, target_reg)
             elif isinstance(expr, UnaryExpr):
-                return self.generate_unary_expression(expr, target_reg)
+                result_reg = self.generate_unary_expression(expr, target_reg)
             elif isinstance(expr, FunctionCallExpr):
-                return self.generate_function_call(expr, target_reg)
+                result_reg = self.generate_function_call(expr, target_reg)
             else:
                 self.output.append(f"MOV {target_reg}, 0")  # Default
-                return target_reg
+                result_reg = target_reg
+                
+            # Result register is returned to caller - they are responsible for freeing it
+            return result_reg
         except Exception as e:
             # If anything goes wrong and we allocated the register here, deallocate it
             if not (preferred_reg and self.register_usage.get(preferred_reg, False)):
@@ -1062,7 +1241,18 @@ class CodeGenerator:
             raise
 
     def generate_binary_expression(self, expr: BinaryExpr, target_reg: str) -> str:
-        """Generate optimized code for binary expressions."""
+        """Generate optimized code for binary expressions with immediate register freeing."""
+        # **OPTIMIZATION: Constant Folding**
+        # If both operands are numeric literals, evaluate at compile time
+        if (isinstance(expr.left, LiteralExpr) and isinstance(expr.right, LiteralExpr) and
+            expr.left.data_type.name == "NUMBER" and expr.right.data_type.name == "NUMBER"):
+            
+            folded_value = self.fold_constants(expr.operator, expr.left.value, expr.right.value)
+            if folded_value is not None:
+                self.output.append(f"; Constant folded: {expr.left.value} {expr.operator} {expr.right.value} = {folded_value}")
+                self.output.append(f"MOV {target_reg}, {folded_value}")
+                return target_reg
+        
         # Check if this is string concatenation using our helper
         is_string_concat = False
         if expr.operator == "+":
@@ -1080,7 +1270,8 @@ class CodeGenerator:
             # Immediately move to a safe temporary if needed
             if left_result != 'P2':
                 self.output.append(f"MOV P2, {left_result}")
-                self.deallocate_register(left_result)
+                # Free the left result register immediately after moving
+                self.smart_deallocate(left_result, is_last_use=True)
                 left_result = 'P2'
                 self.register_usage['P2'] = True
             
@@ -1089,7 +1280,8 @@ class CodeGenerator:
             # Immediately move to a safe temporary if needed
             if right_result != 'P3':
                 self.output.append(f"MOV P3, {right_result}")
-                self.deallocate_register(right_result)
+                # Free the right result register immediately after moving
+                self.smart_deallocate(right_result, is_last_use=True)
                 right_result = 'P3'
                 self.register_usage['P3'] = True
             
@@ -1114,17 +1306,20 @@ class CodeGenerator:
                 self.deallocate_register('P2')
                 self.deallocate_register('P3')
         
-        # Numeric operations (original code)
-        # Allocate registers for operands, avoiding the target register
+        # Numeric operations - allocate registers for operands, avoiding the target register
         available_regs = [r for r in self.allocation_order if r != target_reg]
         
         left_reg = self.allocate_register(available_regs[0] if available_regs else None)
         right_reg = self.allocate_register(available_regs[1] if len(available_regs) > 1 else None)
         
         try:
+            # Generate left operand
             left_result = self.generate_expression(expr.left, left_reg)
+            
+            # Generate right operand
             right_result = self.generate_expression(expr.right, right_reg)
 
+            # Perform the operation
             if expr.operator == "+":
                 if left_result == target_reg:
                     self.output.append(f"ADD {target_reg}, {right_result}")
@@ -1217,6 +1412,10 @@ class CodeGenerator:
                 # Use CMP for comparisons and set target_reg based on result
                 self.output.append(f"CMP {left_result}, {right_result}")
                 
+                # Free registers immediately after comparison
+                self.smart_deallocate(left_result, is_last_use=True)
+                self.smart_deallocate(right_result, is_last_use=True)
+                
                 true_label = self.new_label()
                 end_label = self.new_label()
                 
@@ -1241,95 +1440,139 @@ class CodeGenerator:
                 self.output.append(f"{true_label}:")
                 self.output.append(f"MOV {target_reg}, 1")
                 self.output.append(f"{end_label}:")
+                
+                # Registers already freed above for comparisons
+                return target_reg
             else:
                 # Fallback
                 self.output.append(f"MOV {target_reg}, #0")
                 
+            # Free operand registers immediately after use (unless they're the target)
+            if left_result != target_reg:
+                self.smart_deallocate(left_result, is_last_use=True)
+            if right_result != target_reg:
+                self.smart_deallocate(right_result, is_last_use=True)
+                
         finally:
-            # Always deallocate the operand registers
-            self.deallocate_register(left_reg)
-            self.deallocate_register(right_reg)
+            # Always deallocate the pre-allocated registers if they weren't already freed
+            if left_reg in self.auto_free_registers:
+                self.deallocate_register(left_reg)
+            if right_reg in self.auto_free_registers:
+                self.deallocate_register(right_reg)
             
         return target_reg
 
     def generate_unary_expression(self, expr: UnaryExpr, target_reg: str) -> str:
-        """Generate code for unary expressions."""
+        """Generate code for unary expressions with immediate register freeing."""
+        # **OPTIMIZATION: Constant Folding for Unary Operations**
+        # If operand is a numeric literal, evaluate at compile time
+        if isinstance(expr.expression, LiteralExpr) and expr.expression.data_type.name == "NUMBER":
+            folded_value = self.fold_unary_constant(expr.operator, expr.expression.value)
+            if folded_value is not None:
+                self.output.append(f"; Constant folded: {expr.operator}({expr.expression.value}) = {folded_value}")
+                self.output.append(f"MOV {target_reg}, {folded_value}")
+                return target_reg
+        
         operand_reg = self.generate_expression(expr.expression, target_reg)
 
         if expr.operator == "-":
             # NEG modifies in place, so move to target first if needed
             if operand_reg != target_reg:
                 self.output.append(f"MOV {target_reg}, {operand_reg}")
+                self.smart_deallocate(operand_reg, is_last_use=True)
             self.output.append(f"NEG {target_reg}")
         elif expr.operator == "NOT":
             if operand_reg != target_reg:
                 self.output.append(f"MOV {target_reg}, {operand_reg}")
+                self.smart_deallocate(operand_reg, is_last_use=True)
             self.output.append(f"NOT {target_reg}")
         elif expr.operator == "ABS":
             if operand_reg != target_reg:
                 self.output.append(f"MOV {target_reg}, {operand_reg}")
+                self.smart_deallocate(operand_reg, is_last_use=True)
             self.output.append(f"ABS {target_reg}")
         else:
             if operand_reg != target_reg:
                 self.output.append(f"MOV {target_reg}, {operand_reg}")
+                self.smart_deallocate(operand_reg, is_last_use=True)
         return target_reg
 
     def generate_function_call(self, expr: FunctionCallExpr, target_reg: str) -> str:
-        """Generate optimized code for function calls."""
+        """Generate optimized code for function calls with immediate register freeing."""
         func_name = expr.name.upper()
 
         if func_name == "SIN":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"SIN {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "COS":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"COS {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "TAN":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"TAN {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "SQRT":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"SQRT {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "ABS":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"ABS {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "RND":
             self.output.append(f"RND {target_reg}")
         elif func_name == "LEN" or func_name == "LENGTH" or func_name == "STRLEN":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"STRLEN {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "STRCPY":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             src_reg = self.generate_expression(expr.arguments[1], "R2")
             self.output.append(f"STRCPY {dest_reg}, {src_reg}")
             self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+            self.smart_deallocate(dest_reg, is_last_use=True)
+            self.smart_deallocate(src_reg, is_last_use=True)
         elif func_name == "STRCAT":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             src_reg = self.generate_expression(expr.arguments[1], "R2")
             self.output.append(f"STRCAT {dest_reg}, {src_reg}")
             self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+            self.smart_deallocate(dest_reg, is_last_use=True)
+            self.smart_deallocate(src_reg, is_last_use=True)
         elif func_name == "STRCMP":
             str1_reg = self.generate_expression(expr.arguments[0], "R1")
             str2_reg = self.generate_expression(expr.arguments[1], "R2")
             len_reg = self.generate_expression(expr.arguments[2], "R3")
             self.output.append(f"STRCMP {target_reg}, {str1_reg}, {str2_reg}, {len_reg}")
+            self.smart_deallocate(str1_reg, is_last_use=True)
+            self.smart_deallocate(str2_reg, is_last_use=True)
+            self.smart_deallocate(len_reg, is_last_use=True)
         elif func_name == "STRUPR":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"STRUPR {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "STRLWR":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"STRLWR {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "STRREV":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"STRREV {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "STRFIND":
             haystack_reg = self.generate_expression(expr.arguments[0], "R1")
             needle_reg = self.generate_expression(expr.arguments[1], "R2")
             self.output.append(f"STRFIND {target_reg}, {haystack_reg}, {needle_reg}")
+            self.smart_deallocate(haystack_reg, is_last_use=True)
+            self.smart_deallocate(needle_reg, is_last_use=True)
         elif func_name == "STRFINDI":
             haystack_reg = self.generate_expression(expr.arguments[0], "R1")
             needle_reg = self.generate_expression(expr.arguments[1], "R2")
             self.output.append(f"STRFINDI {target_reg}, {haystack_reg}, {needle_reg}")
+            self.smart_deallocate(haystack_reg, is_last_use=True)
+            self.smart_deallocate(needle_reg, is_last_use=True)
         elif func_name == "STREXT":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             haystack_reg = self.generate_expression(expr.arguments[1], "R2")
@@ -1337,6 +1580,10 @@ class CodeGenerator:
             len_reg = self.generate_expression(expr.arguments[3], "R4")
             self.output.append(f"STREXT {dest_reg}, {haystack_reg}, {needle_reg}, {len_reg}")
             self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+            self.smart_deallocate(dest_reg, is_last_use=True)
+            self.smart_deallocate(haystack_reg, is_last_use=True)
+            self.smart_deallocate(needle_reg, is_last_use=True)
+            self.smart_deallocate(len_reg, is_last_use=True)
         elif func_name == "STREXTI":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             haystack_reg = self.generate_expression(expr.arguments[1], "R2")
@@ -1344,57 +1591,86 @@ class CodeGenerator:
             len_reg = self.generate_expression(expr.arguments[3], "R4")
             self.output.append(f"STREXTI {dest_reg}, {haystack_reg}, {needle_reg}, {len_reg}")
             self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+            self.smart_deallocate(dest_reg, is_last_use=True)
+            self.smart_deallocate(haystack_reg, is_last_use=True)
+            self.smart_deallocate(needle_reg, is_last_use=True)
+            self.smart_deallocate(len_reg, is_last_use=True)
         elif func_name == "MIN":
             left_reg = self.generate_expression(expr.arguments[0], "R1")
             right_reg = self.generate_expression(expr.arguments[1], "R2")
             self.output.append(f"MIN {target_reg}, {left_reg}, {right_reg}")
+            # Don't free if it's the target register (needed for nested calls)
+            if left_reg != target_reg:
+                self.smart_deallocate(left_reg, is_last_use=True)
+            if right_reg != target_reg:
+                self.smart_deallocate(right_reg, is_last_use=True)
         elif func_name == "MAX":
             left_reg = self.generate_expression(expr.arguments[0], "R1")
             right_reg = self.generate_expression(expr.arguments[1], "R2")
             self.output.append(f"MAX {target_reg}, {left_reg}, {right_reg}")
+            # Don't free if it's the target register (needed for nested calls)
+            if left_reg != target_reg:
+                self.smart_deallocate(left_reg, is_last_use=True)
+            if right_reg != target_reg:
+                self.smart_deallocate(right_reg, is_last_use=True)
         elif func_name == "ATAN":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"ATAN {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "ASIN":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"ASIN {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "ACOS":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"ACOS {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "DEG":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"DEG {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "RAD":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"RAD {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "FLOOR":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"FLOOR {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "CEIL":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"CEIL {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "ROUND":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"ROUND {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "TRUNC":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"TRUNC {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "FRAC":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"FRAC {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "INTGR":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"INTGR {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "POWR":
             left_reg = self.generate_expression(expr.arguments[0], "R1")
             right_reg = self.generate_expression(expr.arguments[1], "R2")
             self.output.append(f"POWR {target_reg}, {left_reg}, {right_reg}")
+            self.smart_deallocate(left_reg, is_last_use=True)
+            self.smart_deallocate(right_reg, is_last_use=True)
         elif func_name == "LOG":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"LOG {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "EXP":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"EXP {target_reg}, {arg_reg}")
+            self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "BTST":
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             bit_reg = self.generate_expression(expr.arguments[1], "R2")

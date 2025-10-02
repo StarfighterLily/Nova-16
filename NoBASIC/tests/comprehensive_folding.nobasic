@@ -1,0 +1,43 @@
+// Comprehensive constant folding demonstration
+// This program showcases all types of constant folding optimizations
+
+// ===== ARITHMETIC OPERATIONS =====
+sum = 100 + 50          // 150
+difference = 200 - 75   // 125
+product = 12 * 8        // 96
+quotient = 144 / 12     // 12
+
+// ===== BITWISE OPERATIONS =====
+mask = 255 & 127        // 127
+combine = 16 | 8        // 24
+toggle = 255 ^ 128      // 127
+
+// ===== SHIFT OPERATIONS =====
+power = 1 << 8          // 256
+divide = 1024 >> 4      // 64
+
+// ===== COMPARISONS =====
+isGreater = 10 > 5      // 1 (true)
+isLess = 3 < 2          // 0 (false)
+isEqual = 7 = 7         // 1 (true)
+notEqual = 5 <> 5       // 0 (false)
+
+// ===== UNARY OPERATIONS =====
+negative = -128         // -128
+
+// ===== PRACTICAL EXAMPLE: Color palette =====
+white = 8 + 7           // 15
+lightgray = 12 + 0      // 12
+darkgray = 4 + 4        // 8
+black = 1 - 1           // 0
+
+// Draw with optimized colors
+ClrDraw
+For y = 0 To 50
+    For x = 0 To 50
+        PxlOn(x, y, white)
+    Next
+Next
+
+Disp "Constant folding demo complete!"
+Disp "All expressions evaluated at compile time"

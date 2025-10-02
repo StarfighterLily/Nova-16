@@ -1,0 +1,23 @@
+// Screen fill with constant-folded color calculation
+// This tests constant folding in a loop context
+
+ClrDraw
+
+// Use constant expressions for colors
+color1 = 8 + 7    // 15 - white
+color2 = 16 / 2   // 8 - gray
+color3 = 1 << 2   // 4 - dark
+
+For y = 0 To 100
+    For x = 0 To 100
+        PxlOn(x, y, color1)
+    Next
+Next
+
+For y = 101 To 200
+    For x = 0 To 100
+        PxlOn(x, y, color2)
+    Next
+Next
+
+Disp "Done!"

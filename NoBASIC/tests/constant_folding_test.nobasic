@@ -1,0 +1,40 @@
+// Test program to verify constant folding optimization
+// These expressions should be evaluated at compile time
+
+// Basic arithmetic
+x = 5 + 3
+y = 10 - 2
+z = 4 * 5
+w = 100 / 4
+
+// Complex expressions
+a = 2 + 3 * 4
+
+// Bitwise operations
+d = 255 & 15
+e = 16 | 8
+f = 255 ^ 128
+
+// Shift operations
+g = 1 << 4
+h = 256 >> 2
+
+// Comparisons (should yield 0 or 1)
+i = 5 > 3
+j = 2 < 1
+k = 10 = 10
+
+// Unary operations
+n = -42
+
+// Display some results to verify correctness
+Disp "x (5+3):"
+Disp x
+Disp "a (2+3*4):"
+Disp a
+Disp "g (1<<4):"
+Disp g
+Disp "i (5>3):"
+Disp i
+Disp "n (-42):"
+Disp n

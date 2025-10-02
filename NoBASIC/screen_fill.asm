@@ -27,6 +27,8 @@ MOV R4, P2
 MOV R5, 1
 MOV R1, R4
 ADD R1, R5
+; Free R4 (last use)
+; Free R5 (last use)
 MOV P2, R1
 INC P4
 JMP L3

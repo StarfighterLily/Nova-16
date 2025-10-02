@@ -1,0 +1,13 @@
+ORG 0x0200
+MOV SP, 0xF000
+MOV FP, SP
+; Constant folded: 5 + 3 = 8
+MOV P1, 8
+MOV P2, P1
+MOV R1, P2
+ITOS R0, R1
+MOV VX, 0
+MOV VY, 0
+MOV VC, 15
+TEXT R0
+HLT

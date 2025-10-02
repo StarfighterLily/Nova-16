@@ -1,0 +1,28 @@
+// Constant folding showcase
+// Demonstrates various constant expression types
+
+// Arithmetic
+sum = 100 + 50          // 150
+product = 12 * 8        // 96
+
+// Bitwise
+mask = 255 & 127        // 127
+shifted = 1 << 8        // 256
+
+// Comparisons
+isTrue = 10 > 5         // 1
+
+// Unary
+neg = -128              // -128
+
+// Practical use
+white = 8 + 7           // 15
+
+ClrDraw
+For y = 0 To 50
+    For x = 0 To 50
+        PxlOn(x, y, white)
+    Next
+Next
+
+Disp "Done!"
