@@ -356,91 +356,60 @@ class CodeGenerator:
         self.output.append("SFILL 0x00")
 
     def generate_pxl_on(self, stmt: PxlOnStmt):
-        """Generate PxlOn(x, y, color) code."""
-        # Use coordinate mode addressing - let register allocation choose freely
-        # to avoid conflicts with loop variables
-        x_reg = self.generate_expression(stmt.x)
-        y_reg = self.generate_expression(stmt.y)
-        self.output.append(f"MOV VX, {x_reg}")  # VX = x coordinate
-        self.output.append(f"MOV VY, {y_reg}")  # VY = y coordinate
-        color_reg = self.generate_expression(stmt.color)
-        self.output.append(f"MOV VC, {color_reg}")  # Use the allocated color register
+        """Generate optimized PxlOn(x, y, color) code with direct hardware register assignment."""
+        # Generate expressions directly into hardware registers - no intermediate MOVs!
+        self.generate_expression_into(stmt.x, 'VX')
+        self.generate_expression_into(stmt.y, 'VY')
+        self.generate_expression_into(stmt.color, 'VC')
         self.output.append("SWRITE VC")
-        
-        # Deallocate registers
-        self.deallocate_register(x_reg)
-        self.deallocate_register(y_reg)
-        self.deallocate_register(color_reg)
 
     def generate_pxl_off(self, stmt: PxlOffStmt):
-        """Generate PxlOff(x, y) code."""
-        # Allocate registers for x and y to avoid conflicts with struct members
-        x_reg = self.generate_expression(stmt.x)
-        y_reg = self.generate_expression(stmt.y)
-
-        self.output.append(f"MOV VX, {x_reg}")
-        self.output.append(f"MOV VY, {y_reg}")
+        """Generate optimized PxlOff(x, y) code with direct hardware register assignment."""
+        self.generate_expression_into(stmt.x, 'VX')
+        self.generate_expression_into(stmt.y, 'VY')
         self.output.append("MOV VC, 0")
         self.output.append("SWRITE VC")
-        
-        # Deallocate registers
-        self.deallocate_register(x_reg)
-        self.deallocate_register(y_reg)
 
     def generate_line(self, stmt: LineStmt):
-        """Generate Line drawing code using SLINE opcode."""
-        x1_reg = self.generate_expression(stmt.x1)
-        y1_reg = self.generate_expression(stmt.y1)
+        """Generate optimized Line drawing code using SLINE opcode with direct register assignment."""
+        # Generate start coordinates directly into hardware registers
+        self.generate_expression_into(stmt.x1, 'VX')
+        self.generate_expression_into(stmt.y1, 'VY')
+        self.generate_expression_into(stmt.color, 'VC')
+
+        # For end coordinates, we need temp registers for SLINE operands
         x2_reg = self.generate_expression(stmt.x2)
         y2_reg = self.generate_expression(stmt.y2)
-
-        # Set up coordinates
-        self.output.append(f"MOV VX, {x1_reg}")
-        self.output.append(f"MOV VY, {y1_reg}")
-        color_reg = self.generate_expression(stmt.color)
-        self.output.append(f"MOV VC, {color_reg}")
 
         # Use SLINE opcode
         self.output.append(f"SLINE {x2_reg}, {y2_reg}")
         
-        # Deallocate registers
-        self.deallocate_register(x1_reg)
-        self.deallocate_register(y1_reg)
+        # Deallocate temp registers
         self.deallocate_register(x2_reg)
         self.deallocate_register(y2_reg)
-        self.deallocate_register(color_reg)
 
     def generate_circle(self, stmt: CircleStmt):
-        """Generate Circle drawing code using SCIRC opcode."""
-        x_reg = self.generate_expression(stmt.x)
-        y_reg = self.generate_expression(stmt.y)
-        radius_reg = self.generate_expression(stmt.radius)
-        color_reg = self.generate_expression(stmt.color)
+        """Generate optimized Circle drawing code using SCIRC opcode with direct register assignment."""
+        # Generate coordinates and color directly into hardware registers
+        self.generate_expression_into(stmt.x, 'VX')
+        self.generate_expression_into(stmt.y, 'VY')
+        self.generate_expression_into(stmt.color, 'VC')
 
-        # Set coordinates and color
-        self.output.append(f"MOV VX, {x_reg}")
-        self.output.append(f"MOV VY, {y_reg}")
-        self.output.append(f"MOV VC, {color_reg}")
+        # Radius needs a temp register for SCIRC operand
+        radius_reg = self.generate_expression(stmt.radius)
 
         # Use SCIRC opcode
         self.output.append(f"SCIRC {radius_reg}, 1")  # 1 for filled
         
-        # Deallocate registers
-        self.deallocate_register(x_reg)
-        self.deallocate_register(y_reg)
+        # Deallocate temp register
         self.deallocate_register(radius_reg)
-        self.deallocate_register(color_reg)
 
     def generate_text(self, stmt: TextStmt):
-        """Generate Text rendering code using TEXT opcode."""
-        x_reg = self.generate_expression(stmt.x)
-        y_reg = self.generate_expression(stmt.y)
-        color_reg = self.generate_expression(stmt.color)
-        
-        # Set graphics registers
-        self.output.append(f"MOV VX, {x_reg}")
-        self.output.append(f"MOV VY, {y_reg}")
-        self.output.append(f"MOV VC, {color_reg}")
+        """Generate optimized Text rendering code using TEXT opcode with direct register assignment."""
+        # Set graphics registers directly
+        self.generate_expression_into(stmt.x, 'VX')
+        self.generate_expression_into(stmt.y, 'VY')
+        self.generate_expression_into(stmt.color, 'VC')
 
         # Handle text expression
         if isinstance(stmt.text, LiteralExpr) and stmt.text.data_type.name == "STRING":
@@ -464,10 +433,9 @@ class CodeGenerator:
             self.deallocate_register(string_reg)
 
     def generate_set_layer(self, stmt: SetLayerStmt):
-        """Generate SetLayer(layer) code."""
+        """Generate optimized SetLayer(layer) code with direct register assignment."""
         self.output.append("MOV VM, 0")  # Coordinate mode for pixel operations
-        layer_reg = self.generate_expression(stmt.layer)
-        self.output.append(f"MOV VL, {layer_reg}")
+        self.generate_expression_into(stmt.layer, 'VL')
 
     def generate_sprite_on(self, stmt: SpriteOnStmt):
         """Generate SpriteOn(spriteId, x, y) code."""
@@ -792,7 +760,7 @@ class CodeGenerator:
             self.output.append(f"{else_label}:")
 
     def generate_for(self, stmt: ForStmt):
-        """Generate optimized For loop code."""
+        """Generate optimized For loop code with hoisted end value and efficient comparisons."""
         loop_label = self.new_label()
         end_label = self.new_label()
         
@@ -826,68 +794,77 @@ class CodeGenerator:
             end_reg = self.allocate_register()
         self.register_usage[end_reg] = True
 
-        # Allocate step_reg, avoiding conflicts
-        if step_reg == loop_reg or step_reg == end_reg or self.register_usage.get(step_reg, False):
-            step_reg = self.allocate_register()
-        self.register_usage[step_reg] = True
+        # Allocate step_reg if needed, avoiding conflicts
+        if stmt.step:
+            if step_reg == loop_reg or step_reg == end_reg or self.register_usage.get(step_reg, False):
+                step_reg = self.allocate_register()
+            self.register_usage[step_reg] = True
 
-        # Initialize variable
+        # Initialize loop variable
         start_reg = self.generate_expression(stmt.start)
         self.output.append(f"MOV {loop_reg}, {start_reg}")
-        self.deallocate_register(start_reg)  # Free up the temporary register
+        self.deallocate_register(start_reg)
         if not is_register_allocated:
             var_addr = self.get_variable_address(stmt.variable)
             self.output.append(f"MOV P0, {var_addr}")
             self.output.append(f"MOV [P0], {loop_reg}")
 
+        # **OPTIMIZATION: Load end value ONCE before loop**
+        end_value_reg = self.generate_expression(stmt.end, end_reg)
+        if end_value_reg != end_reg:
+            self.output.append(f"MOV {end_reg}, {end_value_reg}")
+            self.deallocate_register(end_value_reg)
+            end_value_reg = end_reg
+
+        # Load step value once if it's a constant expression
+        if stmt.step:
+            step_value_reg = self.generate_expression(stmt.step, step_reg)
+            if step_value_reg != step_reg:
+                self.output.append(f"MOV {step_reg}, {step_value_reg}")
+                self.deallocate_register(step_value_reg)
+                step_value_reg = step_reg
+
+        # Loop start
         self.output.append(f"{loop_label}:")
 
-        # Update memory for expressions if not register allocated
+        # Update memory for loop variable if not register-allocated
         if not is_register_allocated:
             var_addr = self.get_variable_address(stmt.variable)
             self.output.append(f"MOV P0, {var_addr}")
             self.output.append(f"MOV [P0], {loop_reg}")
 
-        # Check condition
-        end_reg_loaded = self.generate_expression(stmt.end, end_reg)
-        if end_reg_loaded != end_reg:
-            # We got a different register, deallocate it after use
-            self.output.append(f"CMP {loop_reg}, {end_reg_loaded}")
-            self.deallocate_register(end_reg_loaded)
-        else:
-            self.output.append(f"CMP {loop_reg}, {end_reg_loaded}")
-
-        # For ascending loops, exit when current > end (unsigned comparison)
-        body_label = self.new_label()
-        self.output.append(f"JC {body_label}")  # current < end
-        self.output.append(f"JZ {body_label}")  # current == end
-        self.output.append(f"JMP {end_label}")  # current > end
-        self.output.append(f"{body_label}:")
+        # **OPTIMIZATION: Single comparison with proper jump instruction**
+        # Compare current to end (end value already in register)
+        self.output.append(f"CMP {loop_reg}, {end_value_reg}")
+        
+        # Use JGT (jump if greater than) for cleaner exit condition
+        # Loop continues while loop_reg <= end_value_reg
+        self.output.append(f"JGT {end_label}")  # Exit if current > end
 
         # Loop body
         for s in stmt.body:
             self.generate_statement(s)
 
-        # Increment
+        # Increment/step
         if stmt.step:
-            step_reg_loaded = self.generate_expression(stmt.step, step_reg)
-            self.output.append(f"ADD {loop_reg}, {step_reg_loaded}")
-            if step_reg_loaded != step_reg:
-                self.deallocate_register(step_reg_loaded)
+            # Use pre-loaded step value
+            self.output.append(f"ADD {loop_reg}, {step_value_reg}")
         else:
-            # Optimize: use INC for step=1
+            # **OPTIMIZATION: Use INC for default step=1**
             self.output.append(f"INC {loop_reg}")
 
         self.output.append(f"JMP {loop_label}")
         self.output.append(f"{end_label}:")
 
+        # Cleanup
         if not is_register_allocated:
             # Remove from var_reg since we allocated it
             if stmt.variable in self.var_reg:
                 del self.var_reg[stmt.variable]
             self.deallocate_register(loop_reg)
         self.deallocate_register(end_reg)
-        self.deallocate_register(step_reg)
+        if stmt.step:
+            self.deallocate_register(step_reg)
         
         # Decrement nesting level
         self.loop_nesting_level -= 1
@@ -942,6 +919,61 @@ class CodeGenerator:
             if expr.operator == "+":
                 return self.is_string_expression(expr.left) or self.is_string_expression(expr.right)
         return False
+
+    def generate_expression_into(self, expr: Expression, target_reg: str):
+        """
+        Generate an expression directly into a target register (hardware or general).
+        This avoids the intermediate MOV instruction when the target is known.
+        Optimized for hardware registers like VX, VY, VC.
+        
+        Args:
+            expr: The expression to generate
+            target_reg: The register to place the result in (e.g., 'VX', 'VY', 'VC', 'R0', 'P1')
+        """
+        # For simple cases, generate directly
+        if isinstance(expr, LiteralExpr):
+            if expr.data_type.name == "NUMBER":
+                # Generate literal directly into target
+                if expr.value == 0:
+                    self.output.append(f"XOR {target_reg}, {target_reg}")
+                elif expr.value == 1:
+                    self.output.append(f"MOV {target_reg}, 1")
+                elif expr.value in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
+                    # Use shifts for powers of 2
+                    shift_amount = expr.value.bit_length() - 1
+                    self.output.append(f"MOV {target_reg}, 1")
+                    self.output.append(f"SHL {target_reg}, {shift_amount}")
+                else:
+                    self.output.append(f"MOV {target_reg}, {expr.value}")
+            elif expr.data_type.name == "STRING":
+                label = self.add_string_literal(expr.value)
+                self.output.append(f"MOV {target_reg}, {label}")
+            else:
+                self.output.append(f"MOV {target_reg}, 0")
+        elif isinstance(expr, VariableExpr):
+            # Load variable directly into target
+            if expr.name in self.var_reg:
+                reg = self.var_reg[expr.name]
+                if reg != target_reg:
+                    self.output.append(f"MOV {target_reg}, {reg}")
+                # If reg == target_reg, no operation needed!
+            else:
+                # Load from memory directly into target
+                addr = self.get_variable_address(expr.name)
+                if target_reg.startswith('R') or target_reg in ['VX', 'VY', 'VC', 'VL', 'VM']:
+                    # For 8-bit registers, read the low byte
+                    self.output.append(f"MOV P0, {addr + 1}")
+                    self.output.append(f"MOV {target_reg}, [P0]")
+                else:
+                    # For 16-bit registers, read the full word
+                    self.output.append(f"MOV P0, {addr}")
+                    self.output.append(f"MOV {target_reg}, [P0]")
+        else:
+            # For complex expressions, generate into a temp then move
+            temp_reg = self.generate_expression(expr)
+            if temp_reg != target_reg:
+                self.output.append(f"MOV {target_reg}, {temp_reg}")
+            self.deallocate_register(temp_reg)
 
     def generate_expression(self, expr: Expression, preferred_reg: str = None) -> str:
         """Generate code for an expression and return the register containing the result."""

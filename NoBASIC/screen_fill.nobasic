@@ -9,8 +9,9 @@ For y = 0 To 255
         z = z + 1
     Next
 Next
+
 Pause
+
 ClrDraw
+
 Disp "Done"
-Disp "Another line"
-Disp "And another."
