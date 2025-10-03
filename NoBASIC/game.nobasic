@@ -1,0 +1,22 @@
+SetLayer(1)
+
+x = 0
+y = 0
+
+While 1
+    key = getKey()
+    if key = 97 then // 'a'
+        x = x - 1
+    End
+    If key = 100 then // 'd'
+        x = x + 1
+    End
+    If key = 115 then // 's'
+        y = y + 1
+    End
+    if key = 119 then // 'w'
+        y = y - 1
+    End
+    ClrDraw
+    Text(x, y, "X", 0x0F)
+End

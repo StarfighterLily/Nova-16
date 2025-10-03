@@ -114,14 +114,115 @@ class CodeGenerator:
         self.liveness = LivenessTracker()
         # Track registers that should be automatically freed after use
         self.auto_free_registers: Set[str] = set()
+        
+        # Register spilling - stack-based approach
+        self.spill_stack: List[str] = []  # Track spilled registers (LIFO)
+        self.register_last_use: Dict[str, int] = {}  # Track last use time for LRU eviction
+        self.access_counter = 0  # Monotonic counter for LRU tracking
+
+    def spill_register(self, reg: str):
+        """
+        Spill a register to the stack to free it for reuse.
+        Uses PUSH instruction for efficient stack-based spilling.
+        
+        NOTE: Spilled values are NOT automatically restored. The spilled register
+        becomes available for reallocation with a NEW value. Only use spilling
+        when the old value is truly no longer needed.
+        
+        Args:
+            reg: Register to spill to stack
+        """
+        if not self.register_usage.get(reg, False):
+            return  # Register not in use, nothing to spill
+            
+        self.output.append(f"; Spill {reg} to stack (value discarded)")
+        self.output.append(f"PUSH {reg}")
+        self.spill_stack.append(reg)
+        self.register_usage[reg] = False
+        self.auto_free_registers.discard(reg)
+        
+    def restore_register(self, reg: str):
+        """
+        Restore a previously spilled register from the stack.
+        Uses POP instruction to restore from stack.
+        
+        Args:
+            reg: Register to restore from stack
+            
+        Returns:
+            True if register was restored, False if not on spill stack
+        """
+        if not self.spill_stack or self.spill_stack[-1] != reg:
+            # Register not at top of spill stack
+            return False
+            
+        self.output.append(f"; Restore {reg} from stack")
+        self.output.append(f"POP {reg}")
+        self.spill_stack.pop()
+        self.register_usage[reg] = True
+        return True
+        
+    def cleanup_spill_stack(self):
+        """
+        Clean up any orphaned spills by popping them off the stack.
+        This should be called at safe points like end of statements to prevent
+        stack growth in loops.
+        """
+        if not self.spill_stack:
+            return
+            
+        self.output.append(f"; Cleanup {len(self.spill_stack)} spilled register(s)")
+        # Pop all spilled registers to restore stack
+        while self.spill_stack:
+            reg = self.spill_stack.pop()
+            self.output.append(f"POP {reg}  ; Discard spilled value")
+        
+    def find_register_to_spill(self, exclude: List[str] = None) -> Optional[str]:
+        """
+        Find the best register to spill using LRU (Least Recently Used) policy.
+        Excludes variable registers and specified registers.
+        
+        Args:
+            exclude: List of registers that should not be spilled
+            
+        Returns:
+            Register name to spill, or None if no spillable registers
+        """
+        if exclude is None:
+            exclude = []
+            
+        # Don't spill variable registers (they persist across expressions)
+        exclude_set = set(exclude) | set(self.var_reg.values())
+        
+        # Find candidate registers (allocated but not excluded)
+        candidates = []
+        for reg in self.allocation_order:
+            if self.register_usage.get(reg, False) and reg not in exclude_set:
+                # Get last use time (default to 0 if never tracked)
+                last_use = self.register_last_use.get(reg, 0)
+                candidates.append((last_use, reg))
+        
+        if not candidates:
+            return None
+            
+        # Sort by last use time (oldest first) and return LRU register
+        candidates.sort()
+        return candidates[0][1]
 
     def allocate_register(self, preferred_reg: str = None) -> str:
-        """Allocate an unused register, preferring the specified register if available."""
+        """
+        Allocate an unused register, preferring the specified register if available.
+        If no registers are available, spills the least recently used register.
+        """
+        # Update access counter for LRU tracking
+        self.access_counter += 1
+        
         # Try preferred register first
         if preferred_reg and not self.register_usage[preferred_reg]:
             self.register_usage[preferred_reg] = True
             self.liveness.allocate_temp(preferred_reg)
             self.auto_free_registers.add(preferred_reg)
+            self.register_last_use[preferred_reg] = self.access_counter
             return preferred_reg
         
         # Try allocation order
@@ -130,9 +231,26 @@ class CodeGenerator:
                 self.register_usage[reg] = True
                 self.liveness.allocate_temp(reg)
                 self.auto_free_registers.add(reg)
+                self.register_last_use[reg] = self.access_counter
                 return reg
         
-        raise RuntimeError("No available registers for allocation")
+        # No free registers - need to spill!
+        # Find the least recently used register that's not a variable or preferred
+        exclude = [preferred_reg] if preferred_reg else []
+        victim_reg = self.find_register_to_spill(exclude)
+        
+        if victim_reg is None:
+            raise RuntimeError(
+                "Register exhaustion: All registers are in use and cannot be spilled. "
+                "This may indicate variable registers are consuming all available registers."
+            )
+        
+        # Spill the victim register
+        self.spill_register(victim_reg)
+        
+        # Now allocate it (recursive call, but guaranteed to succeed)
+        return self.allocate_register(preferred_reg)
+
 
     def deallocate_register(self, reg: str):
         """Deallocate a register, marking it as available."""
@@ -140,6 +258,9 @@ class CodeGenerator:
             self.register_usage[reg] = False
             self.liveness.mark_dead(reg)
             self.auto_free_registers.discard(reg)
+            # Update last use time for LRU tracking
+            self.access_counter += 1
+            self.register_last_use[reg] = self.access_counter
             
     def smart_deallocate(self, reg: str, is_last_use: bool = True):
         """
@@ -398,6 +519,9 @@ class CodeGenerator:
 
     def generate_statement(self, stmt: Statement):
         """Generate code for a statement."""
+        # Track spill stack depth at start of statement
+        spill_depth_before = len(self.spill_stack)
+        
         if isinstance(stmt, ClrDrawStmt):
             self.generate_clr_draw()
         elif isinstance(stmt, VarDeclarationStmt):
@@ -452,6 +576,15 @@ class CodeGenerator:
             self.generate_label(stmt)
         elif isinstance(stmt, StructDeclarationStmt):
             self.generate_struct_declaration(stmt)
+            
+        # Cleanup only spills created during THIS statement
+        # This prevents cleaning up spills from nested conditional branches
+        spills_created = len(self.spill_stack) - spill_depth_before
+        if spills_created > 0:
+            self.output.append(f"; Cleanup {spills_created} spilled register(s) from this statement")
+            for _ in range(spills_created):
+                reg = self.spill_stack.pop()
+                self.output.append(f"POP {reg}  ; Discard spilled value")
 
     def generate_struct_declaration(self, stmt: StructDeclarationStmt):
         """Register struct type (no assembly code generated)."""
