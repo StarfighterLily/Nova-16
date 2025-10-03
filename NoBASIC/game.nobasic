@@ -1,22 +1,58 @@
 SetLayer(1)
+Text(0, 0, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 0x1F)
+For a = 0 to 240 Step 8
+    Text(0, a, "X                              X", 0x1F)
+Next
+Text(0, 248, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 0x1F)
 
-x = 0
-y = 0
+x = 8
+y = 8
 
+SetLayer(5)
 While 1
+    oldx = x
+    oldy = y
+
     key = getKey()
-    if key = 97 then // 'a'
-        x = x - 1
+    If key = 97 Then // 'a'
+        x = x - 8
     End
-    If key = 100 then // 'd'
-        x = x + 1
+    If key = 100 Then // 'd'
+        x = x + 8
     End
-    If key = 115 then // 's'
-        y = y + 1
+    If key = 115 Then // 's'
+        y = y + 8
     End
-    if key = 119 then // 'w'
-        y = y - 1
+    If key = 119 Then // 'w'
+        y = y - 8
     End
-    ClrDraw
-    Text(x, y, "X", 0x0F)
+
+    //If key = 101 Then // 'e'
+        //Do stuff
+    //End
+
+    If x < 8 Then
+        x = 8
+    End
+    If x > 248 Then
+        x = 248
+    End
+    If y < 8 Then
+        y = 8
+    End
+    If y > 248 Then
+        y = 248
+    End
+
+    If oldx <> x Then
+        Text(oldx, oldy, "O", 0x00)
+        Text(oldx, oldy + 8, "X", 0x00)
+    End
+    If oldy <> y Then
+        Text(oldx, oldy, "O", 0x00)
+        Text(oldx, oldy + 8, "X", 0x00)
+    End
+
+    Text(x, y, "O", 0x0F)
+    Text(x, y + 8, "X", 0x0F)
 End

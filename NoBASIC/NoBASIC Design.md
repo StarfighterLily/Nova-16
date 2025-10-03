@@ -156,7 +156,7 @@ Pause
 #### Interactive Input
 ```
 Disp "Enter your name:"
-Input "Name: ", Str1
+Input("Name: ", Str1)
 Disp "Hello, " + Str1
 Pause
 ```
@@ -180,7 +180,7 @@ While 1
     If K = 24 Then Y = Y - 1  // Up
     If K = 25 Then Y = Y + 1  // Down
     If K = 26 Then X = X - 1  // Left
-    If K = 26 Then X = X + 1  // Right
+    If K = 27 Then X = X + 1  // Right
     ClrDraw
     PxlOn(X, Y, 31)
 End
