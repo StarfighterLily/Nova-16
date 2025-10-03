@@ -1,0 +1,54 @@
+ORG 0x0200
+MOV SP, 0xFFFF
+MOV FP, SP
+; --- Inline Assembly Block ---
+SETUP:
+    MOV VM, 1        ; Set to memory mode
+    MOV VX, 0x00     ; Set VX to 0
+    MOV VY, 0x00     ; Set VY to 0
+    MOV P0, START    ; P0 = star counter (0x0000)
+    MOV P1, STAR_COUNT ; P1 = number of stars to generate
+    MOV VC, 0        ; VC = color counter
+LOOP:
+    ; Star layer 1
+    MOV VL, 1        ; Set layer 1
+    RNDR VC, 0x01, 0x06    ; Randomize color 0x01-0x06 (dim stars)
+    RND P2           ; Randomize location
+    MOV VX, P2:      ; VX = high byte of P2
+    MOV VY, :P2      ; VY = low byte of P2
+    SWRITE VC        ; Write R0 to screen at VX,VY
+    ADD P0, 1        ; Increment star counter
+    CMP P0, 256       ; Compare P0 with P1
+    JLT LOOP         ; Loop until counter finishes
+
+MIDPOINT:
+    MOV P0, START    ; Reset counter
+
+LOOP2:
+    ; Star layer 2
+    MOV VL, 2        ; Set layer 2
+    RND P2           ; Randomize location
+    MOV VX, P2:      ; VX = high byte of P2
+    MOV VY, :P2      ; VY = low byte of P2
+    RNDR VC, 0x07, 0x0A    ; Randomize color 0x06-0x0A (bright and dim stars)
+    SWRITE VC        ; Write R0 to screen at VX,VY
+    ADD P0, 1        ; Increment star counter
+    CMP P0, 192       ; Compare
+    JLT LOOP2        ; Loop until counter finishes
+
+MID2:
+    MOV P0, START
+
+LOOP3:
+    ; Star layer 3
+    MOV VL, 3        ; Set layer 2
+    RND P2           ; Randomize location
+    MOV VX, P2:      ; VX = high byte of P2
+    MOV VY, :P2      ; VY = low byte of P2
+    RNDR VC, 0x0B, 0x0F    ; Randomize color 0x0B-0x0F (bright stars)
+    SWRITE VC        ; Write R0 to screen at VX,VY
+    ADD P0, 1        ; Increment star counter
+    CMP P0, 96       ; Compare
+    JLT LOOP3        ; Loop until counter finishes
+; --- End Inline Assembly ---
+HLT

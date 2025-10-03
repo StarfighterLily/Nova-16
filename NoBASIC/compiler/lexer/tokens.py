@@ -45,6 +45,7 @@ class TokenType(Enum):
     STRUCT = "STRUCT"
     GLOBAL = "GLOBAL"
     LOCAL = "LOCAL"
+    ASM = "ASM"
 
     # Built-in functions
     SIN = "SIN"
@@ -98,6 +99,7 @@ class TokenType(Enum):
     NUMBER_LITERAL = "NUMBER_LITERAL"
     STRING_LITERAL = "STRING_LITERAL"
     IDENTIFIER = "IDENTIFIER"
+    ASM_BLOCK = "ASM_BLOCK"  # Inline assembly block
 
     # Special
     EOF = "EOF"
@@ -159,6 +161,7 @@ KEYWORDS = {
     "struct": TokenType.STRUCT,
     "global": TokenType.GLOBAL,
     "local": TokenType.LOCAL,
+    "asm": TokenType.ASM,
     "and": TokenType.AND,
     "or": TokenType.OR,
     "not": TokenType.NOT,

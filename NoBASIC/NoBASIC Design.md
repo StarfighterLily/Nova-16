@@ -205,6 +205,59 @@ Text(10, 10, "Score:", 15)
 Text(60, 10, score, 15)
 ```
 
+## Inline Assembly
+
+NoBASIC supports inline assembly blocks for maximum performance and direct hardware access using the `Asm...End` syntax:
+
+```nobasic
+// Mix high-level NoBASIC with low-level assembly
+x = 100
+y = 120
+
+Asm
+    ; Load coordinates into graphics registers
+    MOV VX, 100
+    MOV VY, 120
+    MOV VC, 0x1F
+    SWRITE VC
+End
+
+Text(0, 16, "Pixel drawn!", 0x1F)
+```
+
+### When to Use Inline Assembly
+
+- **Performance**: Critical loops requiring maximum speed
+- **Hardware Access**: Direct control of special registers (VX, VY, VM, sound, etc.)
+- **Advanced Instructions**: Bit manipulation, shifts, custom algorithms
+- **Optimization**: Fine-tuned control over register usage
+
+### Key Features
+
+- Assembly code is inserted verbatim into generated output
+- Full access to all Nova-16 instructions
+- Can reference NoBASIC variables by memory address
+- Supports labels within assembly blocks (prefix with `_` to avoid conflicts)
+- Both `;` (assembly) and `//` (NoBASIC) comments work
+
+### Example: Performance Loop
+
+```nobasic
+Text(0, 0, "Counting fast...", 0x1F)
+
+Asm
+    MOV R0, 0
+_loop:
+    ADD R0, 1
+    CMP R0, 10000
+    JNZ _loop
+End
+
+Text(0, 16, "Done!", 0x1F)
+```
+
+For complete documentation and examples, see `INLINE_ASSEMBLY.md`.
+
 ## Compilation and Running
 
 1. Write your NoBASIC program in a `.nobasic` file.

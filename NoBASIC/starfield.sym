@@ -1,0 +1,8 @@
+# Symbol table
+# Format: <symbol> <value>
+SETUP 0x0209
+LOOP 0x0223
+MIDPOINT 0x0247
+LOOP2 0x024C
+MID2 0x0270
+LOOP3 0x0275

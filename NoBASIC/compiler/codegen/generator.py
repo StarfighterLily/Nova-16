@@ -7,76 +7,37 @@ Registers are freed immediately after their last use to minimize register pressu
 """
 
 from typing import List, Dict, Tuple, Set, Optional
+from contextlib import contextmanager
 from ..parser.ast import (
     Program, Statement, Expression, ClrDrawStmt, PxlOnStmt, PxlOffStmt,
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
-    LiteralExpr, VariableExpr, ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, 
+    AsmBlockStmt, LiteralExpr, VariableExpr, ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, 
     BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, StructType
 )
-
-
-class LivenessTracker:
-    """
-    Tracks register liveness at a fine-grained level.
-    Determines when each register value is last used and can be freed.
-    """
-    
-    def __init__(self):
-        # Maps register to a list of "last use" positions in the expression tree
-        self.register_last_use: Dict[str, int] = {}
-        self.current_position = 0
-        # Track which registers are managed by us (temporary) vs external (variables)
-        self.managed_registers: Set[str] = set()
-        
-    def allocate_temp(self, reg: str):
-        """Mark a register as a managed temporary."""
-        self.managed_registers.add(reg)
-        self.register_last_use[reg] = self.current_position
-        
-    def use_register(self, reg: str):
-        """Update the last use position for a register."""
-        self.register_last_use[reg] = self.current_position
-        self.current_position += 1
-        
-    def mark_dead(self, reg: str) -> bool:
-        """
-        Mark a register as dead (no longer needed).
-        Returns True if the register can be freed.
-        """
-        if reg in self.managed_registers:
-            self.managed_registers.discard(reg)
-            self.register_last_use.pop(reg, None)
-            return True
-        return False
-        
-    def get_dead_registers(self, after_position: int) -> Set[str]:
-        """Get all registers that are dead after the given position."""
-        dead = set()
-        for reg, last_use in self.register_last_use.items():
-            if last_use <= after_position and reg in self.managed_registers:
-                dead.add(reg)
-        return dead
-        
-    def reset(self):
-        """Reset the tracker for a new statement or scope."""
-        self.register_last_use.clear()
-        self.managed_registers.clear()
-        self.current_position = 0
 
 
 class CodeGenerator:
     """Code generator for NoBASIC to Nova-16 assembly."""
 
-    def __init__(self):
+    def __init__(self, debug_allocation: bool = False):
         self.output: List[str] = []
         self.label_counter = 0
         self.variable_addresses: Dict[str, int] = {}
         self.next_address = 0x0120  # Start after interrupt vectors
         self.strings: List[Tuple[str, str]] = []  # List of (label, string_value)
         self.loop_nesting_level = 0
+        
+        # Debug mode for register allocation
+        self.debug_allocation = debug_allocation
+        
+        # Dedicated spill slot allocator (memory region 0x0500-0x05FF)
+        self.spill_base_address = 0x0500
+        self.next_spill_address = self.spill_base_address
+        self.spill_slots: Dict[str, int] = {}  # variable/temp -> spill address
+        self.max_spill_slots = 128  # 128 slots of 2 bytes each = 256 bytes
         
         # Register allocation tracking
         self.register_usage: Dict[str, bool] = {
@@ -89,6 +50,18 @@ class CodeGenerator:
             'TT': False, 'TM': False, 'TC': False, 'TS': False
         }
         
+        # Unified liveness tracking (replaces dual system)
+        self.live_ranges: Dict[str, Tuple[int, int]] = {}  # name -> (start, end)
+        self.live_at_point: Dict[int, Set[str]] = {}  # program_point -> set of live variables
+        self.program_counter = 0  # Tracks current program point for liveness
+        
+        # Interference graph (tracks which variables cannot share registers)
+        self.interference_graph: Dict[str, Set[str]] = {}  # variable -> set of interfering variables
+        
+        # Register pressure tracking (for optimization warnings)
+        self.register_pressure: Dict[int, int] = {}  # program_point -> register demand
+        self.max_register_pressure = 0
+        
         # Preferred register order for allocation (R registers first, then P registers)
         self.allocation_order = [
             'R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9',
@@ -100,167 +73,312 @@ class CodeGenerator:
             'P2', 'P3', 'P4', 'P5', 'P6', 'P7'  # Skip P0, P1 for temps
         ]
 
-        # Variable register allocation
+        # Variable register allocation (unified with temp tracking)
         self.var_reg: Dict[str, str] = {}  # variable name -> register
-        self.var_lifetime: Dict[str, Tuple[int, int]] = {}  # var -> (start, end)
-        self.statement_counter = 0
+        self.var_lifetime: Dict[str, Tuple[int, int]] = {}  # DEPRECATED - use live_ranges
+        self.statement_counter = 0  # DEPRECATED - use program_counter
         
         # Struct support
         self.struct_types: Dict[str, StructType] = {}  # struct_name -> StructType
         self.struct_bases: Dict[str, int] = {}  # instance_name -> base_address
         self.struct_instances: Dict[str, str] = {}  # var_name -> struct_name
         
-        # Liveness analysis for fine-grained register management
-        self.liveness = LivenessTracker()
         # Track registers that should be automatically freed after use
+        # These are temporary expression registers vs variable registers
         self.auto_free_registers: Set[str] = set()
         
-        # Register spilling - stack-based approach
-        self.spill_stack: List[str] = []  # Track spilled registers (LIFO)
-        self.register_last_use: Dict[str, int] = {}  # Track last use time for LRU eviction
-        self.access_counter = 0  # Monotonic counter for LRU tracking
+        # Register allocation statistics (for debugging and optimization)
+        self.allocation_stats = {
+            'total_allocations': 0,
+            'total_deallocations': 0,
+            'allocation_failures': 0,
+            'max_simultaneous_allocated': 0
+        }
 
-    def spill_register(self, reg: str):
-        """
-        Spill a register to the stack to free it for reuse.
-        Uses PUSH instruction for efficient stack-based spilling.
-        
-        NOTE: Spilled values are NOT automatically restored. The spilled register
-        becomes available for reallocation with a NEW value. Only use spilling
-        when the old value is truly no longer needed.
-        
-        Args:
-            reg: Register to spill to stack
-        """
-        if not self.register_usage.get(reg, False):
-            return  # Register not in use, nothing to spill
-            
-        self.output.append(f"; Spill {reg} to stack (value discarded)")
-        self.output.append(f"PUSH {reg}")
-        self.spill_stack.append(reg)
-        self.register_usage[reg] = False
-        self.auto_free_registers.discard(reg)
-        
-    def restore_register(self, reg: str):
-        """
-        Restore a previously spilled register from the stack.
-        Uses POP instruction to restore from stack.
-        
-        Args:
-            reg: Register to restore from stack
-            
-        Returns:
-            True if register was restored, False if not on spill stack
-        """
-        if not self.spill_stack or self.spill_stack[-1] != reg:
-            # Register not at top of spill stack
-            return False
-            
-        self.output.append(f"; Restore {reg} from stack")
-        self.output.append(f"POP {reg}")
-        self.spill_stack.pop()
-        self.register_usage[reg] = True
-        return True
-        
-    def cleanup_spill_stack(self):
-        """
-        Clean up any orphaned spills by popping them off the stack.
-        This should be called at safe points like end of statements to prevent
-        stack growth in loops.
-        """
-        if not self.spill_stack:
-            return
-            
-        self.output.append(f"; Cleanup {len(self.spill_stack)} spilled register(s)")
-        # Pop all spilled registers to restore stack
-        while self.spill_stack:
-            reg = self.spill_stack.pop()
-            self.output.append(f"POP {reg}  ; Discard spilled value")
-        
-    def find_register_to_spill(self, exclude: List[str] = None) -> Optional[str]:
-        """
-        Find the best register to spill using LRU (Least Recently Used) policy.
-        Excludes variable registers and specified registers.
-        
-        Args:
-            exclude: List of registers that should not be spilled
-            
-        Returns:
-            Register name to spill, or None if no spillable registers
-        """
-        if exclude is None:
-            exclude = []
-            
-        # Don't spill variable registers (they persist across expressions)
-        exclude_set = set(exclude) | set(self.var_reg.values())
-        
-        # Find candidate registers (allocated but not excluded)
-        candidates = []
-        for reg in self.allocation_order:
-            if self.register_usage.get(reg, False) and reg not in exclude_set:
-                # Get last use time (default to 0 if never tracked)
-                last_use = self.register_last_use.get(reg, 0)
-                candidates.append((last_use, reg))
-        
-        if not candidates:
-            return None
-            
-        # Sort by last use time (oldest first) and return LRU register
-        candidates.sort()
-        return candidates[0][1]
-
-    def allocate_register(self, preferred_reg: str = None) -> str:
+    def allocate_register(self, preferred_reg: str = None, exclude_interfering: bool = True) -> str:
         """
         Allocate an unused register, preferring the specified register if available.
-        If no registers are available, spills the least recently used register.
-        """
-        # Update access counter for LRU tracking
-        self.access_counter += 1
+        Optionally respects interference constraints to prevent overwriting live variables.
         
-        # Try preferred register first
-        if preferred_reg and not self.register_usage[preferred_reg]:
+        Args:
+            preferred_reg: Preferred register name (e.g., 'R0', 'P1')
+            exclude_interfering: If True, avoids registers used by currently live variables
+        
+        Raises:
+            RuntimeError if no registers are available.
+        """
+        # Track allocation statistics
+        self.allocation_stats['total_allocations'] += 1
+        
+        # Get registers that are blocked due to interference
+        blocked_regs = set()
+        if exclude_interfering:
+            # Find variables that are currently live at this program point
+            live_vars = self.live_at_point.get(self.program_counter, set())
+            # Block their allocated registers
+            blocked_regs = {self.var_reg.get(v) for v in live_vars if v in self.var_reg}
+            blocked_regs.discard(None)
+            
+            if self.debug_allocation and blocked_regs:
+                print(f"[ALLOC] Blocked by live variables at PC={self.program_counter}: {blocked_regs}")
+        
+        # Try preferred register first (if not blocked)
+        if preferred_reg and not self.register_usage[preferred_reg] and preferred_reg not in blocked_regs:
             self.register_usage[preferred_reg] = True
-            self.liveness.allocate_temp(preferred_reg)
             self.auto_free_registers.add(preferred_reg)
-            self.register_last_use[preferred_reg] = self.access_counter
+            self._update_allocation_stats()
+            # Track this temporary as live
+            self.mark_temp_live(preferred_reg)
+            if self.debug_allocation:
+                print(f"[ALLOC] Allocated preferred register {preferred_reg}")
+                self._debug_register_state()
             return preferred_reg
         
-        # Try allocation order
+        # Try allocation order (excluding blocked registers)
         for reg in self.allocation_order:
-            if not self.register_usage[reg]:
+            if not self.register_usage[reg] and reg not in blocked_regs:
                 self.register_usage[reg] = True
-                self.liveness.allocate_temp(reg)
                 self.auto_free_registers.add(reg)
-                self.register_last_use[reg] = self.access_counter
+                self._update_allocation_stats()
+                # Track this temporary as live
+                self.mark_temp_live(reg)
+                if self.debug_allocation:
+                    print(f"[ALLOC] Allocated register {reg} (preferred={preferred_reg}, blocked={blocked_regs})")
+                    self._debug_register_state()
                 return reg
         
-        # No free registers - need to spill!
-        # Find the least recently used register that's not a variable or preferred
-        exclude = [preferred_reg] if preferred_reg else []
-        victim_reg = self.find_register_to_spill(exclude)
+        # No free registers - fail with detailed error message
+        self.allocation_stats['allocation_failures'] += 1
         
-        if victim_reg is None:
+        active_regs = [r for r, used in self.register_usage.items() if used]
+        var_regs = list(self.var_reg.values())
+        temp_regs = [r for r in active_regs if r not in var_regs]
+        
+        error_msg = (
+            f"Register exhaustion: No free registers available.\n"
+            f"  Active registers: {len(active_regs)}/18\n"
+            f"  Variable registers: {var_regs} ({len(var_regs)} allocated)\n"
+            f"  Temporary registers: {temp_regs} ({len(temp_regs)} in use)\n"
+            f"  Blocked by interference: {blocked_regs}\n"
+            f"  Preferred: {preferred_reg}\n"
+            f"\n"
+            f"Suggestions:\n"
+            f"  - Simplify complex expressions by breaking them into multiple statements\n"
+            f"  - Reduce the number of simultaneous variables (currently {len(self.var_reg)})\n"
+            f"  - Use fewer nested function calls\n"
+            f"  - Consider reordering operations to free registers earlier"
+        )
+        
+        if self.debug_allocation:
+            print(f"[ALLOC] FAILURE - {error_msg}")
+            self._debug_register_state()
+        
+        raise RuntimeError(error_msg)
+    
+    def _update_allocation_stats(self):
+        """Update statistics about register allocation."""
+        current_allocated = sum(1 for used in self.register_usage.values() if used)
+        if current_allocated > self.allocation_stats['max_simultaneous_allocated']:
+            self.allocation_stats['max_simultaneous_allocated'] = current_allocated
+
+    def _debug_register_state(self):
+        """Print current register allocation state for debugging."""
+        if not self.debug_allocation:
+            return
+            
+        active_regs = [r for r, used in self.register_usage.items() if used]
+        var_regs = {var: reg for var, reg in self.var_reg.items()}
+        temp_regs = [r for r in active_regs if r not in var_regs.values()]
+        auto_free = list(self.auto_free_registers)
+        
+        print(f"  [STATE] Active: {len(active_regs)}/18, Temps: {temp_regs}, Auto-free: {auto_free}")
+        print(f"  [STATE] Variables: {var_regs}")
+        print(f"  [STATE] Stats: alloc={self.allocation_stats['total_allocations']}, "
+              f"dealloc={self.allocation_stats['total_deallocations']}, "
+              f"failures={self.allocation_stats['allocation_failures']}, "
+              f"max_simultaneous={self.allocation_stats['max_simultaneous_allocated']}")
+
+    def allocate_spill_slot(self, name: str) -> int:
+        """
+        Allocate a dedicated memory spill slot for a variable or temporary.
+        
+        Args:
+            name: Name of variable/temporary needing a spill slot
+            
+        Returns:
+            Memory address of allocated spill slot
+            
+        Raises:
+            RuntimeError if spill slot pool is exhausted
+        """
+        if name in self.spill_slots:
+            return self.spill_slots[name]
+            
+        # Check if we've exhausted spill slots
+        if len(self.spill_slots) >= self.max_spill_slots:
             raise RuntimeError(
-                "Register exhaustion: All registers are in use and cannot be spilled. "
-                "This may indicate variable registers are consuming all available registers."
+                f"Spill slot exhaustion: Cannot allocate spill slot for '{name}'.\n"
+                f"  Already spilled: {len(self.spill_slots)} variables\n"
+                f"  Maximum spill slots: {self.max_spill_slots}\n"
+                f"  Spilled variables: {list(self.spill_slots.keys())}\n"
+                f"\n"
+                f"Suggestions:\n"
+                f"  - Drastically reduce variable count\n"
+                f"  - Break program into smaller functions\n"
+                f"  - Reuse variables more aggressively"
             )
         
-        # Spill the victim register
-        self.spill_register(victim_reg)
+        # Allocate new spill slot (2 bytes per slot for 16-bit values)
+        spill_addr = self.next_spill_address
+        self.spill_slots[name] = spill_addr
+        self.next_spill_address += 2
         
-        # Now allocate it (recursive call, but guaranteed to succeed)
-        return self.allocate_register(preferred_reg)
+        if self.debug_allocation:
+            print(f"[SPILL] Allocated spill slot for '{name}' at 0x{spill_addr:04X}")
+        
+        return spill_addr
+    
+    def get_spill_slot(self, name: str) -> Optional[int]:
+        """Get spill slot address for a variable, or None if not spilled."""
+        return self.spill_slots.get(name)
+    
+    def is_spilled(self, name: str) -> bool:
+        """Check if a variable/temporary is spilled to memory."""
+        return name in self.spill_slots
+
+    def _clear_temp_registers(self):
+        """
+        Clear all temporary registers that aren't variable registers.
+        This is safe to call at statement boundaries.
+        """
+        var_regs = set(self.var_reg.values())
+        for reg in list(self.auto_free_registers):
+            if reg not in var_regs:
+                self.deallocate_register(reg)
+
+    def record_live_range(self, name: str, program_point: int):
+        """
+        Record that a variable/temporary is live at a program point.
+        Updates unified live range tracking.
+        
+        Args:
+            name: Variable or temporary name
+            program_point: Current program point
+        """
+        if name not in self.live_ranges:
+            self.live_ranges[name] = (program_point, program_point)
+        else:
+            start, end = self.live_ranges[name]
+            self.live_ranges[name] = (min(start, program_point), max(end, program_point))
+        
+        # Track what's live at this point
+        if program_point not in self.live_at_point:
+            self.live_at_point[program_point] = set()
+        self.live_at_point[program_point].add(name)
+    
+    def mark_temp_live(self, reg: str):
+        """
+        Mark a temporary register as live at the current program point.
+        This is called during code generation to track runtime temporaries.
+        
+        Args:
+            reg: Register name (e.g., 'R0', 'P1')
+        """
+        # Create a unique name for this temporary based on register and program counter
+        temp_name = f"_temp_{reg}_{self.program_counter}"
+        self.record_live_range(temp_name, self.program_counter)
+        
+        if self.debug_allocation:
+            print(f"[LIVENESS] Marked {reg} as live temporary '{temp_name}' at PC={self.program_counter}")
+    
+    def mark_temp_dead(self, reg: str):
+        """
+        Mark a temporary register as no longer live.
+        Called when deallocating temporary registers.
+        
+        Args:
+            reg: Register name (e.g., 'R0', 'P1')
+        """
+        # Find the temp name for this register at current or recent program points
+        temp_name = f"_temp_{reg}_{self.program_counter}"
+        
+        # Remove from live_at_point sets for future points
+        if temp_name in self.live_ranges:
+            start, end = self.live_ranges[temp_name]
+            # Update the end point to current program counter
+            self.live_ranges[temp_name] = (start, self.program_counter)
+            
+            if self.debug_allocation:
+                print(f"[LIVENESS] Marked {reg} temporary '{temp_name}' as dead at PC={self.program_counter}")
+    
+    def build_interference_graph(self):
+        """
+        Build interference graph from live range information.
+        Two variables interfere if their live ranges overlap.
+        """
+        self.interference_graph = {}
+        
+        # Initialize graph nodes
+        for var in self.live_ranges:
+            self.interference_graph[var] = set()
+        
+        # For each program point, variables live at that point interfere with each other
+        for point, live_vars in self.live_at_point.items():
+            live_list = list(live_vars)
+            for i, var1 in enumerate(live_list):
+                for var2 in live_list[i+1:]:
+                    # Add bidirectional interference edges
+                    self.interference_graph[var1].add(var2)
+                    self.interference_graph[var2].add(var1)
+        
+        if self.debug_allocation:
+            print(f"\n[INTERFERENCE] Built interference graph:")
+            for var, neighbors in sorted(self.interference_graph.items()):
+                if neighbors:
+                    print(f"  {var} interferes with: {sorted(neighbors)}")
+    
+    def calculate_register_pressure(self):
+        """
+        Calculate register pressure (demand) at each program point.
+        Updates register_pressure dict and max_register_pressure.
+        """
+        self.register_pressure = {}
+        self.max_register_pressure = 0
+        
+        for point, live_vars in self.live_at_point.items():
+            pressure = len(live_vars)
+            self.register_pressure[point] = pressure
+            self.max_register_pressure = max(self.max_register_pressure, pressure)
+        
+        if self.debug_allocation:
+            print(f"\n[PRESSURE] Maximum register pressure: {self.max_register_pressure}")
+            print(f"[PRESSURE] Available P registers: {len(self.var_allocation_order)}")
+            if self.max_register_pressure > len(self.var_allocation_order):
+                print(f"[PRESSURE] ⚠️  PRESSURE EXCEEDS REGISTERS by {self.max_register_pressure - len(self.var_allocation_order)}")
+            
+            # Show high-pressure points
+            high_pressure_points = [(p, pr) for p, pr in self.register_pressure.items() 
+                                   if pr >= len(self.var_allocation_order)]
+            if high_pressure_points:
+                print(f"[PRESSURE] High-pressure points:")
+                for point, pressure in sorted(high_pressure_points)[:10]:  # Show first 10
+                    live = self.live_at_point.get(point, set())
+                    print(f"  Point {point}: {pressure} live ({sorted(live)})")
 
 
     def deallocate_register(self, reg: str):
-        """Deallocate a register, marking it as available."""
+        """Deallocate a register, marking it as available and no longer live."""
         if reg in self.register_usage:
+            # Mark temporary as dead in liveness tracking
+            if reg in self.auto_free_registers:
+                self.mark_temp_dead(reg)
+            
             self.register_usage[reg] = False
-            self.liveness.mark_dead(reg)
             self.auto_free_registers.discard(reg)
-            # Update last use time for LRU tracking
-            self.access_counter += 1
-            self.register_last_use[reg] = self.access_counter
+            self.allocation_stats['total_deallocations'] += 1
+            if self.debug_allocation:
+                print(f"[DEALLOC] Freed register {reg}")
+                self._debug_register_state()
             
     def smart_deallocate(self, reg: str, is_last_use: bool = True):
         """
@@ -275,8 +393,22 @@ class CodeGenerator:
         if is_last_use and reg in self.register_usage and self.register_usage[reg]:
             # Don't free variable registers (they stay allocated throughout)
             if reg not in self.var_reg.values():
-                self.deallocate_register(reg)
-                self.output.append(f"; Free {reg} (last use)")
+                # Verify it's actually a temporary register we can free
+                if reg in self.auto_free_registers:
+                    self.deallocate_register(reg)
+                    self.output.append(f"; Free {reg} (last use)")
+                else:
+                    # Register is in use but not tracked as auto-free
+                    # This might be a hardware register or manually managed
+                    # Don't free it, but log for debugging
+                    pass
+            else:
+                # This is a variable register - never free it
+                pass
+        else:
+            # Not the last use, or register not allocated
+            # Don't free anything
+            pass
             
     def generate_and_free_args(self, arguments: List[Expression], preferred_regs: List[str] = None) -> List[str]:
         """
@@ -306,13 +438,57 @@ class CodeGenerator:
         for reg in arg_regs:
             self.smart_deallocate(reg, is_last_use=True)
 
+    @contextmanager
     def with_temporary_register(self, preferred_reg: str = None):
-        """Context manager for temporary register allocation."""
+        """
+        Context manager for automatic temporary register allocation and cleanup.
+        Ensures registers are always freed, even if exceptions occur.
+        
+        Usage:
+            with self.with_temporary_register('R0') as temp:
+                self.output.append(f"MOV {temp}, 42")
+                # temp is automatically freed when exiting this block
+        
+        Args:
+            preferred_reg: Preferred register name (e.g., 'R0', 'P1')
+            
+        Yields:
+            Allocated register name
+        """
         reg = self.allocate_register(preferred_reg)
         try:
             yield reg
         finally:
             self.deallocate_register(reg)
+    
+    @contextmanager
+    def temporary_registers(self, count: int, preferred_prefix: str = 'R'):
+        """
+        Context manager for allocating multiple temporary registers at once.
+        All registers are automatically freed when the context exits.
+        
+        Usage:
+            with self.temporary_registers(3, 'R') as [r1, r2, r3]:
+                self.output.append(f"MOV {r1}, 1")
+                self.output.append(f"MOV {r2}, 2")
+                # All three registers freed automatically
+        
+        Args:
+            count: Number of registers to allocate
+            preferred_prefix: Prefix for preferred registers ('R' or 'P')
+            
+        Yields:
+            List of allocated register names
+        """
+        regs = []
+        try:
+            for i in range(count):
+                reg = self.allocate_register()
+                regs.append(reg)
+            yield regs
+        finally:
+            for reg in regs:
+                self.deallocate_register(reg)
 
     def get_loop_registers(self) -> Tuple[str, str, str]:
         """Get the appropriate registers for the current loop nesting level.
@@ -328,33 +504,57 @@ class CodeGenerator:
         return (f"P{base_reg_num}", f"P{base_reg_num + 1}", f"P{base_reg_num + 2}")
 
     def collect_lifetimes(self, program: Program):
-        """Collect variable lifetimes by traversing the AST."""
+        """Collect variable lifetimes by traversing the AST (unified liveness tracking)."""
+        self.program_counter = 0  # Reset program counter
         for stmt in program.statements:
             self.collect_lifetimes_stmt(stmt)
+        
+        # After collection, build interference graph and calculate pressure
+        self.build_interference_graph()
+        self.calculate_register_pressure()
+        
+        # Perform SSA analysis for future optimizations
+        self.analyze_ssa_form()
 
     def collect_lifetimes_stmt(self, stmt):
-        """Collect lifetimes for a statement."""
-        self.statement_counter += 1
-        current_counter = self.statement_counter
+        """Collect lifetimes for a statement (unified liveness tracking)."""
+        self.program_counter += 1
+        current_point = self.program_counter
+        
+        # Also update legacy statement_counter for backwards compatibility
+        self.statement_counter = current_point
+
+    def collect_lifetimes_stmt(self, stmt):
+        """Collect lifetimes for a statement (unified liveness tracking)."""
+        self.program_counter += 1
+        current_point = self.program_counter
+        
+        # Also update legacy statement_counter for backwards compatibility
+        self.statement_counter = current_point
 
         if isinstance(stmt, AssignmentStmt):
             if isinstance(stmt.variable, VariableExpr):
                 var_name = stmt.variable.name
-                current_counter = self.statement_counter
+                # Variable is defined here and may be used later
+                self.record_live_range(var_name, current_point)
+                # Legacy support
                 if var_name not in self.var_lifetime:
-                    self.var_lifetime[var_name] = (current_counter, current_counter)
+                    self.var_lifetime[var_name] = (current_point, current_point)
                 else:
                     start, _ = self.var_lifetime[var_name]
-                    self.var_lifetime[var_name] = (start, current_counter)
+                    self.var_lifetime[var_name] = (start, current_point)
             self.collect_lifetimes_expr(stmt.expression)
         elif isinstance(stmt, ForStmt):
             # Loop variable defined at for
             var_name = stmt.variable
+            self.record_live_range(var_name, current_point)
+            # Legacy support
             if var_name not in self.var_lifetime:
-                self.var_lifetime[var_name] = (current_counter, current_counter)
+                self.var_lifetime[var_name] = (current_point, current_point)
             else:
                 start, _ = self.var_lifetime[var_name]
-                self.var_lifetime[var_name] = (start, current_counter)
+                self.var_lifetime[var_name] = (start, current_point)
+            
             self.collect_lifetimes_expr(stmt.start)
             self.collect_lifetimes_expr(stmt.end)
             if stmt.step:
@@ -362,6 +562,9 @@ class CodeGenerator:
             for body_stmt in stmt.body:
                 self.collect_lifetimes_stmt(body_stmt)
             # Extend lifetime to end of loop
+            loop_end_point = self.program_counter
+            self.record_live_range(var_name, loop_end_point)
+            # Legacy support
             if var_name in self.var_lifetime:
                 start, _ = self.var_lifetime[var_name]
                 self.var_lifetime[var_name] = (start, self.statement_counter)
@@ -385,15 +588,19 @@ class CodeGenerator:
             self.collect_lifetimes_expr_from_stmt(stmt)
 
     def collect_lifetimes_expr(self, expr):
-        """Collect lifetimes from expressions."""
+        """Collect lifetimes from expressions (unified liveness tracking)."""
+        current_point = self.program_counter
+        
         if isinstance(expr, VariableExpr):
             var_name = expr.name
-            current_counter = self.statement_counter
+            # Variable is used here
+            self.record_live_range(var_name, current_point)
+            # Legacy support
             if var_name not in self.var_lifetime:
-                self.var_lifetime[var_name] = (current_counter, current_counter)
+                self.var_lifetime[var_name] = (current_point, current_point)
             else:
                 start, end = self.var_lifetime[var_name]
-                self.var_lifetime[var_name] = (min(start, current_counter), max(end, current_counter))
+                self.var_lifetime[var_name] = (min(start, current_point), max(end, current_point))
         elif isinstance(expr, ListAccessExpr):
             self.collect_lifetimes_expr(expr.index)
         elif isinstance(expr, MemberAccessExpr):
@@ -453,25 +660,125 @@ class CodeGenerator:
         # Others don't have expressions
 
     def assign_registers(self):
-        """Assign registers to variables using linear scan register allocation."""
-        # Sort variables by start time
-        vars_sorted = sorted(self.var_lifetime.items(), key=lambda x: x[1][0])
+        """
+        Assign registers to variables using enhanced linear scan with interference graphs.
+        Uses proper spill heuristics and considers register pressure.
+        """
+        if self.debug_allocation:
+            print(f"\n[ASSIGN_REGS] Starting enhanced linear scan allocation")
+            print(f"[ASSIGN_REGS] Variables: {len(self.live_ranges)}")
+            print(f"[ASSIGN_REGS] Available registers: {self.var_allocation_order}")
+            print(f"[ASSIGN_REGS] Max register pressure: {self.max_register_pressure}")
+            print(f"[ASSIGN_REGS] Live ranges:")
+            for var, (start, end) in sorted(self.live_ranges.items(), key=lambda x: x[1][0]):
+                interferes = len(self.interference_graph.get(var, set()))
+                print(f"  {var}: [{start}, {end}] (duration={end-start+1}, interferes={interferes})")
         
-        active = []  # List of (end_time, reg)
+        # Sort variables by start time (linear scan requirement)
+        vars_sorted = sorted(self.live_ranges.items(), key=lambda x: x[1][0])
+        
+        active_intervals = []  # List of (end_time, var_name, register)
+        spilled_vars = []  # Track variables that couldn't get registers
         
         for var, (start, end) in vars_sorted:
-            # Expire old intervals
-            active = [(e, r) for e, r in active if e > start]
+            # Expire old intervals (free registers whose live ranges have ended)
+            active_intervals = [
+                (e, v, r) for e, v, r in active_intervals if e > start
+            ]
             
-            # Try to allocate a register
-            available_regs = [r for r in self.var_allocation_order if not any(r == ar for _, ar in active)]
+            if self.debug_allocation:
+                active_regs = [r for _, _, r in active_intervals]
+                print(f"\n[ASSIGN_REGS] Processing '{var}' at time {start}")
+                print(f"  Active intervals: {len(active_intervals)}, using regs: {active_regs}")
+            
+            # Find available registers (not used by active intervals)
+            used_regs = {reg for _, _, reg in active_intervals}
+            available_regs = [r for r in self.var_allocation_order if r not in used_regs]
+            
+            # Also check interference graph - can't use registers of interfering variables
+            interfering_vars = self.interference_graph.get(var, set())
+            interfering_regs = {self.var_reg.get(v) for v in interfering_vars if v in self.var_reg}
+            interfering_regs.discard(None)
+            available_regs = [r for r in available_regs if r not in interfering_regs]
+            
+            if self.debug_allocation and interfering_vars:
+                print(f"  Interferes with: {sorted(interfering_vars)}")
+                print(f"  Blocked by interference: {sorted(interfering_regs)}")
+            
             if available_regs:
+                # Successfully allocate register
                 reg = available_regs[0]
                 self.var_reg[var] = reg
-                active.append((end, reg))
-                # Mark as used
+                active_intervals.append((end, var, reg))
                 self.register_usage[reg] = True
-            # If no register, leave in memory
+                
+                if self.debug_allocation:
+                    print(f"  ✓ Allocated {var} -> {reg}")
+            else:
+                # Need to spill - use spill heuristic
+                # Spill the variable with the longest remaining live range
+                spillable = [(e, v, r) for e, v, r in active_intervals]
+                
+                if spillable and end < max(e for e, v, r in spillable):
+                    # Spill an active variable with longer range than current
+                    spillable.sort(key=lambda x: x[0], reverse=True)  # Sort by end time
+                    spill_end, spill_var, spill_reg = spillable[0]
+                    
+                    # Remove spilled variable from active and var_reg
+                    active_intervals.remove((spill_end, spill_var, spill_reg))
+                    del self.var_reg[spill_var]
+                    spilled_vars.append(spill_var)
+                    
+                    # Allocate spill slot
+                    self.allocate_spill_slot(spill_var)
+                    
+                    # Assign the freed register to current variable
+                    self.var_reg[var] = spill_reg
+                    active_intervals.append((end, var, spill_reg))
+                    
+                    if self.debug_allocation:
+                        print(f"  ⚠️  Spilled '{spill_var}' to allocate {spill_reg} to '{var}'")
+                else:
+                    # Spill current variable
+                    spilled_vars.append(var)
+                    self.allocate_spill_slot(var)
+                    
+                    if self.debug_allocation:
+                        print(f"  ✗ SPILLED '{var}' to memory (no registers available)")
+        
+        if self.debug_allocation:
+            print(f"\n[ASSIGN_REGS] Allocation complete:")
+            print(f"  Registers assigned: {len(self.var_reg)}")
+            print(f"  Memory spills: {len(spilled_vars)}")
+            print(f"  Spill slots used: {len(self.spill_slots)}")
+            print(f"  Final mapping: {self.var_reg}")
+            if spilled_vars:
+                print(f"  Spilled variables: {spilled_vars}\n")
+        
+        # Emit warning if variables had to spill to memory
+        if spilled_vars:
+            self._emit_spill_warnings(spilled_vars)
+    
+    def _emit_spill_warnings(self, spilled_vars: List[str]):
+        """Emit warnings about spilled variables."""
+        # Add comment to generated assembly
+        self.output.append(f"; WARNING: {len(spilled_vars)} variable(s) using dedicated spill slots")
+        self.output.append(f";          Spilled variables: {', '.join(spilled_vars)}")
+        self.output.append(f";          Spill region: 0x{self.spill_base_address:04X}-0x{self.next_spill_address:04X}")
+        self.output.append(f";          Register pressure: {self.max_register_pressure} (max), {len(self.var_allocation_order)} available")
+        self.output.append(f";          This will impact performance. Consider:")
+        self.output.append(f";          - Reducing total variable count (currently {len(self.live_ranges)})")
+        self.output.append(f";          - Reducing variable lifetimes by localizing scope")
+        self.output.append(f";          - Breaking complex expressions into simpler parts")
+        
+        # Also print to console for developer visibility
+        print(f"\n⚠️  REGISTER ALLOCATION WARNING")
+        print(f"   {len(spilled_vars)} variable(s) spilled to memory: {', '.join(spilled_vars)}")
+        print(f"   Total variables: {len(self.live_ranges)}, Available registers: {len(self.var_allocation_order)}")
+        print(f"   Max register pressure: {self.max_register_pressure}")
+        print(f"   Spill region: 0x{self.spill_base_address:04X}-0x{self.next_spill_address:04X} ({len(self.spill_slots)} slots)")
+        print(f"   Memory-based variables will be slower to access.")
+        print(f"   Consider simplifying variable usage or reducing variable count.\n")
 
     def generate(self, program: Program) -> str:
         """
@@ -519,8 +826,11 @@ class CodeGenerator:
 
     def generate_statement(self, stmt: Statement):
         """Generate code for a statement."""
-        # Track spill stack depth at start of statement
-        spill_depth_before = len(self.spill_stack)
+        # Increment program counter for runtime liveness tracking
+        self.program_counter += 1
+        
+        # Clear temp registers at statement boundaries (safety measure)
+        self._clear_temp_registers()
         
         if isinstance(stmt, ClrDrawStmt):
             self.generate_clr_draw()
@@ -576,20 +886,28 @@ class CodeGenerator:
             self.generate_label(stmt)
         elif isinstance(stmt, StructDeclarationStmt):
             self.generate_struct_declaration(stmt)
-            
-        # Cleanup only spills created during THIS statement
-        # This prevents cleaning up spills from nested conditional branches
-        spills_created = len(self.spill_stack) - spill_depth_before
-        if spills_created > 0:
-            self.output.append(f"; Cleanup {spills_created} spilled register(s) from this statement")
-            for _ in range(spills_created):
-                reg = self.spill_stack.pop()
-                self.output.append(f"POP {reg}  ; Discard spilled value")
+        elif isinstance(stmt, AsmBlockStmt):
+            self.generate_asm_block(stmt)
 
     def generate_struct_declaration(self, stmt: StructDeclarationStmt):
         """Register struct type (no assembly code generated)."""
         self.struct_types[stmt.name] = StructType(stmt.name, stmt.fields)
         self.output.append(f"; Struct {stmt.name} declared with fields: {', '.join(stmt.fields)}")
+
+    def generate_asm_block(self, stmt: AsmBlockStmt):
+        """
+        Generate inline assembly block.
+        The assembly code is inserted directly into the output with a comment header.
+        """
+        self.output.append("; --- Inline Assembly Block ---")
+        
+        # Split the assembly code into lines and emit each one
+        lines = stmt.assembly_code.strip().split('\n')
+        for line in lines:
+            # Preserve the original formatting/indentation
+            self.output.append(line.rstrip())
+        
+        self.output.append("; --- End Inline Assembly ---")
 
     def generate_var_declaration(self, stmt: VarDeclarationStmt):
         """Handle variable declarations (GLOBAL/LOCAL)."""
@@ -1068,11 +1386,17 @@ class CodeGenerator:
         else_label = self.new_label()
         end_label = self.new_label()
 
-        condition_reg = self.generate_expression(stmt.condition)
+        # Allocate a temporary register for the condition (ensures it can be freed)
+        temp_reg = self.allocate_register()
+        try:
+            condition_reg = self.generate_expression(stmt.condition, temp_reg)
 
-        # Test if condition is false (0)
-        self.output.append(f"CMP {condition_reg}, 0")
-        self.output.append(f"JZ {else_label}")
+            # Test if condition is false (0)
+            self.output.append(f"CMP {condition_reg}, 0")
+            self.output.append(f"JZ {else_label}")
+        finally:
+            # Always free the temp register we allocated
+            self.deallocate_register(temp_reg)
 
         for s in stmt.then_branch:
             self.generate_statement(s)
@@ -1205,9 +1529,15 @@ class CodeGenerator:
 
         self.output.append(f"{loop_label}:")
 
-        condition_reg = self.generate_expression(stmt.condition)
-        self.output.append(f"CMP {condition_reg}, 0")
-        self.output.append(f"JZ {end_label}")
+        # Allocate a temporary register for the condition (ensures it can be freed)
+        temp_reg = self.allocate_register()
+        try:
+            condition_reg = self.generate_expression(stmt.condition, temp_reg)
+            self.output.append(f"CMP {condition_reg}, 0")
+            self.output.append(f"JZ {end_label}")
+        finally:
+            # Always free the temp register we allocated
+            self.deallocate_register(temp_reg)
 
         for s in stmt.body:
             self.generate_statement(s)
@@ -1224,9 +1554,15 @@ class CodeGenerator:
         for s in stmt.body:
             self.generate_statement(s)
 
-        condition_reg = self.generate_expression(stmt.condition)
-        self.output.append(f"CMP {condition_reg}, 0")
-        self.output.append(f"JZ {loop_label}")  # Continue looping if condition is false
+        # Allocate a temporary register for the condition (ensures it can be freed)
+        temp_reg = self.allocate_register()
+        try:
+            condition_reg = self.generate_expression(stmt.condition, temp_reg)
+            self.output.append(f"CMP {condition_reg}, 0")
+            self.output.append(f"JZ {loop_label}")
+        finally:
+            # Always free the temp register we allocated
+            self.deallocate_register(temp_reg)  # Continue looping if condition is false
 
     def generate_goto(self, stmt: GotoStmt):
         """Generate Goto code."""
@@ -1549,6 +1885,9 @@ class CodeGenerator:
         left_reg = self.allocate_register(available_regs[0] if available_regs else None)
         right_reg = self.allocate_register(available_regs[1] if len(available_regs) > 1 else None)
         
+        # Track which registers WE allocated (not variable registers that might be returned)
+        allocated_regs = {left_reg, right_reg}
+        
         try:
             # Generate left operand
             left_result = self.generate_expression(expr.left, left_reg)
@@ -1691,11 +2030,11 @@ class CodeGenerator:
                 self.smart_deallocate(right_result, is_last_use=True)
                 
         finally:
-            # Always deallocate the pre-allocated registers if they weren't already freed
-            if left_reg in self.auto_free_registers:
-                self.deallocate_register(left_reg)
-            if right_reg in self.auto_free_registers:
-                self.deallocate_register(right_reg)
+            # Always deallocate the registers WE allocated (not variable registers)
+            # Only free if they're still in auto_free_registers (meaning we allocated them)
+            for reg in allocated_regs:
+                if reg in self.auto_free_registers:
+                    self.deallocate_register(reg)
             
         return target_reg
 
@@ -2289,12 +2628,17 @@ class CodeGenerator:
         return target_reg
 
     def load_variable(self, name: str, target_reg: str = "R0") -> str:
-        """Load a variable into a register. For string variables, ensure we use P registers."""
+        """
+        Load a variable into a register.
+        Handles both register-allocated and spilled variables.
+        For string variables, ensures we use P registers.
+        """
         # String variables need P registers (16-bit addresses)
         if name.upper().startswith("STR") and target_reg.startswith('R'):
             # Force use of a P register for string variables
             target_reg = 'P1'
-            
+        
+        # Check if variable is in a register
         if name in self.var_reg:
             reg = self.var_reg[name]
             # If variable is in a P register and target is R, keep the P register
@@ -2304,7 +2648,25 @@ class CodeGenerator:
             if reg != target_reg:
                 self.output.append(f"MOV {target_reg}, {reg}")
             return target_reg
-        # Not in register, load from memory
+        
+        # Check if variable is spilled
+        if self.is_spilled(name):
+            spill_addr = self.get_spill_slot(name)
+            if target_reg.startswith('R'):
+                # For 8-bit R registers, read the low byte
+                self.output.append(f"MOV P0, {spill_addr + 1}")
+                self.output.append(f"MOV {target_reg}, [P0]")
+            else:
+                # For 16-bit P registers, read the full word
+                self.output.append(f"MOV P0, {spill_addr}")
+                self.output.append(f"MOV {target_reg}, [P0]")
+            
+            if self.debug_allocation:
+                print(f"[LOAD] Loading spilled variable '{name}' from 0x{spill_addr:04X} into {target_reg}")
+            
+            return target_reg
+        
+        # Not in register or spill slot, use regular memory
         addr = self.get_variable_address(name)
         if target_reg.startswith('R'):
             # For 8-bit R registers, read the low byte (stored at addr + 1)
@@ -2315,6 +2677,116 @@ class CodeGenerator:
             self.output.append(f"MOV P0, {addr}")
             self.output.append(f"MOV {target_reg}, [P0]")
         return target_reg
+    
+    def store_variable(self, name: str, source_reg: str):
+        """
+        Store a value from a register into a variable.
+        Handles both register-allocated and spilled variables.
+        """
+        # Check if variable is in a register
+        if name in self.var_reg:
+            reg = self.var_reg[name]
+            if reg != source_reg:
+                self.output.append(f"MOV {reg}, {source_reg}")
+            return
+        
+        # Check if variable is spilled
+        if self.is_spilled(name):
+            spill_addr = self.get_spill_slot(name)
+            if source_reg.startswith('R'):
+                # For 8-bit R registers, write to low byte
+                self.output.append(f"MOV P0, {spill_addr + 1}")
+                self.output.append(f"MOV [P0], {source_reg}")
+            else:
+                # For 16-bit P registers, write full word
+                self.output.append(f"MOV P0, {spill_addr}")
+                self.output.append(f"MOV [P0], {source_reg}")
+            
+            if self.debug_allocation:
+                print(f"[STORE] Storing to spilled variable '{name}' at 0x{spill_addr:04X} from {source_reg}")
+            
+            return
+        
+        # Not in register or spill slot, use regular memory
+        addr = self.get_variable_address(name)
+        if source_reg.startswith('R'):
+            # For 8-bit R registers, write to low byte
+            self.output.append(f"MOV P0, {addr + 1}")
+            self.output.append(f"MOV [P0], {source_reg}")
+        else:
+            # For 16-bit P registers, write full word
+            self.output.append(f"MOV P0, {addr}")
+            self.output.append(f"MOV [P0], {source_reg}")
+
+    def analyze_ssa_form(self):
+        """
+        Basic SSA (Static Single Assignment) form analysis.
+        This is a foundation for future optimizations like:
+        - Dead code elimination
+        - Constant propagation
+        - Common subexpression elimination
+        - Register coalescing
+        
+        Current implementation provides:
+        - Def-use chains
+        - Dominance information (basic)
+        - Phi node detection points
+        """
+        # Track definitions and uses
+        self.ssa_defs: Dict[str, List[int]] = {}  # variable -> list of definition points
+        self.ssa_uses: Dict[str, List[int]] = {}  # variable -> list of use points
+        
+        # Build def-use chains from live ranges
+        for var, (start, end) in self.live_ranges.items():
+            # First occurrence is typically a definition
+            if var not in self.ssa_defs:
+                self.ssa_defs[var] = [start]
+            
+            # All points in range could be uses
+            if var not in self.ssa_uses:
+                self.ssa_uses[var] = []
+            
+            # Find actual use points from live_at_point
+            for point in range(start, end + 1):
+                if point in self.live_at_point and var in self.live_at_point[point]:
+                    if point != start:  # Don't count definition as use
+                        self.ssa_uses[var].append(point)
+        
+        # Detect potential phi node locations (merge points)
+        # These occur where control flow merges (end of if/else, loops)
+        self.phi_node_points: Dict[int, Set[str]] = {}  # point -> variables needing phi
+        
+        # Find points with sudden pressure changes (potential merge points)
+        pressure_points = sorted(self.register_pressure.items())
+        for i in range(1, len(pressure_points)):
+            prev_point, prev_pressure = pressure_points[i-1]
+            curr_point, curr_pressure = pressure_points[i]
+            
+            # If pressure increases significantly, might be a merge point
+            if curr_pressure > prev_pressure + 2:
+                # Find variables that become live at this point
+                curr_live = self.live_at_point.get(curr_point, set())
+                prev_live = self.live_at_point.get(prev_point, set())
+                new_live = curr_live - prev_live
+                
+                if new_live:
+                    self.phi_node_points[curr_point] = new_live
+        
+        if self.debug_allocation:
+            print(f"\n[SSA] SSA Form Analysis:")
+            print(f"[SSA] Variables with multiple definitions:")
+            for var, defs in self.ssa_defs.items():
+                if len(defs) > 1:
+                    print(f"  {var}: {len(defs)} definitions at {defs}")
+            
+            print(f"[SSA] Potential phi node points: {len(self.phi_node_points)}")
+            for point, vars in sorted(self.phi_node_points.items()):
+                print(f"  Point {point}: {sorted(vars)}")
+            
+            # Compute def-use chain statistics
+            total_uses = sum(len(uses) for uses in self.ssa_uses.values())
+            total_defs = sum(len(defs) for defs in self.ssa_defs.values())
+            print(f"[SSA] Total definitions: {total_defs}, Total uses: {total_uses}")
 
     def get_variable_address(self, variable) -> int:
         """Get the memory address for a variable."""

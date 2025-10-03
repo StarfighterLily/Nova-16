@@ -34,14 +34,14 @@ While 1
     If x < 8 Then
         x = 8
     End
-    If x > 248 Then
-        x = 248
+    If x > 240 Then
+        x = 240
     End
     If y < 8 Then
         y = 8
     End
-    If y > 248 Then
-        y = 248
+    If y > 232 Then
+        y = 232
     End
 
     If oldx <> x Then

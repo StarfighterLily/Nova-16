@@ -251,6 +251,12 @@ class VarDeclarationStmt(Statement):
     variables: List[str]  # Support multiple variables in one declaration
 
 
+@dataclass
+class AsmBlockStmt(Statement):
+    """Inline assembly block statement (Asm ... End)."""
+    assembly_code: str  # Raw assembly code to be inserted
+
+
 # Expressions
 @dataclass
 class LiteralExpr(Expression):

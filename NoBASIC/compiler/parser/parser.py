@@ -12,7 +12,7 @@ from .ast import (
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
-    LiteralExpr, VariableExpr, ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, 
+    AsmBlockStmt, LiteralExpr, VariableExpr, ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, 
     BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, DataType, VarScope
 )
 
@@ -60,6 +60,8 @@ class Parser:
             return self.var_declaration_statement(VarScope.GLOBAL)
         elif token.type == TokenType.LOCAL:
             return self.var_declaration_statement(VarScope.LOCAL)
+        elif token.type == TokenType.ASM:
+            return self.asm_block_statement()
         elif token.type == TokenType.PXLON:
             return self.pxl_on_statement()
         elif token.type == TokenType.PXLOFF:
@@ -406,6 +408,23 @@ class Parser:
             variables.append(var_token.lexeme)
         
         return VarDeclarationStmt(scope, variables)
+
+    def asm_block_statement(self) -> AsmBlockStmt:
+        """
+        Parse inline assembly block: Asm <assembly code> End
+        The lexer has already captured the ASM token, ASM_BLOCK token, and END token.
+        """
+        # Consume the ASM token
+        self.consume(TokenType.ASM, "Expected 'Asm'")
+        
+        # Get the assembly code from the ASM_BLOCK token
+        asm_token = self.consume(TokenType.ASM_BLOCK, "Expected assembly code block")
+        assembly_code = asm_token.literal if asm_token.literal is not None else ""
+        
+        # Consume the END token
+        self.consume(TokenType.END, "Expected 'End' after assembly block")
+        
+        return AsmBlockStmt(assembly_code=assembly_code)
 
     def expression(self) -> Expression:
         """Parse an expression."""

@@ -168,7 +168,12 @@ class Lexer:
 
         text = self.source[start:self.position].lower()  # Case insensitive
         token_type = KEYWORDS.get(text, TokenType.IDENTIFIER)
-        self.add_token(token_type)
+        
+        # Special handling for Asm keyword - capture assembly block
+        if token_type == TokenType.ASM:
+            self.asm_block()
+        else:
+            self.add_token(token_type)
 
     def string(self):
         """Scan a string literal."""
@@ -190,6 +195,72 @@ class Lexer:
         # Extract the string value (without quotes)
         value = self.source[start_pos + 1:self.position - 1]
         self.add_token(TokenType.STRING_LITERAL, value)
+
+    def asm_block(self):
+        """
+        Scan an inline assembly block.
+        Format: Asm
+                  <assembly code>
+                End
+        Captures all text between Asm and End as raw assembly.
+        """
+        # First emit the ASM token
+        self.add_token(TokenType.ASM)
+        
+        start_line = self.line
+        asm_lines = []
+        
+        # Skip any whitespace/newlines after Asm keyword
+        while not self.is_at_end() and self.peek() in " \t\r\n":
+            if self.peek() == "\n":
+                self.line += 1
+                self.column = 1
+            self.advance()
+        
+        # Capture everything until we find "End" as a keyword
+        asm_start = self.position
+        
+        while not self.is_at_end():
+            # Check if we've hit "End" keyword
+            if self.peek().lower() == 'e':
+                # Save current position
+                saved_pos = self.position
+                saved_line = self.line
+                saved_col = self.column
+                
+                # Try to read "End"
+                word_start = self.position
+                while not self.is_at_end() and (self.peek().isalnum() or self.peek() == "_"):
+                    self.advance()
+                
+                word = self.source[word_start:self.position].lower()
+                
+                # Check if it's "end" (case insensitive)
+                if word == "end":
+                    # Found the End keyword - extract assembly code
+                    asm_code = self.source[asm_start:word_start].strip()
+                    
+                    # Emit the assembly block token
+                    self.add_token(TokenType.ASM_BLOCK, asm_code)
+                    
+                    # Emit the END token
+                    self.add_token(TokenType.END)
+                    return
+                else:
+                    # Not "end", restore position and continue
+                    self.position = saved_pos
+                    self.line = saved_line
+                    self.column = saved_col
+            
+            # Track newlines for line counting
+            if self.peek() == "\n":
+                self.line += 1
+                self.column = 1
+            
+            self.advance()
+        
+        # If we get here, we reached EOF without finding End
+        raise LexerError("Unterminated Asm block (missing 'End')", self.filename, start_line, self.column)
 
     def add_token(self, token_type: TokenType, literal: Optional[Any] = None):
         """Add a token to the token list."""

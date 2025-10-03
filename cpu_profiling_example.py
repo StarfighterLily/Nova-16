@@ -33,7 +33,7 @@ def profile_cpu_during_execution():
 
     # Load a test program
     try:
-        entry_point = memory.load("asm/gfxtest.bin")
+        entry_point = memory.load("NoBASIC/screen_fill.bin")
         cpu_instance.pc = entry_point
         print(f"Loaded test program, entry point: 0x{entry_point:04X}")
     except FileNotFoundError:
