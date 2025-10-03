@@ -1,0 +1,23 @@
+// Advanced variable scoping test
+// Tests explicit declarations and implicit behavior
+
+// Declare some global variables explicitly
+GLOBAL counter, total, max
+
+// Initialize them
+counter = 0
+total = 0
+max = 10
+
+// Use in a For loop
+For i = 1 To max
+    counter = counter + 1
+    total = total + i
+Next
+
+// Display results
+Text(10, 10, "Counter:", 0x0F)
+Text(10, 20, "Total:", 0x0F)
+Text(10, 30, "Done!", 0x0A)
+
+Pause

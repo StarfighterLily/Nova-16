@@ -112,10 +112,39 @@ class Lexer:
             raise LexerError(f"Unexpected character: {char}", self.filename, self.line, self.column)
 
     def number(self):
-        """Scan a number literal."""
+        """Scan a number literal (supports decimal, hex 0x, binary 0b)."""
         start = self.position - 1
         has_dot = False
 
+        # Check for hex (0x) or binary (0b) prefix
+        if self.source[start] == '0' and not self.is_at_end():
+            next_char = self.peek().lower()
+            if next_char == 'x':
+                # Hexadecimal
+                self.advance()  # consume 'x'
+                hex_start = self.position
+                while not self.is_at_end() and self.peek() in '0123456789abcdefABCDEF':
+                    self.advance()
+                text = self.source[hex_start:self.position]
+                if not text:
+                    raise LexerError("Invalid hexadecimal number", self.filename, self.line, self.column)
+                value = int(text, 16)
+                self.add_token(TokenType.NUMBER_LITERAL, value)
+                return
+            elif next_char == 'b':
+                # Binary
+                self.advance()  # consume 'b'
+                bin_start = self.position
+                while not self.is_at_end() and self.peek() in '01':
+                    self.advance()
+                text = self.source[bin_start:self.position]
+                if not text:
+                    raise LexerError("Invalid binary number", self.filename, self.line, self.column)
+                value = int(text, 2)
+                self.add_token(TokenType.NUMBER_LITERAL, value)
+                return
+
+        # Regular decimal number
         while not self.is_at_end() and (self.peek().isdigit() or self.peek() == "."):
             if self.peek() == ".":
                 if has_dot:

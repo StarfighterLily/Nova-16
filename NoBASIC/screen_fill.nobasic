@@ -10,8 +10,13 @@ For y = 0 To 255
     Next
 Next
 
+SetLayer(0)
+
+Text(0, 0, "Done", 0x0F)
+
 Pause
 
+SetLayer(1)
 ClrDraw
-
-Disp "Done"
+SetLayer(0)
+ClrDraw

@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from enum import Enum
 
 
+class VarScope(Enum):
+    """Variable scope types."""
+    GLOBAL = "global"
+    LOCAL = "local"
+    IMPLICIT = "implicit"  # Default scope (global by default)
+
+
 class DataType(Enum):
     """Data types in NoBASIC."""
     NUMBER = "number"
@@ -235,6 +242,13 @@ class StructDeclarationStmt(Statement):
     """STRUCT name field1 field2 ... END statement."""
     name: str
     fields: List[str]
+
+
+@dataclass
+class VarDeclarationStmt(Statement):
+    """GLOBAL/LOCAL variable declaration statement."""
+    scope: VarScope
+    variables: List[str]  # Support multiple variables in one declaration
 
 
 # Expressions

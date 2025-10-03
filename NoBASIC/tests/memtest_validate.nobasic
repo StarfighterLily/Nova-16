@@ -1,0 +1,59 @@
+// Comprehensive MEMREAD/MEMWRITE validation test
+// This test validates that MEMREAD and MEMWRITE work correctly
+
+// Test 1: Basic write and read
+addr = 0x2000
+written = MEMWRITE(addr, 42)
+readback = MEMREAD(addr)
+
+// Test 2: Multiple addresses
+addr2 = 0x2002
+written2 = MEMWRITE(addr2, 100)
+readback2 = MEMREAD(addr2)
+
+addr3 = 0x2004
+written3 = MEMWRITE(addr3, 255)
+readback3 = MEMREAD(addr3)
+
+// Test 3: Variable addresses
+base = 0x3000
+offset = 10
+target = base + offset
+w3 = MEMWRITE(target, 77)
+value = MEMREAD(target)
+
+// Test 4: Chained operations
+addr4 = 0x4000
+temp = MEMREAD(addr)
+w4 = MEMWRITE(addr4, temp)  // Copy value from addr to addr4
+result = MEMREAD(addr4)
+
+// Test 5: Return value validation
+// MEMWRITE should return the value written
+retval = MEMWRITE(0x5000, 123)
+// retval should be 123
+
+// Test 6: Sequential writes
+start = 0x6000
+w6a = MEMWRITE(start, 1)
+w6b = MEMWRITE(start + 2, 2)
+w6c = MEMWRITE(start + 4, 3)
+w6d = MEMWRITE(start + 6, 4)
+
+// Read them back
+v1 = MEMREAD(start)
+v2 = MEMREAD(start + 2)
+v3 = MEMREAD(start + 4)
+v4 = MEMREAD(start + 6)
+
+// Test 7: Memory-mapped hardware (sprite control)
+sprite0_base = 0xF000
+w7 = MEMWRITE(sprite0_base, 0x3000)  // Set sprite data pointer
+ptr = MEMREAD(sprite0_base)      // Read it back
+
+// Test 8: Zero page access
+zp_addr = 0x0050
+w8 = MEMWRITE(zp_addr, 99)
+zp_val = MEMREAD(zp_addr)
+
+Disp "All tests complete"

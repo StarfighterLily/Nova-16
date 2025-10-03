@@ -1,0 +1,20 @@
+CLS
+Text "=== Priority 1 Test ==="
+
+LET addr = 8192
+MEMWRITE(addr, 42)
+LET val = MEMREAD(addr)
+Text "Memory OK"
+
+SpriteOn(0, 100, 100)
+Text "Sprite ON"
+
+SpriteOff(0)
+Text "Sprite OFF"
+
+Text "All tests passed!"
+
+LET k = 0
+DO
+    k = KEYSTAT()
+LOOP UNTIL k = 1

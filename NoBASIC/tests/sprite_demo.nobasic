@@ -1,0 +1,67 @@
+REM Comprehensive sprite test with memory operations
+REM Test all Priority 1 features
+
+REM Initialize graphics
+CLS
+SetColor 15
+Print "Sprite Demo - Priority 1 Features"
+
+REM Test MEMWRITE - Write sprite data to memory
+REM Sprite pixel data starts at 0x3000
+LET addr = 0x3000
+FOR i = 0 TO 255
+    MEMWRITE(addr + i, 15)
+NEXT i
+
+REM Test MEMREAD - Verify first byte
+LET val = MEMREAD(0x3000)
+SetColor 10
+SetCursor 0, 1
+Print "Memory test: "
+Print val
+
+REM Test SpriteOn - Configure sprite 0
+REM Sprite control block structure:
+REM   Offset 0-1: Data address (2 bytes)
+REM   Offset 2: X position
+REM   Offset 3: Y position
+REM   Offset 4: Width
+REM   Offset 5: Height  
+REM   Offset 6: Flags (bit 0 = active)
+
+REM First, write sprite data address to control block
+MEMWRITE(0xF000, 0x30)  REM Low byte of 0x3000
+MEMWRITE(0xF001, 0x00)  REM High byte of 0x3000
+
+REM Write sprite dimensions
+MEMWRITE(0xF004, 16)    REM Width = 16
+MEMWRITE(0xF005, 16)    REM Height = 16
+
+REM Now enable and position the sprite
+SpriteOn(0, 160, 120)
+
+SetColor 14
+SetCursor 0, 2
+Print "Sprite 0 active at (160,120)"
+
+REM Wait a bit
+FOR i = 0 TO 100
+    REM Delay loop
+NEXT i
+
+REM Test SpriteOff
+Sprite Off(0)
+
+SetColor 12
+SetCursor 0, 3
+Print "Sprite 0 disabled"
+
+SetColor 15
+SetCursor 0, 5
+Print "Press any key to exit"
+
+REM Wait for key with KEYSTAT check
+LET keyReady = 0
+DO
+    keyReady = KEYSTAT()
+LOOP UNTIL keyReady = 1

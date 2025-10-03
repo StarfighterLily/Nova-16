@@ -12,9 +12,9 @@ from ..parser.ast import (
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
-    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, LiteralExpr, VariableExpr,
-    ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr,
-    GroupingExpr, StructType
+    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
+    LiteralExpr, VariableExpr, ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, 
+    BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, StructType
 )
 
 
@@ -379,8 +379,8 @@ class CodeGenerator:
         # Set ORG to 0x0200 (past interrupt vectors)
         self.output.append("ORG 0x0200")
         
-        # Initialize stack
-        self.output.append("MOV SP, 0xF000")  # Initialize stack pointer
+        # Initialize stack (grows downward from top of memory)
+        self.output.append("MOV SP, 0xFFFF")  # Initialize stack pointer at top of memory
         self.output.append("MOV FP, SP")      # Initialize frame pointer
 
         # Generate code for all statements
@@ -400,6 +400,8 @@ class CodeGenerator:
         """Generate code for a statement."""
         if isinstance(stmt, ClrDrawStmt):
             self.generate_clr_draw()
+        elif isinstance(stmt, VarDeclarationStmt):
+            self.generate_var_declaration(stmt)
         elif isinstance(stmt, PxlOnStmt):
             self.generate_pxl_on(stmt)
         elif isinstance(stmt, PxlOffStmt):
@@ -456,10 +458,20 @@ class CodeGenerator:
         self.struct_types[stmt.name] = StructType(stmt.name, stmt.fields)
         self.output.append(f"; Struct {stmt.name} declared with fields: {', '.join(stmt.fields)}")
 
+    def generate_var_declaration(self, stmt: VarDeclarationStmt):
+        """Handle variable declarations (GLOBAL/LOCAL)."""
+        # For now, just allocate memory for the variables
+        # The scope information is already tracked by the semantic analyzer
+        scope_str = stmt.scope.value.upper()
+        for var_name in stmt.variables:
+            # Allocate memory address for the variable
+            addr = self.get_variable_address(var_name)
+            self.output.append(f"; {scope_str} variable: {var_name} @ 0x{addr:04X}")
+
     def generate_clr_draw(self):
         """Generate ClrDraw code."""
         self.output.append("; ClrDraw")
-        self.output.append("MOV VL, 1")  # Layer 1
+        #self.output.append("MOV VL, 0")  # Layer 0 (main screen) so we clear the entire drawn screen
         self.output.append("SFILL 0x00")
 
     def generate_pxl_on(self, stmt: PxlOnStmt):
@@ -545,14 +557,87 @@ class CodeGenerator:
         self.generate_expression_into(stmt.layer, 'VL')
 
     def generate_sprite_on(self, stmt: SpriteOnStmt):
-        """Generate SpriteOn(spriteId, x, y) code."""
-        # Simplified - would need sprite control block manipulation
-        self.output.append("; Sprite on - simplified")
+        """Generate SpriteOn(spriteId, x, y) code.
+        
+        Sprite control block structure (at 0xF000 + spriteId * 16):
+        Offset 0-1: Data address (16-bit)
+        Offset 2: X position (8-bit)
+        Offset 3: Y position (8-bit)
+        Offset 4: Width (8-bit)
+        Offset 5: Height (8-bit)
+        Offset 6: Flags (bit 0=active, bit 1=transparency)
+        Offset 7: Transparency color (8-bit)
+        """
+        self.output.append("; SpriteOn - Enable and position sprite")
+        
+        # Evaluate arguments
+        sprite_id_reg = self.generate_expression(stmt.sprite_id, "R1")
+        x_reg = self.generate_expression(stmt.x, "R2")
+        y_reg = self.generate_expression(stmt.y, "R3")
+        
+        # Calculate sprite control block base address: 0xF000 + (spriteId * 16)
+        # Use P2 for address calculation
+        self.output.append(f"MOV P2, {sprite_id_reg}")
+        # Multiply by 16: shift left 4 times (can't do SHL with immediate > 1)
+        self.output.append(f"SHL P2, P2")  # *2
+        self.output.append(f"SHL P2, P2")  # *4
+        self.output.append(f"SHL P2, P2")  # *8
+        self.output.append(f"SHL P2, P2")  # *16
+        # Load sprite memory base and add offset
+        self.output.append(f"MOV P3, 0xF000  ; Sprite memory base")
+        self.output.append(f"ADD P2, P3  ; P2 = P2 + P3 (2-operand ADD)")
+        
+        # Write X position (offset 2)
+        self.output.append(f"MOV P3, P2")
+        self.output.append(f"ADD P3, 2")
+        self.output.append(f"MOV [P3], {x_reg}")
+        
+        # Write Y position (offset 3)
+        self.output.append(f"MOV P3, P2")
+        self.output.append(f"ADD P3, 3")
+        self.output.append(f"MOV [P3], {y_reg}")
+        
+        # Set active flag (offset 6, bit 0)
+        self.output.append(f"MOV P3, P2")
+        self.output.append(f"ADD P3, 6")
+        self.output.append(f"MOV R4, [P3]  ; Read current flags")
+        self.output.append(f"OR R4, 0x01  ; Set bit 0 (active)")
+        self.output.append(f"MOV [P3], R4")
+        
+        # Free temporary registers
+        self.smart_deallocate(sprite_id_reg, is_last_use=True)
+        self.smart_deallocate(x_reg, is_last_use=True)
+        self.smart_deallocate(y_reg, is_last_use=True)
 
     def generate_sprite_off(self, stmt: SpriteOffStmt):
-        """Generate SpriteOff(spriteId) code."""
-        # Simplified
-        self.output.append("; Sprite off - simplified")
+        """Generate SpriteOff(spriteId) code.
+        
+        Disables a sprite by clearing the active flag (bit 0) in the sprite control block.
+        """
+        self.output.append("; SpriteOff - Disable sprite")
+        
+        # Evaluate sprite ID
+        sprite_id_reg = self.generate_expression(stmt.sprite_id, "R1")
+        
+        # Calculate sprite control block base address: 0xF000 + (spriteId * 16)
+        self.output.append(f"MOV P2, {sprite_id_reg}")
+        # Multiply by 16: shift left 4 times
+        self.output.append(f"SHL P2, P2")  # *2
+        self.output.append(f"SHL P2, P2")  # *4
+        self.output.append(f"SHL P2, P2")  # *8
+        self.output.append(f"SHL P2, P2")  # *16
+        # Load sprite memory base and add offset
+        self.output.append(f"MOV P3, 0xF000  ; Sprite memory base")
+        self.output.append(f"ADD P2, P3  ; P2 = P2 + P3 (2-operand ADD)")
+        
+        # Clear active flag (offset 6, bit 0)
+        self.output.append(f"ADD P2, 6  ; Point to flags byte")
+        self.output.append(f"MOV R2, [P2]  ; Read current flags")
+        self.output.append(f"AND R2, R2, 0xFE  ; Clear bit 0 (active)")
+        self.output.append(f"MOV [P2], R2")
+        
+        # Free temporary register
+        self.smart_deallocate(sprite_id_reg, is_last_use=True)
 
     def generate_play_tone(self, stmt: PlayToneStmt):
         """Generate optimized PlayTone code."""
@@ -591,9 +676,9 @@ class CodeGenerator:
         self.output.append("; Set channel - simplified")
 
     def generate_get_key(self):
-        """Generate GetKey code."""
-        self.output.append("KEYSTAT R0")  # Check if key available
-        self.output.append("KEYIN R0")    # Read the key
+        """Generate GetKey code - non-blocking, returns 0 if no key available."""
+        # Check if key available, read it, or return 0
+        self.output.append("KEYIN R0")    # Read key (returns 0 if buffer empty)
 
     def generate_input(self, stmt: InputStmt):
         """Generate Input(prompt, variable) code."""
@@ -629,32 +714,36 @@ class CodeGenerator:
             # String literal - create label and display
             label = self.add_string_literal(stmt.text.value)
             self.output.append("MOV VX, 0")  # Set X coordinate
-            self.output.append("MOV VY, 0")  # Set Y coordinate  
+            #self.output.append("MOV VY, 0")  # Set Y coordinate
             self.output.append("MOV VC, 15")  # Set color to white
             self.output.append(f"TEXT {label}")  # Display text
+            self.output.append(f"ADD VY, 8")  # Move down for next line
         elif isinstance(stmt.text, VariableExpr) and stmt.text.name.upper().startswith("STR"):
             # String variable - load address and display
             text_addr_reg = self.generate_expression(stmt.text, "P1")
             self.output.append("MOV VX, 0")  # Set X coordinate
-            self.output.append("MOV VY, 0")  # Set Y coordinate  
+            #self.output.append("MOV VY, 0")  # Set Y coordinate
             self.output.append("MOV VC, 15")  # Set color to white
             self.output.append(f"TEXT {text_addr_reg}")  # Display text
+            self.output.append(f"ADD VY, 8")  # Move down for next line
         elif isinstance(stmt.text, BinaryExpr) and stmt.text.operator == "+":
             # Likely string concatenation - evaluate to get address
             text_addr_reg = self.generate_expression(stmt.text, "P1")
             self.output.append("MOV VX, 0")  # Set X coordinate
-            self.output.append("MOV VY, 0")  # Set Y coordinate  
+            #self.output.append("MOV VY, 0")  # Set Y coordinate
             self.output.append("MOV VC, 15")  # Set color to white
             self.output.append(f"TEXT {text_addr_reg}")  # Display text
+            self.output.append(f"ADD VY, 8")  # Move down for next line
         else:
             # Numeric expression - evaluate and convert to string
             value_reg = self.generate_expression(stmt.text, "R1")
             string_reg = self.allocate_register("P1")  # Use a P register for string address
             self.output.append(f"ITOS {string_reg}, {value_reg}")  # Convert to string
             self.output.append("MOV VX, 0")  # Set X coordinate
-            self.output.append("MOV VY, 0")  # Set Y coordinate  
+            #self.output.append("MOV VY, 0")  # Set Y coordinate  
             self.output.append("MOV VC, 15")  # Set color to white
             self.output.append(f"TEXT {string_reg}")  # Display text
+            self.output.append(f"ADD VY, 8")  # Move down for next line
             self.deallocate_register(string_reg)
 
     def generate_pause(self):
@@ -1188,6 +1277,21 @@ class CodeGenerator:
             result_reg = None
             if isinstance(expr, LiteralExpr):
                 if expr.data_type.name == "NUMBER":  # Use .name to get enum name
+                    # Check if we need a P register for this value (> 255 or negative)
+                    if (expr.value > 255 or expr.value < 0) and target_reg.startswith('R'):
+                        # Value doesn't fit in 8 bits, need a P register
+                        self.deallocate_register(target_reg)
+                        # Find any available P register
+                        p_reg = None
+                        for reg in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']:
+                            if not self.register_usage.get(reg, False):
+                                p_reg = reg
+                                break
+                        if p_reg:
+                            target_reg = self.allocate_register(p_reg)
+                        else:
+                            raise RuntimeError(f"No available P registers for 16-bit literal {expr.value}")
+                    
                     # Optimize for common values
                     if expr.value == 0:
                         self.output.append(f"XOR {target_reg}, {target_reg}")  # Zero register
@@ -1696,6 +1800,46 @@ class CodeGenerator:
         elif func_name == "POPCNT":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"POPCNT {target_reg}, {arg_reg}")
+        elif func_name == "MEMREAD":
+            # Read a value from memory address
+            # MEMREAD(addr) returns the 16-bit value at that address
+            addr_reg = self.generate_expression(expr.arguments[0], "P1")
+            self.output.append(f"; MEMREAD - Read from memory")
+            # Ensure we're using a P register for addressing
+            if not addr_reg.startswith('P'):
+                temp_p = "P1"
+                self.output.append(f"MOV {temp_p}, {addr_reg}")
+                addr_reg = temp_p
+            # If addr_reg == target_reg, we need a temp to avoid MOV P1, [P1]
+            if addr_reg == target_reg:
+                # Find another P register for the address
+                temp_addr = self.allocate_register(preferred_reg="P2")
+                self.output.append(f"MOV {temp_addr}, {addr_reg}")
+                self.output.append(f"MOV {target_reg}, [{temp_addr}]")
+                self.smart_deallocate(temp_addr, is_last_use=True)
+                self.smart_deallocate(addr_reg, is_last_use=True)
+            else:
+                self.output.append(f"MOV {target_reg}, [{addr_reg}]")
+                # Only deallocate addr_reg if it's not the target register
+                self.smart_deallocate(addr_reg, is_last_use=True)
+        elif func_name == "MEMWRITE":
+            # Write a value to memory address
+            # MEMWRITE(addr, value) returns the value written
+            addr_reg = self.generate_expression(expr.arguments[0], "P1")
+            value_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"; MEMWRITE - Write to memory")
+            # Ensure we're using a P register for addressing
+            if not addr_reg.startswith('P'):
+                temp_p = "P1"
+                self.output.append(f"MOV {temp_p}, {addr_reg}")
+                addr_reg = temp_p
+            self.output.append(f"MOV [{addr_reg}], {value_reg}")
+            self.output.append(f"MOV {target_reg}, {value_reg}")  # Return value written
+            # Only deallocate if they're not the target register
+            if addr_reg != target_reg:
+                self.smart_deallocate(addr_reg, is_last_use=True)
+            if value_reg != target_reg:
+                self.smart_deallocate(value_reg, is_last_use=True)
         elif func_name == "MEMCPY":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             src_reg = self.generate_expression(expr.arguments[1], "R2")
@@ -1996,7 +2140,8 @@ class CodeGenerator:
             else:
                 self.output.append(f"MOV {target_reg}, 0")
         elif func_name == "GETKEY":
-            self.output.append("KEYIN R0")
+            # Non-blocking: returns key code or 0 if no key available
+            self.output.append("KEYIN R0")          # Read key (0 if empty)
             self.output.append(f"MOV {target_reg}, R0")
         elif func_name == "PAUSE":
             # Wait for key press
@@ -2006,6 +2151,9 @@ class CodeGenerator:
             self.output.append("CMP R0, 0")
             self.output.append(f"JZ {label}")  # Loop until key is available
             self.output.append("KEYIN R0")  # Consume the key
+        
+        # Return the target register for all function calls
+        return target_reg
 
     def load_variable(self, name: str, target_reg: str = "R0") -> str:
         """Load a variable into a register. For string variables, ensure we use P registers."""
@@ -2016,6 +2164,10 @@ class CodeGenerator:
             
         if name in self.var_reg:
             reg = self.var_reg[name]
+            # If variable is in a P register and target is R, keep the P register
+            # (don't truncate 16-bit values!)
+            if reg.startswith('P') and target_reg.startswith('R'):
+                return reg
             if reg != target_reg:
                 self.output.append(f"MOV {target_reg}, {reg}")
             return target_reg

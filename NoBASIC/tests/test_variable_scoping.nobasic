@@ -1,0 +1,30 @@
+// Test variable scoping with GLOBAL and LOCAL keywords
+// This test demonstrates the new scoping features
+
+// Test 1: Global variables by default
+x = 10
+y = 20
+Disp "Global x and y declared implicitly"
+
+// Test 2: Explicit global declaration
+GLOBAL globalVar
+globalVar = 100
+Disp "Explicit global variable"
+
+// Test 3: Multiple variable declarations
+GLOBAL a, b, c
+a = 1
+b = 2
+c = 3
+Disp "Multiple global variables"
+
+// Test 4: Variables persist across scopes
+result = a + b + c
+Text(10, 10, "Result:", 0x0F)
+
+// Test 5: Display final values
+Text(10, 20, "x=", 0x0F)
+Text(10, 30, "globalVar=", 0x0F)
+Text(10, 40, "result=", 0x0F)
+
+Pause

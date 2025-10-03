@@ -1,0 +1,87 @@
+// Priority 1 Features Test
+// Tests: SpriteOn, SpriteOff, MemRead, MemWrite
+
+Disp "Priority 1 Test"
+Disp "Testing MEMWRITE..."
+
+// Test 1: MEMWRITE - Write values to memory
+addr = 0x2000
+result1 = MEMWRITE(addr, 42)
+addr2 = addr + 2
+result2 = MEMWRITE(addr2, 100)
+addr3 = addr + 4
+result3 = MEMWRITE(addr3, 255)
+
+Disp "MEMWRITE done"
+
+// Test 2: MEMREAD - Read values back from memory
+Disp "Testing MEMREAD..."
+val1 = MEMREAD(addr)
+val2 = MEMREAD(addr2)
+val3 = MEMREAD(addr3)
+
+// Display read values (should be 42, 100, 255)
+Disp "Values read:"
+// Note: Can't display numbers directly in current implementation
+// but the values are in variables
+
+// Test 3: Memory-mapped sprite control blocks
+Disp "Testing Sprites..."
+
+// Write sprite data manually using MEMWRITE
+// Sprite 0 control block at 0xF000
+sprite_base = 0xF000
+
+// Set sprite 0 data pointer (offset 0-1)
+result = MEMWRITE(sprite_base, 0x3000)
+
+// Set sprite 0 width and height (offsets 4-5)
+offset4 = sprite_base + 4
+result = MEMWRITE(offset4, 16)
+offset5 = sprite_base + 5
+result = MEMWRITE(offset5, 16)
+
+// Set transparency color (offset 7)
+offset7 = sprite_base + 7
+result = MEMWRITE(offset7, 0)
+
+// Test 4: SpriteOn - Enable sprite 0 at position (50, 50)
+SpriteOn(0, 50, 50)
+
+Disp "Sprite 0 enabled"
+
+// Verify sprite was enabled by reading flags
+offset6 = sprite_base + 6
+flags = MEMREAD(offset6)
+// flags should have bit 0 set (active)
+
+// Test 5: Move sprite around
+For i = 50 To 100
+    SpriteOn(0, i, 50)
+Next
+
+Disp "Sprite moved"
+
+// Test 6: SpriteOff - Disable sprite
+SpriteOff(0)
+
+Disp "Sprite disabled"
+
+// Verify sprite was disabled
+flags2 = MEMREAD(offset6)
+// flags2 should have bit 0 clear (inactive)
+
+// Test 7: Multiple sprites
+SpriteOn(1, 100, 100)
+SpriteOn(2, 150, 150)
+SpriteOn(3, 200, 200)
+
+Disp "Multiple sprites"
+
+// Test 8: Disable all sprites
+SpriteOff(1)
+SpriteOff(2)
+SpriteOff(3)
+
+Disp "All tests complete!"
+Pause

@@ -2,36 +2,96 @@
 NoBASIC Semantic Analyzer
 """
 
-from typing import Dict, Set
+from typing import Dict, Set, List, Optional
 from ..utils.error import SemanticError
 from ..parser.ast import (
     Program, Statement, Expression, AssignmentStmt, IfStmt, ForStmt,
-    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, FunctionCallStmt, VariableExpr, ListAccessExpr, MatrixAccessExpr,
+    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
+    FunctionCallStmt, VariableExpr, ListAccessExpr, MatrixAccessExpr,
     MemberAccessExpr, FunctionCallExpr, LiteralExpr, BinaryExpr, UnaryExpr, GroupingExpr,
     PxlOnStmt, PxlOffStmt, LineStmt, CircleStmt, TextStmt,
     SetLayerStmt, SpriteOnStmt, SpriteOffStmt, PlayToneStmt,
-    PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt, DataType, StructType
+    PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt, DataType, StructType, VarScope
 )
 
 
+class Scope:
+    """Represents a single scope level."""
+    
+    def __init__(self, is_global: bool = False):
+        self.is_global = is_global
+        self.variables: Dict[str, DataType] = {}
+        self.explicit_declarations: Set[str] = set()  # Variables explicitly declared with GLOBAL/LOCAL
+        
+    def define_variable(self, name: str, data_type: DataType, explicit: bool = False):
+        """Define a variable in this scope."""
+        self.variables[name] = data_type
+        if explicit:
+            self.explicit_declarations.add(name)
+    
+    def has_variable(self, name: str) -> bool:
+        """Check if variable exists in this scope."""
+        return name in self.variables
+    
+    def get_variable_type(self, name: str) -> Optional[DataType]:
+        """Get variable type if it exists in this scope."""
+        return self.variables.get(name)
+
+
 class SymbolTable:
-    """Symbol table for variables."""
+    """Symbol table for variables with scope support."""
 
     def __init__(self):
-        self.variables: Dict[str, DataType] = {}
+        # Scope stack: [global_scope, local_scope1, local_scope2, ...]
+        self.scopes: List[Scope] = [Scope(is_global=True)]
         self.lists: Set[str] = set()
         self.matrices: Set[str] = set()
         self.labels: Set[str] = set()
         self.structs: Dict[str, StructType] = {}
         self.struct_instances: Dict[str, str] = {}  # var_name -> struct_name
 
-    def define_variable(self, name: str, data_type: DataType):
-        """Define a variable."""
-        self.variables[name] = data_type
+    def push_scope(self):
+        """Enter a new local scope."""
+        self.scopes.append(Scope(is_global=False))
+    
+    def pop_scope(self):
+        """Exit the current local scope."""
+        if len(self.scopes) > 1:
+            self.scopes.pop()
+    
+    def is_in_global_scope(self) -> bool:
+        """Check if we're currently in global scope."""
+        return len(self.scopes) == 1
+
+    def define_variable(self, name: str, data_type: DataType, scope: VarScope = VarScope.IMPLICIT):
+        """Define a variable with explicit scope control."""
+        if scope == VarScope.GLOBAL:
+            # Always define in global scope
+            self.scopes[0].define_variable(name, data_type, explicit=True)
+        elif scope == VarScope.LOCAL:
+            # Define in current (local) scope
+            if self.is_in_global_scope():
+                raise SemanticError(f"Cannot declare LOCAL variable '{name}' in global scope", 0, 0)
+            self.scopes[-1].define_variable(name, data_type, explicit=True)
+        else:  # IMPLICIT
+            # Default behavior: define in current scope (global by default)
+            self.scopes[-1].define_variable(name, data_type, explicit=False)
 
     def get_variable_type(self, name: str) -> DataType:
-        """Get the type of a variable."""
-        return self.variables.get(name, DataType.NUMBER)  # Default to NUMBER
+        """Get the type of a variable (searches from current scope upward)."""
+        # Search from current scope to global
+        for scope in reversed(self.scopes):
+            var_type = scope.get_variable_type(name)
+            if var_type is not None:
+                return var_type
+        return DataType.NUMBER  # Default to NUMBER if not found
+    
+    def is_variable_defined(self, name: str) -> bool:
+        """Check if a variable is defined in any accessible scope."""
+        for scope in reversed(self.scopes):
+            if scope.has_variable(name):
+                return True
+        return False
     
     def define_struct(self, name: str, fields: list):
         """Define a struct type."""
@@ -63,12 +123,12 @@ class SymbolTable:
 
     def is_defined(self, name: str) -> bool:
         """Check if a name is defined (variable, list, or matrix)."""
-        return name in self.variables or name in self.lists or name in self.matrices
+        return self.is_variable_defined(name) or name in self.lists or name in self.matrices
 
     def get_type(self, name: str) -> DataType:
         """Get the type of a defined name."""
-        if name in self.variables:
-            return self.variables[name]
+        if self.is_variable_defined(name):
+            return self.get_variable_type(name)
         elif name in self.lists:
             return DataType.LIST
         elif name in self.matrices:
@@ -124,7 +184,9 @@ class SemanticAnalyzer:
 
     def analyze_statement(self, stmt: Statement):
         """Analyze a statement."""
-        if isinstance(stmt, AssignmentStmt):
+        if isinstance(stmt, VarDeclarationStmt):
+            self.analyze_var_declaration(stmt)
+        elif isinstance(stmt, AssignmentStmt):
             self.analyze_assignment(stmt)
         elif isinstance(stmt, IfStmt):
             self.analyze_if(stmt)
@@ -215,6 +277,22 @@ class SemanticAnalyzer:
         
         # Define the struct
         self.symbol_table.define_struct(stmt.name, stmt.fields)
+
+    def analyze_var_declaration(self, stmt: VarDeclarationStmt):
+        """Analyze a variable declaration (GLOBAL/LOCAL)."""
+        for var_name in stmt.variables:
+            # Check if variable is already explicitly declared in current scope
+            if stmt.scope == VarScope.LOCAL and not self.symbol_table.is_in_global_scope():
+                current_scope = self.symbol_table.scopes[-1]
+                if var_name in current_scope.explicit_declarations:
+                    raise SemanticError(f"Variable '{var_name}' already declared in this scope", 0, 0)
+            elif stmt.scope == VarScope.GLOBAL:
+                global_scope = self.symbol_table.scopes[0]
+                if var_name in global_scope.explicit_declarations:
+                    raise SemanticError(f"Variable '{var_name}' already declared as global", 0, 0)
+            
+            # Define the variable in appropriate scope
+            self.symbol_table.define_variable(var_name, DataType.NUMBER, stmt.scope)
 
     def analyze_graphics_sound_statement(self, stmt):
         """Analyze graphics/sound statements with expressions."""
@@ -346,6 +424,7 @@ class SemanticAnalyzer:
             # Bitwise logical functions
             "BAND", "BOR", "BXOR", "BNOT",
             # Memory functions
+            "MEMREAD", "MEMWRITE",
             "MEMCPY", "MEMSET", "MEMTEST", "MEMMOVE", "MEMCMP", "MEMSWAP",
             # Enhanced arithmetic
             "ADC", "SBC", "MULH", "DIVH", "SWAP", "XCHNG", "MOVZ", "MOVNZ", "LEA",
@@ -383,6 +462,7 @@ class SemanticAnalyzer:
             # Bitwise logical functions
             "BAND": 2, "BOR": 2, "BXOR": 2, "BNOT": 1,
             # Memory functions
+            "MEMREAD": 1, "MEMWRITE": 2,
             "MEMCPY": 3, "MEMSET": 3, "MEMTEST": 3, "MEMMOVE": 3, "MEMCMP": 4, "MEMSWAP": 3,
             # Enhanced arithmetic
             "ADC": 3, "SBC": 3, "MULH": 3, "DIVH": 3,
@@ -426,6 +506,7 @@ class SemanticAnalyzer:
             "SHL": [None, None], "SHR": [None, None], "SAL": [None, None], "SAR": [None, None],
             "ROL": [None, None], "ROR": [None, None], "RCL": [None, None], "RCR": [None, None],
             "BAND": [None, None], "BOR": [None, None], "BXOR": [None, None], "BNOT": [None],
+            "MEMREAD": [None], "MEMWRITE": [None, None],
             "MEMCPY": [None, None, None], "MEMSET": [None, None, None], "MEMTEST": [None, None, None], 
             "MEMMOVE": [None, None, None], "MEMCMP": [None, None, None, None], "MEMSWAP": [None, None, None],
             "ADC": [None, None, None], "SBC": [None, None, None], "MULH": [None, None, None], 
@@ -458,8 +539,9 @@ class SemanticAnalyzer:
     def analyze_assignable_expression(self, expr: Expression, value_type: DataType):
         """Analyze an expression that can be assigned to (left-hand side of assignment)."""
         if isinstance(expr, VariableExpr):
-            # Variables are dynamically typed
-            self.symbol_table.define_variable(expr.name, value_type)
+            # Variables are dynamically typed - implicit definition uses current scope
+            # This means variables default to global unless we're in a local scope
+            self.symbol_table.define_variable(expr.name, value_type, VarScope.IMPLICIT)
         elif isinstance(expr, MemberAccessExpr):
             # Struct member assignment
             if isinstance(expr.object, VariableExpr):

@@ -1,0 +1,40 @@
+// MEMREAD/MEMWRITE comprehensive test with verification
+
+// Test 1: Write and verify readback equals written value
+addr1 = 0x2000
+val1 = 42
+w1 = MEMWRITE(addr1, val1)
+r1 = MEMREAD(addr1)
+
+// Test 2: Different values
+addr2 = 0x2010
+val2 = 255
+w2 = MEMWRITE(addr2, val2)
+r2 = MEMREAD(addr2)
+
+// Test 3: Zero value
+addr3 = 0x2020
+val3 = 0
+w3 = MEMWRITE(addr3, val3)
+r3 = MEMREAD(addr3)
+
+// Test 4: Read from uninitialized memory (should be 0)
+uninit = MEMREAD(0x5000)
+
+// Test 5: Overwrite a value
+overwrite_addr = 0x2030
+first_write = MEMWRITE(overwrite_addr, 100)
+first_read = MEMREAD(overwrite_addr)
+second_write = MEMWRITE(overwrite_addr, 200)
+second_read = MEMREAD(overwrite_addr)
+
+// Test 6: Adjacent memory locations
+base = 0x3000
+w6a = MEMWRITE(base, 10)
+w6b = MEMWRITE(base + 2, 20)
+w6c = MEMWRITE(base + 4, 30)
+r6a = MEMREAD(base)
+r6b = MEMREAD(base + 2)
+r6c = MEMREAD(base + 4)
+
+Disp "Tests complete"

@@ -1,0 +1,30 @@
+// Simple Variable Scoping Test
+// Demonstrates GLOBAL keyword and implicit scoping
+
+// Implicit global variables (default)
+score = 0
+lives = 3
+
+// Explicit global declarations
+GLOBAL level, bonus
+
+// Initialize
+level = 1
+bonus = 100
+
+// Use in a loop
+For i = 1 To 5
+    score = score + i
+Next
+
+// Add bonus
+score = score + bonus
+
+// Display results
+ClrDraw
+Text(10, 10, "Score:", 0x0F)
+Text(10, 20, "Lives:", 0x0F)
+Text(10, 30, "Level:", 0x0F)
+Text(10, 40, "Bonus:", 0x0F)
+
+Pause

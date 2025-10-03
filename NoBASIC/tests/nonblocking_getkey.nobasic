@@ -1,0 +1,42 @@
+// Non-blocking getKey() demo (TI-BASIC style)
+// Returns 0 if no key is pressed
+
+ClrDraw
+SetLayer(0)
+
+Disp "=== Non-Blocking GetKey ==="
+Disp ""
+Disp "Press keys while"
+Disp "animation runs!"
+
+// Animation loop with non-blocking input
+x = 0
+running = 1
+
+While running
+    // Move animation
+    x = x + 1
+    If x > 255 Then
+        x = 0
+    End
+    
+    // Draw animated pixel
+    PxlOn(x, 128, 31)
+    
+    // Check for key (non-blocking!)
+    key = GetKey()
+    
+    // Only process if key was actually pressed
+    If key <> 0 Then
+        Disp "Key pressed:"
+        Disp key
+        
+        // ESC (27) to exit
+        If key = 27 Then
+            running = 0
+        End
+    End
+End
+
+ClrDraw
+Disp "Animation stopped!"

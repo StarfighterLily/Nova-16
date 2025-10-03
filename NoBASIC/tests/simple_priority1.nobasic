@@ -1,0 +1,19 @@
+// Simple Priority 1 Test
+// Tests basic MEMWRITE, MEMREAD, SpriteOn, SpriteOff
+
+Disp "Memory test"
+
+// Test MEMWRITE and MEMREAD
+x = MEMWRITE(0x2000, 42)
+y = MEMREAD(0x2000)
+
+Disp "Sprite test"
+
+// Test SpriteOn
+SpriteOn(0, 100, 100)
+
+// Test SpriteOff  
+SpriteOff(0)
+
+Disp "Done!"
+Pause

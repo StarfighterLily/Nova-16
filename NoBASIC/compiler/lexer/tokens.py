@@ -43,6 +43,8 @@ class TokenType(Enum):
     DIM = "DIM"
     LET = "LET"
     STRUCT = "STRUCT"
+    GLOBAL = "GLOBAL"
+    LOCAL = "LOCAL"
 
     # Built-in functions
     SIN = "SIN"
@@ -155,9 +157,27 @@ KEYWORDS = {
     "dim": TokenType.DIM,
     "let": TokenType.LET,
     "struct": TokenType.STRUCT,
+    "global": TokenType.GLOBAL,
+    "local": TokenType.LOCAL,
     "and": TokenType.AND,
     "or": TokenType.OR,
     "not": TokenType.NOT,
+    # Built-in functions that can be used as keywords
+    "sin": TokenType.SIN,
+    "cos": TokenType.COS,
+    "tan": TokenType.TAN,
+    "sqrt": TokenType.SQRT,
+    "abs": TokenType.ABS,
+    "int": TokenType.INT,
+    "round": TokenType.ROUND,
+    "rand": TokenType.RAND,
+    "length": TokenType.LENGTH,
+    "sub": TokenType.SUB,
+    "concat": TokenType.CONCAT,
+    "sum": TokenType.SUM,
+    "mean": TokenType.MEAN,
+    "memread": TokenType.MEMREAD,
+    "memwrite": TokenType.MEMWRITE,
 }
 
 # Single character tokens

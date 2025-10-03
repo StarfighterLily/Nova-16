@@ -1,0 +1,43 @@
+// Simple getKey() demonstration
+// Shows basic keyboard input functionality
+
+ClrDraw
+SetLayer(0)
+
+// Title screen
+Disp "=== GetKey Demo ==="
+Disp ""
+Disp "Press any key..."
+
+// Statement form - just wait for a key
+GetKey
+
+// Clear and show next prompt
+ClrDraw
+Disp "Key detected!"
+Disp ""
+Disp "Now press a key to"
+Disp "see its code:"
+
+// Function form - capture the key code
+keyCode = GetKey()
+
+// Display the result
+ClrDraw
+Disp "You pressed:"
+Disp keyCode
+Disp ""
+Disp "Press ESC to exit"
+
+// Wait for ESC key (code 27)
+exitLoop:
+    k = GetKey()
+    If k <> 27 Then
+        Goto exitLoop
+    End
+
+// Exit message
+ClrDraw
+Disp "Goodbye!"
+Disp ""
+Disp "Program ended."

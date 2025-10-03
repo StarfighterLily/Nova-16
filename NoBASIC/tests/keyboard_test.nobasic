@@ -1,0 +1,31 @@
+// Test keyboard input with getKey()
+// This demonstrates both forms of getKey
+
+Disp "Press any key..."
+
+// Statement form - reads key but doesn't store it
+GetKey
+
+Disp "Key pressed!"
+
+// Function form - reads key and stores in variable
+Disp "Press another key:"
+k = GetKey()
+
+Disp "You pressed:"
+Disp k
+
+// Loop example - exit on specific key (ESC = 27)
+Disp "Press ESC to exit"
+
+While 1
+    key = GetKey()
+    If key = 27 Then
+        Disp "Exiting..."
+        Goto Done
+    End
+    Disp key
+End
+
+Done:
+Disp "Program complete"

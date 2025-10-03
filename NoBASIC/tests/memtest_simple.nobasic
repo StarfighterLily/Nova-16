@@ -1,0 +1,19 @@
+// Simplified MEMREAD/MEMWRITE validation test
+
+// Test 1: Basic write and read
+addr = 0x2000
+written = MEMWRITE(addr, 42)
+readback = MEMREAD(addr)
+
+// Test 2: Different address
+addr2 = 0x2002
+written2 = MEMWRITE(addr2, 100)
+readback2 = MEMREAD(addr2)
+
+// Test 3: Return value check
+retval = MEMWRITE(0x3000, 123)
+
+// Test 4: Read from constant address
+val = MEMREAD(0x2000)
+
+Disp "All tests complete"

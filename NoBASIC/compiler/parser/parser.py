@@ -11,9 +11,9 @@ from .ast import (
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
-    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, LiteralExpr, VariableExpr,
-    ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr,
-    GroupingExpr, DataType
+    WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
+    LiteralExpr, VariableExpr, ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, 
+    BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, DataType, VarScope
 )
 
 
@@ -56,6 +56,10 @@ class Parser:
         if token.type == TokenType.CLRDRAW:
             self.advance()
             return ClrDrawStmt()
+        elif token.type == TokenType.GLOBAL:
+            return self.var_declaration_statement(VarScope.GLOBAL)
+        elif token.type == TokenType.LOCAL:
+            return self.var_declaration_statement(VarScope.LOCAL)
         elif token.type == TokenType.PXLON:
             return self.pxl_on_statement()
         elif token.type == TokenType.PXLOFF:
@@ -387,6 +391,22 @@ class Parser:
         
         return StructDeclarationStmt(name, fields)
 
+    def var_declaration_statement(self, scope: VarScope) -> VarDeclarationStmt:
+        """Parse GLOBAL/LOCAL variable [, variable, ...]"""
+        self.advance()  # consume GLOBAL or LOCAL
+        
+        variables = []
+        # Parse first variable
+        var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
+        variables.append(var_token.lexeme)
+        
+        # Parse additional variables separated by commas
+        while self.match(TokenType.COMMA):
+            var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
+            variables.append(var_token.lexeme)
+        
+        return VarDeclarationStmt(scope, variables)
+
     def expression(self) -> Expression:
         """Parse an expression."""
         return self.logical_or()
@@ -577,6 +597,11 @@ class Parser:
         elif self.match(TokenType.IDENTIFIER, TokenType.DIM, TokenType.GETKEY):
             name = self.previous().lexeme
             return self.parse_identifier_or_function(name)
+        # Match all built-in function tokens
+        elif self._is_function_token(self.peek().type):
+            token = self.advance()
+            name = token.lexeme
+            return VariableExpr(name)
         elif self.match(TokenType.LPAREN):
             expr = self.expression()
             self.consume(TokenType.RPAREN, "Expected ')' after expression")

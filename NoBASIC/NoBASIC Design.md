@@ -4,6 +4,10 @@ NoBASIC is a high-level programming language designed for the Nova-16 custom 16-
 
 With NoBASIC, developers can create interactive programs, games, and demos that leverage the Nova-16's 64KB unified memory, 8-layer graphics system, multi-channel sound, and real-time input handling. It's perfect for rapid prototyping, educational purposes, and reliving the thrill of coding in math class—without the limitations.
 
+The language name NoBASIC, like BASIC, is an acronym, which stands for:
+Nova BASIC: Altered Slightly Instruction Code
+A playful homage to the roots of the language and a glimpse into the mindset of the creator.
+
 ## Language Overview
 
 NoBASIC programs are structured as a sequence of statements, executed line by line. Programs can be written in plain text files (`.nobasic`) and compiled to Nova-16 assembly (`.asm`) or directly to binary (`.bin`) for execution on the emulator.
@@ -24,10 +28,44 @@ NoBASIC supports simple data types inspired by TI-BASIC:
 - **Lists**: One-dimensional arrays, e.g., `L1`, `L2`, etc. Access elements with `L1(1)`, `L1(2)`.
 - **Strings**: Text strings, e.g., `Str1`, `Str2`. Limited to 255 characters.
 - **Matrices**: 2D arrays, e.g., `MatA`, `MatB`. Access with `MatA(1,1)`.
-- **Variables**: Single-letter variables A-Z for numbers, plus lists, strings, and matrices. User-defined variables to come later.
+- **Variables**: Single-letter variables A-Z for numbers, plus lists, strings, and matrices. User-defined variables with any name.
 - **Structs**: User-defined structs. Each field is 16-bit, max 10 fields.
 
-Variables are global by default, and there's no explicit declaration—assigning a value creates the variable.
+#### Variable Scoping
+
+Variables in NoBASIC support both implicit and explicit scope declarations:
+
+- **Implicit (Default)**: Variables are **global by default** when created through assignment. No declaration is needed.
+  ```
+  x = 10        // Implicitly global
+  counter = 0   // Implicitly global
+  ```
+
+- **Explicit Global**: Use the `GLOBAL` keyword to explicitly declare global variables:
+  ```
+  GLOBAL total, count, max    // Declare multiple globals
+  GLOBAL score                // Single global variable
+  
+  total = 0
+  count = 100
+  ```
+
+- **Explicit Local**: Use the `LOCAL` keyword to declare local variables (currently limited to global scope, full local scoping for functions coming in future versions):
+  ```
+  LOCAL temp, result    // Declare local variables
+  temp = 5
+  result = temp * 2
+  ```
+
+**Scoping Rules**:
+- Variables without `GLOBAL` or `LOCAL` keywords default to global scope
+- `GLOBAL` declares variables accessible from anywhere in the program
+- `LOCAL` is reserved for future function/procedure scoping
+- Multiple variables can be declared in one statement: `GLOBAL a, b, c`
+- Variable names are case-insensitive
+- Redeclaring the same variable in the same scope is an error
+
+Variables are global by default, and there's no explicit declaration required — assigning a value creates the variable.
 
 ### Control Structures
 
@@ -146,6 +184,25 @@ While 1
     ClrDraw
     PxlOn(X, Y, 31)
 End
+```
+
+#### Variable Scoping Example
+```
+// Explicit global declarations
+GLOBAL score, lives, level
+
+// Initialize
+score = 0
+lives = 3
+level = 1
+
+// Use throughout the program
+For i = 1 To 10
+    score = score + i * level
+Next
+
+Text(10, 10, "Score:", 15)
+Text(60, 10, score, 15)
 ```
 
 ## Compilation and Running

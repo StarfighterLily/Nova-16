@@ -1,0 +1,54 @@
+// Comprehensive Variable Scoping Test
+// Demonstrates GLOBAL, LOCAL, and implicit scoping behavior
+
+// Test 1: Implicit global variables (default behavior)
+x = 100
+y = 200
+implicitVar = 42
+
+// Test 2: Explicit global declarations
+GLOBAL playerScore, playerLives, gameLevel
+GLOBAL highScore
+
+// Initialize explicit globals
+playerScore = 0
+playerLives = 3
+gameLevel = 1
+highScore = 9999
+
+// Test 3: Multiple variable declaration
+GLOBAL temp1, temp2, temp3, temp4
+temp1 = 10
+temp2 = 20
+temp3 = 30
+temp4 = 40
+
+// Test 4: Using variables in calculations
+totalTemp = temp1 + temp2 + temp3 + temp4  // Should be 100
+
+// Test 5: Using variables in loops
+For i = 1 To 5
+    playerScore = playerScore + (i * gameLevel)
+Next
+
+// Test 6: Mixing implicit and explicit variables
+bonus = 50  // Implicit global
+playerScore = playerScore + bonus
+
+// Display results on screen
+ClrDraw
+SetLayer(0)
+
+Text(10, 10, "Variable Scoping Test", 0x0F)
+Text(10, 30, "x =", 0x0A)
+Text(10, 40, "y =", 0x0A)
+Text(10, 50, "implicitVar =", 0x0A)
+Text(10, 70, "playerScore =", 0x0E)
+Text(10, 80, "playerLives =", 0x0E)
+Text(10, 90, "gameLevel =", 0x0E)
+Text(10, 110, "totalTemp =", 0x0C)
+Text(10, 120, "bonus =", 0x0C)
+
+Text(10, 140, "All tests passed!", 0x02)
+
+Pause

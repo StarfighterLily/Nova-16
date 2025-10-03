@@ -1,0 +1,37 @@
+CLS
+SetColor 15
+Print "Sprite & Memory Test"
+
+LET addr = 0x3000
+LET val = 42
+MEMWRITE(addr, val)
+
+LET check = MEMREAD(addr)
+SetCursor 0, 1
+Print "MEMWRITE/READ: "
+Print check
+
+MEMWRITE(0xF000, 0x30)
+MEMWRITE(0xF001, 0x00)
+MEMWRITE(0xF004, 16)
+MEMWRITE(0xF005, 16)
+
+SpriteOn(0, 160, 120)
+SetCursor 0, 2
+Print "Sprite enabled"
+
+LET wait = 0
+FOR wait = 0 TO 50
+NEXT wait
+
+SpriteOff(0)
+SetCursor 0, 3
+Print "Sprite disabled"
+
+SetCursor 0, 5
+Print "Done!"
+
+LET keyReady = 0
+DO
+    keyReady = KEYSTAT()
+LOOP UNTIL keyReady = 1
