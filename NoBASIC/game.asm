@@ -1,3 +1,11 @@
+; WARNING: 2 variable(s) using dedicated spill slots
+;          Spilled variables: oldy, Str1
+;          Spill region: 0x7000-0x7004
+;          Register pressure: 3 (max), 6 available
+;          This will impact performance. Consider:
+;          - Reducing total variable count (currently 9)
+;          - Reducing variable lifetimes by localizing scope
+;          - Breaking complex expressions into simpler parts
 ORG 0x0200
 MOV SP, 0xFFFF
 MOV FP, SP
@@ -28,220 +36,515 @@ XOR VX, VX
 MOV VY, 248
 MOV VC, 31
 TEXT STR0
-MOV P1, 1
-SHL P1, 3
-MOV P2, P1
+MOV P1, STR4
+MOV P0, 28674
+MOV [P0], P1
 MOV P1, 1
 SHL P1, 3
 MOV P3, P1
+MOV P1, 1
+SHL P1, 3
+MOV P4, P1
+XOR P1, P1
+MOV P5, P1
+XOR P1, P1
+MOV P6, P1
 MOV VM, 0
 MOV VL, 5
-L5:
+L6:
 MOV R1, 1
-CMP R1, 0
-JZ L6
-MOV P1, P2
-MOV P4, P1
-MOV P1, P3
-MOV P5, P1
-KEYIN R0
-MOV P1, R0
-MOV P6, P1
-MOV R5, 97
-CMP P6, R5
-; Free R5 (last use)
-MOV R1, 0
-JZ L9
-JMP L10
-L9:
-MOV R1, 1
-L10:
 CMP R1, 0
 JZ L7
+MOV P1, P3
+MOV P7, P1
+MOV P1, P4
+MOV P0, 28672
+MOV [P0], P1
 MOV R3, 1
-SHL R3, 3
-MOV P1, P2
-SUB P1, R3
-; Free R3 (last use)
-MOV P2, P1
-L7:
-MOV R5, 100
-CMP P6, R5
-; Free R5 (last use)
-MOV R1, 0
-JZ L13
-JMP L14
-L13:
-MOV R1, 1
-L14:
-CMP R1, 0
-JZ L11
-MOV R3, 1
-SHL R3, 3
-MOV P1, P2
+MOV P1, P6
 ADD P1, R3
 ; Free R3 (last use)
+MOV P6, P1
+KEYIN R0
+MOV P1, R0
 MOV P2, P1
+MOV R5, 101
+CMP P2, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L10
+JMP L11
+L10:
+MOV R1, 1
 L11:
-MOV R5, 115
-CMP P6, R5
+CMP R1, 0
+JZ L8
+XOR R5, R5
+CMP P5, R5
 ; Free R5 (last use)
 MOV R1, 0
-JZ L17
-JMP L18
-L17:
+JZ L14
+JMP L15
+L14:
 MOV R1, 1
-L18:
-CMP R1, 0
-JZ L15
-MOV R3, 1
-SHL R3, 3
-MOV P1, P3
-ADD P1, R3
-; Free R3 (last use)
-MOV P3, P1
 L15:
-MOV R5, 119
-CMP P6, R5
-; Free R5 (last use)
-MOV R1, 0
-JZ L21
-JMP L22
-L21:
-MOV R1, 1
-L22:
 CMP R1, 0
-JZ L19
-MOV R3, 1
-SHL R3, 3
-MOV P1, P3
-SUB P1, R3
-; Free R3 (last use)
-MOV P3, P1
-L19:
+JZ L12
+MOV R4, 1
+SHL R4, 4
+MOV R0, P3
+SUB R0, R4
+; Free R4 (last use)
+MOV VX, R0
 MOV R5, 1
 SHL R5, 3
-CMP P2, R5
+MOV R0, P4
+ADD R0, R5
 ; Free R5 (last use)
-MOV R1, 0
-JLT L25
-JMP L26
-L25:
-MOV R1, 1
-L26:
-CMP R1, 0
-JZ L23
-MOV P1, 1
-SHL P1, 3
-MOV P2, P1
-L23:
-MOV R5, 240
-CMP P2, R5
-; Free R5 (last use)
-MOV R1, 0
-JGT L29
-JMP L30
-L29:
-MOV R1, 1
-L30:
-CMP R1, 0
-JZ L27
-MOV P1, 240
-MOV P2, P1
-L27:
-MOV R5, 1
-SHL R5, 3
-CMP P3, R5
-; Free R5 (last use)
-MOV R1, 0
-JLT L33
-JMP L34
-L33:
-MOV R1, 1
-L34:
-CMP R1, 0
-JZ L31
-MOV P1, 1
-SHL P1, 3
-MOV P3, P1
-L31:
-MOV R5, 232
-CMP P3, R5
-; Free R5 (last use)
-MOV R1, 0
-JGT L37
-JMP L38
-L37:
-MOV R1, 1
-L38:
-CMP R1, 0
-JZ L35
-MOV P1, 232
-MOV P3, P1
-L35:
-CMP P4, P2
-MOV R1, 0
-JNZ L41
-JMP L42
-L41:
-MOV R1, 1
-L42:
-CMP R1, 0
-JZ L39
-MOV VX, P4
-MOV VY, P5
-XOR VC, VC
-TEXT STR42
-MOV VX, P4
-MOV R4, 1
-SHL R4, 3
-MOV R0, P5
-ADD R0, R4
-; Free R4 (last use)
 MOV VY, R0
-XOR VC, VC
-TEXT STR43
-L39:
-CMP P5, P3
-MOV R1, 0
-JNZ L47
-JMP L48
-L47:
-MOV R1, 1
-L48:
-CMP R1, 0
-JZ L45
-MOV VX, P4
-MOV VY, P5
-XOR VC, VC
-TEXT STR42
-MOV VX, P4
-MOV R4, 1
-SHL R4, 3
-MOV R0, P5
-ADD R0, R4
-; Free R4 (last use)
-MOV VY, R0
-XOR VC, VC
-TEXT STR43
-L45:
-MOV VX, P2
-MOV VY, P3
 MOV VC, 15
-TEXT STR42
-MOV VX, P2
+MOV P0, 28674
+MOV P0, [P0]
+TEXT P0
+L12:
+MOV R5, 1
+CMP P5, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L18
+JMP L19
+L18:
+MOV R1, 1
+L19:
+CMP R1, 0
+JZ L16
 MOV R4, 1
 SHL R4, 3
 MOV R0, P3
 ADD R0, R4
 ; Free R4 (last use)
+MOV VX, R0
+MOV R5, 1
+SHL R5, 3
+MOV R0, P4
+ADD R0, R5
+; Free R5 (last use)
 MOV VY, R0
 MOV VC, 15
-TEXT STR43
-JMP L5
-L6:
+MOV P0, 28674
+MOV P0, [P0]
+TEXT P0
+L16:
+XOR P1, P1
+MOV P6, P1
+L8:
+MOV R5, 97
+CMP P2, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L22
+JMP L23
+L22:
+MOV R1, 1
+L23:
+CMP R1, 0
+JZ L20
+MOV R3, 1
+SHL R3, 3
+MOV P1, P3
+SUB P1, R3
+; Free R3 (last use)
+MOV P3, P1
+XOR P1, P1
+MOV P5, P1
+L20:
+MOV R5, 1
+SHL R5, 7
+CMP P2, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L26
+JMP L27
+L26:
+MOV R1, 1
+L27:
+CMP R1, 0
+JZ L24
+MOV R3, 1
+SHL R3, 3
+MOV P1, P3
+SUB P1, R3
+; Free R3 (last use)
+MOV P3, P1
+XOR P1, P1
+MOV P5, P1
+L24:
+MOV R5, 100
+CMP P2, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L30
+JMP L31
+L30:
+MOV R1, 1
+L31:
+CMP R1, 0
+JZ L28
+MOV R3, 1
+SHL R3, 3
+MOV P1, P3
+ADD P1, R3
+; Free R3 (last use)
+MOV P3, P1
+MOV P1, 1
+MOV P5, P1
+L28:
+MOV R5, 129
+CMP P2, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L34
+JMP L35
+L34:
+MOV R1, 1
+L35:
+CMP R1, 0
+JZ L32
+MOV R3, 1
+SHL R3, 3
+MOV P1, P3
+ADD P1, R3
+; Free R3 (last use)
+MOV P3, P1
+MOV P1, 1
+MOV P5, P1
+L32:
+MOV R5, 115
+CMP P2, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L38
+JMP L39
+L38:
+MOV R1, 1
+L39:
+CMP R1, 0
+JZ L36
+MOV R3, 1
+SHL R3, 3
+MOV P1, P4
+ADD P1, R3
+; Free R3 (last use)
+MOV P4, P1
+L36:
+MOV R5, 131
+CMP P2, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L42
+JMP L43
+L42:
+MOV R1, 1
+L43:
+CMP R1, 0
+JZ L40
+MOV R3, 1
+SHL R3, 3
+MOV P1, P4
+ADD P1, R3
+; Free R3 (last use)
+MOV P4, P1
+L40:
+MOV R5, 119
+CMP P2, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L46
+JMP L47
+L46:
+MOV R1, 1
+L47:
+CMP R1, 0
+JZ L44
+MOV R3, 1
+SHL R3, 3
+MOV P1, P4
+SUB P1, R3
+; Free R3 (last use)
+MOV P4, P1
+L44:
+MOV R5, 130
+CMP P2, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L50
+JMP L51
+L50:
+MOV R1, 1
+L51:
+CMP R1, 0
+JZ L48
+MOV R3, 1
+SHL R3, 3
+MOV P1, P4
+SUB P1, R3
+; Free R3 (last use)
+MOV P4, P1
+L48:
+MOV R5, 1
+SHL R5, 3
+CMP P3, R5
+; Free R5 (last use)
+MOV R1, 0
+JLT L54
+JMP L55
+L54:
+MOV R1, 1
+L55:
+CMP R1, 0
+JZ L52
+MOV P1, 1
+SHL P1, 3
+MOV P3, P1
+L52:
+MOV R5, 240
+CMP P3, R5
+; Free R5 (last use)
+MOV R1, 0
+JGT L58
+JMP L59
+L58:
+MOV R1, 1
+L59:
+CMP R1, 0
+JZ L56
+MOV P1, 240
+MOV P3, P1
+L56:
+MOV R5, 1
+SHL R5, 3
+CMP P4, R5
+; Free R5 (last use)
+MOV R1, 0
+JLT L62
+JMP L63
+L62:
+MOV R1, 1
+L63:
+CMP R1, 0
+JZ L60
+MOV P1, 1
+SHL P1, 3
+MOV P4, P1
+L60:
+MOV R5, 232
+CMP P4, R5
+; Free R5 (last use)
+MOV R1, 0
+JGT L66
+JMP L67
+L66:
+MOV R1, 1
+L67:
+CMP R1, 0
+JZ L64
+MOV P1, 232
+MOV P4, P1
+L64:
+CMP P7, P3
+MOV R1, 0
+JNZ L70
+JMP L71
+L70:
+MOV R1, 1
+L71:
+CMP R1, 0
+JZ L68
+MOV VX, P7
+MOV P0, 28672
+MOV VY, [P0]
+XOR VC, VC
+TEXT STR71
+MOV VX, P7
+MOV P0, 28672
+MOV P0, [P0]
+MOV R4, 1
+SHL R4, 3
+MOV R0, P0
+ADD R0, R4
+; Free R4 (last use)
+MOV VY, R0
+XOR VC, VC
+TEXT STR72
+MOV R4, 1
+SHL R4, 4
+MOV R0, P7
+SUB R0, R4
+; Free R4 (last use)
+MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
+MOV R5, 1
+SHL R5, 3
+MOV R0, P0
+ADD R0, R5
+; Free R5 (last use)
+MOV VY, R0
+XOR VC, VC
+MOV P0, 28674
+MOV P0, [P0]
+TEXT P0
+MOV R4, 1
+SHL R4, 3
+MOV R0, P7
+ADD R0, R4
+; Free R4 (last use)
+MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
+MOV R5, 1
+SHL R5, 3
+MOV R0, P0
+ADD R0, R5
+; Free R5 (last use)
+MOV VY, R0
+XOR VC, VC
+MOV P0, 28674
+MOV P0, [P0]
+TEXT P0
+L68:
+MOV P0, 28672
+MOV P0, [P0]
+CMP P0, P4
+MOV R1, 0
+JNZ L76
+JMP L77
+L76:
+MOV R1, 1
+L77:
+CMP R1, 0
+JZ L74
+MOV VX, P7
+MOV P0, 28672
+MOV VY, [P0]
+XOR VC, VC
+TEXT STR71
+MOV VX, P7
+MOV P0, 28672
+MOV P0, [P0]
+MOV R4, 1
+SHL R4, 3
+MOV R0, P0
+ADD R0, R4
+; Free R4 (last use)
+MOV VY, R0
+XOR VC, VC
+TEXT STR72
+MOV R4, 1
+SHL R4, 4
+MOV R0, P7
+SUB R0, R4
+; Free R4 (last use)
+MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
+MOV R5, 1
+SHL R5, 3
+MOV R0, P0
+ADD R0, R5
+; Free R5 (last use)
+MOV VY, R0
+XOR VC, VC
+MOV P0, 28674
+MOV P0, [P0]
+TEXT P0
+MOV R4, 1
+SHL R4, 3
+MOV R0, P7
+ADD R0, R4
+; Free R4 (last use)
+MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
+MOV R5, 1
+SHL R5, 3
+MOV R0, P0
+ADD R0, R5
+; Free R5 (last use)
+MOV VY, R0
+XOR VC, VC
+MOV P0, 28674
+MOV P0, [P0]
+TEXT P0
+L74:
+MOV VX, P3
+MOV VY, P4
+MOV VC, 15
+TEXT STR71
+MOV VX, P3
+MOV R4, 1
+SHL R4, 3
+MOV R0, P4
+ADD R0, R4
+; Free R4 (last use)
+MOV VY, R0
+MOV VC, 15
+TEXT STR72
+MOV R5, 40
+CMP P6, R5
+; Free R5 (last use)
+MOV R1, 0
+JZ L80
+JMP L81
+L80:
+MOV R1, 1
+L81:
+CMP R1, 0
+JZ L78
+XOR P1, P1
+MOV P6, P1
+MOV R4, 1
+SHL R4, 4
+MOV R0, P7
+SUB R0, R4
+; Free R4 (last use)
+MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
+MOV R5, 1
+SHL R5, 3
+MOV R0, P0
+ADD R0, R5
+; Free R5 (last use)
+MOV VY, R0
+XOR VC, VC
+MOV P0, 28674
+MOV P0, [P0]
+TEXT P0
+MOV R4, 1
+SHL R4, 3
+MOV R0, P7
+ADD R0, R4
+; Free R4 (last use)
+MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
+MOV R5, 1
+SHL R5, 3
+MOV R0, P0
+ADD R0, R5
+; Free R5 (last use)
+MOV VY, R0
+XOR VC, VC
+MOV P0, 28674
+MOV P0, [P0]
+TEXT P0
+L78:
+JMP L6
+L7:
 HLT
 STR0: DEFSTR "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 STR3: DEFSTR "X                              X"
-STR42: DEFSTR "O"
-STR43: DEFSTR "X"
+STR4: DEFSTR "--"
+STR71: DEFSTR "O"
+STR72: DEFSTR "X"

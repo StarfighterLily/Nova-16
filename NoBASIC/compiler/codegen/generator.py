@@ -33,8 +33,9 @@ class CodeGenerator:
         # Debug mode for register allocation
         self.debug_allocation = debug_allocation
         
-        # Dedicated spill slot allocator (memory region 0x0500-0x05FF)
-        self.spill_base_address = 0x0500
+        # Dedicated spill slot allocator (memory region 0x7000-0x70FF)
+        # Place spill slots well above typical code/data to avoid conflicts
+        self.spill_base_address = 0x7000
         self.next_spill_address = self.spill_base_address
         self.spill_slots: Dict[str, int] = {}  # variable/temp -> spill address
         self.max_spill_slots = 128  # 128 slots of 2 bytes each = 256 bytes
@@ -643,6 +644,7 @@ class CodeGenerator:
         elif isinstance(stmt, TextStmt):
             self.collect_lifetimes_expr(stmt.x)
             self.collect_lifetimes_expr(stmt.y)
+            self.collect_lifetimes_expr(stmt.text)  # Track the text parameter!
             self.collect_lifetimes_expr(stmt.color)
         elif isinstance(stmt, SetLayerStmt):
             self.collect_lifetimes_expr(stmt.layer)
@@ -1230,10 +1232,8 @@ class CodeGenerator:
                 if reg != value_reg:
                     self.output.append(f"MOV {reg}, {value_reg}")
             else:
-                # Store to memory
-                var_addr = self.get_variable_address(stmt.variable)
-                self.output.append(f"MOV P0, {var_addr}")
-                self.output.append(f"MOV [P0], {value_reg}")
+                # Store to memory (handles both regular memory and spill slots)
+                self.store_variable(var_name, value_reg)
         elif isinstance(stmt.variable, MemberAccessExpr):
             # Struct member assignment
             self.generate_member_store(stmt.variable, value_reg)
@@ -1691,16 +1691,8 @@ class CodeGenerator:
                     self.output.append(f"MOV {target_reg}, {reg}")
                 # If reg == target_reg, no operation needed!
             else:
-                # Load from memory directly into target
-                addr = self.get_variable_address(expr.name)
-                if target_reg.startswith('R') or target_reg in ['VX', 'VY', 'VC', 'VL', 'VM']:
-                    # For 8-bit registers, read the low byte
-                    self.output.append(f"MOV P0, {addr + 1}")
-                    self.output.append(f"MOV {target_reg}, [P0]")
-                else:
-                    # For 16-bit registers, read the full word
-                    self.output.append(f"MOV P0, {addr}")
-                    self.output.append(f"MOV {target_reg}, [P0]")
+                # Load from memory (handles both regular memory and spill slots)
+                self.load_variable(expr.name, target_reg)
         else:
             # For complex expressions, generate into a temp then move
             temp_reg = self.generate_expression(expr)
@@ -2632,6 +2624,9 @@ class CodeGenerator:
         Load a variable into a register.
         Handles both register-allocated and spilled variables.
         For string variables, ensures we use P registers.
+        
+        NOTE: All NoBASIC variables are 16-bit, so if a spilled variable is requested
+        into an R register, we upgrade to a P register to avoid truncation.
         """
         # String variables need P registers (16-bit addresses)
         if name.upper().startswith("STR") and target_reg.startswith('R'):
@@ -2652,10 +2647,19 @@ class CodeGenerator:
         # Check if variable is spilled
         if self.is_spilled(name):
             spill_addr = self.get_spill_slot(name)
+            
+            # All NoBASIC variables are 16-bit, so upgrade R register to P register
+            # to avoid truncation when loading from spill slot
             if target_reg.startswith('R'):
-                # For 8-bit R registers, read the low byte
-                self.output.append(f"MOV P0, {spill_addr + 1}")
-                self.output.append(f"MOV {target_reg}, [P0]")
+                # Use P0 as temporary for loading full 16-bit value
+                self.output.append(f"MOV P0, {spill_addr}")
+                self.output.append(f"MOV P0, [P0]")
+                # Now move to target R register (will truncate to low byte)
+                # But actually, we should return the P register instead!
+                # Return P0 so caller gets the full 16-bit value
+                if self.debug_allocation:
+                    print(f"[LOAD] Loading spilled variable '{name}' from 0x{spill_addr:04X} into P0 (requested {target_reg}, but all variables are 16-bit)")
+                return 'P0'
             else:
                 # For 16-bit P registers, read the full word
                 self.output.append(f"MOV P0, {spill_addr}")
@@ -2670,8 +2674,12 @@ class CodeGenerator:
         addr = self.get_variable_address(name)
         if target_reg.startswith('R'):
             # For 8-bit R registers, read the low byte (stored at addr + 1)
-            self.output.append(f"MOV P0, {addr + 1}")
-            self.output.append(f"MOV {target_reg}, [P0]")
+            # But NOTE: all NoBASIC variables are 16-bit, so we should upgrade to P register
+            # Use P0 as temporary for loading full 16-bit value
+            self.output.append(f"MOV P0, {addr}")
+            self.output.append(f"MOV P0, [P0]")
+            # Return P0 so caller gets the full 16-bit value
+            return 'P0'
         else:
             # For 16-bit P registers, read the full word
             self.output.append(f"MOV P0, {addr}")
