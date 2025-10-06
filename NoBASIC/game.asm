@@ -55,6 +55,7 @@ L6:
 MOV R1, 1
 CMP R1, 0
 JZ L7
+Player:
 MOV P1, P3
 MOV P7, P1
 MOV P1, P4
@@ -490,7 +491,8 @@ ADD R0, R4
 MOV VY, R0
 MOV VC, 15
 TEXT STR72
-MOV R5, 40
+MOV R5, 1
+SHL R5, 6
 CMP P6, R5
 ; Free R5 (last use)
 MOV R1, 0

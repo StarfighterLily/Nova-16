@@ -1,2 +1,0 @@
-[console_scripts]
-astrid2 = astrid2.main:main
