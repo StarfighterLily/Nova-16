@@ -2091,6 +2091,22 @@ class CodeGenerator:
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "RND":
             self.output.append(f"RND {target_reg}")
+        elif func_name == "RNDR":
+            # RNDR takes min and max, generates random in range [min, max]
+            min_reg = self.generate_expression(expr.arguments[0], "R1")
+            max_reg = self.generate_expression(expr.arguments[1], "R2")
+            self.output.append(f"RNDR {target_reg}, {min_reg}, {max_reg}")
+            self.smart_deallocate(min_reg, is_last_use=True)
+            self.smart_deallocate(max_reg, is_last_use=True)
+        elif func_name == "RANDOMIZE":
+            # RANDOMIZE seeds the random number generator
+            # For now, we'll use RND with the seed value to initialize
+            # In a full implementation, this would set the RNG seed
+            seed_reg = self.generate_expression(expr.arguments[0], "R1")
+            self.output.append(f"; RANDOMIZE({seed_reg}) - seed RNG")
+            self.output.append(f"MOV R0, {seed_reg}")
+            self.output.append(f"RND {target_reg}  ; Initialize RNG with seed")
+            self.smart_deallocate(seed_reg, is_last_use=True)
         elif func_name == "LEN" or func_name == "LENGTH" or func_name == "STRLEN":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             self.output.append(f"STRLEN {target_reg}, {arg_reg}")

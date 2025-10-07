@@ -75,7 +75,9 @@ class CPU:
         self.timer_cycles = 0  # Cycle counter for timer
         self.timer_enabled = False  # Timer enable state
         
-        self.rng_seed = 0x1234  # Random number generator seed
+        # Random number generator seed - initialized with system entropy for true randomness
+        import random
+        self.rng_seed = random.randint(0, 0xFFFF)  # True random seed (0-65535)
         
         self.serial = [0] * 2  # Serial data for the serial interrupt
         self.serial[ 0 ] = 0 # Serial data register (S)

@@ -113,6 +113,9 @@ class Parser:
             return self.label_statement()
         elif token.type == TokenType.IDENTIFIER:
             return self.assignment_statement()
+        elif self._is_function_token(token.type):
+            # Handle built-in functions that can be called as statements (like randomize())
+            return self.assignment_statement()
         else:
             raise self.error("Expected statement")
 
@@ -650,6 +653,7 @@ class Parser:
         function_tokens = {
             TokenType.SIN, TokenType.COS, TokenType.TAN, TokenType.SQRT,
             TokenType.ABS, TokenType.INT, TokenType.ROUND, TokenType.RAND,
+            TokenType.RNDR, TokenType.RANDOMIZE,
             TokenType.LENGTH, TokenType.SUB, TokenType.CONCAT,
             TokenType.SUM, TokenType.MEAN, TokenType.MEMREAD, TokenType.MEMWRITE
         }
@@ -659,7 +663,7 @@ class Parser:
         """Check if name is a built-in function name."""
         return name.upper() in [
             # Original math functions
-            "SIN", "COS", "TAN", "SQRT", "ABS", "RND", "LEN", "LENGTH",
+            "SIN", "COS", "TAN", "SQRT", "ABS", "RND", "RNDR", "RANDOMIZE", "LEN", "LENGTH",
             "MIN", "MAX", "LOG", "LN", "EXP", "POW", "INT", "ROUND",
             # Extended math functions
             "ATAN", "ASIN", "ACOS", "DEG", "RAD", "FLOOR", "CEIL", "TRUNC", "FRAC", "INTGR", "POWR",

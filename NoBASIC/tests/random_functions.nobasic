@@ -1,0 +1,52 @@
+// Comprehensive random test with all features
+ClrDraw
+SetLayer(0)
+
+// Test 1: Basic RND() - generates 0-255
+Text(0, 0, "Test 1: RND()", 31)
+For I = 1 To 5
+    value = rnd()
+    y = 16 + I * 8
+    Text(0, y, "Val:", 10)
+    Text(40, y, value, 14)
+Next
+Pause
+
+// Test 2: RNDR(min, max) - generates values in range
+ClrDraw
+Text(0, 0, "Test 2: RNDR", 31)
+For I = 1 To 5
+    dice = rndr(1, 6)
+    y = 16 + I * 8
+    Text(0, y, "Roll:", 10)
+    Text(48, y, dice, 14)
+Next
+Pause
+
+// Test 3: RANDOMIZE(seed)
+ClrDraw
+Text(0, 0, "Test 3: RANDOMIZE", 31)
+randomize(42)
+For I = 1 To 5
+    value = rndr(1, 100)
+    y = 16 + I * 8
+    Text(0, y, "Num:", 10)
+    Text(40, y, value, 14)
+Next
+Pause
+
+// Test 4: Visual randomness
+ClrDraw
+Text(0, 0, "Random Pixels!", 31)
+For I = 1 To 100
+    x = rnd()
+    y = rnd()
+    c = rndr(1, 31)
+    PxlOn(x, y, c)
+Next
+Pause
+
+// Done!
+ClrDraw
+Text(20, 64, "All Tests Pass!", 31)
+Pause

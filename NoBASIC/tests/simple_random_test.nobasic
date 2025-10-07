@@ -1,0 +1,20 @@
+// Simple random test
+ClrDraw
+
+// Test RND()
+x = rnd()
+Text(0, 0, "RND:", 15)
+Text(40, 0, x, 14)
+
+// Test RNDR(min, max)
+dice = rndr(1, 6)
+Text(0, 16, "RNDR(1,6):", 15)
+Text(80, 16, dice, 14)
+
+// Test RANDOMIZE(seed)
+randomize(42)
+val = rnd()
+Text(0, 32, "After seed:", 15)
+Text(88, 32, val, 14)
+
+Pause

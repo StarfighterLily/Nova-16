@@ -56,6 +56,8 @@ class TokenType(Enum):
     INT = "INT"
     ROUND = "ROUND"
     RAND = "RAND"
+    RNDR = "RNDR"
+    RANDOMIZE = "RANDOMIZE"
     LENGTH = "LENGTH"
     SUB = "SUB"
     CONCAT = "CONCAT"
@@ -174,6 +176,8 @@ KEYWORDS = {
     "int": TokenType.INT,
     "round": TokenType.ROUND,
     "rand": TokenType.RAND,
+    "rndr": TokenType.RNDR,
+    "randomize": TokenType.RANDOMIZE,
     "length": TokenType.LENGTH,
     "sub": TokenType.SUB,
     "concat": TokenType.CONCAT,

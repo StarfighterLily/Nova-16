@@ -1,0 +1,70 @@
+// Random Visual Demo - Shows off all random functions
+// This creates a colorful animated random pattern
+
+ClrDraw
+SetLayer(0)
+
+// Title screen
+Text(40, 60, "RANDOM FUNCTIONS", 31)
+Text(60, 80, "DEMO", 31)
+Text(20, 120, "Press any key...", 15)
+Pause
+
+// Demo 1: Random pixels with RND()
+ClrDraw
+Text(0, 0, "RND() - Basic Random", 31)
+For I = 1 To 500
+    x = rnd()
+    y = rnd()
+    c = rnd()
+    PxlOn(x, y, c)
+Next
+Text(0, 240, "Press key for next...", 0)
+Pause
+
+// Demo 2: Random shapes with RNDR()
+ClrDraw
+Text(0, 0, "RNDR(min,max) - Range", 31)
+For I = 1 To 50
+    x = rndr(20, 235)
+    y = rndr(20, 235)
+    r = rndr(5, 20)
+    c = rndr(1, 31)
+    Circle(x, y, r, c)
+Next
+Text(0, 240, "Press key for next...", 0)
+Pause
+
+// Demo 3: Seeded pattern with RANDOMIZE()
+ClrDraw
+Text(0, 0, "RANDOMIZE(42) - Seeded", 31)
+Text(0, 16, "Same seed = same pattern", 15)
+randomize(42)
+For I = 1 To 300
+    x = rnd()
+    y = rnd()
+    c = rndr(10, 31)
+    PxlOn(x, y, c)
+Next
+Text(0, 240, "Press key for next...", 0)
+Pause
+
+// Demo 4: Color gradient with ranges
+ClrDraw
+Text(0, 0, "Color Ranges Demo", 31)
+For x = 0 To 255
+    For I = 1 To 3
+        y = rndr(0, 255)
+        c = rndr(1, 31)
+        PxlOn(x, y, c)
+    Next
+Next
+Text(0, 240, "Press key for next...", 0)
+Pause
+
+// Final screen
+ClrDraw
+Text(30, 64, "Random Functions", 31)
+Text(50, 96, "Complete!", 15)
+Text(20, 128, "RND() RNDR() RANDOMIZE()", 10)
+Pause

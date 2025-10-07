@@ -131,7 +131,10 @@ Keyboard input uses the Nova-16's circular buffer system for real-time responsiv
 Mathematical and utility functions:
 
 - **Math**: `sin(x)`, `cos(x)`, `tan(x)`, `sqrt(x)`, `abs(x)`, `int(x)`, `round(x)`
-- **Random**: `rand`: Generate a random number (0-1).
+- **Random**: 
+  - `rand()` or `rnd()`: Generate a random number (0-255)
+  - `rndr(min, max)`: Generate a random number in range [min, max] (inclusive)
+  - `randomize(seed)`: Seed the random number generator for reproducible sequences
 - **String**: `length(str)`, `sub(str, start, length)`, `concat(str1, str2)`
 - **List/Matrix**: `dim(list)`, `sum(list)`, `mean(list)`, etc.
 - **Hardware Access**: `MemRead(addr)`, `MemWrite(addr, value)` for direct memory manipulation.
@@ -184,6 +187,28 @@ While 1
     ClrDraw
     PxlOn(X, Y, 31)
 End
+```
+
+#### Random Number Generation
+```
+// Generate simple random pixels
+ClrDraw
+For I = 1 To 100
+    x = rnd()           // 0-255
+    y = rnd()           // 0-255
+    c = rndr(1, 31)     // Color 1-31
+    PxlOn(x, y, c)
+End
+Pause
+
+// Seeded random for reproducible results
+randomize(42)           // Seed with 42
+For I = 1 To 10
+    dice = rndr(1, 6)   // Roll a six-sided die
+    Text(0, I * 8, "Roll: ", 15)
+    Text(48, I * 8, dice, 15)
+Next
+Pause
 ```
 
 #### Variable Scoping Example

@@ -410,7 +410,7 @@ class SemanticAnalyzer:
         """Check if a function name is a built-in function."""
         return name in [
             # Original math functions
-            "SIN", "COS", "TAN", "SQRT", "ABS", "RAND", "RND", "LEN", "LENGTH",
+            "SIN", "COS", "TAN", "SQRT", "ABS", "RAND", "RND", "RNDR", "RANDOMIZE", "LEN", "LENGTH",
             "MIN", "MAX", "LOG", "LN", "EXP", "POW", "INT", "ROUND",
             # Extended math functions
             "ATAN", "ASIN", "ACOS", "DEG", "RAD", "FLOOR", "CEIL", "TRUNC", "FRAC", "INTGR", "POWR",
@@ -442,7 +442,7 @@ class SemanticAnalyzer:
         """Get the expected number of arguments for a built-in function."""
         arg_counts = {
             # Original functions
-            "SIN": 1, "COS": 1, "TAN": 1, "SQRT": 1, "ABS": 1, "RAND": 0, "RND": 0,
+            "SIN": 1, "COS": 1, "TAN": 1, "SQRT": 1, "ABS": 1, "RAND": 0, "RND": 0, "RNDR": 2, "RANDOMIZE": 1,
             "LEN": 1, "LENGTH": 1, "INT": 1, "ROUND": 1,
             "MIN": 2, "MAX": 2,
             # Extended math functions
@@ -484,7 +484,8 @@ class SemanticAnalyzer:
         arg_types = {
             # Math functions that expect numbers
             "SIN": [DataType.NUMBER], "COS": [DataType.NUMBER], "TAN": [DataType.NUMBER], 
-            "SQRT": [DataType.NUMBER], "ABS": [DataType.NUMBER], "RAND": [], "RND": [], "INT": [DataType.NUMBER], 
+            "SQRT": [DataType.NUMBER], "ABS": [DataType.NUMBER], "RAND": [], "RND": [], 
+            "RNDR": [DataType.NUMBER, DataType.NUMBER], "RANDOMIZE": [DataType.NUMBER], "INT": [DataType.NUMBER], 
             "ROUND": [DataType.NUMBER], "ATAN": [DataType.NUMBER], "ASIN": [DataType.NUMBER], 
             "ACOS": [DataType.NUMBER], "DEG": [DataType.NUMBER], "RAD": [DataType.NUMBER],
             "FLOOR": [DataType.NUMBER], "CEIL": [DataType.NUMBER], "TRUNC": [DataType.NUMBER], 

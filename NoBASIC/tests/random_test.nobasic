@@ -1,0 +1,136 @@
+// NoBASIC Random Functions Test
+// Tests RND(), RNDR(min, max), and RANDOMIZE(seed)
+
+ClrDraw
+SetLayer(0)
+
+// Title
+Text(20, 0, "Random Functions Test", 31)
+Text(0, 16, "Press any key...", 15)
+Pause
+
+// Test 1: Basic RND() - generates 0-255
+ClrDraw
+Text(0, 0, "Test 1: RND()", 31)
+Text(0, 16, "Random 0-255:", 15)
+
+For I = 1 To 5
+    value = rnd()
+    y = 16 + (I * 8)
+    Text(0, y, "Value ", 10)
+    Text(48, y, value, 14)
+Next
+
+Text(0, 96, "Press any key...", 15)
+Pause
+
+// Test 2: RNDR(min, max) - generates values in range
+ClrDraw
+Text(0, 0, "Test 2: RNDR(min,max)", 31)
+Text(0, 16, "Dice rolls (1-6):", 15)
+
+For I = 1 To 10
+    dice = rndr(1, 6)
+    y = 24 + (I * 8)
+    Text(0, y, "Roll ", 10)
+    Text(48, y, dice, 14)
+Next
+
+Text(0, 120, "Press any key...", 15)
+Pause
+
+// Test 3: Different ranges
+ClrDraw
+Text(0, 0, "Test 3: Various Ranges", 31)
+
+// 0-10
+val1 = rndr(0, 10)
+Text(0, 16, "0-10: ", 10)
+Text(48, 16, val1, 14)
+
+// 50-100
+val2 = rndr(50, 100)
+Text(0, 24, "50-100: ", 10)
+Text(64, 24, val2, 14)
+
+// 200-255
+val3 = rndr(200, 255)
+Text(0, 32, "200-255: ", 10)
+Text(72, 32, val3, 14)
+
+Text(0, 96, "Press any key...", 15)
+Pause
+
+// Test 4: RANDOMIZE(seed) for reproducibility
+ClrDraw
+Text(0, 0, "Test 4: RANDOMIZE", 31)
+Text(0, 16, "Seeded with 42:", 15)
+
+randomize(42)
+For I = 1 To 5
+    value = rndr(1, 100)
+    y = 24 + (I * 8)
+    Text(0, y, "Value ", 10)
+    Text(48, y, value, 14)
+Next
+
+Text(0, 96, "Same seed = same #s", 12)
+Text(0, 104, "Press any key...", 15)
+Pause
+
+// Test 5: Visual randomness - random pixels
+ClrDraw
+Text(0, 0, "Test 5: Random Pixels", 31)
+Text(0, 16, "Drawing 200 pixels...", 15)
+Pause
+
+ClrDraw
+For I = 1 To 200
+    x = rnd()
+    y = rnd()
+    c = rndr(1, 31)
+    PxlOn(x, y, c)
+Next
+
+Text(0, 0, "Random Pattern!", 31)
+Text(0, 240, "Press any key...", 0)
+Pause
+
+// Test 6: Random movement simulation
+ClrDraw
+Text(0, 0, "Test 6: Random Walk", 31)
+Text(0, 16, "Watch the dot...", 15)
+Pause
+
+ClrDraw
+x = 128
+y = 128
+
+For I = 1 To 100
+    // Random direction: 0=up, 1=down, 2=left, 3=right
+    dir = rndr(0, 3)
+    
+    If dir = 0 Then y = y - 1
+    If dir = 1 Then y = y + 1
+    If dir = 2 Then x = x - 1
+    If dir = 3 Then x = x + 1
+    
+    // Keep in bounds
+    If x < 0 Then x = 0
+    If x > 255 Then x = 255
+    If y < 0 Then y = 0
+    If y > 255 Then y = 255
+    
+    PxlOn(x, y, 31)
+Next
+
+Text(0, 0, "Random Walk Complete!", 31)
+Text(0, 240, "Press any key...", 0)
+Pause
+
+// All tests complete!
+ClrDraw
+Text(30, 64, "All Tests Complete!", 31)
+Text(40, 96, "Random Functions", 15)
+Text(60, 112, "Working!", 10)
+Pause
