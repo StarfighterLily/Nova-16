@@ -2,12 +2,6 @@
 Dedicated text/UI layers? I mean sure the screen, BG, and sprite layers can be used, but dedicated layers can offer specific features
 Create better font
 
--High level programming language
-Finalize design on custom language
-
--FORTH
-Expand FORTH with new instructions
-
 -Registers
 Bring back R register pairing:
   - R0:R1, R2:R3, R4:R5, R6:R7, R8:R9
