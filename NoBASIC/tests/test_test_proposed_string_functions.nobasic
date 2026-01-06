@@ -1,0 +1,13 @@
+
+// Test proposed string functions
+// Will work AFTER new string functions are implemented
+
+s = "HELLO"
+pos = inString(s, "L")   // Should find position 3
+lower = lowString(s)     // Should be "hello"
+upper = upString(lower)  // Should be "HELLO"
+
+Disp "Position of L: "
+Disp pos
+Disp "Lower: "
+Disp lower

@@ -1393,14 +1393,13 @@ class CPU:
     def _fill_prefetch_buffer(self):
         """Fill the prefetch buffer with 64 bytes starting from current PC"""
         self.prefetch_pc = self.pc
-        end_addr = min(self.pc + 64, len(self.memory.memory))
-        buffer_size = end_addr - self.pc
-        
-        # Fill buffer with available bytes
-        self.prefetch_buffer[:buffer_size] = self.memory.memory[self.pc:end_addr]
-        # Zero out unused buffer space
-        if buffer_size < 64:
-            self.prefetch_buffer[buffer_size:] = 0
+        # Read bytes using memory.read_byte to respect caching
+        for i in range(64):
+            addr = (self.pc + i) & 0xFFFF
+            if addr >= len(self.memory.memory):
+                self.prefetch_buffer[i] = 0
+            else:
+                self.prefetch_buffer[i] = self.memory.read_byte(addr)
         self.prefetch_valid = True
     
     def invalidate_prefetch(self):
@@ -1555,7 +1554,14 @@ class CPU:
                     base_addr = self.Rregisters[idx]
                 else:
                     raise Exception(f"Invalid register type {typ} for indexed addressing")
-                addr = (base_addr + index) & 0xFFFF
+                
+                # FP (P9) and SP (P8) use signed offset for stack-relative addressing
+                # Convert unsigned byte to signed (-128 to +127)
+                if idx in [8, 9]:  # SP or FP
+                    signed_offset = index if index < 128 else index - 256
+                    addr = (base_addr + signed_offset) & 0xFFFF
+                else:
+                    addr = (base_addr + index) & 0xFFFF
                 return self.memory.read_word(addr)
             elif direct and indexed:
                 # Direct indexed
@@ -1820,7 +1826,14 @@ class CPU:
                     base_addr = self.Rregisters[idx]
                 else:
                     raise Exception(f"Invalid register type {typ} for indexed addressing")
-                return (base_addr + index) & 0xFFFF
+                
+                # FP (P9) and SP (P8) use signed offset for stack-relative addressing
+                # Convert unsigned byte to signed (-128 to +127)
+                if idx in [8, 9]:  # SP or FP
+                    signed_offset = index if index < 128 else index - 256
+                    return (base_addr + signed_offset) & 0xFFFF
+                else:
+                    return (base_addr + index) & 0xFFFF
             elif direct and indexed:
                 # Direct indexed
                 addr = self.fetch_word()

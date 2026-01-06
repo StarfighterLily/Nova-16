@@ -1,0 +1,10 @@
+# Symbol table
+# Format: <symbol> <value>
+_func_add_0 0x0339
+_func_earlysign_1 0x036E
+L3 0x0395
+L4 0x0399
+L1 0x03AD
+_func_noreturn_2 0x03B9
+_func_nestedsum_3 0x03F7
+_func_drawtick_4 0x0452

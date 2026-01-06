@@ -93,8 +93,13 @@ def run_headless(program_path, max_cycles=10000, enable_memory_profiling=False, 
     else:
         print("Sound: Disabled")
     
-    # Check if there's any graphics output
-    screen = gfx.screen
+    # Check if there's any graphics output (composite layers first)
+    print(f"Debug: Layer 0 pixels: {(gfx.layer_0 != 0).sum()}")
+    for i in range(4):
+        print(f"Debug: Background layer {i+1} pixels: {(gfx.background_layers[i] != 0).sum()}")
+    for i in range(4):
+        print(f"Debug: Sprite layer {i+5} pixels: {(gfx.sprite_layers[i] != 0).sum()}")
+    screen = gfx.get_screen()  # Use get_screen() to trigger layer compositing
     non_zero_pixels = (screen != 0).sum()
     print(f"Graphics: {non_zero_pixels} non-black pixels on screen")
     

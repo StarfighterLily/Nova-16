@@ -6,3 +6,4 @@ Install with: pip install -r requirements-mcp.txt
 mcp>=0.1.0
 numpy>=1.21.0
 pygame>=2.0.0
+Pillow>=9.0.0

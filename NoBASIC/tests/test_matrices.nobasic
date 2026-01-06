@@ -1,0 +1,39 @@
+// Matrix Operations Test
+// Tests matrix indexing and element access: MatA(row, col)
+
+Function TestMatrices()
+    Disp "Matrix test"
+    
+    // Write to MatA
+    MatA(0, 0) = 10
+    MatA(0, 1) = 20
+    MatA(1, 0) = 30
+    MatA(1, 1) = 40
+    
+    // Read from MatA
+    Disp "Read MatA(0,0)"
+    val1 = MatA(0, 0)
+    Disp val1
+    
+    Disp "Read MatA(0,1)"
+    val2 = MatA(0, 1)
+    Disp val2
+    
+    Disp "Read MatA(1,0)"
+    val3 = MatA(1, 0)
+    Disp val3
+    
+    Disp "Read MatA(1,1)"
+    val4 = MatA(1, 1)
+    Disp val4
+    
+    // Test MatB
+    MatB(2, 2) = 100
+    Disp "Read MatB(2,2)"
+    val5 = MatB(2, 2)
+    Disp val5
+    
+    Disp "Matrix test complete"
+End
+
+TestMatrices()

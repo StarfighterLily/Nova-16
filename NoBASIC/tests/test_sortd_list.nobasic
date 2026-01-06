@@ -1,0 +1,9 @@
+// Sort descending test
+Fill(L1, 0)
+L1(1) = 5
+L1(2) = 1
+L1(3) = 4
+L1(4) = 2
+L1(5) = 3
+SortD(L1)
+Pause

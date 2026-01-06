@@ -257,6 +257,20 @@ class AsmBlockStmt(Statement):
     assembly_code: str  # Raw assembly code to be inserted
 
 
+@dataclass
+class FunctionDefStmt(Statement):
+    """Function definition statement: Function Name(params) ... End"""
+    name: str
+    params: List[str]
+    body: List[Statement]
+
+
+@dataclass
+class ReturnStmt(Statement):
+    """Return statement: Return [value]"""
+    value: Optional[Expression] = None
+
+
 # Expressions
 @dataclass
 class LiteralExpr(Expression):
@@ -303,9 +317,10 @@ class BinaryExpr(Expression):
 
 @dataclass
 class UnaryExpr(Expression):
-    """Unary operation: op expression"""
+    """Unary operation: op expression (supports pre/post inc/dec)"""
     operator: str
     expression: Expression
+    is_post: bool = False
 
 
 @dataclass

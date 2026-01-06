@@ -1,0 +1,5 @@
+// Graphics test
+ClrDraw
+PxlOn(10, 20, 31)
+PxlOn(50, 50, 15)
+Line(0, 0, 100, 100, 31)

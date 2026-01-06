@@ -115,32 +115,7 @@ class Sti(BaseInstruction):
     def execute(self, cpu):
         cpu.flags[5] = 1  # Set interrupt flag
 
-class Stc(BaseInstruction):
-    """STC instruction - set carry flag"""
-    def __init__(self):
-        opcode_val = 0x9F  # STC
-        super().__init__("STC", opcode_val)
-    
-    def execute(self, cpu):
-        cpu.carry_flag = True
-
-class Clc(BaseInstruction):
-    """CLC instruction - clear carry flag"""
-    def __init__(self):
-        opcode_val = 0xA0  # CLC
-        super().__init__("CLC", opcode_val)
-    
-    def execute(self, cpu):
-        cpu.carry_flag = False
-
-class Cmc(BaseInstruction):
-    """CMC instruction - complement carry flag"""
-    def __init__(self):
-        opcode_val = 0xA1  # CMC
-        super().__init__("CMC", opcode_val)
-    
-    def execute(self, cpu):
-        cpu.carry_flag = not cpu.carry_flag
+# STC, CLC, CMC removed - conflicts with RETN (0x9F), LOOPZ (0xA0), WHILE (0xA1)
 
 # Data movement
 class Mov(BaseInstruction):
@@ -770,6 +745,287 @@ class Bflip(BaseInstruction):
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
 
+# String operations
+class Strcpy(BaseInstruction):
+    """STRCPY instruction - copy string from source to destination"""
+    def __init__(self):
+        opcode_val = 0x71  # STRCPY
+        super().__init__("STRCPY", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        src_addr = cpu.get_operand_value(operands[1])
+        dest_addr = cpu.get_operand_value(operands[0])
+        # Copy null-terminated string
+        while True:
+            char = cpu.memory.read_byte(src_addr)
+            cpu.memory.write_byte(dest_addr, char)
+            if char == 0:
+                break
+            src_addr = (src_addr + 1) & 0xFFFF
+            dest_addr = (dest_addr + 1) & 0xFFFF
+
+class Strcat(BaseInstruction):
+    """STRCAT instruction - concatenate string from source to end of destination"""
+    def __init__(self):
+        opcode_val = 0x72  # STRCAT
+        super().__init__("STRCAT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        src_addr = cpu.get_operand_value(operands[1])
+        dest_addr = cpu.get_operand_value(operands[0])
+        # Find end of destination string
+        while cpu.memory.read_byte(dest_addr) != 0:
+            dest_addr = (dest_addr + 1) & 0xFFFF
+        # Copy source string to end
+        while True:
+            char = cpu.memory.read_byte(src_addr)
+            cpu.memory.write_byte(dest_addr, char)
+            if char == 0:
+                break
+            src_addr = (src_addr + 1) & 0xFFFF
+            dest_addr = (dest_addr + 1) & 0xFFFF
+
+class Strcmp(BaseInstruction):
+    """STRCMP instruction - compare two strings for length"""
+    def __init__(self):
+        opcode_val = 0x73  # STRCMP
+        super().__init__("STRCMP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(3)
+        str1_addr = cpu.get_operand_value(operands[0])
+        str2_addr = cpu.get_operand_value(operands[1])
+        length = cpu.get_operand_value(operands[2])
+        # Compare strings byte by byte up to length
+        result = 0
+        for i in range(length):
+            char1 = cpu.memory.read_byte((str1_addr + i) & 0xFFFF)
+            char2 = cpu.memory.read_byte((str2_addr + i) & 0xFFFF)
+            if char1 != char2:
+                result = -1 if char1 < char2 else 1
+                break
+        # Set flags based on result
+        cpu._set_flags_16bit(result, result)
+
+class Strlen(BaseInstruction):
+    """STRLEN instruction - get length of null-terminated string"""
+    def __init__(self):
+        opcode_val = 0x74  # STRLEN
+        super().__init__("STRLEN", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        src_addr = cpu.get_operand_value(operands[0])
+        # Count characters until null terminator
+        length = 0
+        while cpu.memory.read_byte((src_addr + length) & 0xFFFF) != 0:
+            length = (length + 1) & 0xFFFF
+        # Store result in R0
+        cpu.Rregisters[0] = length & 0xFF
+        cpu._set_flags_16bit(length, length)
+
+class Strext(BaseInstruction):
+    """STREXT instruction - extract substring from haystack"""
+    def __init__(self):
+        opcode_val = 0x75  # STREXT
+        super().__init__("STREXT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(4)
+        dest_addr = cpu.get_operand_value(operands[0])
+        haystack_addr = cpu.get_operand_value(operands[1])
+        needle_addr = cpu.get_operand_value(operands[2])
+        max_len = cpu.get_operand_value(operands[3])
+        # Find needle in haystack
+        found = False
+        haystack_pos = 0
+        while cpu.memory.read_byte((haystack_addr + haystack_pos) & 0xFFFF) != 0:
+            needle_pos = 0
+            match = True
+            while needle_pos < max_len and cpu.memory.read_byte((needle_addr + needle_pos) & 0xFFFF) != 0:
+                if cpu.memory.read_byte((haystack_addr + haystack_pos + needle_pos) & 0xFFFF) != cpu.memory.read_byte((needle_addr + needle_pos) & 0xFFFF):
+                    match = False
+                    break
+                needle_pos += 1
+            if match:
+                # Copy found substring to destination
+                for i in range(needle_pos):
+                    char = cpu.memory.read_byte((haystack_addr + haystack_pos + i) & 0xFFFF)
+                    cpu.memory.write_byte((dest_addr + i) & 0xFFFF, char)
+                cpu.memory.write_byte((dest_addr + needle_pos) & 0xFFFF, 0)  # Null terminate
+                found = True
+                break
+            haystack_pos += 1
+        if not found:
+            cpu.memory.write_byte(dest_addr, 0)  # Empty string
+        cpu.zero_flag = 1 if found else 0
+
+class Strexti(BaseInstruction):
+    """STREXTI instruction - extract substring case-insensitive"""
+    def __init__(self):
+        opcode_val = 0x76  # STREXTI
+        super().__init__("STREXTI", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(4)
+        dest_addr = cpu.get_operand_value(operands[0])
+        haystack_addr = cpu.get_operand_value(operands[1])
+        needle_addr = cpu.get_operand_value(operands[2])
+        max_len = cpu.get_operand_value(operands[3])
+        # Find needle in haystack (case-insensitive)
+        found = False
+        haystack_pos = 0
+        while cpu.memory.read_byte((haystack_addr + haystack_pos) & 0xFFFF) != 0:
+            needle_pos = 0
+            match = True
+            while needle_pos < max_len and cpu.memory.read_byte((needle_addr + needle_pos) & 0xFFFF) != 0:
+                h_char = cpu.memory.read_byte((haystack_addr + haystack_pos + needle_pos) & 0xFFFF)
+                n_char = cpu.memory.read_byte((needle_addr + needle_pos) & 0xFFFF)
+                if chr(h_char).upper() != chr(n_char).upper():
+                    match = False
+                    break
+                needle_pos += 1
+            if match:
+                # Copy found substring to destination
+                for i in range(needle_pos):
+                    char = cpu.memory.read_byte((haystack_addr + haystack_pos + i) & 0xFFFF)
+                    cpu.memory.write_byte((dest_addr + i) & 0xFFFF, char)
+                cpu.memory.write_byte((dest_addr + needle_pos) & 0xFFFF, 0)  # Null terminate
+                found = True
+                break
+            haystack_pos += 1
+        if not found:
+            cpu.memory.write_byte(dest_addr, 0)  # Empty string
+        cpu.zero_flag = 1 if found else 0
+
+class Strupr(BaseInstruction):
+    """STRUPR instruction - convert string to uppercase"""
+    def __init__(self):
+        opcode_val = 0x77  # STRUPR
+        super().__init__("STRUPR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        src_addr = cpu.get_operand_value(operands[0])
+        # Convert string to uppercase in-place
+        addr = src_addr
+        while True:
+            char = cpu.memory.read_byte(addr)
+            if char == 0:
+                break
+            if 97 <= char <= 122:  # a-z
+                char = char - 32  # Convert to uppercase
+            cpu.memory.write_byte(addr, char)
+            addr = (addr + 1) & 0xFFFF
+
+class Strlwr(BaseInstruction):
+    """STRLWR instruction - convert string to lowercase"""
+    def __init__(self):
+        opcode_val = 0x78  # STRLWR
+        super().__init__("STRLWR", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        src_addr = cpu.get_operand_value(operands[0])
+        # Convert string to lowercase in-place
+        addr = src_addr
+        while True:
+            char = cpu.memory.read_byte(addr)
+            if char == 0:
+                break
+            if 65 <= char <= 90:  # A-Z
+                char = char + 32  # Convert to lowercase
+            cpu.memory.write_byte(addr, char)
+            addr = (addr + 1) & 0xFFFF
+
+class Strrev(BaseInstruction):
+    """STRREV instruction - reverse a string"""
+    def __init__(self):
+        opcode_val = 0x79  # STRREV
+        super().__init__("STRREV", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        src_addr = cpu.get_operand_value(operands[0])
+        # Find string length
+        length = 0
+        while cpu.memory.read_byte((src_addr + length) & 0xFFFF) != 0:
+            length += 1
+        # Reverse the string in-place
+        for i in range(length // 2):
+            left = src_addr + i
+            right = src_addr + length - 1 - i
+            left_char = cpu.memory.read_byte(left & 0xFFFF)
+            right_char = cpu.memory.read_byte(right & 0xFFFF)
+            cpu.memory.write_byte(left & 0xFFFF, right_char)
+            cpu.memory.write_byte(right & 0xFFFF, left_char)
+
+class Strfind(BaseInstruction):
+    """STRFIND instruction - find substring in string"""
+    def __init__(self):
+        opcode_val = 0x7A  # STRFIND
+        super().__init__("STRFIND", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        haystack_addr = cpu.get_operand_value(operands[0])
+        needle_addr = cpu.get_operand_value(operands[1])
+        # Find needle in haystack
+        result = 0  # Position, 1-indexed (0 if not found)
+        position = 1
+        haystack_pos = 0
+        while cpu.memory.read_byte((haystack_addr + haystack_pos) & 0xFFFF) != 0:
+            needle_pos = 0
+            match = True
+            while cpu.memory.read_byte((needle_addr + needle_pos) & 0xFFFF) != 0:
+                if cpu.memory.read_byte((haystack_addr + haystack_pos + needle_pos) & 0xFFFF) != cpu.memory.read_byte((needle_addr + needle_pos) & 0xFFFF):
+                    match = False
+                    break
+                needle_pos += 1
+            if match:
+                result = position
+                break
+            haystack_pos += 1
+            position += 1
+        # Store result in R0
+        cpu.Rregisters[0] = result & 0xFF
+        cpu._set_flags_16bit(result, result)
+
+class Strfindi(BaseInstruction):
+    """STRFINDI instruction - find substring case-insensitive"""
+    def __init__(self):
+        opcode_val = 0x7B  # STRFINDI
+        super().__init__("STRFINDI", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        haystack_addr = cpu.get_operand_value(operands[0])
+        needle_addr = cpu.get_operand_value(operands[1])
+        # Find needle in haystack (case-insensitive)
+        result = 0  # Position, 1-indexed (0 if not found)
+        position = 1
+        haystack_pos = 0
+        while cpu.memory.read_byte((haystack_addr + haystack_pos) & 0xFFFF) != 0:
+            needle_pos = 0
+            match = True
+            while cpu.memory.read_byte((needle_addr + needle_pos) & 0xFFFF) != 0:
+                h_char = cpu.memory.read_byte((haystack_addr + haystack_pos + needle_pos) & 0xFFFF)
+                n_char = cpu.memory.read_byte((needle_addr + needle_pos) & 0xFFFF)
+                if chr(h_char).upper() != chr(n_char).upper():
+                    match = False
+                    break
+                needle_pos += 1
+            if match:
+                result = position
+                break
+            haystack_pos += 1
+            position += 1
+        # Store result in R0
+        cpu.Rregisters[0] = result & 0xFF
+        cpu._set_flags_16bit(result, result)
+
 # Enhanced data movement
 class Swap(BaseInstruction):
     """SWAP instruction for prefixed operand system - Swap nibbles"""
@@ -1022,6 +1278,11 @@ class Leave(BaseInstruction):
         
         # Restore stack pointer to frame pointer (deallocate locals)
         cpu.Pregisters[8] = cpu.Pregisters[9]
+        
+        # Pop the old FP from stack
+        cpu.Pregisters[8] = (cpu.Pregisters[8] + 2) & 0xFFFF
+        
+        # Restore frame pointer
         cpu.Pregisters[9] = old_fp
 
 # Control flow - jumps
@@ -1377,17 +1638,14 @@ class Callz(BaseInstruction):
         super().__init__("CALLZ", opcode_val)
     
     def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        target_address = cpu.get_operand_value(operands[0])
+
         if cpu.flags[7]:  # Zero flag
-            operands = cpu.parse_operands(1)
-            target_address = cpu.get_operand_value(operands[0])
-            
-            # Push return address to stack
             sp = int(cpu.Pregisters[8])
             sp = (sp - 2) & 0xFFFF
             cpu.Pregisters[8] = sp
             cpu.memory.write_word(sp, cpu.pc)
-            
-            # Jump to target
             cpu.pc = target_address
             cpu.invalidate_prefetch()
             cpu.invalidate_instruction_cache()
@@ -1399,17 +1657,14 @@ class Callnz(BaseInstruction):
         super().__init__("CALLNZ", opcode_val)
     
     def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        target_address = cpu.get_operand_value(operands[0])
+
         if not cpu.flags[7]:  # Not zero flag
-            operands = cpu.parse_operands(1)
-            target_address = cpu.get_operand_value(operands[0])
-            
-            # Push return address to stack
             sp = int(cpu.Pregisters[8])
             sp = (sp - 2) & 0xFFFF
             cpu.Pregisters[8] = sp
             cpu.memory.write_word(sp, cpu.pc)
-            
-            # Jump to target
             cpu.pc = target_address
             cpu.invalidate_prefetch()
             cpu.invalidate_instruction_cache()
@@ -1417,73 +1672,57 @@ class Callnz(BaseInstruction):
 class Retn(BaseInstruction):
     """RETN instruction - return with value"""
     def __init__(self):
-        opcode_val = 0xA2  # RETN
+        opcode_val = 0x9F  # RETN
         super().__init__("RETN", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(1)  # Return value register
-        
-        # Check stack bounds
-        if cpu.Pregisters[8] >= 0xFFFF:
-            raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
-        
+        operands = cpu.parse_operands(1)  # Return value source
+        return_value = cpu.get_operand_value(operands[0])
+
+        # Expose return value in standard registers (R0/P0)
+        cpu.Rregisters[0] = return_value & 0xFF
+        cpu.Pregisters[0] = return_value & 0xFFFF
+        cpu._set_flags_16bit(return_value & 0xFFFF, return_value)
+
         # Pop return address into PC (like RET)
-        pc_value = cpu.memory.read_word(cpu.Pregisters[8])
-        cpu.pc = pc_value
         sp = int(cpu.Pregisters[8])
+        if sp >= 0xFFFF:
+            raise RuntimeError(f"Stack underflow: SP=0x{sp:04X}")
+        cpu.pc = cpu.memory.read_word(sp)
         sp = (sp + 2) & 0xFFFF
         cpu.Pregisters[8] = sp
-        
-        cpu.invalidate_prefetch()
-        cpu.invalidate_instruction_cache()
-        
-        # Pop PC from stack
-        if cpu.Pregisters[8] >= 0xFFFF:
-            raise RuntimeError(f"Stack underflow: SP=0x{cpu.Pregisters[8]:04X}")
-        cpu.pc = cpu.memory.read_word(cpu.Pregisters[8])
-        sp = int(cpu.Pregisters[8])
-        sp = (sp + 2) & 0xFFFF
-        cpu.Pregisters[8] = sp
-        
+
         cpu.invalidate_prefetch()
         cpu.invalidate_instruction_cache()
 
 class Loopz(BaseInstruction):
     """LOOPZ instruction - loop while zero"""
     def __init__(self):
-        opcode_val = 0xA3  # LOOPZ
+        opcode_val = 0xA0  # LOOPZ
         super().__init__("LOOPZ", opcode_val)
     
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
-        
-        # Get current counter value
         counter = cpu.get_operand_value(operands[0])
-        
-        # Check if counter != 0
-        if counter != 0:
-            # Decrement register
-            counter -= 1
-            cpu.set_operand_value(operands[0], counter)
-            # Jump to target
-            cpu.pc = cpu.get_operand_value(operands[1])
-        # If counter == 0, continue to next instruction
+        zero_flag_set = bool(cpu.flags[7])
+        new_counter = (counter - 1) & 0xFFFF
+        cpu.set_operand_value(operands[0], new_counter)
+
+        if new_counter != 0 and zero_flag_set:
+            target_address = cpu.get_operand_value(operands[1])
+            cpu.pc = target_address
+            cpu.invalidate_prefetch()
 
 class While(BaseInstruction):
     """WHILE instruction - while loop start"""
     def __init__(self):
-        opcode_val = 0xA4  # WHILE
+        opcode_val = 0xA1  # WHILE
         super().__init__("WHILE", opcode_val)
     
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
         condition = cpu.get_operand_value(operands[0])
-        
-        if condition == 0:
-            # Skip to end of loop - for now, assume next instruction
-            cpu.pc = (cpu.pc + 2) & 0xFFFF  # Skip mode byte and operand
-            cpu.invalidate_prefetch()
-            cpu.invalidate_instruction_cache()
+        cpu._set_flags_16bit(condition, condition)
 
 # Graphics operations
 class Sblend(BaseInstruction):
@@ -3166,9 +3405,6 @@ def create_instruction_table():
         IRet(),  # 0x02
         Cli(),   # 0x03
         Sti(),   # 0x04
-        Stc(),   # 0x9F
-        Clc(),   # 0xA0
-        Cmc(),   # 0xA1
         Nop(),   # 0xFF
 
         # Data movement
@@ -3225,6 +3461,19 @@ def create_instruction_table():
         Bclr(),     # 0x6F
         Bflip(),    # 0x70
 
+        # String operations
+        Strcpy(),   # 0x71
+        Strcat(),   # 0x72
+        Strcmp(),   # 0x73
+        Strlen(),   # 0x74
+        Strext(),   # 0x75
+        Strexti(),  # 0x76
+        Strupr(),   # 0x77
+        Strlwr(),   # 0x78
+        Strrev(),   # 0x79
+        Strfind(),  # 0x7A
+        Strfindi(), # 0x7B
+
         # Stack operations
         Push(),     # 0x18
         Pop(),      # 0x19
@@ -3236,7 +3485,7 @@ def create_instruction_table():
         Leave(),    # 0x9C
         Callz(),    # 0x9D
         Callnz(),   # 0x9E
-        Retn(),     # 0xA2
+        Retn(),     # 0x9F
         Loopz(),    # 0xA0
         While(),    # 0xA1
 
@@ -3268,10 +3517,6 @@ def create_instruction_table():
 
         # Interrupt
         Int(),      # 0x30
-
-        # Advanced control flow and loops
-        Retn(),     # 0xA2
-        While(),    # 0xA4
 
         # Graphics operations
         Sblend(),   # 0x31

@@ -1,0 +1,9 @@
+// Sort ascending test (sentinel high values)
+Fill(L1, 255)
+L1(1) = 5
+L1(2) = 1
+L1(3) = 4
+L1(4) = 2
+L1(5) = 3
+SortA(L1)
+Pause

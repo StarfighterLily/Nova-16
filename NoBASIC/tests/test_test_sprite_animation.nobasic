@@ -1,0 +1,15 @@
+
+// Test proposed sprite animation framework
+// Will work AFTER sprite enhancement is implemented
+
+// Animate sprite with frames
+Sprite 0, x=100, y=100
+Sprite 0 SetFrame(0)
+Sprite 0 Show
+
+For frame = 0 To 5
+    Sprite 0 SetFrame(frame)
+    Pause
+Next
+
+Sprite 0 Hide

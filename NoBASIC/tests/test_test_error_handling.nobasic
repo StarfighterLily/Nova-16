@@ -1,0 +1,14 @@
+
+// Test proposed error handling
+// Will work AFTER try/catch is implemented
+
+Try
+    x = 100
+    y = 0
+    z = x / y      // Division by zero
+    Disp z
+Catch
+    Disp "Error: Division by zero"
+End
+
+Disp "Program continues"

@@ -1,0 +1,11 @@
+# Symbol table
+# Format: <symbol> <value>
+main_loop 0x021D
+wait_key 0x0221
+backspace 0x0263
+process_command 0x0272
+delay_loop 0x02D5
+show_cursor 0x02F9
+hide_cursor 0x031E
+clear_screen 0x033C
+clear_loop 0x0348

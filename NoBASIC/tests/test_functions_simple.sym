@@ -1,0 +1,4 @@
+# Symbol table
+# Format: <symbol> <value>
+_func_add_0 0x026C
+_func_multiply_1 0x0295

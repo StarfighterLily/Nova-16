@@ -215,6 +215,7 @@ class TestStackFrameInstructions:
 class TestFlagInstructions:
     """Test flag manipulation instructions."""
 
+    @pytest.mark.skip(reason="STC (Set Carry) instruction not in official opcode spec - 0x9F is RETN")
     def test_stc_instruction(self, cpu, memory):
         """Test STC instruction - set carry flag."""
         # Clear carry flag first
@@ -222,7 +223,7 @@ class TestFlagInstructions:
         
         # Load test program: STC
         program = [
-            0x9F,                           # STC
+            0x9F,                           # STC (not in spec - 0x9F is RETN)
             0x00                             # HLT
         ]
         memory.load_program(program)
@@ -230,6 +231,7 @@ class TestFlagInstructions:
         
         assert cpu.carry_flag == True
 
+    @pytest.mark.skip(reason="CLC (Clear Carry) instruction not in official opcode spec - 0xA0 is LOOPZ")
     def test_clc_instruction(self, cpu, memory):
         """Test CLC instruction - clear carry flag."""
         # Set carry flag first
@@ -237,7 +239,7 @@ class TestFlagInstructions:
         
         # Load test program: CLC
         program = [
-            0xA0,                           # CLC
+            0xA0,                           # CLC (not in spec - 0xA0 is LOOPZ)
             0x00                             # HLT
         ]
         memory.load_program(program)
@@ -245,6 +247,7 @@ class TestFlagInstructions:
         
         assert cpu.carry_flag == False
 
+    @pytest.mark.skip(reason="CMC (Complement Carry) instruction not in official opcode spec - 0xA1 is WHILE")
     def test_cmc_instruction(self, cpu, memory):
         """Test CMC instruction - complement carry flag."""
         # Set carry flag first, then complement it
@@ -252,7 +255,7 @@ class TestFlagInstructions:
         
         # Load test program: CMC
         program = [
-            0xA1,                           # CMC
+            0xA1,                           # CMC (not in spec - 0xA1 is WHILE)
             0x00                             # HLT
         ]
         memory.load_program(program)
@@ -307,27 +310,27 @@ class TestAdvancedControlFlow:
         # Load test program: CALL subroutine; MOV P1, R0
         # Subroutine: MOV R0, 0xAB; RETN R0
         program = [
-            0x2F, 0x02, 0x09, 0x00,        # CALL 0x0009 (imm16)
-            0x06, 0x00, 0xF1, 0xE0,        # MOV P1, R0
+            0x2F, 0x02, 0x00, 0x09,        # CALL 0x0009 (imm16)
+            0x06, 0x00, 0xF2, 0xE0,        # MOV P1, R0
             0x00,                           # HLT
             # Subroutine
-            0x06, 0x20, 0xE0, 0xAB,  # MOV R0, 0xAB (8-bit)
-            0xA2, 0x00, 0xE0                # RETN R0 (register)
+            0x06, 0x04, 0xE0, 0xAB,  # MOV R0, 0xAB (8-bit)
+            0x9F, 0x00, 0xE0                # RETN R0 (register)
         ]
         memory.load_program(program)
         run_cpu_cycles(cpu, 5)
         
         # R0 should be 0xAB, P1 should be 0xAB
-        assert cpu.Rregisters[0] == 0
-        assert cpu.Pregisters[1] == 0
+        assert cpu.Rregisters[0] == 0xAB
+        assert cpu.Pregisters[1] == 0x00AB
 
     def test_loopz_loop_while_zero(self, cpu, memory):
         """Test LOOPZ instruction - loop while counter != 0."""
         # Simple loop: MOV P0, 3; loop: DEC P0; LOOPZ P0, loop
         program = [
             0x06, 0x04, 0xF1, 0x03,        # MOV P0, 3
-            0x0C, 0x00, 0xF1,              # DEC P0
-            0xA3, 0x04, 0xF1, 0x04,        # LOOPZ P0, 0x0004 (jump back to DEC)
+            0x2E, 0x00, 0xF1, 0xF1,        # CMP P0, P0 (sets Z flag)
+            0xA0, 0x04, 0xF1, 0x04,        # LOOPZ P0, 0x0004 (jump back to CMP)
             0x00                             # HLT
         ]
         memory.load_program(program)
@@ -342,7 +345,7 @@ class TestAdvancedControlFlow:
         # For now, test basic
         program = [
             0x06, 0x04, 0xF1, 0x01,        # MOV P0, 1 (8-bit)
-            0xA4, 0x00, 0xF1,              # WHILE P0
+            0xA1, 0x00, 0xF1,              # WHILE P0
             0x0C, 0x00, 0xF1,              # DEC P0
             0x00                             # HLT (simplified, no endwhile)
         ]

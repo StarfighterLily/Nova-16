@@ -12,8 +12,9 @@ from .ast import (
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
-    AsmBlockStmt, LiteralExpr, VariableExpr, ListAccessExpr, MatrixAccessExpr, MemberAccessExpr, 
-    BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, DataType, VarScope
+    AsmBlockStmt, FunctionDefStmt, ReturnStmt, LiteralExpr, VariableExpr, ListAccessExpr, 
+    MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, 
+    DataType, VarScope
 )
 
 
@@ -60,6 +61,10 @@ class Parser:
             return self.var_declaration_statement(VarScope.GLOBAL)
         elif token.type == TokenType.LOCAL:
             return self.var_declaration_statement(VarScope.LOCAL)
+        elif token.type == TokenType.FUNCTION:
+            return self.function_definition()
+        elif token.type == TokenType.RETURN:
+            return self.return_statement()
         elif token.type == TokenType.ASM:
             return self.asm_block_statement()
         elif token.type == TokenType.PXLON:
@@ -111,6 +116,8 @@ class Parser:
             return self.struct_declaration()
         elif token.type == TokenType.IDENTIFIER and self.check_next(TokenType.COLON):
             return self.label_statement()
+        elif token.type == TokenType.IDENTIFIER and self._is_builtin_function_name(token.lexeme):
+            return self.assignment_statement()
         elif token.type == TokenType.IDENTIFIER:
             return self.assignment_statement()
         elif self._is_function_token(token.type):
@@ -330,10 +337,15 @@ class Parser:
             step = self.expression()
 
         body = []
-        while not self.check(TokenType.NEXT):
+        while not self.check(TokenType.NEXT) and not self.check(TokenType.END):
             body.append(self.statement())
 
-        self.consume(TokenType.NEXT, "Expected 'Next' after for body")
+        if self.match(TokenType.NEXT):
+            pass
+        elif self.match(TokenType.END):
+            pass
+        else:
+            raise self.error("Expected 'Next' or 'End' after for body")
         return ForStmt(variable, start, end, step, body)
 
     def while_statement(self) -> WhileStmt:
@@ -544,7 +556,15 @@ class Parser:
         return expr
 
     def unary(self) -> Expression:
-        """Parse unary expressions."""
+        """Parse unary expressions, including prefix ++/--."""
+        # Prefix increment/decrement: '++x' or '--x'
+        if self.match(TokenType.INCREMENT):
+            expr = self.unary()
+            return UnaryExpr("++", expr, is_post=False)
+        if self.match(TokenType.DECREMENT):
+            expr = self.unary()
+            return UnaryExpr("--", expr, is_post=False)
+        # Existing unary operators
         if self.match(TokenType.MINUS, TokenType.NOT):
             operator = self.previous().lexeme
             expr = self.unary()
@@ -608,6 +628,12 @@ class Parser:
                 self.consume(TokenType.RBRACKET, "Expected ']' after array index")
                 return ListAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0])
 
+        # Postfix increment/decrement: 'x++' or 'x--'
+        if self.match(TokenType.INCREMENT):
+            return UnaryExpr("++", expr, is_post=True)
+        if self.match(TokenType.DECREMENT):
+            return UnaryExpr("--", expr, is_post=True)
+
         return expr
 
     def primary(self) -> Expression:
@@ -670,6 +696,7 @@ class Parser:
             # String functions
             "STRLEN", "STRCPY", "STRCAT", "STRCMP", "STRUPR", "STRLWR", "STRREV",
             "STRFIND", "STRFINDI", "STREXT", "STREXTI",
+            "INSTRING", "UPSTRING", "LOWSTRING", "LENSTRING",
             # Bit manipulation functions
             "BTST", "BSET", "BCLR", "BFLIP", "CLZ", "CTZ", "POPCNT",
             # Memory functions
@@ -745,6 +772,51 @@ class Parser:
                 return ListAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0])
 
         return expr
+
+    def function_definition(self) -> FunctionDefStmt:
+        """Parse Function Name(param1, param2, ...) ... End"""
+        self.consume(TokenType.FUNCTION, "Expected 'Function'")
+        
+        name_token = self.consume(TokenType.IDENTIFIER, "Expected function name")
+        name = name_token.lexeme.lower()
+        
+        self.consume(TokenType.LPAREN, "Expected '(' after function name")
+        
+        # Parse parameters
+        params = []
+        if not self.check(TokenType.RPAREN):
+            params.append(self.consume(TokenType.IDENTIFIER, "Expected parameter name").lexeme.lower())
+            while self.match(TokenType.COMMA):
+                params.append(self.consume(TokenType.IDENTIFIER, "Expected parameter name").lexeme.lower())
+        
+        self.consume(TokenType.RPAREN, "Expected ')' after parameters")
+        
+        # Parse function body
+        body = []
+        while not self.check(TokenType.END) and not self.is_at_end():
+            body.append(self.statement())
+        
+        self.consume(TokenType.END, "Expected 'End' to close function definition")
+        
+        return FunctionDefStmt(name, params, body)
+
+    def return_statement(self) -> ReturnStmt:
+        """Parse Return [expression]"""
+        self.advance()  # consume RETURN
+        
+        # Check if there's a value to return
+        value = None
+        # Only parse value if not at end of line or at another statement keyword
+        if not self.is_at_end() and \
+           not self.check(TokenType.EOF) and \
+           self.peek().line == self.previous().line:  # Same line as Return keyword
+            
+            # Don't parse if next token is a statement keyword
+            next_token = self.peek()
+            if next_token.type not in [TokenType.END, TokenType.ELSE, TokenType.NEXT]:
+                value = self.expression()
+        
+        return ReturnStmt(value)
 
     # Helper methods
     def advance(self) -> Token:

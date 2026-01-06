@@ -1,0 +1,15 @@
+
+// Test proposed increment/decrement operators
+// This will work AFTER ++ and -- are implemented
+
+x = 10
+x++              // x should be 11
+y = ++x          // x should be 12, y should be 12
+
+counter = 5
+counter--        // counter should be 4
+
+Disp "Final x: "
+Disp x
+Disp "Final counter: "
+Disp counter

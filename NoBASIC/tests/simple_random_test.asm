@@ -1,10 +1,14 @@
+; NoBASIC compiler output
+; Generated for Nova-16
 ORG 0x0200
 MOV SP, 0xFFFF
 MOV FP, SP
 ; ClrDraw
+MOV VM, 0
+MOV VL, 1
 SFILL 0x00
-RND P1
-MOV P2, P1
+RND R1
+MOV P2, R1
 XOR VX, VX
 XOR VY, VY
 MOV VC, 15
@@ -14,12 +18,12 @@ XOR VY, VY
 MOV VC, 14
 ITOS R1, P2
 TEXT R1
-MOV R1, 1
+MOV R0, 1
 MOV R2, 6
-RNDR P1, R1, R2
-; Free R1 (last use)
+RNDR R1, R0, R2
+; Free R0 (last use)
 ; Free R2 (last use)
-MOV P2, P1
+MOV P2, R1
 XOR VX, VX
 MOV VY, 1
 SHL VY, 4
@@ -36,8 +40,8 @@ MOV R1, 42
 MOV R0, R1
 RND R0  ; Initialize RNG with seed
 ; Free R1 (last use)
-RND P1
-MOV P2, P1
+RND R1
+MOV P2, R1
 XOR VX, VX
 MOV VY, 1
 SHL VY, 5

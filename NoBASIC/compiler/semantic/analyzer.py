@@ -7,7 +7,7 @@ from ..utils.error import SemanticError
 from ..parser.ast import (
     Program, Statement, Expression, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
-    FunctionCallStmt, VariableExpr, ListAccessExpr, MatrixAccessExpr,
+    FunctionCallStmt, FunctionDefStmt, ReturnStmt, VariableExpr, ListAccessExpr, MatrixAccessExpr,
     MemberAccessExpr, FunctionCallExpr, LiteralExpr, BinaryExpr, UnaryExpr, GroupingExpr,
     PxlOnStmt, PxlOffStmt, LineStmt, CircleStmt, TextStmt,
     SetLayerStmt, SpriteOnStmt, SpriteOffStmt, PlayToneStmt,
@@ -49,6 +49,8 @@ class SymbolTable:
         self.labels: Set[str] = set()
         self.structs: Dict[str, StructType] = {}
         self.struct_instances: Dict[str, str] = {}  # var_name -> struct_name
+        # Backwards-compatible view of global variables for tests/diagnostics
+        self.variables = self.scopes[0].variables
 
     def push_scope(self):
         """Enter a new local scope."""
@@ -154,6 +156,8 @@ class SemanticAnalyzer:
         self.symbol_table = SymbolTable()
         self.filename = "<stdin>"
         self.pending_gotos = []  # List of (label_name, line, column) tuples
+        self.functions: Dict[str, FunctionDefStmt] = {}  # function_name -> definition
+        self.current_function: Optional[str] = None  # Currently analyzing function (or None for global)
 
     def analyze(self, program: Program, filename: str = "<stdin>"):
         """
@@ -174,6 +178,14 @@ class SemanticAnalyzer:
         for name in ["MatA", "MatB", "MatC"]:  # Some matrices
             self.symbol_table.matrices.add(name)
 
+        # First pass: collect all function definitions
+        for stmt in program.statements:
+            if isinstance(stmt, FunctionDefStmt):
+                if stmt.name in self.functions:
+                    raise SemanticError(f"Function '{stmt.name}' already defined", 0, 0)
+                self.functions[stmt.name] = stmt
+
+        # Second pass: analyze all statements
         for stmt in program.statements:
             self.analyze_statement(stmt)
 
@@ -186,6 +198,10 @@ class SemanticAnalyzer:
         """Analyze a statement."""
         if isinstance(stmt, VarDeclarationStmt):
             self.analyze_var_declaration(stmt)
+        elif isinstance(stmt, FunctionDefStmt):
+            self.analyze_function_def(stmt)
+        elif isinstance(stmt, ReturnStmt):
+            self.analyze_return(stmt)
         elif isinstance(stmt, AssignmentStmt):
             self.analyze_assignment(stmt)
         elif isinstance(stmt, IfStmt):
@@ -210,6 +226,37 @@ class SemanticAnalyzer:
             # These statements have expressions that need checking
             self.analyze_graphics_sound_statement(stmt)
         # Other statements don't need special analysis
+
+    def analyze_function_def(self, stmt: FunctionDefStmt):
+        """Analyze a function definition."""
+        # Save current function context
+        prev_function = self.current_function
+        self.current_function = stmt.name
+        
+        # Push new scope for function
+        self.symbol_table.push_scope()
+        
+        # Define parameters as variables in function scope
+        for param in stmt.params:
+            self.symbol_table.define_variable(param, DataType.NUMBER)
+        
+        # Analyze function body
+        for body_stmt in stmt.body:
+            self.analyze_statement(body_stmt)
+        
+        # Pop function scope
+        self.symbol_table.pop_scope()
+        
+        # Restore previous function context
+        self.current_function = prev_function
+
+    def analyze_return(self, stmt: ReturnStmt):
+        """Analyze a return statement."""
+        if self.current_function is None:
+            raise SemanticError("Return outside of function", 0, 0)
+        
+        if stmt.value:
+            self.analyze_expression(stmt.value)
 
     def analyze_function_call_statement(self, stmt: FunctionCallStmt):
         """Analyze a function call statement."""
@@ -380,16 +427,53 @@ class SemanticAnalyzer:
                 return DataType.NUMBER  # Logical results
             return DataType.NUMBER
         elif isinstance(expr, UnaryExpr):
+            # Support ++/-- on assignable targets
+            if expr.operator in ("++", "--"):
+                target = expr.expression
+                if isinstance(target, (VariableExpr, ListAccessExpr, MatrixAccessExpr, MemberAccessExpr)):
+                    # Ensure target is defined as numeric
+                    # For variables, implicitly define if needed
+                    if isinstance(target, VariableExpr) and not self.symbol_table.is_variable_defined(target.name):
+                        self.symbol_table.define_variable(target.name, DataType.NUMBER)
+                    # Analyze inner expression to catch index/member types
+                    self.analyze_expression(target)
+                    return DataType.NUMBER
+                else:
+                    raise SemanticError("Increment/decrement requires an assignable target", 0, 0)
             return self.analyze_expression(expr.expression)
         elif isinstance(expr, FunctionCallExpr):
-            # Check if function is defined
+            # Check if function is user-defined first
+            func_name_lower = expr.name.lower()
+            if func_name_lower in self.functions:
+                # User-defined function
+                func_def = self.functions[func_name_lower]
+                # Check argument count
+                if len(expr.arguments) != len(func_def.params):
+                    raise SemanticError(
+                        f"Wrong number of arguments for function '{expr.name}': expected {len(func_def.params)}, got {len(expr.arguments)}", 
+                        self.filename
+                    )
+                # Analyze argument expressions
+                for arg in expr.arguments:
+                    self.analyze_expression(arg)
+                # User-defined functions return numbers
+                return DataType.NUMBER
+            
+            # Check if function is built-in
             func_name = expr.name.upper()
             if not self.is_builtin_function(func_name):
                 raise SemanticError(f"Undefined function '{expr.name}'", self.filename)
             # Check argument count
             expected_args = self.get_function_arg_count(func_name)
-            if expected_args is not None and len(expr.arguments) != expected_args:
-                raise SemanticError(f"Wrong number of arguments for function '{expr.name}': expected {expected_args}, got {len(expr.arguments)}", self.filename)
+            if expected_args is not None:
+                if isinstance(expected_args, (list, tuple, set)):
+                    if len(expr.arguments) not in expected_args:
+                        raise SemanticError(
+                            f"Wrong number of arguments for function '{expr.name}': expected {list(expected_args)}, got {len(expr.arguments)}",
+                            self.filename
+                        )
+                elif len(expr.arguments) != expected_args:
+                    raise SemanticError(f"Wrong number of arguments for function '{expr.name}': expected {expected_args}, got {len(expr.arguments)}", self.filename)
             # Check argument types
             expected_types = self.get_function_arg_types(func_name)
             for i, arg in enumerate(expr.arguments):
@@ -417,6 +501,7 @@ class SemanticAnalyzer:
             # String functions
             "STRLEN", "STRCPY", "STRCAT", "STRCMP", "STRUPR", "STRLWR", "STRREV",
             "STRFIND", "STRFINDI", "STREXT", "STREXTI", "SUB",
+            "INSTRING", "UPSTRING", "LOWSTRING", "LENSTRING",
             # Bit manipulation functions
             "BTST", "BSET", "BCLR", "BFLIP", "CLZ", "CTZ", "POPCNT",
             # Shift and rotate functions
@@ -433,7 +518,7 @@ class SemanticAnalyzer:
             # Graphics functions
             "CLRDRAW", "SETLAYER", "PXLON", "PXLOFF", "LINE", "CIRCLE", "TEXT", "RECT",
             # List/Array functions
-            "SUM", "MEAN", "DIM",
+            "SUM", "MEAN", "DIM", "SORTA", "SORTD", "FILL", "SEQ", "REVERSE",
             # I/O functions
             "GETKEY", "PAUSE"
         ]
@@ -472,9 +557,11 @@ class SemanticAnalyzer:
             # Graphics functions
             "CLRDRAW": 0, "SETLAYER": 1, "PXLON": 3, "PXLOFF": 2, "LINE": 5, "CIRCLE": 4, "TEXT": 4, "RECT": 5,
             # List/Array functions
-            "SUM": 1, "MEAN": 1, "DIM": 1,
+            "SUM": 1, "MEAN": 1, "DIM": 1, "SORTA": 1, "SORTD": 1, "FILL": 2, "SEQ": (4, 5), "REVERSE": 1,
             # I/O functions
-            "GETKEY": 0, "PAUSE": 0
+            "GETKEY": 0, "PAUSE": 0,
+            # Additional String functions
+            "INSTRING": 2, "UPSTRING": 1, "LOWSTRING": 1, "LENSTRING": 1,
         }
         return arg_counts.get(name)
 
@@ -521,8 +608,15 @@ class SemanticAnalyzer:
             "RECT": [DataType.NUMBER, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER],
             # List/Array functions
             "SUM": [DataType.LIST], "MEAN": [DataType.LIST], "DIM": [DataType.LIST],
+            "SORTA": [DataType.LIST], "SORTD": [DataType.LIST], "FILL": [DataType.LIST, DataType.NUMBER],
+            "REVERSE": [DataType.LIST],
+            # Seq parameters are loosely typed: expression, iterator, start, end, [step]
+            "SEQ": [None, None, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER],
             # I/O functions
-            "GETKEY": [], "PAUSE": []
+            "GETKEY": [], "PAUSE": [],
+            # Additional string functions
+            "INSTRING": [DataType.STRING, DataType.STRING], "UPSTRING": [DataType.STRING],
+            "LOWSTRING": [DataType.STRING], "LENSTRING": [DataType.STRING],
         }
         return arg_types.get(name, [])
 
@@ -533,6 +627,9 @@ class SemanticAnalyzer:
             "STRCPY": DataType.STRING, "STRCAT": DataType.STRING, "STRUPR": DataType.STRING, 
             "STRLWR": DataType.STRING, "STRREV": DataType.STRING, "STREXT": DataType.STRING, 
             "STREXTI": DataType.STRING, "SUB": DataType.STRING, "STR": DataType.STRING,
+            # Additional string functions
+            "UPSTRING": DataType.STRING, "LOWSTRING": DataType.STRING,
+            "INSTRING": DataType.NUMBER, "LENSTRING": DataType.NUMBER,
             # Most others return numbers
         }
         return return_types.get(name, DataType.NUMBER)

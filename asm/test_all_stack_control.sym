@@ -1,0 +1,21 @@
+# Symbol table
+# Format: <symbol> <value>
+test_enter_leave 0x0008
+test_callz_yes 0x0040
+callz_sub 0x0061
+test_callz_no 0x0067
+no_callz_sub 0x0080
+test_callnz_yes 0x0086
+callnz_sub 0x00A7
+test_callnz_no 0x00AD
+no_callnz_sub 0x00C6
+test_retn 0x00CC
+retn_sub 0x00E8
+test_loopz 0x00EF
+loopz_start 0x00FB
+loopz_fail 0x0118
+test_while 0x0120
+while_start 0x012C
+while_fail 0x014A
+test_success 0x0152
+end_tests 0x0157

@@ -1,0 +1,15 @@
+// Test 1: Simple function with return value
+Function Add(a, b)
+    Return a + b
+End
+
+result = Add(5, 3)
+Disp result
+
+// Test 2: Function with multiple parameters
+Function Multiply(x, y)
+    Return x * y
+End
+
+prod = Multiply(6, 7)
+Disp prod

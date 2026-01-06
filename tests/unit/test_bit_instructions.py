@@ -14,7 +14,7 @@ class TestBitInstructions:
         """Test AND instruction with register operands."""
         # Load test program: MOV R0, 0xAA; MOV R1, 0x55; AND R0, R1
         program = [
-            0x06, 0x08, 0xE7, 0x00, 0xAA,  # MOV R0, 0xAA
+            0x06, 0x04, 0xE7, 0xAA,        # MOV R0, 0xAA
             0x06, 0x04, 0xE8, 0x55,        # MOV R1, 0x55
             0x10, 0x00, 0xE7, 0xE8,        # AND R0, R1
             0x00                             # HLT
@@ -30,7 +30,7 @@ class TestBitInstructions:
         """Test OR instruction with register operands."""
         # Load test program: MOV R0, 0xAA; MOV R1, 0x55; OR R0, R1
         program = [
-            0x06, 0x08, 0xE7, 0x00, 0xAA,  # MOV R0, 0xAA
+            0x06, 0x04, 0xE7, 0xAA,        # MOV R0, 0xAA
             0x06, 0x04, 0xE8, 0x55,        # MOV R1, 0x55
             0x11, 0x00, 0xE7, 0xE8,        # OR R0, R1
             0x00                             # HLT
@@ -46,7 +46,7 @@ class TestBitInstructions:
         """Test XOR instruction with register operands."""
         # Load test program: MOV R0, 0xAA; MOV R1, 0x55; XOR R0, R1
         program = [
-            0x06, 0x08, 0xE7, 0x00, 0xAA,  # MOV R0, 0xAA
+            0x06, 0x04, 0xE7, 0xAA,        # MOV R0, 0xAA
             0x06, 0x04, 0xE8, 0x55,        # MOV R1, 0x55
             0x12, 0x00, 0xE7, 0xE8,        # XOR R0, R1
             0x00                             # HLT
@@ -62,7 +62,7 @@ class TestBitInstructions:
         """Test NOT instruction."""
         # Load test program: MOV R0, 0xAA; NOT R0
         program = [
-            0x06, 0x08, 0xE7, 0x00, 0xAA,  # MOV R0, 0xAA
+            0x06, 0x04, 0xE7, 0xAA,        # MOV R0, 0xAA
             0x13, 0x00, 0xE7,              # NOT R0
             0x00                             # HLT
         ]
@@ -93,7 +93,7 @@ class TestBitInstructions:
         """Test SHR instruction."""
         # Load test program: MOV R0, 0xF0; MOV R1, 4; SHR R0, R1
         program = [
-            0x06, 0x08, 0xE7, 0x00, 0xF0,  # MOV R0, 0xF0
+            0x06, 0x04, 0xE7, 0xF0,        # MOV R0, 0xF0
             0x06, 0x04, 0xE8, 0x04,        # MOV R1, 4
             0x15, 0x00, 0xE7, 0xE8,        # SHR R0, R1
             0x00                             # HLT
@@ -109,7 +109,7 @@ class TestBitInstructions:
         """Test ROL instruction."""
         # Load test program: MOV R0, 0xAA; MOV R1, 1; ROL R0, R1
         program = [
-            0x06, 0x08, 0xE7, 0x00, 0xAA,  # MOV R0, 0xAA
+            0x06, 0x04, 0xE7, 0xAA,        # MOV R0, 0xAA
             0x06, 0x04, 0xE8, 0x01,        # MOV R1, 1
             0x16, 0x00, 0xE7, 0xE8,        # ROL R0, R1
             0x00                             # HLT
@@ -141,7 +141,7 @@ class TestBitInstructions:
         """Test BTST instruction."""
         # Load test program: MOV R0, 0xAA; BTST R0, 1
         program = [
-            0x06, 0x08, 0xE7, 0x00, 0xAA,  # MOV R0, 0xAA
+            0x06, 0x04, 0xE7, 0xAA,        # MOV R0, 0xAA
             0x6D, 0x04, 0xE7, 0x01,        # BTST R0, 1
             0x00                             # HLT
         ]
@@ -171,7 +171,7 @@ class TestBitInstructions:
         """Test BCLR instruction."""
         # Load test program: MOV R0, 0xFF; MOV R1, 0; BCLR R0, R1
         program = [
-            0x06, 0x08, 0xE7, 0x00, 0xFF,  # MOV R0, 0xFF
+            0x06, 0x04, 0xE7, 0xFF,        # MOV R0, 0xFF
             0x06, 0x04, 0xE8, 0x00,        # MOV R1, 0
             0x6F, 0x00, 0xE7, 0xE8,        # BCLR R0, R1
             0x00                             # HLT
@@ -187,7 +187,7 @@ class TestBitInstructions:
         """Test BFLIP instruction."""
         # Load test program: MOV R0, 0xAA; MOV R1, 0; BFLIP R0, R1
         program = [
-            0x06, 0x08, 0xE7, 0x00, 0xAA,  # MOV R0, 0xAA
+            0x06, 0x04, 0xE7, 0xAA,        # MOV R0, 0xAA
             0x06, 0x04, 0xE8, 0x00,        # MOV R1, 0
             0x70, 0x00, 0xE7, 0xE8,        # BFLIP R0, R1
             0x00                             # HLT

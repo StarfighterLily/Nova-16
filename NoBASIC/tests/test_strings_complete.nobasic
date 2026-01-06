@@ -1,0 +1,61 @@
+// Comprehensive String Operations Test
+// Tests: STRLEN, STRUPR, STRLWR, STRFIND, STRCAT, STRCPY
+
+Function TestStringLength()
+    Disp "Test STRLEN"
+    str = "hello"
+    len = LENSTRING(str)
+    Disp len
+End
+
+Function TestStringToUpper()
+    Disp "Test UPSTRING"
+    str = "hello"
+    upper = UPSTRING(str)
+    Disp upper
+End
+
+Function TestStringToLower()
+    Disp "Test LOWSTRING"
+    str = "WORLD"
+    lower = LOWSTRING(str)
+    Disp lower
+End
+
+Function TestStringFind()
+    Disp "Test INSTRING"
+    haystack = "helloworld"
+    needle = "world"
+    pos = INSTRING(haystack, needle)
+    Disp pos
+End
+
+Function TestStringOperations()
+    Disp "=== String Test Suite ==="
+    
+    // Test 1: STRLEN
+    TestStringLength()
+    
+    // Test 2: UPSTRING
+    TestStringToUpper()
+    
+    // Test 3: LOWSTRING
+    TestStringToLower()
+    
+    // Test 4: INSTRING
+    TestStringFind()
+    
+    // Test 5: Combined operations
+    Disp "Combined test"
+    base = "hello"
+    len = LENSTRING(base)
+    Disp len
+    upper = UPSTRING(base)
+    Disp upper
+    
+    Disp "=== Tests Complete ==="
+End
+
+// Entry point
+TestStringOperations()
+Disp "Done"

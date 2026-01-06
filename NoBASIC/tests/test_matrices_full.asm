@@ -1,0 +1,357 @@
+; NoBASIC compiler output
+; Generated for Nova-16
+ORG 0x0200
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV SP, P7
+MOV FP, SP
+CALL _func_testallmatrices_0
+HLT
+
+_func_testallmatrices_0:
+; Function: testallmatrices
+; Parameters: 
+PUSH FP
+MOV FP, SP
+MOV VX, 0
+MOV VC, 15
+TEXT STR0
+ADD VY, 8
+MOV R1, 1
+XOR P1, P1
+XOR P2, P2
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x3000
+ADD P4, P3
+MOV [P4], R1
+; Free P1 (last use)
+; Free P2 (last use)
+MOV R1, 1
+SHL R1, 1
+MOV P1, 1
+MOV P2, 1
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x3000
+ADD P4, P3
+MOV [P4], R1
+; Free P1 (last use)
+; Free P2 (last use)
+MOV R1, 3
+MOV P1, 1
+SHL P1, 1
+MOV P2, 1
+SHL P2, 1
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x3000
+ADD P4, P3
+MOV [P4], R1
+; Free P1 (last use)
+; Free P2 (last use)
+MOV R1, 1
+SHL R1, 2
+MOV P1, 3
+MOV P2, 3
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x3000
+ADD P4, P3
+MOV [P4], R1
+; Free P1 (last use)
+; Free P2 (last use)
+MOV R1, 10
+XOR P1, P1
+XOR P2, P2
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x30C8
+ADD P4, P3
+MOV [P4], R1
+; Free P1 (last use)
+; Free P2 (last use)
+MOV R1, 11
+XOR P1, P1
+MOV P2, 1
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x30C8
+ADD P4, P3
+MOV [P4], R1
+; Free P1 (last use)
+; Free P2 (last use)
+MOV R1, 20
+MOV P1, 1
+XOR P2, P2
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x30C8
+ADD P4, P3
+MOV [P4], R1
+; Free P1 (last use)
+; Free P2 (last use)
+MOV R1, 21
+MOV P1, 1
+MOV P2, 1
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x30C8
+ADD P4, P3
+MOV [P4], R1
+; Free P1 (last use)
+; Free P2 (last use)
+MOV R1, 99
+MOV P1, 5
+MOV P2, 5
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x3190
+ADD P4, P3
+MOV [P4], R1
+; Free P1 (last use)
+; Free P2 (last use)
+MOV VX, 0
+MOV VC, 15
+TEXT STR1
+ADD VY, 8
+XOR P1, P1
+XOR P2, P2
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x3000
+ADD P4, P3
+MOV R1, [P4]
+; Free P1 (last use)
+; Free P2 (last use)
+MOV P0, 289
+MOV [P0], R1
+MOV P0, 288
+MOV P0, [P0]
+ITOS P1, P0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV P1, 1
+MOV P2, 1
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x3000
+ADD P4, P3
+MOV R1, [P4]
+; Free P1 (last use)
+; Free P2 (last use)
+MOV P0, 291
+MOV [P0], R1
+MOV P0, 290
+MOV P0, [P0]
+ITOS P1, P0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV P1, 1
+SHL P1, 1
+MOV P2, 1
+SHL P2, 1
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x3000
+ADD P4, P3
+MOV R1, [P4]
+; Free P1 (last use)
+; Free P2 (last use)
+MOV P0, 293
+MOV [P0], R1
+MOV P0, 292
+MOV P0, [P0]
+ITOS P1, P0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV P1, 3
+MOV P2, 3
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x3000
+ADD P4, P3
+MOV R1, [P4]
+; Free P1 (last use)
+; Free P2 (last use)
+MOV P0, 295
+MOV [P0], R1
+MOV P0, 294
+MOV P0, [P0]
+ITOS P1, P0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV VX, 0
+MOV VC, 15
+TEXT STR2
+ADD VY, 8
+XOR P1, P1
+XOR P2, P2
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x30C8
+ADD P4, P3
+MOV R1, [P4]
+; Free P1 (last use)
+; Free P2 (last use)
+MOV P0, 297
+MOV [P0], R1
+MOV P0, 296
+MOV P0, [P0]
+ITOS P1, P0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+XOR P1, P1
+MOV P2, 1
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x30C8
+ADD P4, P3
+MOV R1, [P4]
+; Free P1 (last use)
+; Free P2 (last use)
+MOV P0, 299
+MOV [P0], R1
+MOV P0, 298
+MOV P0, [P0]
+ITOS P1, P0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV P1, 1
+XOR P2, P2
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x30C8
+ADD P4, P3
+MOV R1, [P4]
+; Free P1 (last use)
+; Free P2 (last use)
+MOV P0, 301
+MOV [P0], R1
+MOV P0, 300
+MOV P0, [P0]
+ITOS P1, P0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV P1, 1
+MOV P2, 1
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x30C8
+ADD P4, P3
+MOV R1, [P4]
+; Free P1 (last use)
+; Free P2 (last use)
+MOV P0, 303
+MOV [P0], R1
+MOV P0, 302
+MOV P0, [P0]
+ITOS P1, P0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV VX, 0
+MOV VC, 15
+TEXT STR3
+ADD VY, 8
+MOV P1, 5
+MOV P2, 5
+MOV P3, P1
+MUL P3, 20
+MOV P4, P2
+MUL P4, 2
+ADD P3, P4
+MOV P4, 0x3190
+ADD P4, P3
+MOV R1, [P4]
+; Free P1 (last use)
+; Free P2 (last use)
+MOV P0, 305
+MOV [P0], R1
+MOV P0, 304
+MOV P0, [P0]
+ITOS P1, P0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV VX, 0
+MOV VC, 15
+TEXT STR4
+ADD VY, 8
+MOV R0, 0
+MOV SP, FP
+POP FP
+RET
+
+STR0: DEFSTR "=== Matrix Test ==="
+STR1: DEFSTR "MatA diag"
+STR2: DEFSTR "MatB vals"
+STR3: DEFSTR "MatC val"
+STR4: DEFSTR "=== Complete ==="

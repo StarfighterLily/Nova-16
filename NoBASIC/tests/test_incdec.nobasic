@@ -1,0 +1,14 @@
+Disp "IncDec tests"
+GLOBAL X
+X=5
+Disp X
+Disp X++
+Disp X
+Disp ++X
+Disp X
+GLOBAL Y
+Y=3
+Disp Y--
+Disp Y
+Disp --Y
+Disp Y

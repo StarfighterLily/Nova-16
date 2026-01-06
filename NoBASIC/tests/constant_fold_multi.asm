@@ -1,45 +1,45 @@
+; NoBASIC compiler output
+; Generated for Nova-16
 ORG 0x0200
-MOV SP, 0xF000
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV SP, P7
 MOV FP, SP
 ; Constant folded: 5 + 3 = 8
-MOV P1, 8
-MOV P2, P1
+MOV R1, 8
+MOV P2, R1
 ; Constant folded: 10 * 2 = 20
-MOV R0, 20
-MOV P3, R0
+MOV R1, 20
+MOV P3, R1
 ; Constant folded: 1 << 4 = 16
 MOV R1, 16
 MOV P4, R1
 ; Constant folded: -(42) = -42
-MOV R2, -42
-MOV P5, R2
+MOV R1, -42
+MOV P5, R1
 MOV VX, 0
-MOV VY, 0
 MOV VC, 15
 TEXT STR0
-MOV R3, P2
-ITOS R4, R3
+ADD VY, 8
+ITOS P1, P2
 MOV VX, 0
-MOV VY, 0
 MOV VC, 15
-TEXT R4
-MOV R4, P3
-ITOS R5, R4
+TEXT P1
+ADD VY, 8
+ITOS P1, P3
 MOV VX, 0
-MOV VY, 0
 MOV VC, 15
-TEXT R5
-MOV R5, P4
-ITOS R6, R5
+TEXT P1
+ADD VY, 8
+ITOS P1, P4
 MOV VX, 0
-MOV VY, 0
 MOV VC, 15
-TEXT R6
-MOV R6, P5
-ITOS R7, R6
+TEXT P1
+ADD VY, 8
+ITOS P1, P5
 MOV VX, 0
-MOV VY, 0
 MOV VC, 15
-TEXT R7
+TEXT P1
+ADD VY, 8
 HLT
 STR0: DEFSTR "Results:"

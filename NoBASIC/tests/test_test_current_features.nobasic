@@ -1,0 +1,11 @@
+
+// Test current NoBASIC features (baseline)
+x = 10
+y = 20
+z = x + y
+
+For i = 0 To 5
+    Disp i
+Next
+
+Disp "Test complete"

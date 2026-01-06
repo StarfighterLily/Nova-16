@@ -1,12 +1,13 @@
+; NoBASIC compiler output
+; Generated for Nova-16
 ORG 0x0200
 MOV SP, 0xFFFF
 MOV FP, SP
-MOV P1, 42
-MOV P2, P1
-MOV R1, 8192
+MOV R1, 42
+MOV P2, R1
+MOV P1, 8192
 ; MEMREAD - Read from memory
-MOV P1, R1
-MOV R0, [P1]
+MOV R1, [P1]
 ; Free P1 (last use)
-MOV P2, R0
+MOV P2, R1
 HLT

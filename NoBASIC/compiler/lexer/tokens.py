@@ -46,6 +46,8 @@ class TokenType(Enum):
     GLOBAL = "GLOBAL"
     LOCAL = "LOCAL"
     ASM = "ASM"
+    FUNCTION = "FUNCTION"
+    RETURN = "RETURN"
 
     # Built-in functions
     SIN = "SIN"
@@ -65,6 +67,10 @@ class TokenType(Enum):
     MEAN = "MEAN"
     MEMREAD = "MEMREAD"
     MEMWRITE = "MEMWRITE"
+    INSTRING = "INSTRING"
+    UPSTRING = "UPSTRING"
+    LOWSTRING = "LOWSTRING"
+    LENSTRING = "LENSTRING"
 
     # Operators
     PLUS = "+"
@@ -85,6 +91,8 @@ class TokenType(Enum):
     AND = "AND"
     OR = "OR"
     NOT = "NOT"
+    INCREMENT = "++"
+    DECREMENT = "--"
 
     # Delimiters
     LPAREN = "("
@@ -164,27 +172,12 @@ KEYWORDS = {
     "global": TokenType.GLOBAL,
     "local": TokenType.LOCAL,
     "asm": TokenType.ASM,
+    "function": TokenType.FUNCTION,
+    "return": TokenType.RETURN,
     "and": TokenType.AND,
     "or": TokenType.OR,
     "not": TokenType.NOT,
     # Built-in functions that can be used as keywords
-    "sin": TokenType.SIN,
-    "cos": TokenType.COS,
-    "tan": TokenType.TAN,
-    "sqrt": TokenType.SQRT,
-    "abs": TokenType.ABS,
-    "int": TokenType.INT,
-    "round": TokenType.ROUND,
-    "rand": TokenType.RAND,
-    "rndr": TokenType.RNDR,
-    "randomize": TokenType.RANDOMIZE,
-    "length": TokenType.LENGTH,
-    "sub": TokenType.SUB,
-    "concat": TokenType.CONCAT,
-    "sum": TokenType.SUM,
-    "mean": TokenType.MEAN,
-    "memread": TokenType.MEMREAD,
-    "memwrite": TokenType.MEMWRITE,
 }
 
 # Single character tokens

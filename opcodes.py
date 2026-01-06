@@ -228,11 +228,11 @@ opcodes = [
     ("LEAVE",              "0x9C", 0), # Leave subroutine (stack frame) # implemented
 
     # Advanced control flow and loops
-    ("CALLZ",              "0x9D", 1), # Call if zero (conditional subroutine) # unimplemented
-    ("CALLNZ",             "0x9E", 1), # Call if not zero # unimplemented
-    ("RETN",               "0x9F", 1), # Return with value (pop to register) # unimplemented
-    ("LOOPZ",              "0xA0", 2), # Loop while zero (counter, label) # unimplemented
-    ("WHILE",              "0xA1", 1), # While loop start (with condition) # unimplemented
+    ("CALLZ",              "0x9D", 1), # Call if zero (conditional subroutine) # implemented
+    ("CALLNZ",             "0x9E", 1), # Call if not zero # implemented
+    ("RETN",               "0x9F", 1), # Return with value (pop to register) # implemented
+    ("LOOPZ",              "0xA0", 2), # Loop while zero (counter, label) # implemented
+    ("WHILE",              "0xA1", 1), # While loop start (with condition) # implemented
 
     ("VC",                 "0xC8", 1), # Video Color
     ("P0:",                "0xC9", 1), # P0 high byte

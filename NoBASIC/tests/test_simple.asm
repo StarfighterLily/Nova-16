@@ -1,0 +1,13 @@
+; NoBASIC compiler output
+; Generated for Nova-16
+ORG 0x0200
+MOV SP, 0xFFFF
+MOV FP, SP
+MOV R1, 10
+MOV P2, R1
+MOV R1, 20
+MOV P3, R1
+MOV R1, P2
+ADD R1, P3
+MOV P4, R1
+HLT

@@ -1,0 +1,17 @@
+
+// Test proposed bit manipulation functions
+// Will work AFTER bit functions are implemented
+
+a = 0xFF
+b = 0x0F
+
+result1 = BitAnd(a, b)      // Should be 0x0F
+result2 = BitOr(0xF0, 0x0F) // Should be 0xFF
+result3 = BitXor(a, b)      // Should be 0xF0
+
+Disp "BitAnd result: "
+Disp result1
+Disp "BitOr result: "
+Disp result2
+Disp "BitXor result: "
+Disp result3

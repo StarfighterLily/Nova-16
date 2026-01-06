@@ -1,0 +1,6 @@
+# Symbol table
+# Format: <symbol> <value>
+_func_fib_0 0x023F
+L3 0x026A
+L4 0x026E
+L1 0x028A

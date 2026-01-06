@@ -1,0 +1,9 @@
+// Reverse list test without literals
+Fill(L1, 0)
+Seq(L1, N, 1, 5)
+Reverse(L1)
+Disp "Reversed list:"
+For i = 1 To 5
+    Disp L1(i)
+Next
+Pause

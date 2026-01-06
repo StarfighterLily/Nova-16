@@ -1,0 +1,5 @@
+// Math function test
+x = 30
+y = sin(x)
+z = cos(x)
+w = y + z

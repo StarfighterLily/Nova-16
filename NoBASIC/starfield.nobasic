@@ -1,19 +1,19 @@
 SetLayer(1)
 For x = 0 to 25
-    For y = 0 to 25
+    For y = 0 to 20
         PxlOn(rnd()+x, rnd()-y, rndr(0x01, 0x05))
     Next
 Next
 SetLayer(2)
-For x = 0 to 25
-    For y = 0 to 25
+For x = 0 to 20
+    For y = 0 to 15
         PxlOn(rnd()+x, rnd()+x, rndr(0x06, 0x0A))
     Next
 Next
 SetLayer(3)
-For x = 0 to 25
-    For y = 0 to 25
-        PxlOn(rnd()+x, rnd()-y, rndr(0x0B, 0x0F))
+For x = 0 to 15
+    For y = 0 to 10
+        PxlOn(rnd()-x, rnd()-y, rndr(0x0B, 0x0F))
     Next
 Next
 
@@ -33,7 +33,7 @@ LOOP:
 
 SPINWHEELS:
     INC SA
-    CMP SA, 0x0CFF
+    CMP SA, 0x2FFF
     JNZ SPINWHEELS
     XOR SA, SA
     RET

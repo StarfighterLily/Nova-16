@@ -1,0 +1,8 @@
+// Conditional with graphics output
+ClrDraw
+x = 15
+If x > 10 Then
+    PxlOn(10, 10, 31)
+Else
+    PxlOn(20, 20, 15)
+End

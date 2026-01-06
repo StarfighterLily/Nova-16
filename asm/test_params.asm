@@ -1,0 +1,16 @@
+ORG 0x0200
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV FP, P7
+MOV P1, 200
+PUSH P1
+MOV P1, 100
+PUSH P1
+CALL _func_testfunc_0
+_func_testfunc_0:
+PUSH FP
+MOV FP, SP
+MOV R0, 0
+MOV SP, FP
+POP FP
+RET

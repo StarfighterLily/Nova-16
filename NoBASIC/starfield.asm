@@ -1,5 +1,9 @@
+; NoBASIC compiler output
+; Generated for Nova-16
 ORG 0x0200
-MOV SP, 0xFFFF
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV SP, P7
 MOV FP, SP
 MOV VM, 0
 MOV VL, 1
@@ -12,26 +16,28 @@ CMP P2, R0
 JGT L2
 XOR R0, R0
 MOV P3, R0
-MOV R0, 25
+MOV R0, 20
 MOV P5, R0
 L3:
 CMP P3, P5
 JGT L4
-RND R3
-MOV R0, R3
+RND R1
+; Preserve left operand in register across right-side evaluation
+MOV R2, R1
+MOV R0, R2
 ADD R0, P2
-; Free R3 (last use)
 MOV VX, R0
-RND R3
-MOV R0, R3
+RND R2
+; Preserve left operand in register across right-side evaluation
+MOV R4, R2
+MOV R0, R4
 SUB R0, P3
-; Free R3 (last use)
 MOV VY, R0
-MOV R1, 1
-MOV R2, 5
-RNDR R0, R1, R2
-; Free R1 (last use)
-; Free R2 (last use)
+MOV R4, 1
+MOV R6, 5
+RNDR R0, R4, R6
+; Free R4 (last use)
+; Free R6 (last use)
 MOV VC, R0
 SWRITE VC
 INC P3
@@ -45,33 +51,35 @@ MOV VL, 1
 SHL VL, 1
 XOR R1, R1
 MOV P2, R1
-MOV R1, 25
+MOV R1, 20
 MOV R0, R1
 L5:
 CMP P2, R0
 JGT L6
 XOR R0, R0
 MOV P3, R0
-MOV R0, 25
+MOV R0, 15
 MOV P5, R0
 L7:
 CMP P3, P5
 JGT L8
-RND R3
-MOV R0, R3
+RND R1
+; Preserve left operand in register across right-side evaluation
+MOV R2, R1
+MOV R0, R2
 ADD R0, P2
-; Free R3 (last use)
 MOV VX, R0
-RND R3
-MOV R0, R3
+RND R2
+; Preserve left operand in register across right-side evaluation
+MOV R4, R2
+MOV R0, R4
 ADD R0, P2
-; Free R3 (last use)
 MOV VY, R0
-MOV R1, 6
-MOV R2, 10
-RNDR R0, R1, R2
-; Free R1 (last use)
-; Free R2 (last use)
+MOV R4, 6
+MOV R6, 10
+RNDR R0, R4, R6
+; Free R4 (last use)
+; Free R6 (last use)
 MOV VC, R0
 SWRITE VC
 INC P3
@@ -84,33 +92,35 @@ MOV VM, 0
 MOV VL, 3
 XOR R1, R1
 MOV P2, R1
-MOV R1, 25
+MOV R1, 15
 MOV R0, R1
 L9:
 CMP P2, R0
 JGT L10
 XOR R0, R0
 MOV P3, R0
-MOV R0, 25
+MOV R0, 10
 MOV P5, R0
 L11:
 CMP P3, P5
 JGT L12
-RND R3
-MOV R0, R3
-ADD R0, P2
-; Free R3 (last use)
+RND R1
+; Preserve left operand in register across right-side evaluation
+MOV R2, R1
+MOV R0, R2
+SUB R0, P2
 MOV VX, R0
-RND R3
-MOV R0, R3
+RND R2
+; Preserve left operand in register across right-side evaluation
+MOV R4, R2
+MOV R0, R4
 SUB R0, P3
-; Free R3 (last use)
 MOV VY, R0
-MOV R1, 11
-MOV R2, 15
-RNDR R0, R1, R2
-; Free R1 (last use)
-; Free R2 (last use)
+MOV R4, 11
+MOV R6, 15
+RNDR R0, R4, R6
+; Free R4 (last use)
+; Free R6 (last use)
 MOV VC, R0
 SWRITE VC
 INC P3
@@ -139,7 +149,7 @@ LOOP:
 
 SPINWHEELS:
     INC SA
-    CMP SA, 0x0CFF
+    CMP SA, 0x2FFF
     JNZ SPINWHEELS
     XOR SA, SA
     RET

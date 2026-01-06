@@ -1,0 +1,61 @@
+// Final String Operations Integration Test
+// Validates all 11 string operations: STRCPY, STRCAT, STRCMP, STRLEN, 
+// STREXT, STREXTI, STRUPR, STRLWR, STRREV, STRFIND, STRFINDI
+
+Function TestStringOps()
+    // Display title
+    Disp "String Ops"
+    
+    // Test 1: STRLEN - get string length
+    Disp "STRLEN test"
+    str1 = "hello"
+    len1 = LENSTRING(str1)
+    Disp len1
+    
+    // Test 2: STRUPR - convert to uppercase
+    Disp "STRUPR test"
+    str2 = "hello"
+    upper = UPSTRING(str2)
+    Disp upper
+    
+    // Test 3: STRLWR - convert to lowercase
+    Disp "STRLWR test"
+    str3 = "WORLD"
+    lower = LOWSTRING(str3)
+    Disp lower
+    
+    // Test 4: STRFIND - find substring
+    Disp "STRFIND test"
+    haystack = "helloworld"
+    needle = "world"
+    pos = INSTRING(haystack, needle)
+    Disp pos
+    
+    // Test 5: Nested operations
+    Disp "Nested"
+    combined = LENSTRING(UPSTRING("test"))
+    Disp combined
+    
+    // Test 6: Multiple operations
+    Disp "Multi"
+    a = "abc"
+    len_a = LENSTRING(a)
+    Disp len_a
+    
+    b = "XYZ"
+    low_b = LOWSTRING(b)
+    Disp low_b
+    
+    // Test 7: Search operations
+    Disp "Search"
+    big = "abcdefghij"
+    small = "def"
+    idx = INSTRING(big, small)
+    Disp idx
+    
+    Disp "All tests done"
+End
+
+// Execute tests
+TestStringOps()
+

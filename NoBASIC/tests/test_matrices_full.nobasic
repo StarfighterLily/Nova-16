@@ -1,0 +1,52 @@
+// Comprehensive Matrix Operations Test
+// Tests: MatA, MatB, MatC with various indices
+
+Function TestAllMatrices()
+    Disp "=== Matrix Test ==="
+    
+    // Test MatA - fill diagonal with values
+    MatA(0, 0) = 1
+    MatA(1, 1) = 2
+    MatA(2, 2) = 3
+    MatA(3, 3) = 4
+    
+    // Test MatB - fill with sequential values
+    MatB(0, 0) = 10
+    MatB(0, 1) = 11
+    MatB(1, 0) = 20
+    MatB(1, 1) = 21
+    
+    // Test MatC - fill with different values
+    MatC(5, 5) = 99
+    
+    // Read and display from MatA
+    Disp "MatA diag"
+    a00 = MatA(0, 0)
+    Disp a00
+    a11 = MatA(1, 1)
+    Disp a11
+    a22 = MatA(2, 2)
+    Disp a22
+    a33 = MatA(3, 3)
+    Disp a33
+    
+    // Read and display from MatB
+    Disp "MatB vals"
+    b00 = MatB(0, 0)
+    Disp b00
+    b01 = MatB(0, 1)
+    Disp b01
+    b10 = MatB(1, 0)
+    Disp b10
+    b11 = MatB(1, 1)
+    Disp b11
+    
+    // Read from MatC
+    Disp "MatC val"
+    c55 = MatC(5, 5)
+    Disp c55
+    
+    Disp "=== Complete ==="
+End
+
+TestAllMatrices()

@@ -1,0 +1,37 @@
+// Edge case function tests: early return, default return, nested calls, graphics in function
+Function Add(a, b)
+    Return a + b
+End
+
+Function EarlySign(n)
+    If n < 0 Then
+        Return -1
+    End
+    Return 1
+End
+
+Function NoReturn(a)
+    temp = a * 2
+End
+
+Function NestedSum(a, b, c)
+    Return Add(a, b) + c
+End
+
+Function DrawTick(x, y, color)
+    PxlOn(x, y, color)
+    Return 0
+End
+
+r1 = EarlySign(-5)
+r2 = EarlySign(7)
+r3 = NoReturn(10)
+r4 = NestedSum(2, 3, 4)
+
+Disp r1
+Disp r2
+Disp r3
+Disp r4
+
+DrawTick(40, 30, 31)
+DrawTick(60, 50, 15)

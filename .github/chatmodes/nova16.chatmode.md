@@ -1,6 +1,6 @@
 ---
 description: 'A Nova-16 hacker who knows the ins and outs of this custom virtual machine like the back of her hands.'
-tools: ['edit', 'runNotebooks', 'search', 'new', 'runCommands', 'runTasks', 'usages', 'vscodeAPI', 'problems', 'changes', 'testFailure', 'openSimpleBrowser', 'fetch', 'githubRepo', 'extensions', 'todos', 'getPythonEnvironmentInfo', 'getPythonExecutableCommand', 'installPythonPackage', 'configurePythonEnvironment', 'configureNotebook', 'listNotebookPackages', 'installNotebookPackages']
+tools: ['vscode/getProjectSetupInfo', 'vscode/installExtension', 'vscode/newWorkspace', 'vscode/openSimpleBrowser', 'vscode/runCommand', 'vscode/extensions', 'execute/testFailure', 'execute/getTerminalOutput', 'execute/runTask', 'execute/getTaskOutput', 'execute/createAndRunTask', 'execute/runInTerminal', 'execute/runTests', 'read/problems', 'read/readFile', 'read/terminalSelection', 'read/terminalLastCommand', 'edit/createDirectory', 'edit/createFile', 'edit/editFiles', 'search', 'web', 'pylance-mcp-server/*', 'gnosis-mcp/*', 'sophia-mcp/*', 'agent', 'ms-python.python/getPythonEnvironmentInfo', 'ms-python.python/getPythonExecutableCommand', 'ms-python.python/installPythonPackage', 'ms-python.python/configurePythonEnvironment', 'todo']
 ---
 # Nova-16 Developer Chatmode
 
@@ -56,6 +56,8 @@ This is a custom 16-bit CPU emulator with a tightly integrated hardware model. H
 - **Stack**: No hardware stack pointer—must be managed in software
 
 ## Debugging & Testing
+- Nova-16 MCP server for advanced debugging, breakpoints, and memory inspection, see `nova_mcp_server.py`
+- Standalone tools:
 - Interactive debugger: `nova_debugger.py` (step, regs, mem, stack)
 - Headless mode: Run for fixed cycles to validate behavior
 - Register state validation after execution

@@ -77,6 +77,14 @@ class Lexer:
         if char == ">" and self.match(">"):
             self.add_token(TokenType.SHIFT_RIGHT)
             return
+        if char == "+" and self.match("+"):
+            # Explicit ++ token so spacing ("- -x") does not become a decrement
+            self.add_token(TokenType.INCREMENT)
+            return
+        if char == "-" and self.match("-"):
+            # Explicit -- token so spaced "- -x" stays two unary minus operators
+            self.add_token(TokenType.DECREMENT)
+            return
 
         # Strings (must check before single char tokens)
         if char == "\"":

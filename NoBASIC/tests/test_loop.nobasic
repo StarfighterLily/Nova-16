@@ -1,0 +1,5 @@
+// Simple loop test
+ClrDraw
+For i = 0 To 10
+    x = i * 2
+Next

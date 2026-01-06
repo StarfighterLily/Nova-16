@@ -1,0 +1,10 @@
+// Recursive Fibonacci test
+Function Fib(n)
+    If n < 2 Then
+        Return n
+    End
+    Return Fib(n - 1) + Fib(n - 2)
+End
+
+result = Fib(6)
+Disp result

@@ -1,0 +1,20 @@
+
+// Test proposed function feature
+// This will work AFTER function support is implemented
+
+Function Add(a, b)
+    Return a + b
+End
+
+Function Multiply(a, b)
+    Return a * b
+End
+
+// Test function calls
+result1 = Add(5, 3)      // Should be 8
+result2 = Multiply(6, 7) // Should be 42
+
+Disp "Add result: "
+Disp result1
+Disp "Multiply result: "
+Disp result2

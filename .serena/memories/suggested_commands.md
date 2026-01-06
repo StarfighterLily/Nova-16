@@ -1,0 +1,14 @@
+# Suggested Commands (PowerShell)
+- Install MCP deps: `pip install -r requirements-mcp.txt`
+- Install test deps: `pip install -r requirements-test.txt`
+- Run MCP server: `python nova_mcp_server.py`
+- Configure MCP helper: `python setup_mcp_server.py`
+- Verify MCP tools: `python verify_mcp_tools.py`
+- Run emulator (GUI): `python nova.py program.bin`
+- Run emulator headless: `python nova.py --headless program.bin --cycles 5000`
+- Assemble ASM→BIN: `python nova_assembler.py path\program.asm`
+- Compile NoBASIC→ASM/BIN: `python nobasic_compiler.py path\program.nobasic -v`
+- Debugger (interactive): `python nova_debugger.py program.bin`
+- Graphics monitor: `python nova_graphics_monitor.py program.bin --cycles 1000 --export out_dir`
+- MCP Claude config snippet (claude_desktop_config.json): command `python`, args `["C:\\Code\\Nova\\nova_mcp_server.py"]`
+- Tests: `pytest` (markers available: unit, integration, slow, assembler, graphics, sound, memory, cpu; see pytest.ini).

@@ -1,0 +1,13 @@
+
+// Test proposed list manipulation
+// Will work AFTER new list functions are implemented
+
+L1 = [3, 1, 4, 1, 5]
+Fill(L1, 0)      // Set all to 0
+SortA(L1)        // Sort ascending
+Seq(N, N, 1, 5)  // Generate 1 to 5
+
+Disp "Sorted list:"
+For i = 1 To 5
+    Disp L1(i)
+Next

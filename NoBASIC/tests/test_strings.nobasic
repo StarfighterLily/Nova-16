@@ -1,0 +1,38 @@
+// Test string functions: INSTRING, UPSTRING, LOWSTRING, LENSTRING
+
+Function TestStrings()
+    // Test LENSTRING
+    Disp "LENSTRING(hello)"
+    len1 = LENSTRING("hello")
+    Disp len1
+    
+    // Test UPSTRING
+    Disp "UPSTRING(hello)"
+    upper = UPSTRING("hello")
+    Disp upper
+    
+    // Test LOWSTRING
+    Disp "LOWSTRING(WORLD)"
+    lower = LOWSTRING("WORLD")
+    Disp lower
+    
+    // Test INSTRING
+    Disp "INSTRING found"
+    pos = INSTRING("helloworld", "world")
+    Disp pos
+    
+    // Test INSTRING with no match
+    Disp "INSTRING not found"
+    nopos = INSTRING("helloworld", "xyz")
+    Disp nopos
+    
+    // Test nested calls
+    Disp "nested"
+    nested = LENSTRING(UPSTRING("test"))
+    Disp nested
+    
+End
+
+// Main test
+result = TestStrings()
+Disp "Done"

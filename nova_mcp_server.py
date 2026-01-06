@@ -18,6 +18,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Literal
 import base64
 import struct
+import os
+import io
+
+# Suppress pygame output before importing
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
+import logging
+logging.getLogger('pygame').setLevel(logging.ERROR)
 
 # Add Nova project to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -30,13 +37,30 @@ try:
     import nova_keyboard as keyboard_module
     import nova_assembler
     import nova_disassembler
+    import nova_debugger
 except ImportError as e:
     print(f"Error importing Nova modules: {e}", file=sys.stderr)
     sys.exit(1)
 
+# Try to import NoBASIC compiler
+try:
+    sys.path.insert(0, str(Path(__file__).parent / "NoBASIC"))
+    from nobasic_compiler import compile_nobasic
+    _HAS_NOBASIC = True
+except ImportError:
+    _HAS_NOBASIC = False
+
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 import mcp.types as types
+from typing import TypedDict
+
+# Optional image export support
+try:
+    from PIL import Image
+    _HAS_PIL = True
+except Exception:
+    _HAS_PIL = False
 
 # Global emulator state
 _emulator_state = {
@@ -48,12 +72,49 @@ _emulator_state = {
     "program_path": None,
     "running": False,
     "cycle_count": 0,
+    "debugger": None,
 }
 
-def initialize_emulator():
-    """Initialize all Nova-16 system components"""
+def cleanup_emulator():
+    """Explicitly clean up emulator resources before reinitialization"""
+    import gc
+    
+    # Clean up sound system first (pygame mixer resources)
+    if _emulator_state["sound"] is not None:
+        try:
+            _emulator_state["sound"].cleanup()
+        except Exception as e:
+            print(f"[MCP] Error cleaning up sound: {e}", file=sys.stderr)
+    
+    # Stop any running debugger
+    if _emulator_state["debugger"] is not None:
+        _emulator_state["debugger"] = None
+    
+    # Clear all references to allow garbage collection
+    _emulator_state.update({
+        "cpu": None,
+        "memory": None,
+        "gfx": None,
+        "kbd": None,
+        "sound": None,
+        "program_path": None,
+        "running": False,
+        "cycle_count": 0,
+        "debugger": None,
+    })
+    
+    # Force garbage collection to free numpy arrays and other resources
+    gc.collect()
+    print("[MCP] Emulator resources cleaned up", file=sys.stderr)
+
+def initialize_emulator(force_clean=True):
+    """Initialize all Nova-16 system components with optional cleanup"""
+    # Clean up existing resources if requested
+    if force_clean and _emulator_state["cpu"] is not None:
+        cleanup_emulator()
+    
     mem = memory_module.Memory()
-    gfx = gfx_module.GFX()
+    gfx = gfx_module.GFX(256, 256)
     kbd = keyboard_module.NovaKeyboard()
     snd = sound_module.NovaSound()
     
@@ -67,7 +128,13 @@ def initialize_emulator():
         "gfx": gfx,
         "kbd": kbd,
         "sound": snd,
+        "program_path": None,
+        "running": False,
+        "cycle_count": 0,
+        "debugger": None,
     })
+    
+    print("[MCP] Emulator initialized", file=sys.stderr)
     
     return proc, mem, gfx, kbd, snd
 
@@ -80,9 +147,10 @@ def ensure_emulator():
 server = Server("nova-16-mcp")
 
 @server.list_tools()
-async def handle_list_tools():
+async def handle_list_tools() -> types.ListToolsResult:
     """List all available Nova-16 control tools"""
-    return [
+    print(f"[MCP] Listing tools...", file=sys.stderr)
+    tools = [
         Tool(
             name="init_emulator",
             description="Initialize or reset the Nova-16 emulator",
@@ -164,6 +232,24 @@ async def handle_list_tools():
         Tool(
             name="cpu_reset",
             description="Reset CPU state (PC, registers, flags)",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="clear_memory",
+            description="Clear all memory contents to zero (preserves CPU state)",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="full_reset",
+            description="Complete system reset: CPU, memory, graphics, sound, keyboard",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -264,6 +350,31 @@ async def handle_list_tools():
                     }
                 },
                 "required": []
+            }
+        ),
+        Tool(
+            name="graphics_export_png",
+            description="Export current screen as base64 PNG",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "palette": {
+                        "type": "string",
+                        "description": "Optional palette: 'grayscale' (default) or 'heatmap'"
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="graphics_set_blend_mode",
+            description="Set graphics blend mode (0=normal,1=add,2=sub,3=mul,4=screen)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "mode": {"type": "integer", "description": "Blend mode (0-4)"}
+                },
+                "required": ["mode"]
             }
         ),
         Tool(
@@ -376,7 +487,214 @@ async def handle_list_tools():
                 "required": ["address"]
             }
         ),
+        Tool(
+            name="breakpoint_clear",
+            description="Clear a breakpoint at address or all breakpoints",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "type": "integer",
+                        "description": "Address to clear; omit to clear all"
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="breakpoint_list",
+            description="List all currently set breakpoints",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="cpu_run_until",
+            description="Run CPU until PC equals address, halt, or max cycles",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "address": {"type": "integer", "description": "Target PC address"},
+                    "max_cycles": {"type": "integer", "description": "Cycle cap (default 100000)"}
+                },
+                "required": ["address"]
+            }
+        ),
+        Tool(
+            name="assert_memory",
+            description="Assert memory bytes match expected value at address",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "address": {"type": "integer", "description": "Start address"},
+                    "expected": {"type": "string", "description": "Hex string of expected bytes, e.g., '2A3A'"}
+                },
+                "required": ["address", "expected"]
+            }
+        ),
+        Tool(
+            name="memory_search",
+            description="Search memory for a hex pattern",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "Hex string pattern (e.g., 'DE AD BE EF')"},
+                    "start": {"type": "integer", "description": "Optional start address (default 0x0000)"},
+                    "end": {"type": "integer", "description": "Optional end address (default 0xFFFF)"},
+                    "max_results": {"type": "integer", "description": "Limit number of matches (default 16)"}
+                },
+                "required": ["pattern"]
+            }
+        ),
+        Tool(
+            name="run_until_memory",
+            description="Run CPU until memory at address equals value or timeout",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "address": {"type": "integer", "description": "Memory address to watch"},
+                    "value": {"type": "string", "description": "Expected hex byte(s), e.g., 'FF' or 'DE AD'"},
+                    "max_cycles": {"type": "integer", "description": "Cycle cap (default 100000)"}
+                },
+                "required": ["address", "value"]
+            }
+        ),
+        Tool(
+            name="set_flags",
+            description="Set CPU flags (Z,C,S,O,I,T,B,D,P,H,A,E)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "flags": {"type": "object", "description": "Map of flag letter to 0/1, e.g., {\"Z\":1,\"I\":0}"}
+                },
+                "required": ["flags"]
+            }
+        ),
+        Tool(
+            name="timer_control",
+            description="Configure timer registers TT, TM, TC, TS",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "TT": {"type": "integer", "description": "Timer counter (0-65535)"},
+                    "TM": {"type": "integer", "description": "Timer modulo (0-65535)"},
+                    "TC": {"type": "integer", "description": "Timer control"},
+                    "TS": {"type": "integer", "description": "Timer speed"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="keyboard_type_string",
+            description="Inject a full ASCII string as keypresses",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "ASCII text to type"}
+                },
+                "required": ["text"]
+            }
+        ),
+        Tool(
+            name="disassemble_program",
+            description="Disassemble the currently loaded program using the advanced disassembler",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start": {"type": "integer", "description": "Optional start address"},
+                    "end": {"type": "integer", "description": "Optional end address"},
+                    "show_hex": {"type": "boolean", "description": "Include hex bytes"},
+                    "show_addresses": {"type": "boolean", "description": "Include addresses"},
+                    "filter_instructions": {"type": "string", "description": "Comma list to include"},
+                    "exclude_instructions": {"type": "string", "description": "Comma list to exclude"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="debugger_init",
+            description="Initialize debugger for the loaded program",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="debugger_step",
+            description="Step through CPU instructions with debugger enabled",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "count": {"type": "integer", "description": "Number of instructions to step (default: 1)"},
+                    "show_disasm": {"type": "boolean", "description": "Show disassembly (default: true)"},
+                    "show_regs": {"type": "boolean", "description": "Show registers (default: true)"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="debugger_run_until_breakpoint",
+            description="Run CPU until a breakpoint is hit or program halts",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "max_cycles": {"type": "integer", "description": "Maximum cycles to run (default: 100000)"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="debugger_print_state",
+            description="Print full debugger state (registers, stack, current instruction)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "show_stack": {"type": "boolean", "description": "Show stack contents (default: true)"},
+                    "stack_entries": {"type": "integer", "description": "Number of stack entries to show (default: 16)"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="debugger_get_symbol_table",
+            description="Get symbol table from loaded program (if .sym file exists)",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        Tool(
+            name="debugger_inspect_instruction",
+            description="Get details about the current or specified instruction",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "address": {"type": "integer", "description": "Address to inspect (default: PC)"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="nobasic_compile",
+            description="Compile a NoBASIC source file to assembly and binary",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "source_path": {"type": "string", "description": "Path to .nobasic source file"},
+                    "output_path": {"type": "string", "description": "Path to output .asm file (optional)"},
+                    "verbose": {"type": "boolean", "description": "Enable verbose output (default: false)"},
+                    "auto_load": {"type": "boolean", "description": "Automatically load compiled binary (default: false)"}
+                },
+                "required": ["source_path"]
+            }
+        ),
     ]
+    print(f"[MCP] Returning {len(tools)} tools", file=sys.stderr)
+    return types.ListToolsResult(tools=tools)
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: Dict[str, Any]):
@@ -397,6 +715,10 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]):
             result_text = _handle_cpu_halt()
         elif name == "cpu_reset":
             result_text = _handle_cpu_reset()
+        elif name == "clear_memory":
+            result_text = _handle_clear_memory()
+        elif name == "full_reset":
+            result_text = _handle_full_reset()
         elif name == "get_cpu_state":
             result_text = _handle_get_cpu_state()
         elif name == "set_register":
@@ -409,6 +731,10 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]):
             result_text = _handle_graphics_get_pixel(arguments)
         elif name == "graphics_get_screen":
             result_text = _handle_graphics_get_screen(arguments)
+        elif name == "graphics_export_png":
+            result_text = _handle_graphics_export_png(arguments)
+        elif name == "graphics_set_blend_mode":
+            result_text = _handle_graphics_set_blend_mode(arguments)
         elif name == "graphics_set_pixel":
             result_text = _handle_graphics_set_pixel(arguments)
         elif name == "keyboard_inject_key":
@@ -423,6 +749,40 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]):
             result_text = _handle_memory_dump(arguments)
         elif name == "breakpoint_set":
             result_text = _handle_breakpoint_set(arguments)
+        elif name == "breakpoint_clear":
+            result_text = _handle_breakpoint_clear(arguments)
+        elif name == "breakpoint_list":
+            result_text = _handle_breakpoint_list()
+        elif name == "cpu_run_until":
+            result_text = _handle_cpu_run_until(arguments)
+        elif name == "assert_memory":
+            result_text = _handle_assert_memory(arguments)
+        elif name == "memory_search":
+            result_text = _handle_memory_search(arguments)
+        elif name == "run_until_memory":
+            result_text = _handle_run_until_memory(arguments)
+        elif name == "set_flags":
+            result_text = _handle_set_flags(arguments)
+        elif name == "timer_control":
+            result_text = _handle_timer_control(arguments)
+        elif name == "keyboard_type_string":
+            result_text = _handle_keyboard_type_string(arguments)
+        elif name == "disassemble_program":
+            result_text = _handle_disassemble_program(arguments)
+        elif name == "debugger_init":
+            result_text = _handle_debugger_init()
+        elif name == "debugger_step":
+            result_text = _handle_debugger_step(arguments)
+        elif name == "debugger_run_until_breakpoint":
+            result_text = _handle_debugger_run_until_breakpoint(arguments)
+        elif name == "debugger_print_state":
+            result_text = _handle_debugger_print_state(arguments)
+        elif name == "debugger_get_symbol_table":
+            result_text = _handle_debugger_get_symbol_table()
+        elif name == "debugger_inspect_instruction":
+            result_text = _handle_debugger_inspect_instruction(arguments)
+        elif name == "nobasic_compile":
+            result_text = _handle_nobasic_compile(arguments)
         else:
             result_text = json.dumps({"error": f"Unknown tool: {name}"})
             
@@ -493,14 +853,21 @@ def _handle_assemble(args):
         output_path = Path(__file__).parent / output_path
     
     try:
-        nova_assembler.assemble_file(str(source_path), str(output_path))
+        assembler = nova_assembler.Assembler()
+        success = assembler.assemble(str(source_path))
+        if not success:
+            return json.dumps({"error": "Assembly failed - check syntax"})
         return json.dumps({
             "status": "assembled",
             "source": str(source_path),
             "output": str(output_path)
         })
     except Exception as e:
-        return json.dumps({"error": f"Assembly failed: {str(e)}"})
+        import traceback
+        return json.dumps({
+            "error": f"Assembly failed: {str(e)}",
+            "traceback": traceback.format_exc()
+        })
 
 def _handle_cpu_step(args):
     """Step CPU execution"""
@@ -571,6 +938,103 @@ def _handle_cpu_reset():
     
     return json.dumps({"status": "reset", "pc": "0x0000"})
 
+def _handle_clear_memory():
+    """Clear all memory contents to zero"""
+    ensure_emulator()
+    mem = _emulator_state["memory"]
+    
+    # Clear main memory
+    mem.memory.fill(0)
+    
+    # Clear caches
+    mem.zero_page_cache.fill(0)
+    mem.zero_page_dirty = False
+    mem.interrupt_vector_cache.fill(0)
+    mem.interrupt_vector_dirty = False
+    mem.lru_cache.clear()
+    
+    # Reset cache statistics
+    mem.cache_hits = 0
+    mem.cache_misses = 0
+    
+    return json.dumps({
+        "status": "memory cleared",
+        "size": mem.size,
+        "bytes_cleared": mem.size
+    })
+
+def _handle_full_reset():
+    """Completely reset the emulator to initial state"""
+    ensure_emulator()
+    
+    # Reset CPU state
+    cpu = _emulator_state["cpu"]
+    cpu.pc = 0x0000
+    cpu.halted = False
+    for i in range(10):
+        cpu.Rregisters[i] = 0
+        cpu.Pregisters[i] = 0
+    cpu.Pregisters[8] = 0xFFFF  # SP
+    cpu.Pregisters[9] = 0xFFFF  # FP
+    for i in range(12):
+        cpu.flags[i] = 0
+    
+    # Clear memory
+    mem = _emulator_state["memory"]
+    mem.memory.fill(0)
+    mem.zero_page_cache.fill(0)
+    mem.zero_page_dirty = False
+    mem.interrupt_vector_cache.fill(0)
+    mem.interrupt_vector_dirty = False
+    mem.lru_cache.clear()
+    mem.cache_hits = 0
+    mem.cache_misses = 0
+    
+    # Clear graphics
+    gfx = _emulator_state["gfx"]
+    gfx._screen.fill(0)
+    gfx.layer_0.fill(0)
+    for layer in gfx.background_layers:
+        layer.fill(0)
+    for layer in gfx.sprite_layers:
+        layer.fill(0)
+    gfx.layers_dirty = False
+    gfx.sprites_dirty = False
+    
+    # Reset sound
+    sound = _emulator_state["sound"]
+    try:
+        sound.sstop()  # Stop all channels
+        # Reset sound registers
+        sound.SA = 0
+        sound.SF = 0
+        sound.SV = 0
+        sound.SW = 0
+        for i in range(len(sound.sound_registers)):
+            sound.sound_registers[i] = 0
+    except Exception as e:
+        print(f"[MCP] Warning during sound reset: {e}", file=sys.stderr)
+    
+    # Clear keyboard
+    kbd = _emulator_state["kbd"]
+    if kbd.cpu:
+        kbd.cpu.key_buffer.clear()
+    for i in range(4):
+        cpu.keyboard[i] = 0
+    
+    # Reset emulator state tracking
+    _emulator_state["cycle_count"] = 0
+    _emulator_state["program_path"] = None
+    _emulator_state["running"] = False
+    
+    return json.dumps({
+        "status": "full system reset complete",
+        "components_reset": ["cpu", "memory", "graphics", "sound", "keyboard"],
+        "pc": "0x0000",
+        "sp": "0xFFFF",
+        "memory_cleared": mem.size
+    })
+
 def _handle_get_cpu_state():
     """Get current CPU state"""
     ensure_emulator()
@@ -626,7 +1090,7 @@ def _handle_read_memory(args):
     format_type = args.get("format", "hex")
     
     memory = _emulator_state["memory"]
-    data = [memory.read(address + i) for i in range(size)]
+    data = [memory.read_byte(address + i) for i in range(size)]
     
     if format_type == "hex":
         hex_str = "".join(f"{b:02X}" for b in data)
@@ -680,11 +1144,19 @@ def _handle_graphics_get_pixel(args):
     gfx = _emulator_state["gfx"]
     
     if layer is not None:
-        color = gfx.get_pixel_layer(x, y, layer)
+        # Access layer arrays directly
+        if layer == 0:
+            color = int(gfx.layer_0[y, x]) if 0 <= y < 200 and 0 <= x < 320 else 0
+        elif 1 <= layer <= 4:
+            color = int(gfx.background_layers[layer - 1][y, x]) if 0 <= y < 200 and 0 <= x < 320 else 0
+        elif 5 <= layer <= 8:
+            color = int(gfx.sprite_layers[layer - 5][y, x]) if 0 <= y < 200 and 0 <= x < 320 else 0
+        else:
+            color = 0
     else:
-        color = gfx.screen[y, x] if 0 <= y < 200 and 0 <= x < 320 else 0
+        color = int(gfx.screen[y, x]) if 0 <= y < 200 and 0 <= x < 320 else 0
     
-    return json.dumps({"x": x, "y": y, "color": color})
+    return json.dumps({"x": x, "y": y, "color": color, "layer": layer})
 
 def _handle_graphics_get_screen(args):
     """Get screen buffer"""
@@ -697,8 +1169,8 @@ def _handle_graphics_get_screen(args):
     if format_type == "summary":
         non_zero = int((screen != 0).sum())
         return json.dumps({
-            "width": 320,
-            "height": 200,
+            "width": gfx.width,
+            "height": gfx.height,
             "non_black_pixels": non_zero,
             "format": "RGBA indexed"
         })
@@ -707,11 +1179,27 @@ def _handle_graphics_get_screen(args):
         data = screen.flatten().tobytes()
         b64 = base64.b64encode(data).decode("ascii")
         return json.dumps({
-            "width": 320,
-            "height": 200,
+            "width": gfx.width,
+            "height": gfx.height,
             "data_base64": b64,
             "encoding": "raw uint8"
         })
+    elif format_type == "base64":
+        # Export as PNG (grayscale palette) if PIL available
+        try:
+            if not _HAS_PIL:
+                raise RuntimeError("Pillow not installed")
+            img = Image.fromarray(screen.astype('uint8'), mode='L')
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+            return json.dumps({
+                "width": gfx.width,
+                "height": gfx.height,
+                "png_base64": b64
+            })
+        except Exception as e:
+            return json.dumps({"error": f"PNG export failed: {e}"})
     else:
         return json.dumps({"error": f"Unknown format: {format_type}"})
 
@@ -724,7 +1212,12 @@ def _handle_graphics_set_pixel(args):
     layer = args.get("layer", 0)
     
     gfx = _emulator_state["gfx"]
-    gfx.set_pixel_layer(x, y, color, layer)
+    # Set the layer register and use the internal method
+    old_vl = gfx.VL
+    gfx.VL = layer
+    if 0 <= x < gfx.width and 0 <= y < gfx.height:
+        gfx._set_pixel_to_layer(x, y, color)
+    gfx.VL = old_vl
     
     return json.dumps({"status": "set", "x": x, "y": y, "color": color, "layer": layer})
 
@@ -736,27 +1229,13 @@ def _handle_keyboard_inject_key(args):
     
     kbd = _emulator_state["kbd"]
     
-    # Convert key to key code
-    if key.lower().startswith("0x"):
-        key_code = int(key, 16)
-    elif len(key) == 1:
-        key_code = ord(key)
-    elif key == "Enter":
-        key_code = 0x0D
-    elif key == "Space":
-        key_code = 0x20
-    elif key == "Escape":
-        key_code = 0x1B
-    else:
-        # Try as raw ASCII
-        key_code = ord(key[0])
-    
+    # Use press_key which accepts key strings
     for _ in range(count):
-        kbd.inject_key(key_code)
+        kbd.press_key(key)
     
     return json.dumps({
         "status": "injected",
-        "key_code": f"0x{key_code:02X}",
+        "key": key,
         "count": count
     })
 
@@ -764,13 +1243,50 @@ def _handle_keyboard_get_buffer():
     """Get keyboard buffer state"""
     ensure_emulator()
     kbd = _emulator_state["kbd"]
-    
-    buffer_size = len(kbd.buffer) if hasattr(kbd, "buffer") else 0
-    
+    status = {}
+    try:
+        status = kbd.get_buffer_status() if hasattr(kbd, "get_buffer_status") else {}
+    except Exception:
+        status = {}
     return json.dumps({
-        "buffer_size": buffer_size,
-        "buffer_capacity": 16 if hasattr(kbd, "buffer_size") else "unknown"
+        "status": status
     })
+
+def _handle_graphics_export_png(args):
+    """Export screen as base64 PNG with optional palette"""
+    ensure_emulator()
+    palette = (args.get("palette") or "grayscale").lower()
+    gfx = _emulator_state["gfx"]
+    screen = gfx.screen.astype('uint8')
+    try:
+        if not _HAS_PIL:
+            raise RuntimeError("Pillow not installed")
+        if palette == "grayscale":
+            img = Image.fromarray(screen, mode='L')
+        elif palette == "heatmap":
+            # Simple heatmap mapping using three channels
+            import numpy as np
+            s = screen
+            r = np.clip(s * 2, 0, 255).astype('uint8')
+            g = np.clip(255 - np.abs(s - 128) * 2, 0, 255).astype('uint8')
+            b = (255 - s).astype('uint8')
+            rgb = np.dstack((r, g, b))
+            img = Image.fromarray(rgb, mode='RGB')
+        else:
+            img = Image.fromarray(screen, mode='L')
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+        return json.dumps({"png_base64": b64, "palette": palette})
+    except Exception as e:
+        return json.dumps({"error": f"PNG export failed: {e}"})
+
+def _handle_graphics_set_blend_mode(args):
+    ensure_emulator()
+    mode = int(args["mode"])
+    gfx = _emulator_state["gfx"]
+    gfx.blend_mode = max(0, min(4, mode))
+    return json.dumps({"status": "blend_set", "mode": gfx.blend_mode})
 
 def _handle_sound_control(args):
     """Control sound system"""
@@ -780,26 +1296,24 @@ def _handle_sound_control(args):
     sound = _emulator_state["sound"]
     
     if action == "play":
-        address = args.get("address", 0x2000)
-        frequency = args.get("frequency", 440)
-        volume = args.get("volume", 128)
-        waveform = args.get("waveform", 0)
-        
-        sound.set_register("SA", address)
-        sound.set_register("SF", frequency)
-        sound.set_register("SV", volume)
-        sound.set_register("SW", waveform)
-        # sound.play() if hasattr(sound, 'play') else None
-        
+        address = int(args.get("address", 0x2000))
+        frequency_reg = int(args.get("frequency", 220)) & 0xFF
+        volume_reg = int(args.get("volume", 128)) & 0xFF
+        waveform_reg = int(args.get("waveform", 1)) & 0xFF
+        # Update registers and attempt to play via NovaSound
+        if hasattr(sound, "update_registers"):
+            sound.update_registers(sa=address, sf=frequency_reg, sv=volume_reg, sw=waveform_reg | 0x80)
+        # Try to play on default channel derived from SW
+        played = sound.splay() if hasattr(sound, "splay") else False
         return json.dumps({
-            "status": "playing",
-            "frequency": frequency,
-            "volume": volume,
-            "waveform": waveform
+            "status": "playing" if played else "play_failed",
+            "frequency_reg": frequency_reg,
+            "volume_reg": volume_reg,
+            "waveform_reg": waveform_reg
         })
     elif action == "stop":
-        sound.set_register("SV", 0)
-        return json.dumps({"status": "stopped"})
+        stopped = sound.sstop() if hasattr(sound, "sstop") else False
+        return json.dumps({"status": "stopped" if stopped else "stop_failed"})
     elif action == "get_state":
         return json.dumps({
             "frequency": sound.get_register("SF") if hasattr(sound, "get_register") else 0,
@@ -810,24 +1324,20 @@ def _handle_sound_control(args):
         return json.dumps({"error": f"Unknown action: {action}"})
 
 def _handle_disassemble(args):
-    """Disassemble instructions"""
+    """Simple memory disassembly (hex dump)"""
     ensure_emulator()
-    start_addr = args.get("start_addr", 0x0000)
-    num_instructions = args.get("num_instructions", 100)
-    
+    start_addr = int(args.get("start_addr", 0x0000))
+    num_instructions = int(args.get("num_instructions", 100))
+    # Dump 2 bytes per instruction as a rough estimate
+    size = max(1, num_instructions) * 2
     memory = _emulator_state["memory"]
-    
-    try:
-        disassembly = nova_disassembler.disassemble(
-            memory, start_addr, num_instructions
-        )
-        return json.dumps({
-            "start_addr": f"0x{start_addr:04X}",
-            "count": num_instructions,
-            "disassembly": disassembly
-        })
-    except Exception as e:
-        return json.dumps({"error": f"Disassembly failed: {str(e)}"})
+    data = [memory.read_byte(start_addr + i) for i in range(size) if start_addr + i < 0x10000]
+    hex_str = " ".join(f"{b:02X}" for b in data)
+    return json.dumps({
+        "start_addr": f"0x{start_addr:04X}",
+        "bytes": size,
+        "hex": hex_str
+    })
 
 def _handle_memory_dump(args):
     """Create memory dump"""
@@ -840,7 +1350,7 @@ def _handle_memory_dump(args):
     
     for i in range(0, size, 16):
         addr = start_addr + i
-        line_data = [memory.read(addr + j) for j in range(16) if addr + j < 0x10000]
+        line_data = [memory.read_byte(addr + j) for j in range(16) if addr + j < 0x10000]
         hex_part = " ".join(f"{b:02X}" for b in line_data)
         ascii_part = "".join(chr(b) if 32 <= b < 127 else "." for b in line_data)
         dump.append(f"0x{addr:04X}: {hex_part:<48} {ascii_part}")
@@ -868,12 +1378,563 @@ def _handle_breakpoint_set(args):
         "total_breakpoints": len(cpu.breakpoints)
     })
 
+def _handle_breakpoint_clear(args):
+    """Clear a single breakpoint or all"""
+    ensure_emulator()
+    cpu = _emulator_state["cpu"]
+    addr = args.get("address")
+    if not hasattr(cpu, "breakpoints"):
+        cpu.breakpoints = set()
+    if addr is None:
+        cpu.breakpoints.clear()
+        return json.dumps({"status": "breakpoints_cleared", "total_breakpoints": 0})
+    else:
+        try:
+            cpu.breakpoints.discard(int(addr))
+        except Exception:
+            pass
+        return json.dumps({
+            "status": "breakpoint_cleared",
+            "address": f"0x{(addr or 0):04X}",
+            "total_breakpoints": len(cpu.breakpoints)
+        })
+
+def _handle_breakpoint_list():
+    ensure_emulator()
+    cpu = _emulator_state["cpu"]
+    bps = sorted([f"0x{bp:04X}" for bp in getattr(cpu, "breakpoints", set())])
+    return json.dumps({"breakpoints": bps, "count": len(bps)})
+
+def _handle_cpu_run_until(args):
+    """Run until PC equals address, halt, or max cycles"""
+    ensure_emulator()
+    target = int(args["address"]) & 0xFFFF
+    max_cycles = int(args.get("max_cycles", 100000))
+    cpu = _emulator_state["cpu"]
+    cycles = 0
+    start_pc = cpu.pc
+    while cycles < max_cycles and not cpu.halted and cpu.pc != target:
+        cpu.step()
+        cycles += 1
+        _emulator_state["cycle_count"] += 1
+        # Honor stored breakpoints if CPU implements PC check externally
+        if hasattr(cpu, "breakpoints") and cpu.pc in cpu.breakpoints:
+            break
+    return json.dumps({
+        "status": "ran_until",
+        "start_pc": f"0x{start_pc:04X}",
+        "final_pc": f"0x{cpu.pc:04X}",
+        "cycles": cycles,
+        "halted": cpu.halted,
+        "hit_breakpoint": bool(getattr(cpu, "breakpoints", set()) and cpu.pc in cpu.breakpoints),
+        "reached_target": cpu.pc == target
+    })
+
+def _handle_assert_memory(args):
+    """Assert memory matches expected bytes"""
+    ensure_emulator()
+    address = int(args["address"]) & 0xFFFF
+    expected_hex = args["expected"].strip()
+    # Normalize hex (allow spaces)
+    expected_hex = expected_hex.replace(" ", "")
+    try:
+        expected_bytes = bytes.fromhex(expected_hex)
+    except Exception as e:
+        return json.dumps({"error": f"Invalid hex: {e}"})
+    memory = _emulator_state["memory"]
+    actual = bytes(memory.read_byte(address + i) for i in range(len(expected_bytes)))
+    passed = actual == expected_bytes
+    diff = [
+        {
+            "offset": i,
+            "expected": f"{expected_bytes[i]:02X}",
+            "actual": f"{actual[i]:02X}"
+        }
+        for i in range(len(expected_bytes)) if expected_bytes[i] != actual[i]
+    ]
+    return json.dumps({
+        "status": "assert_memory",
+        "address": f"0x{address:04X}",
+        "length": len(expected_bytes),
+        "passed": passed,
+        "diff": diff
+    })
+
+def _handle_memory_search(args):
+    ensure_emulator()
+    pattern_hex = args["pattern"].replace(" ", "").strip()
+    try:
+        pat = bytes.fromhex(pattern_hex)
+    except Exception as e:
+        return json.dumps({"error": f"Invalid hex pattern: {e}"})
+    start = int(args.get("start", 0)) & 0xFFFF
+    end = int(args.get("end", 0xFFFF)) & 0xFFFF
+    if end < start:
+        end = 0xFFFF
+    max_results = int(args.get("max_results", 16))
+    mem = _emulator_state["memory"]
+    data = bytes(int(mem.read(i)) for i in range(start, end + 1))
+    matches: List[int] = []
+    idx = 0
+    while idx <= len(data) - len(pat) and len(matches) < max_results:
+        if data[idx:idx + len(pat)] == pat:
+            matches.append(start + idx)
+            idx += len(pat)
+        else:
+            idx += 1
+    return json.dumps({
+        "pattern": pattern_hex.upper(),
+        "start": f"0x{start:04X}",
+        "end": f"0x{end:04X}",
+        "matches": [f"0x{m:04X}" for m in matches]
+    })
+
+def _handle_run_until_memory(args):
+    ensure_emulator()
+    address = int(args["address"]) & 0xFFFF
+    value_hex = args["value"].replace(" ", "").strip()
+    try:
+        expected = bytes.fromhex(value_hex)
+    except Exception as e:
+        return json.dumps({"error": f"Invalid hex value: {e}"})
+    max_cycles = int(args.get("max_cycles", 100000))
+    cpu = _emulator_state["cpu"]
+    mem = _emulator_state["memory"]
+    cycles = 0
+    start_pc = cpu.pc
+    def read_slice(addr, n):
+        return bytes(int(mem.read(addr + i)) for i in range(n))
+    while cycles < max_cycles and not cpu.halted:
+        if read_slice(address, len(expected)) == expected:
+            break
+        cpu.step()
+        cycles += 1
+        _emulator_state["cycle_count"] += 1
+    return json.dumps({
+        "status": "ran_until_memory",
+        "start_pc": f"0x{start_pc:04X}",
+        "final_pc": f"0x{cpu.pc:04X}",
+        "cycles": cycles,
+        "matched": read_slice(address, len(expected)) == expected
+    })
+
+def _handle_set_flags(args):
+    ensure_emulator()
+    flags_map = args.get("flags", {})
+    cpu = _emulator_state["cpu"]
+    letter_to_index = {
+        "E": 11, "A": 10, "H": 9, "P": 8, "Z": 7, "C": 6,
+        "I": 5, "D": 4, "B": 3, "O": 2, "S": 1, "T": 0
+    }
+    updated = {}
+    for k, v in flags_map.items():
+        kk = str(k).upper()
+        if kk in letter_to_index:
+            idx = letter_to_index[kk]
+            cpu.flags[idx] = 1 if int(v) != 0 else 0
+            updated[kk] = cpu.flags[idx]
+    return json.dumps({"status": "flags_set", "updated": updated})
+
+def _handle_timer_control(args):
+    ensure_emulator()
+    cpu = _emulator_state["cpu"]
+    for name, idx in [("TT", 0), ("TM", 1), ("TC", 2), ("TS", 3)]:
+        if name in args:
+            val = int(args[name]) & 0xFFFF
+            cpu.timer[idx] = val
+    return json.dumps({"status": "timer_set", "timer": {
+        "TT": cpu.timer[0], "TM": cpu.timer[1], "TC": cpu.timer[2], "TS": cpu.timer[3]
+    }})
+
+def _handle_keyboard_type_string(args):
+    ensure_emulator()
+    text = args["text"]
+    kbd = _emulator_state["kbd"]
+    for ch in text:
+        kbd.press_key(ch)
+    return json.dumps({"status": "typed", "length": len(text)})
+
+def _handle_disassemble_program(args):
+    ensure_emulator()
+    prog = _emulator_state.get("program_path")
+    if not prog:
+        return json.dumps({"error": "No program loaded"})
+    # Build a minimal arg namespace
+    class _Args:
+        def __init__(self, d):
+            self.start = d.get("start")
+            self.end = d.get("end")
+            self.show_hex = bool(d.get("show_hex", True))
+            self.show_addresses = bool(d.get("show_addresses", True))
+            self.filter_instructions = d.get("filter_instructions")
+            self.exclude_instructions = d.get("exclude_instructions")
+            self.output = None
+            self.quiet = True
+    buf = io.StringIO()
+    try:
+        # Redirect stdout temporarily
+        import sys as _sys
+        _old = _sys.stdout
+        _sys.stdout = buf
+        nova_disassembler.disassemble(str(prog), _Args(args))
+        _sys.stdout = _old
+    except Exception as e:
+        try:
+            _sys.stdout = _old
+        except Exception:
+            pass
+        return json.dumps({"error": f"Disassembly failed: {e}"})
+    return json.dumps({"assembly": buf.getvalue()[:100000]})
+
+# Debugger tool handlers
+
+def _handle_debugger_init():
+    """Initialize debugger for loaded program"""
+    ensure_emulator()
+    cpu = _emulator_state["cpu"]
+    mem = _emulator_state["memory"]
+    gfx = _emulator_state["gfx"]
+    snd = _emulator_state["sound"]
+    prog = _emulator_state.get("program_path")
+    
+    if not prog:
+        return json.dumps({"error": "No program loaded. Load a program first with load_program."})
+    
+    dbg = nova_debugger.NovaDebugger(cpu, mem, gfx, snd, str(prog))
+    _emulator_state["debugger"] = dbg
+    
+    return json.dumps({
+        "status": "debugger_initialized",
+        "program": str(prog),
+        "pc": f"0x{cpu.pc:04X}",
+        "symbols_loaded": len(dbg.symbol_table) > 0,
+        "symbol_count": len(dbg.symbol_table)
+    })
+
+def _handle_debugger_step(args):
+    """Step through instructions with debugger enabled"""
+    ensure_emulator()
+    count = args.get("count", 1)
+    show_disasm = args.get("show_disasm", True)
+    show_regs = args.get("show_regs", True)
+    
+    cpu = _emulator_state["cpu"]
+    dbg = _emulator_state.get("debugger")
+    mem = _emulator_state["memory"]
+    
+    if not dbg:
+        # Auto-initialize debugger if not already done
+        _handle_debugger_init()
+        dbg = _emulator_state.get("debugger")
+        if not dbg:
+            return json.dumps({"error": "Failed to initialize debugger"})
+    
+    result = {
+        "status": "stepped",
+        "steps": count,
+        "instructions": []
+    }
+    
+    for i in range(count):
+        if cpu.halted:
+            result["halted"] = True
+            break
+        
+        old_pc = cpu.pc
+        cpu.step()
+        _emulator_state["cycle_count"] += 1
+        
+        step_info = {"pc": f"0x{old_pc:04X}"}
+        
+        if show_disasm:
+            try:
+                opcode = mem.memory[old_pc]
+                if opcode in dbg.opcode_map:
+                    mnemonic, operands, size = nova_disassembler.disassemble_instruction_new(
+                        mem.memory, old_pc, dbg.opcode_map, dbg.register_map
+                    )
+                    operand_str = ', '.join(operands) if operands else ""
+                    step_info["instruction"] = f"{mnemonic} {operand_str}".strip()
+            except Exception:
+                pass
+        
+        result["instructions"].append(step_info)
+    
+    if show_regs:
+        result["registers"] = {
+            "pc": f"0x{cpu.pc:04X}",
+            "r": [f"0x{r:02X}" for r in cpu.Rregisters[:10]],
+            "p": [f"0x{p:04X}" for p in cpu.Pregisters[:10]]
+        }
+    
+    return json.dumps(result)
+
+def _handle_debugger_run_until_breakpoint(args):
+    """Run until breakpoint or halt"""
+    ensure_emulator()
+    max_cycles = args.get("max_cycles", 100000)
+    
+    cpu = _emulator_state["cpu"]
+    dbg = _emulator_state.get("debugger")
+    
+    if not dbg:
+        _handle_debugger_init()
+        dbg = _emulator_state.get("debugger")
+    
+    if not dbg:
+        return json.dumps({"error": "Failed to initialize debugger"})
+    
+    start_pc = cpu.pc
+    cycles = 0
+    breakpoint_hit = None
+    
+    while cycles < max_cycles and not cpu.halted:
+        if cpu.pc in dbg.breakpoints:
+            breakpoint_hit = f"0x{cpu.pc:04X}"
+            break
+        
+        cpu.step()
+        cycles += 1
+        _emulator_state["cycle_count"] += 1
+    
+    return json.dumps({
+        "status": "ran_until_breakpoint",
+        "start_pc": f"0x{start_pc:04X}",
+        "final_pc": f"0x{cpu.pc:04X}",
+        "cycles": cycles,
+        "halted": cpu.halted,
+        "breakpoint_hit": breakpoint_hit
+    })
+
+def _handle_debugger_print_state(args):
+    """Print full debugger state"""
+    ensure_emulator()
+    show_stack = args.get("show_stack", True)
+    stack_entries = args.get("stack_entries", 16)
+    
+    cpu = _emulator_state["cpu"]
+    mem = _emulator_state["memory"]
+    dbg = _emulator_state.get("debugger")
+    
+    if not dbg:
+        return json.dumps({"error": "Debugger not initialized. Call debugger_init first."})
+    
+    result = {
+        "pc": f"0x{cpu.pc:04X}",
+        "halted": cpu.halted,
+        "cycles": _emulator_state["cycle_count"],
+        "r_registers": [f"0x{r:02X}" for r in cpu.Rregisters[:10]],
+        "p_registers": [f"0x{p:04X}" for p in cpu.Pregisters[:10]],
+        "flags": {
+            "Z": int(cpu.flags[7]),
+            "C": int(cpu.flags[6]),
+            "S": int(cpu.flags[1]),
+            "O": int(cpu.flags[2]),
+            "I": int(cpu.flags[5]),
+            "D": int(cpu.flags[4]),
+            "B": int(cpu.flags[3])
+        }
+    }
+    
+    # Current instruction
+    try:
+        opcode = mem.memory[cpu.pc]
+        if opcode in dbg.opcode_map:
+            mnemonic, operands, size = nova_disassembler.disassemble_instruction_new(
+                mem.memory, cpu.pc, dbg.opcode_map, dbg.register_map
+            )
+            operand_str = ', '.join(operands) if operands else ""
+            result["current_instruction"] = f"{mnemonic} {operand_str}".strip()
+            result["instruction_size"] = size
+    except Exception:
+        pass
+    
+    # Stack contents
+    if show_stack:
+        sp = cpu.Pregisters[8]
+        stack_data = []
+        for i in range(stack_entries):
+            addr = (int(sp) + i * 2) & 0xFFFF
+            try:
+                val = mem.read_word(addr)
+                stack_data.append({
+                    "offset": i,
+                    "address": f"0x{addr:04X}",
+                    "value": f"0x{val:04X}"
+                })
+            except Exception:
+                break
+        result["stack"] = stack_data
+    
+    return json.dumps(result)
+
+def _handle_debugger_get_symbol_table():
+    """Get symbol table from loaded program"""
+    ensure_emulator()
+    dbg = _emulator_state.get("debugger")
+    
+    if not dbg:
+        return json.dumps({"error": "Debugger not initialized. Call debugger_init first."})
+    
+    symbols = {k: v for k, v in dbg.symbol_table.items()}
+    reverse_symbols = {f"0x{k:04X}": v for k, v in dbg.reverse_symbol_table.items()}
+    
+    return json.dumps({
+        "symbols": symbols,
+        "reverse_symbols": reverse_symbols,
+        "total": len(dbg.symbol_table)
+    })
+
+def _handle_debugger_inspect_instruction(args):
+    """Inspect an instruction at a given address"""
+    ensure_emulator()
+    address = args.get("address")
+    
+    cpu = _emulator_state["cpu"]
+    mem = _emulator_state["memory"]
+    dbg = _emulator_state.get("debugger")
+    
+    if not dbg:
+        _handle_debugger_init()
+        dbg = _emulator_state.get("debugger")
+    
+    if address is None:
+        address = cpu.pc
+    
+    address = int(address) & 0xFFFF
+    
+    if address >= len(mem.memory):
+        return json.dumps({"error": f"Address 0x{address:04X} is beyond memory bounds"})
+    
+    result = {"address": f"0x{address:04X}"}
+    
+    try:
+        opcode = mem.memory[address]
+        
+        # Check for string data
+        from nova_disassembler import is_string_data, format_string_data
+        is_string, str_length = is_string_data(mem.memory, address)
+        
+        if is_string and str_length > 1:
+            result["type"] = "string"
+            result["length"] = str_length
+            result["directive"] = format_string_data(mem.memory, address, str_length)
+        elif opcode in dbg.opcode_map:
+            mnemonic, operands, size = nova_disassembler.disassemble_instruction_new(
+                mem.memory, address, dbg.opcode_map, dbg.register_map
+            )
+            result["type"] = "instruction"
+            result["mnemonic"] = mnemonic
+            result["operands"] = operands
+            result["size"] = size
+            result["hex"] = ' '.join(f'{mem.memory[address + i]:02X}' for i in range(size))
+        else:
+            result["type"] = "data"
+            result["byte_value"] = f"0x{opcode:02X}"
+            result["hex"] = f"{opcode:02X}"
+        
+        # Symbol information
+        if address in dbg.reverse_symbol_table:
+            result["symbol"] = dbg.reverse_symbol_table[address]
+    
+    except Exception as e:
+        result["error"] = str(e)
+    
+    return json.dumps(result)
+
+# NoBASIC compiler handlers
+
+def _handle_nobasic_compile(args):
+    """Compile NoBASIC source to binary"""
+    if not _HAS_NOBASIC:
+        return json.dumps({"error": "NoBASIC compiler not available. Check installation in NoBASIC/ directory."})
+    
+    source_path = args["source_path"]
+    output_path = args.get("output_path")
+    verbose = args.get("verbose", False)
+    auto_load = args.get("auto_load", False)
+    
+    # Handle relative paths
+    if not Path(source_path).is_absolute():
+        source_path = Path(__file__).parent / source_path
+    else:
+        source_path = Path(source_path)
+    
+    if not source_path.exists():
+        return json.dumps({"error": f"Source file not found: {source_path}"})
+    
+    if not str(source_path).endswith('.nobasic'):
+        return json.dumps({"error": "Source file must have .nobasic extension"})
+    
+    if output_path is None:
+        output_path = str(source_path).replace('.nobasic', '.asm')
+    elif not Path(output_path).is_absolute():
+        output_path = Path(__file__).parent / output_path
+    
+    try:
+        # Compile NoBASIC to assembly
+        compile_nobasic(str(source_path), str(output_path), verbose)
+        
+        # Binary file should be created automatically
+        binary_path = str(output_path).replace('.asm', '.bin')
+        
+        if not Path(binary_path).exists():
+            return json.dumps({
+                "error": f"Binary file not created at {binary_path}",
+                "assembly_created": str(output_path)
+            })
+        
+        result = {
+            "status": "compiled",
+            "source": str(source_path),
+            "assembly": str(output_path),
+            "binary": str(binary_path)
+        }
+        
+        # Auto-load if requested
+        if auto_load:
+            ensure_emulator()
+            try:
+                entry_point = _emulator_state["memory"].load(binary_path)
+                _emulator_state["program_path"] = binary_path
+                _emulator_state["cpu"].pc = entry_point
+                _emulator_state["cycle_count"] = 0
+                _emulator_state["debugger"] = None  # Reset debugger
+                result["auto_loaded"] = True
+                result["entry_point"] = f"0x{entry_point:04X}"
+            except Exception as e:
+                result["auto_load_error"] = str(e)
+        
+        return json.dumps(result)
+    
+    except Exception as e:
+        import traceback
+        return json.dumps({
+            "error": f"Compilation failed: {str(e)}",
+            "traceback": traceback.format_exc()
+        })
+
 if __name__ == "__main__":
     import asyncio
     
     # Initialize emulator on startup
     initialize_emulator()
-    print("Nova-16 MCP Server initialized", file=sys.stderr)
     
-    # Start MCP server with async main
-    asyncio.run(server.run())
+    # Start MCP server with stdio transport
+    from mcp.server.stdio import stdio_server
+    from mcp.server.lowlevel.server import InitializationOptions
+    from mcp.types import ServerCapabilities, ToolsCapability
+    
+    async def main():
+        async with stdio_server() as (read_stream, write_stream):
+            # Create proper initialization options with server capabilities
+            init_options = InitializationOptions(
+                server_name="Nova-16 MCP",
+                server_version="1.0.0",
+                capabilities=ServerCapabilities(
+                    tools=ToolsCapability()
+                )
+            )
+            await server.run(read_stream, write_stream, init_options)
+    
+    asyncio.run(main())

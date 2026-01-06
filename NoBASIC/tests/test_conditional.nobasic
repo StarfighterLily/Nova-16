@@ -1,0 +1,8 @@
+// Conditional test
+x = 15
+If x > 10 Then
+    y = 100
+Else
+    y = 200
+End
+z = y + x

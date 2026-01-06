@@ -19,12 +19,12 @@ if %errorlevel% neq 0 (
 )
 
 echo Checking dependencies...
-python -m pip list | find "mcp" >nul
+py -3.13 -m pip list | find "mcp" >nul
 if %errorlevel% neq 0 (
     echo.
     echo MCP package not found. Installing dependencies...
     echo.
-    python -m pip install -r requirements-mcp.txt
+    py -3.13 -m pip install -r requirements-mcp.txt
     if %errorlevel% neq 0 (
         echo Error: Failed to install dependencies
         pause
@@ -47,7 +47,7 @@ echo.
 echo Press Ctrl+C to stop the server.
 echo.
 
-python nova_mcp_server.py
+py -3.13 nova_mcp_server.py
 
 if %errorlevel% neq 0 (
     echo.

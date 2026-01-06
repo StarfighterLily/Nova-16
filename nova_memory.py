@@ -432,6 +432,10 @@ class Memory:
         # Ensure we don't overflow memory
         load_size = min(len(program_data), self.size - address)
         self.memory[address:address + load_size] = np.frombuffer(program_data[:load_size], dtype=np.uint8)
+        
+        # Sync caches after loading
+        self._sync_caches_after_load()
+        
         return address
 
     def get_cache_stats(self):

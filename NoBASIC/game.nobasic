@@ -93,7 +93,7 @@ While 1
        Text(x, y, "O", 0x0F)
        Text(x, y + 8, "X", 0x0F)
 
-       If counter = 64 Then
+       If counter = 255 Then
            counter = 0
            Text(oldx - 16, oldy + 8, Str1, 0x00)
            Text(oldx + 8, oldy + 8, Str1, 0x00)

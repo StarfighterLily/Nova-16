@@ -359,8 +359,9 @@ class DataGenerator:
             val = self._parse_numeric_value(arg, symbol_table)
             if val > 65535:
                 raise ValueError(f"Value {val} too large for DW (max 65535)")
-            result.append((val >> 8) & 0xFF)
-            result.append(val & 0xFF)
+            # Big-endian: high byte first, low byte second (Nova-16 specification)
+            result.append((val >> 8) & 0xFF)    # High byte
+            result.append(val & 0xFF)           # Low byte
 
         return result
 
