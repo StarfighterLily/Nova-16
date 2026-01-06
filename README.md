@@ -22,7 +22,7 @@ Nova-16 is a complete 16-bit computer system emulator featuring a custom instruc
 - Multiple rendering layers (0-8) with compositing
 - Text rendering with custom font support
 - Sprite system with 8x8 and 16x16 sprite support
-- Video RAM (VRAM) with memory-mapped access
+- Video RAM (VRAM) with screen memory
 - Screen scrolling and fill operations
 - Coordinate and linear addressing modes
 - Graphics profiler for performance analysis
@@ -239,7 +239,6 @@ This is a personal project, but feedback and suggestions are welcome through Git
 - **Memory Model**: Princeton architecture with unified 64KB address space
 - **Interrupt Vectors**: Located at 0x0100-0x011F
 - **Stack**: Grows downward from 0xFFFF
-- **Video Memory**: Memory-mapped starting at 0x2000
 - **Keyboard Buffer**: 16-key circular buffer at memory-mapped location
 
 ## License
