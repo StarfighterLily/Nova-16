@@ -20,7 +20,7 @@ from ..parser.ast import (
     Program, Statement, Expression, ClrDrawStmt, PxlOnStmt, PxlOffStmt,
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
-    InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
+    InputStmt, DispStmt, PauseStmt, FunctionCallStmt, ExpressionStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
     AsmBlockStmt, FunctionDefStmt, ReturnStmt, LiteralExpr, VariableExpr, ListAccessExpr, 
     MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, StructType
@@ -1244,6 +1244,8 @@ class CodeGenerator:
             self.generate_pause()
         elif isinstance(stmt, FunctionCallStmt):
             self.generate_function_call_statement(stmt)
+        elif isinstance(stmt, ExpressionStmt):
+            self.generate_expression_statement(stmt)
         elif isinstance(stmt, AssignmentStmt):
             self.generate_assignment(stmt)
         elif isinstance(stmt, IfStmt):
@@ -1640,6 +1642,11 @@ class CodeGenerator:
         """Generate code for a function call statement."""
         # Evaluate the function call but discard the result
         self.generate_expression(stmt.function_call, "R0")
+
+    def generate_expression_statement(self, stmt: ExpressionStmt):
+        """Generate code for an expression statement (evaluates expression, discards result)."""
+        # Evaluate the expression but discard the result
+        self.generate_expression(stmt.expression, "R0")
 
     def generate_assignment(self, stmt: AssignmentStmt):
         """Generate optimized assignment code."""

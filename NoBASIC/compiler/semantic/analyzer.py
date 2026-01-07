@@ -5,7 +5,7 @@ NoBASIC Semantic Analyzer
 from typing import Dict, Set, List, Optional
 from ..utils.error import SemanticError
 from ..parser.ast import (
-    Program, Statement, Expression, AssignmentStmt, IfStmt, ForStmt,
+    Program, Statement, Expression, AssignmentStmt, ExpressionStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
     FunctionCallStmt, FunctionDefStmt, ReturnStmt, VariableExpr, ListAccessExpr, MatrixAccessExpr,
     MemberAccessExpr, FunctionCallExpr, LiteralExpr, BinaryExpr, UnaryExpr, GroupingExpr,
@@ -220,6 +220,8 @@ class SemanticAnalyzer:
             self.analyze_struct_declaration(stmt)
         elif isinstance(stmt, FunctionCallStmt):
             self.analyze_function_call_statement(stmt)
+        elif isinstance(stmt, ExpressionStmt):
+            self.analyze_expression_statement(stmt)
         elif isinstance(stmt, (PxlOnStmt, PxlOffStmt, LineStmt, CircleStmt, TextStmt,
                               SetLayerStmt, SpriteOnStmt, SpriteOffStmt, PlayToneStmt,
                               PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt)):
@@ -261,6 +263,10 @@ class SemanticAnalyzer:
     def analyze_function_call_statement(self, stmt: FunctionCallStmt):
         """Analyze a function call statement."""
         self.analyze_expression(stmt.function_call)
+
+    def analyze_expression_statement(self, stmt: ExpressionStmt):
+        """Analyze an expression statement."""
+        self.analyze_expression(stmt.expression)
 
     def analyze_assignment(self, stmt: AssignmentStmt):
         """Analyze an assignment statement."""

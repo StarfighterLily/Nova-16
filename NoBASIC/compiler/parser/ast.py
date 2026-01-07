@@ -187,6 +187,12 @@ class FunctionCallStmt(Statement):
 
 
 @dataclass
+class ExpressionStmt(Statement):
+    """Expression statement (for side-effect expressions like ++/--)."""
+    expression: Expression
+
+
+@dataclass
 class AssignmentStmt(Statement):
     """expression = expression statement."""
     variable: Expression

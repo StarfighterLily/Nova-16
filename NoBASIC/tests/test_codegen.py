@@ -231,6 +231,16 @@ class TestCodeGenerator:
         # Should generate code for negation and NOT
         assert "NEG" in " ".join(lines) or "NOT" in " ".join(lines)
 
+    def test_increment_decrement_codegen(self):
+        """Test code generation for increment/decrement operators."""
+        code = self.generate_code("x = 10\nx++\ny = ++x\nz--")
+        lines = code.strip().split("\n")
+        # Should generate ADD/SUB instructions for increment/decrement
+        add_count = sum(1 for line in lines if "ADD" in line)
+        sub_count = sum(1 for line in lines if "SUB" in line)
+        assert add_count >= 2  # x++ and ++x
+        assert sub_count >= 1  # z--
+
     def test_function_call_codegen(self):
         """Test code generation for various function calls."""
         # Test math functions that have hardware support

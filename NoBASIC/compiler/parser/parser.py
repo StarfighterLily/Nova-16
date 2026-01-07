@@ -10,7 +10,7 @@ from .ast import (
     Program, Statement, Expression, ClrDrawStmt, PxlOnStmt, PxlOffStmt,
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
-    InputStmt, DispStmt, PauseStmt, FunctionCallStmt, AssignmentStmt, IfStmt, ForStmt,
+    InputStmt, DispStmt, PauseStmt, FunctionCallStmt, ExpressionStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
     AsmBlockStmt, FunctionDefStmt, ReturnStmt, LiteralExpr, VariableExpr, ListAccessExpr, 
     MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, 
@@ -287,11 +287,17 @@ class Parser:
         return DispStmt(text)
 
     def assignment_statement(self) -> Statement:
-        """Parse assignment or function call statement."""
+        """Parse assignment, function call, or expression statement."""
         variable = self.assignable_expression()
         if isinstance(variable, FunctionCallExpr) and not self.check(TokenType.EQUAL):
             # This is actually a function call statement
             return FunctionCallStmt(variable)
+        elif isinstance(variable, UnaryExpr) and variable.operator in ("++", "--"):
+            # This is an increment/decrement expression statement
+            return ExpressionStmt(variable)
+        elif not self.check(TokenType.EQUAL):
+            # Invalid statement - expected assignment or valid expression
+            raise self.error("Expected '=' after variable or valid statement")
         else:
             self.consume(TokenType.EQUAL, "Expected '=' after variable")
             expression = self.expression()
@@ -717,7 +723,7 @@ class Parser:
 
     def assignable_expression(self) -> Expression:
         """Parse expressions that can be assigned to (variables, list/matrix access, member access)."""
-        expr = self.primary()
+        expr = self.call()
 
         # Handle member access (obj.field)
         while self.match(TokenType.DOT):
