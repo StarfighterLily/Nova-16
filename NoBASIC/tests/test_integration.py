@@ -175,8 +175,24 @@ class TestIntegration:
 
     def test_array_operations_integration(self):
         """Test integration with array/list operations."""
-        # Skip this test as array assignment is not implemented
-        pass
+        source = """
+        L1(5) = 42
+        x = L1(5)
+        Pause
+        """
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_file = Path(tmpdir) / "array_test.nobasic"
+            source_file.write_text(source)
+            
+            compile_nobasic(str(source_file))
+            
+            asm_file = source_file.with_suffix('.asm')
+            assert asm_file.exists()
+            
+            # Check that array store and load operations are generated
+            asm_content = asm_file.read_text()
+            assert "MOV" in asm_content  # Should have some MOV instructions for array operations
 
     def test_complex_graphics_program(self):
         """Test compilation of complex graphics programs."""

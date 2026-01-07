@@ -294,8 +294,15 @@ class TestParser:
 
     def test_function_call_with_multiple_args(self):
         """Test function calls with multiple arguments."""
-        # Skip this test as max() function parsing isn't implemented
-        pass
+        program = self.parse_source("x = max(a, b)")
+        expr = program.statements[0].expression
+        assert isinstance(expr, FunctionCallExpr)
+        assert expr.name == "max"
+        assert len(expr.arguments) == 2
+        assert isinstance(expr.arguments[0], VariableExpr)
+        assert expr.arguments[0].name == "a"
+        assert isinstance(expr.arguments[1], VariableExpr)
+        assert expr.arguments[1].name == "b"
 
     def test_array_access_expressions(self):
         """Test array/list access expressions."""
@@ -331,8 +338,13 @@ class TestParser:
 
     def test_goto_and_labels(self):
         """Test goto statements and labels."""
-        # Skip this test as goto isn't implemented
-        pass
+        program = self.parse_source("label1:\nx = 1\ngoto label1")
+        assert len(program.statements) == 3
+        assert isinstance(program.statements[0], LabelStmt)
+        assert program.statements[0].label == "label1"
+        assert isinstance(program.statements[1], AssignmentStmt)
+        assert isinstance(program.statements[2], GotoStmt)
+        assert program.statements[2].label == "label1"
 
     def test_graphics_statements_complex(self):
         """Test complex graphics statements."""

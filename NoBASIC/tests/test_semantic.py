@@ -236,8 +236,13 @@ class TestSemanticAnalyzer:
 
     def test_goto_label_validation(self):
         """Test validation of goto and labels."""
-        # Skip this test as goto is not implemented
-        pass
+        # Valid goto/label should work
+        program = self.parse_and_analyze("label1:\nx = 1\ngoto label1")
+        assert self.analyzer.symbol_table.is_label_defined("label1")
+        
+        # Undefined label should raise error
+        with pytest.raises(SemanticError, match="Undefined label 'label2'"):
+            self.parse_and_analyze("goto label2")
 
     def test_circular_reference_detection(self):
         """Test detection of circular variable references."""
