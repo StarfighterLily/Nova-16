@@ -48,6 +48,52 @@ Nova-16 is a complete 16-bit computer system emulator featuring a custom instruc
 - **GUI** (`nova_gui.py`): Visual interface for running programs
 - **Graphics Monitor** (`nova_graphics_monitor.py`): Real-time graphics debugging
 
+## NoBASIC Programming Language
+
+NoBASIC is a high-level programming language inspired by TI-BASIC, designed specifically for the Nova-16 emulator. It provides a simple, calculator-like syntax that compiles to Nova-16 assembly code, making it easier to develop programs without directly writing assembly.
+
+### Key Features
+
+- **Simple Syntax**: Case-insensitive, line-based statements with implicit variable declaration.
+- **Data Types**: Support for numbers, lists, strings, matrices, and user-defined structs.
+- **Control Structures**: Loops (For, While), conditionals (If-Then-Else), and subroutines.
+- **Hardware Integration**: Built-in commands for graphics drawing, sprite manipulation, sound playback, and keyboard input.
+- **Rapid Prototyping**: Ideal for games, demos, and educational programs.
+
+### Compiling and Running NoBASIC Programs
+
+1. Write your program in a `.nobasic` file.
+2. Compile to assembly:
+   ```bash
+   python NoBASIC/nobasic_compiler.py <program.nobasic> --output <program.asm>
+   ```
+3. Assemble and run as with any assembly program:
+   ```bash
+   python nova_assembler.py <program.asm>
+   python nova.py <program.bin>
+   ```
+
+### Example NoBASIC Program
+
+```nobasic
+// Simple starfield effect
+ClrDraw
+SetLayer(1)
+For x = 0 to 25
+    For y = 0 to 20
+        PxlOn(rnd()+x, rnd()-y, rndr(0x01, 0x05))
+    Next
+Next
+```
+
+### Tools
+
+- **Compiler** (`NoBASIC/nobasic_compiler.py`): Converts NoBASIC source to assembly.
+- **Debugger** (`NoBASIC/nobasic_debugger.py`): Debug NoBASIC programs.
+- **Profiler** (`NoBASIC/nobasic_profiler.py`): Performance analysis for NoBASIC code.
+
+For detailed documentation, see [NoBASIC Design](NoBASIC/NoBASIC%20Design.md).
+
 ## Project Structure
 
 ```
