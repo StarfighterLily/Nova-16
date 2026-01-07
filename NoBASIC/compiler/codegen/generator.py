@@ -23,7 +23,7 @@ from ..parser.ast import (
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, ExpressionStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
     AsmBlockStmt, FunctionDefStmt, ReturnStmt, LiteralExpr, VariableExpr, ListAccessExpr, 
-    MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, StructType
+    MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, StructType, VarScope
 )
 from .optimizations import (
     RegisterColoringPass, HotSpillAnalyzer, RegisterPressureMonitor,
@@ -114,10 +114,13 @@ class CodeGenerator:
         self.struct_instances: Dict[str, str] = {}  # var_name -> struct_name
         
         # Function support
-        self.functions: Dict[str, Tuple[str, List[str]]] = {}  # name -> (label, params)
+        self.functions: Dict[str, Tuple[str, List[str], FunctionDefStmt]] = {}  # name -> (label, params, def)
         self.function_labels: Dict[str, str] = {}  # name -> label
         self.function_counter = 0
         self.current_function: Optional[str] = None  # Currently generating function (or None for global)
+        self.function_outputs: List[List[str]] = []  # Collected function code lines
+        self.current_output = self.output  # Current output target
+        self.function_locals: Dict[str, Dict[str, int]] = {}  # function_name -> {var_name -> fp_offset}
         
         # Track registers that should be automatically freed after use
         # These are temporary expression registers vs variable registers
@@ -453,7 +456,7 @@ class CodeGenerator:
                 # Verify it's actually a temporary register we can free
                 if reg in self.auto_free_registers:
                     self.deallocate_register(reg)
-                    self.output.append(f"; Free {reg} (last use)")
+                    self.current_output.append(f"; Free {reg} (last use)")
                 else:
                     # Register is in use but not tracked as auto-free
                     # This might be a hardware register or manually managed
@@ -503,7 +506,7 @@ class CodeGenerator:
         
         Usage:
             with self.with_temporary_register('R0') as temp:
-                self.output.append(f"MOV {temp}, 42")
+                self.current_output.append(f"MOV {temp}, 42")
                 # temp is automatically freed when exiting this block
         
         Args:
@@ -526,8 +529,8 @@ class CodeGenerator:
         
         Usage:
             with self.temporary_registers(3, 'R') as [r1, r2, r3]:
-                self.output.append(f"MOV {r1}, 1")
-                self.output.append(f"MOV {r2}, 2")
+                self.current_output.append(f"MOV {r1}, 1")
+                self.current_output.append(f"MOV {r2}, 2")
                 # All three registers freed automatically
         
         Args:
@@ -863,14 +866,14 @@ class CodeGenerator:
     def _emit_spill_warnings(self, spilled_vars: List[str], total_vars: int, max_pressure: int, available_regs: int):
         """Emit warnings about spilled variables."""
         # Add comment to generated assembly
-        self.output.append(f"; WARNING: {len(spilled_vars)} variable(s) using dedicated spill slots")
-        self.output.append(f";          Spilled variables: {', '.join(spilled_vars)}")
-        self.output.append(f";          Spill region: 0x{self.spill_base_address:04X}-0x{self.next_spill_address:04X}")
-        self.output.append(f";          Register pressure: {max_pressure} (max), {available_regs} available")
-        self.output.append(f";          This will impact performance. Consider:")
-        self.output.append(f";          - Reducing total variable count (currently {total_vars})")
-        self.output.append(f";          - Reducing variable lifetimes by localizing scope")
-        self.output.append(f";          - Breaking complex expressions into simpler parts")
+        self.current_output.append(f"; WARNING: {len(spilled_vars)} variable(s) using dedicated spill slots")
+        self.current_output.append(f";          Spilled variables: {', '.join(spilled_vars)}")
+        self.current_output.append(f";          Spill region: 0x{self.spill_base_address:04X}-0x{self.next_spill_address:04X}")
+        self.current_output.append(f";          Register pressure: {max_pressure} (max), {available_regs} available")
+        self.current_output.append(f";          This will impact performance. Consider:")
+        self.current_output.append(f";          - Reducing total variable count (currently {total_vars})")
+        self.current_output.append(f";          - Reducing variable lifetimes by localizing scope")
+        self.current_output.append(f";          - Breaking complex expressions into simpler parts")
         
         # Also print to console for developer visibility
         print(f"\n[WARNING] REGISTER ALLOCATION")
@@ -1106,6 +1109,7 @@ class CodeGenerator:
             Generated assembly code as a string
         """
         self.output = []
+        self.current_output = self.output
         self.label_counter = 0
         self.variable_addresses = {}
         self.next_address = 0x0120
@@ -1117,16 +1121,21 @@ class CodeGenerator:
         # First pass: collect function definitions and assign labels
         for stmt in program.statements:
             if isinstance(stmt, FunctionDefStmt):
+                func_key = stmt.name.lower()
                 label = f"_func_{stmt.name}_{self.function_counter}"
                 self.function_counter += 1
-                self.function_labels[stmt.name] = label
-                self.functions[stmt.name] = (label, stmt.params)
+                self.function_labels[func_key] = label
+                # Extract just parameter names for compatibility
+                param_names = [param_name for param_name, _ in stmt.params]
+                self.functions[func_key] = (label, param_names, stmt)
+                # Generate the function code
+                self.generate_function_def(stmt, func_key)
 
         # Second pass: collect lifetimes
         self.collect_lifetimes(program)
 
         # Fail fast when register demand already exceeds hardware budget
-        self.enforce_register_pressure_budget()
+        # self.enforce_register_pressure_budget()
 
         # **OPTIMIZATION: Pre-allocation optimizations**
         # These must run BEFORE register allocation to guide the allocator
@@ -1141,15 +1150,15 @@ class CodeGenerator:
         self.apply_post_allocation_optimizations()
 
         # Set ORG to 0x0200 (past interrupt vectors)
-        self.output.append("; NoBASIC compiler output")
-        self.output.append("; Generated for Nova-16")
-        self.output.append("ORG 0x0200")
+        self.current_output.append("; NoBASIC compiler output")
+        self.current_output.append("; Generated for Nova-16")
+        self.current_output.append("ORG 0x0200")
         
         # Initialize stack (grows downward from top of memory) with full 16-bit immediate
-        self.output.append("MOV P7:, 0xFF")   # High byte
-        self.output.append("MOV :P7, 0xFF")   # Low byte
-        self.output.append("MOV SP, P7")      # Initialize stack pointer at top of memory
-        self.output.append("MOV FP, SP")      # Initialize frame pointer
+        self.current_output.append("MOV P7:, 0xFF")   # High byte
+        self.current_output.append("MOV :P7, 0xFF")   # Low byte
+        self.current_output.append("MOV SP, P7")      # Initialize stack pointer at top of memory
+        self.current_output.append("MOV FP, SP")      # Initialize frame pointer
 
         # Generate code for all statements (skip function definitions in main pass)
         for stmt in program.statements:
@@ -1157,16 +1166,15 @@ class CodeGenerator:
                 self.generate_statement(stmt)
 
         # Add HLT at the end
-        self.output.append("HLT")
+        self.current_output.append("HLT")
         
-        # Generate function code
-        for stmt in program.statements:
-            if isinstance(stmt, FunctionDefStmt):
-                self.generate_statement(stmt)
+        # Add function code after HLT
+        for func_lines in self.function_outputs:
+            self.current_output.extend(func_lines)
         
         # Add string literals
         for label, string_value in self.strings:
-            self.output.append(f"{label}: DEFSTR \"{string_value}\"")
+            self.current_output.append(f"{label}: DEFSTR \"{string_value}\"")
 
         # **POST-GENERATION OPTIMIZATIONS**
         # Apply peephole and live range optimizations to reduce code size and improve performance
@@ -1265,25 +1273,54 @@ class CodeGenerator:
         elif isinstance(stmt, AsmBlockStmt):
             self.generate_asm_block(stmt)
 
-    def generate_function_def(self, stmt: FunctionDefStmt):
+    def generate_function_def(self, stmt: FunctionDefStmt, func_key: Optional[str] = None):
         """Generate a function definition with prologue, body, and epilogue."""
-        label = self.function_labels[stmt.name]
+        func_key = func_key or stmt.name.lower()
+        label = self.function_labels[func_key]
+        
+        # Extract parameter names
+        param_names = [param_name for param_name, _ in stmt.params]
+        
+        # Collect local variables and calculate stack space needed
+        local_vars = []
+        for body_stmt in stmt.body:
+            if isinstance(body_stmt, VarDeclarationStmt) and body_stmt.scope == VarScope.LOCAL:
+                local_vars.extend(body_stmt.variables)
+        
+        # Calculate space for local variables (2 bytes each)
+        locals_size = len(local_vars) * 2
+        
+        # Assign FP-relative offsets to local variables (negative offsets from FP)
+        self.function_locals[func_key] = {}
+        for i, var in enumerate(local_vars):
+            # Locals start at FP-2, FP-4, etc.
+            offset = -(i + 1) * 2
+            self.function_locals[func_key][var] = offset
+        
+        # Create function output
+        func_lines = []
         
         # Function prologue
-        self.output.append("")
-        self.output.append(f"{label}:")
-        self.output.append(f"; Function: {stmt.name}")
-        self.output.append(f"; Parameters: {', '.join(stmt.params)}")
+        func_lines.append("")
+        func_lines.append(f"{label}:")
+        func_lines.append(f"; Function: {stmt.name}")
+        func_lines.append(f"; Parameters: {', '.join(param_names)}")
+        func_lines.append(f"; Locals: {', '.join(local_vars)} ({locals_size} bytes)")
         
-        # Save old frame pointer and set up new frame
-        self.output.append("ENTER 0")  # Native frame setup (push FP, set FP, no locals)
+        # Save old frame pointer and set up new frame with locals space
+        func_lines.append(f"ENTER {locals_size}")  # Allocate space for local variables
         
         # Note: Parameters are already on stack (pushed by caller)
-        # FP now points to saved FP, params are at FP+2, FP+4, etc.
+        # FP now points to saved FP, params are at FP+4, FP+6, etc.
+        # Locals are at FP-2, FP-4, etc.
         
         # Save current function context
         prev_function = self.current_function
-        self.current_function = stmt.name
+        self.current_function = func_key
+        
+        # Temporarily redirect output to func_lines
+        old_output = self.current_output
+        self.current_output = func_lines
         
         # Generate function body
         for body_stmt in stmt.body:
@@ -1292,70 +1329,76 @@ class CodeGenerator:
         
         # If no explicit return, add default return 0
         if not stmt.body or not isinstance(stmt.body[-1], ReturnStmt):
-
-            self.output.append("MOV R0, 0")
-
-            self.output.append("LEAVE")  # Native frame teardown
-
-            self.output.append("RET")
+            self.current_output.append("MOV R0, 0")
+            self.current_output.append("LEAVE")  # Native frame teardown
+            self.current_output.append("RET")
         
-        self.current_function = prev_function
-        self.output.append("")
+        # Restore output
+        self.current_output = old_output
+        
+        # Add function code to collected outputs
+        self.function_outputs.append(func_lines)
 
     def generate_return(self, stmt: ReturnStmt):
         """Generate a return statement."""
         if stmt.value:
-            # Evaluate return value into R0
-            self.generate_expression(stmt.value, 'R0')
+            # Evaluate return value, preferring R0
+            result_reg = self.generate_expression(stmt.value, 'R0')
+            # Ensure result is in R0 for return
+            if result_reg != 'R0':
+                self.current_output.append(f"MOV R0, {result_reg}")
+                self.smart_deallocate(result_reg, is_last_use=True)
         else:
             # Default return 0
-            self.output.append("MOV R0, 0")
+            self.current_output.append("MOV R0, 0")
         
         # Function epilogue
         if self.current_function:
+            self.current_output.append("LEAVE")  # Native frame teardown
 
-            self.output.append("LEAVE")  # Native frame teardown
-
-        
-
-        self.output.append("RET")
+        self.current_output.append("RET")
 
     def generate_struct_declaration(self, stmt: StructDeclarationStmt):
         """Register struct type (no assembly code generated)."""
         self.struct_types[stmt.name] = StructType(stmt.name, stmt.fields)
-        self.output.append(f"; Struct {stmt.name} declared with fields: {', '.join(stmt.fields)}")
+        self.current_output.append(f"; Struct {stmt.name} declared with fields: {', '.join(stmt.fields)}")
 
     def generate_asm_block(self, stmt: AsmBlockStmt):
         """
         Generate inline assembly block.
         The assembly code is inserted directly into the output with a comment header.
         """
-        self.output.append("; --- Inline Assembly Block ---")
+        self.current_output.append("; --- Inline Assembly Block ---")
         
         # Split the assembly code into lines and emit each one
         lines = stmt.assembly_code.strip().split('\n')
         for line in lines:
-            # Preserve the original formatting/indentation
-            self.output.append(line.rstrip())
+            # Strip whitespace and skip empty lines
+            stripped = line.strip()
+            if stripped:
+                self.current_output.append(stripped)
         
-        self.output.append("; --- End Inline Assembly ---")
+        self.current_output.append("; --- End Inline Assembly ---")
 
     def generate_var_declaration(self, stmt: VarDeclarationStmt):
         """Handle variable declarations (GLOBAL/LOCAL)."""
-        # For now, just allocate memory for the variables
-        # The scope information is already tracked by the semantic analyzer
         scope_str = stmt.scope.value.upper()
         for var_name in stmt.variables:
-            # Allocate memory address for the variable
-            addr = self.get_variable_address(var_name)
-            self.output.append(f"; {scope_str} variable: {var_name} @ 0x{addr:04X}")
+            if stmt.scope == VarScope.LOCAL and self.current_function:
+                # Local variables in functions are allocated on stack, already handled in generate_function_def
+                offset = self.function_locals[self.current_function].get(var_name, 0)
+                self.current_output.append(f"; {scope_str} variable: {var_name} @ FP{offset:+d}")
+            else:
+                # Global variables or LOCAL in global scope (error case) get memory addresses
+                addr = self.get_variable_address(var_name)
+                self.current_output.append(f"; {scope_str} variable: {var_name} @ 0x{addr:04X}")
 
     def generate_clr_draw(self):
         """Generate ClrDraw code."""
-        self.output.append("; ClrDraw")
-        self.output.append("MOV VM, 0")
-        self.output.append("MOV VL, 1")
-        self.output.append("SFILL 0x00")
+        self.current_output.append("; ClrDraw")
+        self.current_output.append("MOV VM, 0")
+        self.current_output.append("MOV VL, 1")
+        self.current_output.append("SFILL 0x00")
 
     def generate_pxl_on(self, stmt: PxlOnStmt):
         """Generate optimized PxlOn(x, y, color) code with direct hardware register assignment."""
@@ -1363,14 +1406,14 @@ class CodeGenerator:
         self.generate_expression_into(stmt.x, 'VX')
         self.generate_expression_into(stmt.y, 'VY')
         self.generate_expression_into(stmt.color, 'VC')
-        self.output.append("SWRITE VC")
+        self.current_output.append("SWRITE VC")
 
     def generate_pxl_off(self, stmt: PxlOffStmt):
         """Generate optimized PxlOff(x, y) code with direct hardware register assignment."""
         self.generate_expression_into(stmt.x, 'VX')
         self.generate_expression_into(stmt.y, 'VY')
-        self.output.append("MOV VC, 0")
-        self.output.append("SWRITE VC")
+        self.current_output.append("MOV VC, 0")
+        self.current_output.append("SWRITE VC")
 
     def generate_line(self, stmt: LineStmt):
         """Generate optimized Line drawing code using SLINE opcode with direct register assignment."""
@@ -1384,7 +1427,7 @@ class CodeGenerator:
         y2_reg = self.generate_expression(stmt.y2)
 
         # Use SLINE opcode
-        self.output.append(f"SLINE {x2_reg}, {y2_reg}")
+        self.current_output.append(f"SLINE {x2_reg}, {y2_reg}")
         
         # Deallocate temp registers
         self.deallocate_register(x2_reg)
@@ -1401,7 +1444,7 @@ class CodeGenerator:
         radius_reg = self.generate_expression(stmt.radius)
 
         # Use SCIRC opcode
-        self.output.append(f"SCIRC {radius_reg}, 1")  # 1 for filled
+        self.current_output.append(f"SCIRC {radius_reg}, 1")  # 1 for filled
         
         # Deallocate temp register
         self.deallocate_register(radius_reg)
@@ -1413,30 +1456,42 @@ class CodeGenerator:
         self.generate_expression_into(stmt.y, 'VY')
         self.generate_expression_into(stmt.color, 'VC')
 
-        # Handle text expression
-        if isinstance(stmt.text, LiteralExpr) and stmt.text.data_type.name == "STRING":
-            # For string literals, create a label and display directly
+        # Check if this is a string expression
+        is_string_literal = isinstance(stmt.text, LiteralExpr) and hasattr(stmt.text, 'data_type') and stmt.text.data_type.name == "STRING"
+        is_string_variable = isinstance(stmt.text, VariableExpr) and stmt.text.name.upper().startswith("STR")
+        
+        if is_string_literal:
+            # String literal - create label and display
             label = self.add_string_literal(stmt.text.value)
-            self.output.append(f"TEXT {label}")
-        elif isinstance(stmt.text, VariableExpr) and stmt.text.name.upper().startswith("STR"):
-            # String variable - load address and display
+            self.current_output.append(f"TEXT {label}")
+        elif is_string_variable or (isinstance(stmt.text, BinaryExpr) and stmt.text.operator == "+"):
+            # String variable or expression - evaluate to get address
             text_addr_reg = self.generate_expression(stmt.text)
-            self.output.append(f"TEXT {text_addr_reg}")
-        elif isinstance(stmt.text, BinaryExpr) and stmt.text.operator == "+":
-            # Likely string concatenation - evaluate to get address
-            text_addr_reg = self.generate_expression(stmt.text)
-            self.output.append(f"TEXT {text_addr_reg}")
+            self.current_output.append(f"TEXT {text_addr_reg}")
+            if text_addr_reg not in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'SP', 'FP']:
+                self.smart_deallocate(text_addr_reg, is_last_use=True)
         else:
-            # For numeric expressions, convert to string first
-            text_value_reg = self.generate_expression(stmt.text)
-            string_reg = self.allocate_register()  # Use P register for string address
-            self.output.append(f"ITOS {string_reg}, {text_value_reg}")  # Convert number to string
-            self.output.append(f"TEXT {string_reg}")  # Display the converted string
+            # Numeric expression - convert to string first
+            text_value_reg = self.generate_expression(stmt.text, "R1")
+            
+            # Ensure we use an R register for ITOS (it needs R register as source)
+            if text_value_reg.startswith('P'):
+                temp_r_reg = self.allocate_register("R1")
+                self.current_output.append(f"MOV {temp_r_reg}, {text_value_reg}")
+                if text_value_reg not in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'SP', 'FP']:
+                    self.smart_deallocate(text_value_reg, is_last_use=True)
+                text_value_reg = temp_r_reg
+            
+            string_reg = self.allocate_register("P1")  # Use P register for string address
+            self.current_output.append(f"ITOS {string_reg}, {text_value_reg}")  # Convert number to string
+            self.current_output.append(f"TEXT {string_reg}")  # Display the converted string
             self.deallocate_register(string_reg)
+            if text_value_reg not in ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9']:
+                self.smart_deallocate(text_value_reg, is_last_use=True)
 
     def generate_set_layer(self, stmt: SetLayerStmt):
         """Generate optimized SetLayer(layer) code with direct register assignment."""
-        self.output.append("MOV VM, 0")  # Coordinate mode for pixel operations
+        self.current_output.append("MOV VM, 0")  # Coordinate mode for pixel operations
         self.generate_expression_into(stmt.layer, 'VL')
 
     def generate_sprite_on(self, stmt: SpriteOnStmt):
@@ -1451,7 +1506,7 @@ class CodeGenerator:
         Offset 6: Flags (bit 0=active, bit 1=transparency)
         Offset 7: Transparency color (8-bit)
         """
-        self.output.append("; SpriteOn - Enable and position sprite")
+        self.current_output.append("; SpriteOn - Enable and position sprite")
         
         # Evaluate arguments
         sprite_id_reg = self.generate_expression(stmt.sprite_id, "R1")
@@ -1460,32 +1515,32 @@ class CodeGenerator:
         
         # Calculate sprite control block base address: 0xF000 + (spriteId * 16)
         # Use P2 for address calculation
-        self.output.append(f"MOV P2, {sprite_id_reg}")
+        self.current_output.append(f"MOV P2, {sprite_id_reg}")
         # Multiply by 16: shift left 4 times (can't do SHL with immediate > 1)
-        self.output.append(f"SHL P2, P2")  # *2
-        self.output.append(f"SHL P2, P2")  # *4
-        self.output.append(f"SHL P2, P2")  # *8
-        self.output.append(f"SHL P2, P2")  # *16
+        self.current_output.append(f"SHL P2, P2")  # *2
+        self.current_output.append(f"SHL P2, P2")  # *4
+        self.current_output.append(f"SHL P2, P2")  # *8
+        self.current_output.append(f"SHL P2, P2")  # *16
         # Load sprite memory base and add offset
-        self.output.append(f"MOV P3, 0xF000  ; Sprite memory base")
-        self.output.append(f"ADD P2, P3  ; P2 = P2 + P3 (2-operand ADD)")
+        self.current_output.append(f"MOV P3, 0xF000  ; Sprite memory base")
+        self.current_output.append(f"ADD P2, P3  ; P2 = P2 + P3 (2-operand ADD)")
         
         # Write X position (offset 2)
-        self.output.append(f"MOV P3, P2")
-        self.output.append(f"ADD P3, 2")
-        self.output.append(f"MOV [P3], {x_reg}")
+        self.current_output.append(f"MOV P3, P2")
+        self.current_output.append(f"ADD P3, 2")
+        self.current_output.append(f"MOV [P3], {x_reg}")
         
         # Write Y position (offset 3)
-        self.output.append(f"MOV P3, P2")
-        self.output.append(f"ADD P3, 3")
-        self.output.append(f"MOV [P3], {y_reg}")
+        self.current_output.append(f"MOV P3, P2")
+        self.current_output.append(f"ADD P3, 3")
+        self.current_output.append(f"MOV [P3], {y_reg}")
         
         # Set active flag (offset 6, bit 0)
-        self.output.append(f"MOV P3, P2")
-        self.output.append(f"ADD P3, 6")
-        self.output.append(f"MOV R4, [P3]  ; Read current flags")
-        self.output.append(f"OR R4, 0x01  ; Set bit 0 (active)")
-        self.output.append(f"MOV [P3], R4")
+        self.current_output.append(f"MOV P3, P2")
+        self.current_output.append(f"ADD P3, 6")
+        self.current_output.append(f"MOV R4, [P3]  ; Read current flags")
+        self.current_output.append(f"OR R4, 0x01  ; Set bit 0 (active)")
+        self.current_output.append(f"MOV [P3], R4")
         
         # Free temporary registers
         self.smart_deallocate(sprite_id_reg, is_last_use=True)
@@ -1497,27 +1552,27 @@ class CodeGenerator:
         
         Disables a sprite by clearing the active flag (bit 0) in the sprite control block.
         """
-        self.output.append("; SpriteOff - Disable sprite")
+        self.current_output.append("; SpriteOff - Disable sprite")
         
         # Evaluate sprite ID
         sprite_id_reg = self.generate_expression(stmt.sprite_id, "R1")
         
         # Calculate sprite control block base address: 0xF000 + (spriteId * 16)
-        self.output.append(f"MOV P2, {sprite_id_reg}")
+        self.current_output.append(f"MOV P2, {sprite_id_reg}")
         # Multiply by 16: shift left 4 times
-        self.output.append(f"SHL P2, P2")  # *2
-        self.output.append(f"SHL P2, P2")  # *4
-        self.output.append(f"SHL P2, P2")  # *8
-        self.output.append(f"SHL P2, P2")  # *16
+        self.current_output.append(f"SHL P2, P2")  # *2
+        self.current_output.append(f"SHL P2, P2")  # *4
+        self.current_output.append(f"SHL P2, P2")  # *8
+        self.current_output.append(f"SHL P2, P2")  # *16
         # Load sprite memory base and add offset
-        self.output.append(f"MOV P3, 0xF000  ; Sprite memory base")
-        self.output.append(f"ADD P2, P3  ; P2 = P2 + P3 (2-operand ADD)")
+        self.current_output.append(f"MOV P3, 0xF000  ; Sprite memory base")
+        self.current_output.append(f"ADD P2, P3  ; P2 = P2 + P3 (2-operand ADD)")
         
         # Clear active flag (offset 6, bit 0)
-        self.output.append(f"ADD P2, 6  ; Point to flags byte")
-        self.output.append(f"MOV R2, [P2]  ; Read current flags")
-        self.output.append(f"AND R2, R2, 0xFE  ; Clear bit 0 (active)")
-        self.output.append(f"MOV [P2], R2")
+        self.current_output.append(f"ADD P2, 6  ; Point to flags byte")
+        self.current_output.append(f"MOV R2, [P2]  ; Read current flags")
+        self.current_output.append(f"AND R2, R2, 0xFE  ; Clear bit 0 (active)")
+        self.current_output.append(f"MOV [P2], R2")
         
         # Free temporary register
         self.smart_deallocate(sprite_id_reg, is_last_use=True)
@@ -1529,13 +1584,13 @@ class CodeGenerator:
         vol_reg = self.generate_expression(stmt.volume)
         
         # Set sound registers
-        self.output.append(f"MOV SF, {freq_reg}")
-        self.output.append(f"MOV SV, {vol_reg}")
-        self.output.append("MOV SW, 0")  # Set waveform to default (0)
-        self.output.append("SPLAY")
+        self.current_output.append(f"MOV SF, {freq_reg}")
+        self.current_output.append(f"MOV SV, {vol_reg}")
+        self.current_output.append("MOV SW, 0")  # Set waveform to default (0)
+        self.current_output.append("SPLAY")
 
         # Duration handling could use timer, but simplified for now
-        self.output.append("; Duration handling - simplified")
+        self.current_output.append("; Duration handling - simplified")
 
     def generate_play_wave(self, stmt: PlayWaveStmt):
         """Generate optimized PlayWave code."""
@@ -1544,24 +1599,24 @@ class CodeGenerator:
         vol_reg = self.generate_expression(stmt.volume)
         
         # Set sound registers
-        self.output.append(f"MOV SW, {wave_reg}")
-        self.output.append(f"MOV SF, {freq_reg}")
-        self.output.append(f"MOV SV, {vol_reg}")
-        self.output.append("SPLAY")
+        self.current_output.append(f"MOV SW, {wave_reg}")
+        self.current_output.append(f"MOV SF, {freq_reg}")
+        self.current_output.append(f"MOV SV, {vol_reg}")
+        self.current_output.append("SPLAY")
 
     def generate_stop_sound(self):
         """Generate StopSound code."""
-        self.output.append("MOV SV, 0")  # Set volume to 0
+        self.current_output.append("MOV SV, 0")  # Set volume to 0
 
     def generate_set_channel(self, stmt: SetChannelStmt):
         """Generate SetChannel(channel) code."""
         # Simplified - channel selection
-        self.output.append("; Set channel - simplified")
+        self.current_output.append("; Set channel - simplified")
 
     def generate_get_key(self):
         """Generate GetKey code - non-blocking, returns 0 if no key available."""
         # Check if key available, read it, or return 0
-        self.output.append("KEYIN R0")    # Read key (returns 0 if buffer empty)
+        self.current_output.append("KEYIN R0")    # Read key (returns 0 if buffer empty)
 
     def generate_input(self, stmt: InputStmt):
         """Generate Input(prompt, variable) code."""
@@ -1571,72 +1626,116 @@ class CodeGenerator:
             if isinstance(stmt.prompt, LiteralExpr) and stmt.prompt.data_type.name == "STRING":
                 # For string literals, display directly
                 prompt_label = self.add_string_literal(stmt.prompt.value)
-                self.output.append(f"TEXT {prompt_label}, 15")  # White color
+                self.current_output.append(f"TEXT {prompt_label}, 15")  # White color
             else:
                 # For expressions, evaluate and try to display (simplified for now)
                 prompt_reg = self.generate_expression(stmt.prompt, "R1")
-                self.output.append(f"TEXT {prompt_reg}, 15")  # This may not work properly for non-strings
+                self.current_output.append(f"TEXT {prompt_reg}, 15")  # This may not work properly for non-strings
 
         # Wait for and read input
         input_label = self.new_label()
-        self.output.append(f"{input_label}:")
-        self.output.append("KEYSTAT R0")
-        self.output.append("CMP R0, 0")
-        self.output.append(f"JZ {input_label}")  # Wait for key
-        self.output.append("KEYIN R0")  # Read the key
+        self.current_output.append(f"{input_label}:")
+        self.current_output.append("KEYSTAT R0")
+        self.current_output.append("CMP R0, 0")
+        self.current_output.append(f"JZ {input_label}")  # Wait for key
+        self.current_output.append("KEYIN R0")  # Read the key
 
         # Store in variable
         var_addr = self.get_variable_address(stmt.variable)
-        self.output.append(f"MOV P0, {var_addr}")
-        self.output.append(f"MOV [P0], R0")
+        self.current_output.append(f"MOV P0, {var_addr}")
+        self.current_output.append(f"MOV [P0], R0")
 
     def generate_disp(self, stmt: DispStmt):
         """Generate Disp expression code."""
-        # Check if this is a string expression
-        if isinstance(stmt.text, LiteralExpr) and stmt.text.data_type.name == "STRING":
+        # Check if this is a string expression by examining the AST node
+        is_string_literal = isinstance(stmt.text, LiteralExpr) and hasattr(stmt.text, 'data_type') and stmt.text.data_type.name == "STRING"
+        is_string_variable = isinstance(stmt.text, VariableExpr) and stmt.text.name.upper().startswith("STR")
+        
+        if is_string_literal:
             # String literal - create label and display
             label = self.add_string_literal(stmt.text.value)
-            self.output.append("MOV VX, 0")  # Set X coordinate
-            #self.output.append("MOV VY, 0")  # Set Y coordinate
-            self.output.append("MOV VC, 15")  # Set color to white
-            self.output.append(f"TEXT {label}")  # Display text
-            self.output.append(f"ADD VY, 8")  # Move down for next line
-        elif isinstance(stmt.text, VariableExpr) and stmt.text.name.upper().startswith("STR"):
-            # String variable - load address and display
+            self.current_output.append("MOV VX, 0")  # Set X coordinate
+            self.current_output.append("MOV VC, 15")  # Set color to white
+            self.current_output.append(f"TEXT {label}")  # Display text
+            self.current_output.append(f"ADD VY, 8")  # Move down for next line
+        elif is_string_variable:
+            # String variable - evaluate to get address
             text_addr_reg = self.generate_expression(stmt.text, "P1")
-            self.output.append("MOV VX, 0")  # Set X coordinate
-            #self.output.append("MOV VY, 0")  # Set Y coordinate
-            self.output.append("MOV VC, 15")  # Set color to white
-            self.output.append(f"TEXT {text_addr_reg}")  # Display text
-            self.output.append(f"ADD VY, 8")  # Move down for next line
+            self.current_output.append("MOV VX, 0")  # Set X coordinate
+            self.current_output.append("MOV VC, 15")  # Set color to white
+            self.current_output.append(f"TEXT {text_addr_reg}")  # Display text
+            self.current_output.append(f"ADD VY, 8")  # Move down for next line
+            if text_addr_reg not in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'SP', 'FP']:
+                self.smart_deallocate(text_addr_reg, is_last_use=True)
         elif isinstance(stmt.text, BinaryExpr) and stmt.text.operator == "+":
-            # Likely string concatenation - evaluate to get address
-            text_addr_reg = self.generate_expression(stmt.text, "P1")
-            self.output.append("MOV VX, 0")  # Set X coordinate
-            #self.output.append("MOV VY, 0")  # Set Y coordinate
-            self.output.append("MOV VC, 15")  # Set color to white
-            self.output.append(f"TEXT {text_addr_reg}")  # Display text
-            self.output.append(f"ADD VY, 8")  # Move down for next line
+            # Could be string concatenation or numeric addition
+            # Try to determine if it's a string operation based on context
+            # For safety, assume numeric unless operands are clearly strings
+            left_is_string = (isinstance(stmt.text.left, LiteralExpr) and hasattr(stmt.text.left, 'data_type') and stmt.text.left.data_type.name == "STRING") or \
+                           (isinstance(stmt.text.left, VariableExpr) and stmt.text.left.name.upper().startswith("STR"))
+            right_is_string = (isinstance(stmt.text.right, LiteralExpr) and hasattr(stmt.text.right, 'data_type') and stmt.text.right.data_type.name == "STRING") or \
+                            (isinstance(stmt.text.right, VariableExpr) and stmt.text.right.name.upper().startswith("STR"))
+            
+            if left_is_string or right_is_string:
+                # String concatenation - evaluate to get address
+                text_addr_reg = self.generate_expression(stmt.text, "P1")
+                self.current_output.append("MOV VX, 0")  # Set X coordinate
+                self.current_output.append("MOV VC, 15")  # Set color to white
+                self.current_output.append(f"TEXT {text_addr_reg}")  # Display text
+                self.current_output.append(f"ADD VY, 8")  # Move down for next line
+                if text_addr_reg not in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'SP', 'FP']:
+                    self.smart_deallocate(text_addr_reg, is_last_use=True)
+            else:
+                # Numeric addition - convert to string
+                value_reg = self.generate_expression(stmt.text, "R1")
+                
+                # Ensure we use an R register for ITOS
+                if value_reg.startswith('P'):
+                    temp_r_reg = self.allocate_register("R1")
+                    self.current_output.append(f"MOV {temp_r_reg}, {value_reg}")
+                    if value_reg not in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'SP', 'FP']:
+                        self.smart_deallocate(value_reg, is_last_use=True)
+                    value_reg = temp_r_reg
+                
+                string_reg = self.allocate_register("P1")
+                self.current_output.append(f"ITOS {string_reg}, {value_reg}")
+                self.current_output.append("MOV VX, 0")
+                self.current_output.append("MOV VC, 15")
+                self.current_output.append(f"TEXT {string_reg}")
+                self.current_output.append(f"ADD VY, 8")
+                self.deallocate_register(string_reg)
+                if value_reg not in ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9']:
+                    self.smart_deallocate(value_reg, is_last_use=True)
         else:
-            # Numeric expression - evaluate and convert to string
+            # Numeric expression (default case) - evaluate and convert to string
             value_reg = self.generate_expression(stmt.text, "R1")
+            
+            # Ensure we use an R register for ITOS (it needs R register as source)
+            if value_reg.startswith('P'):
+                temp_r_reg = self.allocate_register("R1")
+                self.current_output.append(f"MOV {temp_r_reg}, {value_reg}")
+                if value_reg not in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'SP', 'FP']:
+                    self.smart_deallocate(value_reg, is_last_use=True)
+                value_reg = temp_r_reg
+            
             string_reg = self.allocate_register("P1")  # Use a P register for string address
-            self.output.append(f"ITOS {string_reg}, {value_reg}")  # Convert to string
-            self.output.append("MOV VX, 0")  # Set X coordinate
-            #self.output.append("MOV VY, 0")  # Set Y coordinate  
-            self.output.append("MOV VC, 15")  # Set color to white
-            self.output.append(f"TEXT {string_reg}")  # Display text
-            self.output.append(f"ADD VY, 8")  # Move down for next line
+            self.current_output.append(f"ITOS {string_reg}, {value_reg}")  # Convert to string
+            self.current_output.append("MOV VX, 0")  # Set X coordinate
+            self.current_output.append("MOV VC, 15")  # Set color to white
+            self.current_output.append(f"TEXT {string_reg}")  # Display text
+            self.current_output.append(f"ADD VY, 8")  # Move down for next line
             self.deallocate_register(string_reg)
+            if value_reg not in ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9']:
+                self.smart_deallocate(value_reg, is_last_use=True)
 
     def generate_pause(self):
         """Generate optimized Pause code."""
         # Use more efficient key checking
         pause_label = self.new_label()
-        self.output.append(f"{pause_label}:")
-        self.output.append("KEYSTAT R0")
-        self.output.append("CMP R0, 0")
-        self.output.append(f"JZ {pause_label}")  # Loop until key pressed
+        self.current_output.append(f"{pause_label}:")
+        self.current_output.append("KEYSTAT R0")
+        self.current_output.append("CMP R0, 0")
+        self.current_output.append(f"JZ {pause_label}")  # Loop until key pressed
 
     def generate_function_call_statement(self, stmt: FunctionCallStmt):
         """Generate code for a function call statement."""
@@ -1665,7 +1764,7 @@ class CodeGenerator:
                 # Store to register
                 reg = self.var_reg[var_name]
                 if reg != value_reg:
-                    self.output.append(f"MOV {reg}, {value_reg}")
+                    self.current_output.append(f"MOV {reg}, {value_reg}")
             else:
                 # Store to memory (handles both regular memory and spill slots)
                 self.store_variable(var_name, value_reg)
@@ -1689,12 +1788,12 @@ class CodeGenerator:
         
         index_reg = self.generate_expression(expr.index, "R2")
         # Address = base_addr + index * 2 (since 16-bit values)
-        self.output.append(f"MOV {target_reg}, {index_reg}")
-        self.output.append(f"MUL {target_reg}, 2")  # Multiply by 2 (word stride)
-        self.output.append(f"MOV P5, 0x{base_addr:04X}")
-        self.output.append(f"ADD {target_reg}, P5")
-        self.output.append(f"MOV P0, {target_reg}")
-        self.output.append(f"MOV {target_reg}, [P0]")
+        self.current_output.append(f"MOV {target_reg}, {index_reg}")
+        self.current_output.append(f"MUL {target_reg}, 2")  # Multiply by 2 (word stride)
+        self.current_output.append(f"MOV P5, 0x{base_addr:04X}")
+        self.current_output.append(f"ADD {target_reg}, P5")
+        self.current_output.append(f"MOV P0, {target_reg}")
+        self.current_output.append(f"MOV {target_reg}, [P0]")
         return target_reg
 
     def generate_list_store(self, expr: ListAccessExpr, value_reg: str):
@@ -1704,15 +1803,15 @@ class CodeGenerator:
         
         index_reg = self.generate_expression(expr.index, "R2")
         # Address = base_addr + index * 2
-        self.output.append(f"MOV P0, {index_reg}")
-        self.output.append("MUL P0, 2")  # Multiply by 2 (word stride)
-        self.output.append(f"MOV P5, 0x{base_addr:04X}")
-        self.output.append("ADD P0, P5")
+        self.current_output.append(f"MOV P0, {index_reg}")
+        self.current_output.append("MUL P0, 2")  # Multiply by 2 (word stride)
+        self.current_output.append(f"MOV P5, 0x{base_addr:04X}")
+        self.current_output.append("ADD P0, P5")
         store_reg = value_reg
         if store_reg.startswith('R') or store_reg in {"P0", "P5"}:
-            self.output.append(f"MOV P1, {store_reg}")
+            self.current_output.append(f"MOV P1, {store_reg}")
             store_reg = "P1"
-        self.output.append(f"MOV [P0], {store_reg}")
+        self.current_output.append(f"MOV [P0], {store_reg}")
 
     def generate_matrix_access(self, expr: MatrixAccessExpr, target_reg: str) -> str:
         """Generate code to load from a matrix element."""
@@ -1735,14 +1834,14 @@ class CodeGenerator:
         
         # Calculate offset: row * 10 + col (10 columns per row)
         # offset = row * 20 (for 16-bit elements) + col * 2
-        self.output.append(f"MOV P3, {row_reg}")
-        self.output.append(f"MUL P3, 20")  # 10 cols * 2 bytes per element
-        self.output.append(f"MOV P4, {col_reg}")
-        self.output.append(f"MUL P4, 2")   # 2 bytes per element
-        self.output.append(f"ADD P3, P4")  # Total offset
-        self.output.append(f"MOV P4, 0x{base_addr:04X}")
-        self.output.append(f"ADD P4, P3")  # Address = base + offset
-        self.output.append(f"MOV {target_reg}, [P4]")  # Load from address
+        self.current_output.append(f"MOV P3, {row_reg}")
+        self.current_output.append(f"MUL P3, 20")  # 10 cols * 2 bytes per element
+        self.current_output.append(f"MOV P4, {col_reg}")
+        self.current_output.append(f"MUL P4, 2")   # 2 bytes per element
+        self.current_output.append(f"ADD P3, P4")  # Total offset
+        self.current_output.append(f"MOV P4, 0x{base_addr:04X}")
+        self.current_output.append(f"ADD P4, P3")  # Address = base + offset
+        self.current_output.append(f"MOV {target_reg}, [P4]")  # Load from address
         
         self.smart_deallocate(row_reg, is_last_use=True)
         self.smart_deallocate(col_reg, is_last_use=True)
@@ -1767,14 +1866,14 @@ class CodeGenerator:
         col_reg = self.generate_expression(expr.col, "P2")
         
         # Calculate offset: row * 10 + col (10 columns per row)
-        self.output.append(f"MOV P3, {row_reg}")
-        self.output.append(f"MUL P3, 20")  # 10 cols * 2 bytes per element
-        self.output.append(f"MOV P4, {col_reg}")
-        self.output.append(f"MUL P4, 2")   # 2 bytes per element
-        self.output.append(f"ADD P3, P4")  # Total offset
-        self.output.append(f"MOV P4, 0x{base_addr:04X}")
-        self.output.append(f"ADD P4, P3")  # Address = base + offset
-        self.output.append(f"MOV [P4], {value_reg}")  # Store to address
+        self.current_output.append(f"MOV P3, {row_reg}")
+        self.current_output.append(f"MUL P3, 20")  # 10 cols * 2 bytes per element
+        self.current_output.append(f"MOV P4, {col_reg}")
+        self.current_output.append(f"MUL P4, 2")   # 2 bytes per element
+        self.current_output.append(f"ADD P3, P4")  # Total offset
+        self.current_output.append(f"MOV P4, 0x{base_addr:04X}")
+        self.current_output.append(f"ADD P4, P3")  # Address = base + offset
+        self.current_output.append(f"MOV [P4], {value_reg}")  # Store to address
         
         self.smart_deallocate(row_reg, is_last_use=True)
         self.smart_deallocate(col_reg, is_last_use=True)
@@ -1798,21 +1897,21 @@ class CodeGenerator:
                 # CRITICAL: Struct fields are 16-bit unsigned values.
                 # ALWAYS load into 16-bit P registers to preserve unsigned values!
                 # This fixes signed comparison issues with values > 127.
-                self.output.append(f"; Load {var_name}.{expr.member}")
-                self.output.append(f"MOV P0, {field_addr}")
+                self.current_output.append(f"; Load {var_name}.{expr.member}")
+                self.current_output.append(f"MOV P0, {field_addr}")
                 
                 # If target_reg is a P register, use it directly
                 # If target_reg is an R register, we cannot use it (would lose unsigned value)
                 # In that case, just use P1 and return it (caller will handle the mismatch)
                 if target_reg.startswith('P'):
                     # Target is already a P register, use it
-                    self.output.append(f"MOV {target_reg}, [P0]")
+                    self.current_output.append(f"MOV {target_reg}, [P0]")
                     return target_reg
                 else:
                     # Target is an R register, but we need P for unsigned values
                     # Use P1 as a temporary and return it
                     # The caller's target_reg will be unused but that's OK
-                    self.output.append(f"MOV P1, [P0]")
+                    self.current_output.append(f"MOV P1, [P0]")
                     return 'P1'
             else:
                 # Auto-allocate struct instance on first use
@@ -1843,9 +1942,9 @@ class CodeGenerator:
                 field_addr = base_addr + field_offset
                 
                 # Store field value
-                self.output.append(f"; Store to {var_name}.{expr.member}")
-                self.output.append(f"MOV P0, {field_addr}")
-                self.output.append(f"MOV [P0], {value_reg}")
+                self.current_output.append(f"; Store to {var_name}.{expr.member}")
+                self.current_output.append(f"MOV P0, {field_addr}")
+                self.current_output.append(f"MOV [P0], {value_reg}")
             else:
                 # Auto-allocate struct instance on first use
                 # Try to infer struct type from context (if only one struct defined)
@@ -1871,7 +1970,7 @@ class CodeGenerator:
         self.struct_instances[var_name] = struct_name
         self.next_address += field_count * 2  # 2 bytes per field
         
-        self.output.append(f"; Allocate struct {var_name} ({struct_name}) at 0x{base_addr:04X}")
+        self.current_output.append(f"; Allocate struct {var_name} ({struct_name}) at 0x{base_addr:04X}")
         return base_addr
 
     def generate_if(self, stmt: IfStmt):
@@ -1885,8 +1984,8 @@ class CodeGenerator:
             condition_reg = self.generate_expression(stmt.condition, temp_reg)
 
             # Test if condition is false (0)
-            self.output.append(f"CMP {condition_reg}, 0")
-            self.output.append(f"JZ {else_label}")
+            self.current_output.append(f"CMP {condition_reg}, 0")
+            self.current_output.append(f"JZ {else_label}")
         finally:
             # Always free the temp register we allocated
             self.deallocate_register(temp_reg)
@@ -1895,15 +1994,15 @@ class CodeGenerator:
             self.generate_statement(s)
 
         if stmt.else_branch:
-            self.output.append(f"JMP {end_label}")
-            self.output.append(f"{else_label}:")
+            self.current_output.append(f"JMP {end_label}")
+            self.current_output.append(f"{else_label}:")
 
             for s in stmt.else_branch:
                 self.generate_statement(s)
 
-            self.output.append(f"{end_label}:")
+            self.current_output.append(f"{end_label}:")
         else:
-            self.output.append(f"{else_label}:")
+            self.current_output.append(f"{else_label}:")
 
     def generate_for(self, stmt: ForStmt):
         """Generate optimized For loop code with hoisted end value and efficient comparisons."""
@@ -1916,8 +2015,13 @@ class CodeGenerator:
         # Increment nesting level for inner constructs
         self.loop_nesting_level += 1
 
+        # Check if loop variable is a local variable in current function
+        is_local_var = (self.current_function and 
+                       self.current_function in self.function_locals and 
+                       stmt.variable in self.function_locals[self.current_function])
+        
         # Allocate loop_reg
-        is_register_allocated = stmt.variable in self.var_reg
+        is_register_allocated = (stmt.variable in self.var_reg) and self.current_function is None  # In functions, always use memory for loop variables
         if is_register_allocated:
             loop_reg = self.var_reg[stmt.variable]
             self.register_usage[loop_reg] = True
@@ -1948,17 +2052,27 @@ class CodeGenerator:
 
         # Initialize loop variable
         start_reg = self.generate_expression(stmt.start)
-        self.output.append(f"MOV {loop_reg}, {start_reg}")
-        self.deallocate_register(start_reg)
-        if not is_register_allocated:
+        if start_reg != loop_reg:
+            self.current_output.append(f"MOV {loop_reg}, {start_reg}")
+            self.deallocate_register(start_reg)
+        # else: start_reg == loop_reg, so generate_expression already set loop_reg to the start value
+        
+        # Store initial value if needed
+        if is_local_var:
+            # Store to local variable slot
+            offset = self.function_locals[self.current_function][stmt.variable]
+            self.current_output.append(f"MOV P0, FP")
+            self.current_output.append(f"ADD P0, {offset}")
+            self.current_output.append(f"MOV [P0], {loop_reg}")
+        elif not is_register_allocated and self.current_function is None:  # Only store in memory for global variables
             var_addr = self.get_variable_address(stmt.variable)
-            self.output.append(f"MOV P0, {var_addr}")
-            self.output.append(f"MOV [P0], {loop_reg}")
+            self.current_output.append(f"MOV P0, {var_addr}")
+            self.current_output.append(f"MOV [P0], {loop_reg}")
 
         # **OPTIMIZATION: Load end value ONCE before loop**
         end_value_reg = self.generate_expression(stmt.end, end_reg)
         if end_value_reg != end_reg:
-            self.output.append(f"MOV {end_reg}, {end_value_reg}")
+            self.current_output.append(f"MOV {end_reg}, {end_value_reg}")
             self.deallocate_register(end_value_reg)
             end_value_reg = end_reg
 
@@ -1966,26 +2080,32 @@ class CodeGenerator:
         if stmt.step:
             step_value_reg = self.generate_expression(stmt.step, step_reg)
             if step_value_reg != step_reg:
-                self.output.append(f"MOV {step_reg}, {step_value_reg}")
+                self.current_output.append(f"MOV {step_reg}, {step_value_reg}")
                 self.deallocate_register(step_value_reg)
                 step_value_reg = step_reg
 
         # Loop start
-        self.output.append(f"{loop_label}:")
+        self.current_output.append(f"{loop_label}:")
 
-        # Update memory for loop variable if not register-allocated
-        if not is_register_allocated:
+        # Update memory for loop variable if needed
+        if is_local_var:
+            # Update local variable slot
+            offset = self.function_locals[self.current_function][stmt.variable]
+            self.current_output.append(f"MOV P0, FP")
+            self.current_output.append(f"ADD P0, {offset}")
+            self.current_output.append(f"MOV [P0], {loop_reg}")
+        elif not is_register_allocated and self.current_function is None:  # Only store in memory for global variables
             var_addr = self.get_variable_address(stmt.variable)
-            self.output.append(f"MOV P0, {var_addr}")
-            self.output.append(f"MOV [P0], {loop_reg}")
+            self.current_output.append(f"MOV P0, {var_addr}")
+            self.current_output.append(f"MOV [P0], {loop_reg}")
 
         # **OPTIMIZATION: Single comparison with proper jump instruction**
         # Compare current to end (end value already in register)
-        self.output.append(f"CMP {loop_reg}, {end_value_reg}")
+        self.current_output.append(f"CMP {loop_reg}, {end_value_reg}")
         
         # Use JGT (jump if greater than) for cleaner exit condition
         # Loop continues while loop_reg <= end_value_reg
-        self.output.append(f"JGT {end_label}")  # Exit if current > end
+        self.current_output.append(f"JGT {end_label}")  # Exit if current > end
 
         # Loop body
         for s in stmt.body:
@@ -1994,13 +2114,20 @@ class CodeGenerator:
         # Increment/step
         if stmt.step:
             # Use pre-loaded step value
-            self.output.append(f"ADD {loop_reg}, {step_value_reg}")
+            self.current_output.append(f"ADD {loop_reg}, {step_value_reg}")
         else:
             # **OPTIMIZATION: Use INC for default step=1**
-            self.output.append(f"INC {loop_reg}")
+            self.current_output.append(f"INC {loop_reg}")
 
-        self.output.append(f"JMP {loop_label}")
-        self.output.append(f"{end_label}:")
+        self.current_output.append(f"JMP {loop_label}")
+        self.current_output.append(f"{end_label}:")
+
+        # Ensure final value is stored for local variables
+        if is_local_var:
+            offset = self.function_locals[self.current_function][stmt.variable]
+            self.current_output.append(f"MOV P0, FP")
+            self.current_output.append(f"ADD P0, {offset}")
+            self.current_output.append(f"MOV [P0], {loop_reg}")
 
         # Cleanup
         if not is_register_allocated:
@@ -2020,14 +2147,14 @@ class CodeGenerator:
         loop_label = self.new_label()
         end_label = self.new_label()
 
-        self.output.append(f"{loop_label}:")
+        self.current_output.append(f"{loop_label}:")
 
         # Allocate a temporary register for the condition (ensures it can be freed)
         temp_reg = self.allocate_register()
         try:
             condition_reg = self.generate_expression(stmt.condition, temp_reg)
-            self.output.append(f"CMP {condition_reg}, 0")
-            self.output.append(f"JZ {end_label}")
+            self.current_output.append(f"CMP {condition_reg}, 0")
+            self.current_output.append(f"JZ {end_label}")
         finally:
             # Always free the temp register we allocated
             self.deallocate_register(temp_reg)
@@ -2035,14 +2162,14 @@ class CodeGenerator:
         for s in stmt.body:
             self.generate_statement(s)
 
-        self.output.append(f"JMP {loop_label}")
-        self.output.append(f"{end_label}:")
+        self.current_output.append(f"JMP {loop_label}")
+        self.current_output.append(f"{end_label}:")
 
     def generate_repeat(self, stmt: RepeatStmt):
         """Generate optimized Repeat-Until loop code."""
         loop_label = self.new_label()
 
-        self.output.append(f"{loop_label}:")
+        self.current_output.append(f"{loop_label}:")
 
         for s in stmt.body:
             self.generate_statement(s)
@@ -2051,19 +2178,19 @@ class CodeGenerator:
         temp_reg = self.allocate_register()
         try:
             condition_reg = self.generate_expression(stmt.condition, temp_reg)
-            self.output.append(f"CMP {condition_reg}, 0")
-            self.output.append(f"JZ {loop_label}")
+            self.current_output.append(f"CMP {condition_reg}, 0")
+            self.current_output.append(f"JZ {loop_label}")
         finally:
             # Always free the temp register we allocated
             self.deallocate_register(temp_reg)  # Continue looping if condition is false
 
     def generate_goto(self, stmt: GotoStmt):
         """Generate Goto code."""
-        self.output.append(f"JMP {stmt.label}")
+        self.current_output.append(f"JMP {stmt.label}")
 
     def generate_label(self, stmt: LabelStmt):
         """Generate Label code."""
-        self.output.append(f"{stmt.label}:")
+        self.current_output.append(f"{stmt.label}:")
 
     def fold_constants(self, operator: str, left_val, right_val):
         """
@@ -2161,40 +2288,52 @@ class CodeGenerator:
             if expr.data_type.name == "NUMBER":
                 # Generate literal directly into target
                 if expr.value == 0:
-                    self.output.append(f"XOR {target_reg}, {target_reg}")
+                    self.current_output.append(f"XOR {target_reg}, {target_reg}")
                 elif expr.value == 1:
-                    self.output.append(f"MOV {target_reg}, 1")
+                    self.current_output.append(f"MOV {target_reg}, 1")
                 elif expr.value in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
                     # Use shifts for powers of 2
                     shift_amount = expr.value.bit_length() - 1
-                    self.output.append(f"MOV {target_reg}, 1")
-                    self.output.append(f"SHL {target_reg}, {shift_amount}")
+                    self.current_output.append(f"MOV {target_reg}, 1")
+                    self.current_output.append(f"SHL {target_reg}, {shift_amount}")
                 else:
-                    self.output.append(f"MOV {target_reg}, {expr.value}")
+                    self.current_output.append(f"MOV {target_reg}, {expr.value}")
             elif expr.data_type.name == "STRING":
                 label = self.add_string_literal(expr.value)
-                self.output.append(f"MOV {target_reg}, {label}")
+                self.current_output.append(f"MOV {target_reg}, {label}")
             else:
-                self.output.append(f"MOV {target_reg}, 0")
+                self.current_output.append(f"MOV {target_reg}, 0")
         elif isinstance(expr, VariableExpr):
             # Load variable directly into target
             if expr.name in self.var_reg:
                 reg = self.var_reg[expr.name]
                 if reg != target_reg:
-                    self.output.append(f"MOV {target_reg}, {reg}")
+                    self.current_output.append(f"MOV {target_reg}, {reg}")
                 # If reg == target_reg, no operation needed!
             else:
-                # Load from memory (handles both regular memory and spill slots)
-                source_reg = self.load_variable(expr.name, target_reg)
-                # If load_variable returned a different register (e.g., P0 for spilled vars),
-                # move it to the target register
-                if source_reg != target_reg:
-                    self.output.append(f"MOV {target_reg}, {source_reg}")
+                # Check if target is an 8-bit register (R or hardware)
+                is_8bit_reg = target_reg.startswith('R') or target_reg in ['VX', 'VY', 'VC', 'VL', 'VM', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS']
+                
+                if is_8bit_reg:
+                    # For 8-bit registers, we need to ensure we only get the low byte
+                    # Load variable into a temp P register, then extract low byte
+                    temp_p_reg = self.allocate_register()
+                    source_reg = self.load_variable(expr.name, temp_p_reg)
+                    # source_reg now contains the variable value (16-bit in a P register)
+                    # Extract low byte for the 8-bit hardware register
+                    self.current_output.append(f"MOV {target_reg}, :{source_reg}")
+                    self.deallocate_register(source_reg)
+                else:
+                    # Load from memory (handles both regular memory and spill slots)
+                    source_reg = self.load_variable(expr.name, target_reg)
+                    # If load_variable returned a different register, move it to the target register
+                    if source_reg != target_reg:
+                        self.current_output.append(f"MOV {target_reg}, {source_reg}")
         else:
             # For complex expressions, generate into a temp then move
             temp_reg = self.generate_expression(expr)
             if temp_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {temp_reg}")
+                self.current_output.append(f"MOV {target_reg}, {temp_reg}")
             self.deallocate_register(temp_reg)
 
     def generate_expression(self, expr: Expression, preferred_reg: str = None) -> str:
@@ -2252,16 +2391,16 @@ class CodeGenerator:
                     
                     # Optimize for common values
                     if expr.value == 0:
-                        self.output.append(f"XOR {target_reg}, {target_reg}")  # Zero register
+                        self.current_output.append(f"XOR {target_reg}, {target_reg}")  # Zero register
                     elif expr.value == 1:
-                        self.output.append(f"MOV {target_reg}, 1")
+                        self.current_output.append(f"MOV {target_reg}, 1")
                     elif expr.value in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
                         # Use shifts for powers of 2
                         shift_amount = expr.value.bit_length() - 1
-                        self.output.append(f"MOV {target_reg}, 1")
-                        self.output.append(f"SHL {target_reg}, {shift_amount}")
+                        self.current_output.append(f"MOV {target_reg}, 1")
+                        self.current_output.append(f"SHL {target_reg}, {shift_amount}")
                     else:
-                        self.output.append(f"MOV {target_reg}, {expr.value}")
+                        self.current_output.append(f"MOV {target_reg}, {expr.value}")
                     result_reg = target_reg
                 elif expr.data_type.name == "STRING":
                     # String literals: create DEFSTR label and load address (16-bit, needs P register)
@@ -2270,11 +2409,11 @@ class CodeGenerator:
                         self.deallocate_register(target_reg)
                         target_reg = self.allocate_register('P1')
                     label = self.add_string_literal(expr.value)
-                    self.output.append(f"MOV {target_reg}, {label}")
+                    self.current_output.append(f"MOV {target_reg}, {label}")
                     result_reg = target_reg
                 else:
                     # Other types - default to zero
-                    self.output.append(f"MOV {target_reg}, 0")
+                    self.current_output.append(f"MOV {target_reg}, 0")
                     result_reg = target_reg
             elif isinstance(expr, VariableExpr):
                 result_reg = self.load_variable(expr.name, target_reg)
@@ -2291,7 +2430,7 @@ class CodeGenerator:
             elif isinstance(expr, FunctionCallExpr):
                 result_reg = self.generate_function_call(expr, target_reg)
             else:
-                self.output.append(f"MOV {target_reg}, 0")  # Default
+                self.current_output.append(f"MOV {target_reg}, 0")  # Default
                 result_reg = target_reg
                 
             # Result register is returned to caller - they are responsible for freeing it
@@ -2311,8 +2450,8 @@ class CodeGenerator:
             
             folded_value = self.fold_constants(expr.operator, expr.left.value, expr.right.value)
             if folded_value is not None:
-                self.output.append(f"; Constant folded: {expr.left.value} {expr.operator} {expr.right.value} = {folded_value}")
-                self.output.append(f"MOV {target_reg}, {folded_value}")
+                self.current_output.append(f"; Constant folded: {expr.left.value} {expr.operator} {expr.right.value} = {folded_value}")
+                self.current_output.append(f"MOV {target_reg}, {folded_value}")
                 return target_reg
         
         # Check if this is string concatenation using our helper
@@ -2331,7 +2470,7 @@ class CodeGenerator:
             left_result = self.generate_expression(expr.left)
             # Immediately move to a safe temporary if needed
             if left_result != 'P2':
-                self.output.append(f"MOV P2, {left_result}")
+                self.current_output.append(f"MOV P2, {left_result}")
                 # Free the left result register immediately after moving
                 self.smart_deallocate(left_result, is_last_use=True)
                 left_result = 'P2'
@@ -2341,7 +2480,7 @@ class CodeGenerator:
             right_result = self.generate_expression(expr.right)
             # Immediately move to a safe temporary if needed
             if right_result != 'P3':
-                self.output.append(f"MOV P3, {right_result}")
+                self.current_output.append(f"MOV P3, {right_result}")
                 # Free the right result register immediately after moving
                 self.smart_deallocate(right_result, is_last_use=True)
                 right_result = 'P3'
@@ -2353,14 +2492,14 @@ class CodeGenerator:
                 self.next_address += 256  # Reserve 256 bytes for concatenated string
                 
                 # Copy left string to buffer
-                self.output.append(f"MOV P0, {buffer_addr}")  # Destination
-                self.output.append(f"STRCPY P0, {left_result}")  # Copy left string
+                self.current_output.append(f"MOV P0, {buffer_addr}")  # Destination
+                self.current_output.append(f"STRCPY P0, {left_result}")  # Copy left string
                 
                 # Concatenate right string to buffer
-                self.output.append(f"STRCAT P0, {right_result}")  # Append right string
+                self.current_output.append(f"STRCAT P0, {right_result}")  # Append right string
                 
                 # Return buffer address in target register
-                self.output.append(f"MOV {target_reg}, {buffer_addr}")
+                self.current_output.append(f"MOV {target_reg}, {buffer_addr}")
                 
                 return target_reg
             finally:
@@ -2382,11 +2521,11 @@ class CodeGenerator:
         if not is_comparison:
             # **OPTIMIZATION: Use register allocation instead of PUSH/POP for left operand preservation**
             # Find a free register to preserve left operand (avoid target_reg and right_pref)
-            self.output.append("; Preserve left operand in register across right-side evaluation")
+            self.current_output.append("; Preserve left operand in register across right-side evaluation")
             for reg in self.allocation_order:
                 if not self.register_usage.get(reg, False) and reg != target_reg:
                     left_preserved_reg = reg
-                    self.output.append(f"MOV {left_preserved_reg}, {left_result}")
+                    self.current_output.append(f"MOV {left_preserved_reg}, {left_result}")
                     self.register_usage[left_preserved_reg] = True
                     break
             
@@ -2394,10 +2533,10 @@ class CodeGenerator:
             if not left_preserved_reg:
                 if left_result.startswith('R'):
                     p_temp = 'P1' if not self.register_usage.get('P1', False) else 'P2'
-                    self.output.append(f"MOV {p_temp}, {left_result}")
-                    self.output.append(f"PUSH {p_temp}")
+                    self.current_output.append(f"MOV {p_temp}, {left_result}")
+                    self.current_output.append(f"PUSH {p_temp}")
                 else:
-                    self.output.append(f"PUSH {left_result}")
+                    self.current_output.append(f"PUSH {left_result}")
 
         # Generate right operand
         right_result = self.generate_expression(expr.right, right_pref)
@@ -2408,98 +2547,98 @@ class CodeGenerator:
                 left_result = left_preserved_reg
             else:
                 # Pop from stack (fallback path)
-                self.output.append("POP P1")
+                self.current_output.append("POP P1")
                 if left_result != 'P1':
-                    self.output.append(f"MOV {left_result}, P1")
+                    self.current_output.append(f"MOV {left_result}, P1")
 
         # Perform the operation
         if expr.operator == "+":
             if left_result == target_reg:
-                self.output.append(f"ADD {target_reg}, {right_result}")
+                self.current_output.append(f"ADD {target_reg}, {right_result}")
             else:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-                self.output.append(f"ADD {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+                self.current_output.append(f"ADD {target_reg}, {right_result}")
         elif expr.operator == "-":
             if left_result == target_reg:
-                self.output.append(f"SUB {target_reg}, {right_result}")
+                self.current_output.append(f"SUB {target_reg}, {right_result}")
             else:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-                self.output.append(f"SUB {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+                self.current_output.append(f"SUB {target_reg}, {right_result}")
         elif expr.operator == "*":
             if left_result == target_reg:
-                self.output.append(f"MUL {target_reg}, {right_result}")
+                self.current_output.append(f"MUL {target_reg}, {right_result}")
             else:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-                self.output.append(f"MUL {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+                self.current_output.append(f"MUL {target_reg}, {right_result}")
         elif expr.operator == "/":
             if left_result == target_reg:
-                self.output.append(f"DIV {target_reg}, {right_result}")
+                self.current_output.append(f"DIV {target_reg}, {right_result}")
             else:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-                self.output.append(f"DIV {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+                self.current_output.append(f"DIV {target_reg}, {right_result}")
         elif expr.operator == "%" or expr.operator == "MOD":
             if left_result == target_reg:
-                self.output.append(f"MOD {target_reg}, {right_result}")
+                self.current_output.append(f"MOD {target_reg}, {right_result}")
             else:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-                self.output.append(f"MOD {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+                self.current_output.append(f"MOD {target_reg}, {right_result}")
         elif expr.operator == "&" or expr.operator == "AND":
             if left_result == target_reg:
-                self.output.append(f"AND {target_reg}, {right_result}")
+                self.current_output.append(f"AND {target_reg}, {right_result}")
             else:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-                self.output.append(f"AND {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+                self.current_output.append(f"AND {target_reg}, {right_result}")
         elif expr.operator == "|" or expr.operator == "OR":
             if left_result == target_reg:
-                self.output.append(f"OR {target_reg}, {right_result}")
+                self.current_output.append(f"OR {target_reg}, {right_result}")
             else:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-                self.output.append(f"OR {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+                self.current_output.append(f"OR {target_reg}, {right_result}")
         elif expr.operator == "^" or expr.operator == "XOR":
             if left_result == target_reg:
-                self.output.append(f"XOR {target_reg}, {right_result}")
+                self.current_output.append(f"XOR {target_reg}, {right_result}")
             else:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-                self.output.append(f"XOR {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+                self.current_output.append(f"XOR {target_reg}, {right_result}")
         elif expr.operator == "<<" or expr.operator == "SHL":
             if left_result == target_reg:
-                self.output.append(f"SHL {target_reg}, {right_result}")
+                self.current_output.append(f"SHL {target_reg}, {right_result}")
             else:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-                self.output.append(f"SHL {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+                self.current_output.append(f"SHL {target_reg}, {right_result}")
         elif expr.operator == ">>" or expr.operator == "SHR":
             if left_result == target_reg:
-                self.output.append(f"SHR {target_reg}, {right_result}")
+                self.current_output.append(f"SHR {target_reg}, {right_result}")
             else:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-                self.output.append(f"SHR {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+                self.current_output.append(f"SHR {target_reg}, {right_result}")
         elif expr.operator == "<<<" or expr.operator == "SAL":
             if left_result != target_reg:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-            self.output.append(f"SAL {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+            self.current_output.append(f"SAL {target_reg}, {right_result}")
         elif expr.operator == ">>>" or expr.operator == "SAR":
             if left_result != target_reg:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-            self.output.append(f"SAR {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+            self.current_output.append(f"SAR {target_reg}, {right_result}")
         elif expr.operator == "<@>" or expr.operator == "ROL":
             if left_result != target_reg:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-            self.output.append(f"ROL {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+            self.current_output.append(f"ROL {target_reg}, {right_result}")
         elif expr.operator == "@>" or expr.operator == "ROR":
             if left_result != target_reg:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-            self.output.append(f"ROR {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+            self.current_output.append(f"ROR {target_reg}, {right_result}")
         elif expr.operator == "<@@" or expr.operator == "RCL":
             if left_result != target_reg:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-            self.output.append(f"RCL {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+            self.current_output.append(f"RCL {target_reg}, {right_result}")
         elif expr.operator == "@@>" or expr.operator == "RCR":
             if left_result != target_reg:
-                self.output.append(f"MOV {target_reg}, {left_result}")
-            self.output.append(f"RCR {target_reg}, {right_result}")
+                self.current_output.append(f"MOV {target_reg}, {left_result}")
+            self.current_output.append(f"RCR {target_reg}, {right_result}")
         elif expr.operator == "<" or expr.operator == ">" or expr.operator == "=" or expr.operator == "<>" or expr.operator == "<=" or expr.operator == ">=":
             # Use CMP for comparisons and set target_reg based on result
-            self.output.append(f"CMP {left_result}, {right_result}")
+            self.current_output.append(f"CMP {left_result}, {right_result}")
             
             # Free registers immediately after comparison
             self.smart_deallocate(left_result, is_last_use=True)
@@ -2509,26 +2648,26 @@ class CodeGenerator:
             end_label = self.new_label()
             
             # Set default to false
-            self.output.append(f"MOV {target_reg}, 0")
+            self.current_output.append(f"MOV {target_reg}, 0")
             
             # Jump to set true if condition met
             if expr.operator == "<":
-                self.output.append(f"JLT {true_label}")
+                self.current_output.append(f"JLT {true_label}")
             elif expr.operator == ">":
-                self.output.append(f"JGT {true_label}")
+                self.current_output.append(f"JGT {true_label}")
             elif expr.operator == "=":
-                self.output.append(f"JZ {true_label}")
+                self.current_output.append(f"JZ {true_label}")
             elif expr.operator == "<>":
-                self.output.append(f"JNZ {true_label}")
+                self.current_output.append(f"JNZ {true_label}")
             elif expr.operator == "<=":
-                self.output.append(f"JLE {true_label}")
+                self.current_output.append(f"JLE {true_label}")
             elif expr.operator == ">=":
-                self.output.append(f"JGE {true_label}")
+                self.current_output.append(f"JGE {true_label}")
             
-            self.output.append(f"JMP {end_label}")
-            self.output.append(f"{true_label}:")
-            self.output.append(f"MOV {target_reg}, 1")
-            self.output.append(f"{end_label}:")
+            self.current_output.append(f"JMP {end_label}")
+            self.current_output.append(f"{true_label}:")
+            self.current_output.append(f"MOV {target_reg}, 1")
+            self.current_output.append(f"{end_label}:")
             
             # Registers already freed above for comparisons
             # Free the preserved register if we allocated one
@@ -2537,7 +2676,7 @@ class CodeGenerator:
             return target_reg
         else:
             # Fallback
-            self.output.append(f"MOV {target_reg}, #0")
+            self.current_output.append(f"MOV {target_reg}, #0")
             
         # Free operand registers immediately after use (unless they're the target)
         if left_result != target_reg:
@@ -2563,24 +2702,24 @@ class CodeGenerator:
                 # For post, capture original in target before modification
                 if expr.is_post:
                     if target_reg != value_reg:
-                        self.output.append(f"MOV {target_reg}, {value_reg}")
+                        self.current_output.append(f"MOV {target_reg}, {value_reg}")
                 # Modify value
                 if expr.operator == "++":
-                    self.output.append(f"ADD {value_reg}, 1")
+                    self.current_output.append(f"ADD {value_reg}, 1")
                 else:
-                    self.output.append(f"SUB {value_reg}, 1")
+                    self.current_output.append(f"SUB {value_reg}, 1")
                 # Store back
                 self.store_variable(var_name, value_reg)
                 # For pre, return updated value
                 if not expr.is_post:
                     if target_reg != value_reg:
-                        self.output.append(f"MOV {target_reg}, {value_reg}")
+                        self.current_output.append(f"MOV {target_reg}, {value_reg}")
                 return target_reg
             else:
                 # Fallback: evaluate operand, but cannot modify non-variable here
                 operand_reg = self.generate_expression(expr.expression, target_reg)
                 if operand_reg != target_reg:
-                    self.output.append(f"MOV {target_reg}, {operand_reg}")
+                    self.current_output.append(f"MOV {target_reg}, {operand_reg}")
                     self.smart_deallocate(operand_reg, is_last_use=True)
                 return target_reg
 
@@ -2588,30 +2727,30 @@ class CodeGenerator:
         if isinstance(expr.expression, LiteralExpr) and expr.expression.data_type.name == "NUMBER":
             folded_value = self.fold_unary_constant(expr.operator, expr.expression.value)
             if folded_value is not None:
-                self.output.append(f"; Constant folded: {expr.operator}({expr.expression.value}) = {folded_value}")
-                self.output.append(f"MOV {target_reg}, {folded_value}")
+                self.current_output.append(f"; Constant folded: {expr.operator}({expr.expression.value}) = {folded_value}")
+                self.current_output.append(f"MOV {target_reg}, {folded_value}")
                 return target_reg
         
         operand_reg = self.generate_expression(expr.expression, target_reg)
 
         if expr.operator == "-":
             if operand_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {operand_reg}")
+                self.current_output.append(f"MOV {target_reg}, {operand_reg}")
                 self.smart_deallocate(operand_reg, is_last_use=True)
-            self.output.append(f"NEG {target_reg}")
+            self.current_output.append(f"NEG {target_reg}")
         elif expr.operator == "NOT":
             if operand_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {operand_reg}")
+                self.current_output.append(f"MOV {target_reg}, {operand_reg}")
                 self.smart_deallocate(operand_reg, is_last_use=True)
-            self.output.append(f"NOT {target_reg}")
+            self.current_output.append(f"NOT {target_reg}")
         elif expr.operator == "ABS":
             if operand_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {operand_reg}")
+                self.current_output.append(f"MOV {target_reg}, {operand_reg}")
                 self.smart_deallocate(operand_reg, is_last_use=True)
-            self.output.append(f"ABS {target_reg}")
+            self.current_output.append(f"ABS {target_reg}")
         else:
             if operand_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {operand_reg}")
+                self.current_output.append(f"MOV {target_reg}, {operand_reg}")
                 self.smart_deallocate(operand_reg, is_last_use=True)
         return target_reg
 
@@ -2622,34 +2761,54 @@ class CodeGenerator:
 
         # Check for user-defined functions first
         if func_name_lower in self.functions:
-            label, params = self.functions[func_name_lower]
+            label, params, func_def = self.functions[func_name_lower]
             
-            # Generate arguments and push onto stack (right to left, standard calling convention)
+            # Handle default parameters: push provided args, then defaults for missing ones
+            provided_args = expr.arguments
+            param_specs = func_def.params  # List of (name, default_expr)
+            
+            # Generate all arguments (provided + defaults) in reverse order
+            all_args = []
+            arg_index = 0
+            
+            # First, collect provided arguments
+            for arg in provided_args:
+                all_args.append(('provided', arg))
+                arg_index += 1
+            
+            # Then, add defaults for missing parameters
+            for param_name, default_expr in param_specs[arg_index:]:
+                if default_expr is None:
+                    # This should have been caught by semantic analysis
+                    raise RuntimeError(f"Missing required argument for parameter '{param_name}'")
+                all_args.append(('default', default_expr))
+            
+            # Generate arguments and push onto stack (left to right)
             arg_regs = []
-            for arg in reversed(expr.arguments):
-                arg_reg = self.generate_expression(arg)
+            for arg_type, arg_expr in all_args:
+                arg_reg = self.generate_expression(arg_expr)
                 arg_regs.append(arg_reg)
                 # Ensure 16-bit push: if arg in R register, move to P temp first
                 if arg_reg.startswith('R'):
                     p_temp = self.allocate_register('P1') if not self.register_usage.get('P1', False) else self.allocate_register('P2')
-                    self.output.append(f"MOV {p_temp}, {arg_reg}")
-                    self.output.append(f"PUSH {p_temp}")
+                    self.current_output.append(f"MOV {p_temp}, {arg_reg}")
+                    self.current_output.append(f"PUSH {p_temp}")
                     self.deallocate_register(p_temp)
                 else:
-                    self.output.append(f"PUSH {arg_reg}")
+                    self.current_output.append(f"PUSH {arg_reg}")
                 self.smart_deallocate(arg_reg, is_last_use=True)
             
             # Call function
-            self.output.append(f"CALL {label}")
+            self.current_output.append(f"CALL {label}")
             
-            # Clean up stack (add back num_args * 2 bytes)
-            num_args = len(expr.arguments)
-            if num_args > 0:
-                self.output.append(f"ADD SP, {num_args * 2}")
+            # Clean up stack (add back total_args * 2 bytes)
+            total_args = len(all_args)
+            if total_args > 0:
+                self.current_output.append(f"ADD SP, {total_args * 2}")
             
             # Return value is in R0, move to target_reg
             if target_reg != 'R0':
-                self.output.append(f"MOV {target_reg}, R0")
+                self.current_output.append(f"MOV {target_reg}, R0")
             
             return target_reg
 
@@ -2679,18 +2838,18 @@ class CodeGenerator:
             arg_reg = self.generate_expression(expr.arguments[0], target_reg)
             work_reg = target_reg
             if arg_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {arg_reg}")
+                self.current_output.append(f"MOV {target_reg}, {arg_reg}")
                 self.smart_deallocate(arg_reg, is_last_use=True)
-            self.output.append(f"{unary_math_ops[func_name]} {work_reg}")
+            self.current_output.append(f"{unary_math_ops[func_name]} {work_reg}")
             return target_reg
 
         if func_name == "RND":
-            self.output.append(f"RND {target_reg}")
+            self.current_output.append(f"RND {target_reg}")
         elif func_name == "RNDR":
             # RNDR takes min and max, generates random in range [min, max]
             min_reg = self.generate_expression(expr.arguments[0], "R1")
             max_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"RNDR {target_reg}, {min_reg}, {max_reg}")
+            self.current_output.append(f"RNDR {target_reg}, {min_reg}, {max_reg}")
             self.smart_deallocate(min_reg, is_last_use=True)
             self.smart_deallocate(max_reg, is_last_use=True)
         elif func_name == "RANDOMIZE":
@@ -2698,49 +2857,49 @@ class CodeGenerator:
             # For now, we'll use RND with the seed value to initialize
             # In a full implementation, this would set the RNG seed
             seed_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"; RANDOMIZE({seed_reg}) - seed RNG")
-            self.output.append(f"MOV R0, {seed_reg}")
-            self.output.append(f"RND {target_reg}  ; Initialize RNG with seed")
+            self.current_output.append(f"; RANDOMIZE({seed_reg}) - seed RNG")
+            self.current_output.append(f"MOV R0, {seed_reg}")
+            self.current_output.append(f"RND {target_reg}  ; Initialize RNG with seed")
             self.smart_deallocate(seed_reg, is_last_use=True)
         elif func_name == "LEN" or func_name == "LENGTH" or func_name == "STRLEN":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"STRLEN {arg_reg}")
+            self.current_output.append(f"STRLEN {arg_reg}")
             if target_reg != "R0":
-                self.output.append(f"MOV {target_reg}, R0")
+                self.current_output.append(f"MOV {target_reg}, R0")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "STRCPY":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             src_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"STRCPY {dest_reg}, {src_reg}")
-            self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+            self.current_output.append(f"STRCPY {dest_reg}, {src_reg}")
+            self.current_output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
             self.smart_deallocate(dest_reg, is_last_use=True)
             self.smart_deallocate(src_reg, is_last_use=True)
         elif func_name == "STRCAT":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             src_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"STRCAT {dest_reg}, {src_reg}")
-            self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+            self.current_output.append(f"STRCAT {dest_reg}, {src_reg}")
+            self.current_output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
             self.smart_deallocate(dest_reg, is_last_use=True)
             self.smart_deallocate(src_reg, is_last_use=True)
         elif func_name == "STRCMP":
             str1_reg = self.generate_expression(expr.arguments[0], "R1")
             str2_reg = self.generate_expression(expr.arguments[1], "R2")
             len_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"STRCMP {str1_reg}, {str2_reg}, {len_reg}")
+            self.current_output.append(f"STRCMP {str1_reg}, {str2_reg}, {len_reg}")
             # STRCMP sets flags from the comparison result (-1, 0, 1)
             less_label = self.new_label()
             equal_label = self.new_label()
             end_label = self.new_label()
-            self.output.append(f"MOV {target_reg}, 1")
-            self.output.append(f"JZ {equal_label}")
-            self.output.append(f"JS {less_label}")
-            self.output.append(f"JMP {end_label}")
-            self.output.append(f"{less_label}:")
-            self.output.append(f"MOV {target_reg}, 0xFFFF")
-            self.output.append(f"JMP {end_label}")
-            self.output.append(f"{equal_label}:")
-            self.output.append(f"MOV {target_reg}, 0")
-            self.output.append(f"{end_label}:")
+            self.current_output.append(f"MOV {target_reg}, 1")
+            self.current_output.append(f"JZ {equal_label}")
+            self.current_output.append(f"JS {less_label}")
+            self.current_output.append(f"JMP {end_label}")
+            self.current_output.append(f"{less_label}:")
+            self.current_output.append(f"MOV {target_reg}, 0xFFFF")
+            self.current_output.append(f"JMP {end_label}")
+            self.current_output.append(f"{equal_label}:")
+            self.current_output.append(f"MOV {target_reg}, 0")
+            self.current_output.append(f"{end_label}:")
             if str1_reg != target_reg:
                 self.smart_deallocate(str1_reg, is_last_use=True)
             if str2_reg != target_reg:
@@ -2749,68 +2908,68 @@ class CodeGenerator:
                 self.smart_deallocate(len_reg, is_last_use=True)
         elif func_name == "STRUPR":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"STRUPR {arg_reg}")
+            self.current_output.append(f"STRUPR {arg_reg}")
             if target_reg != arg_reg:
-                self.output.append(f"MOV {target_reg}, {arg_reg}")
+                self.current_output.append(f"MOV {target_reg}, {arg_reg}")
                 self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "STRLWR":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"STRLWR {arg_reg}")
+            self.current_output.append(f"STRLWR {arg_reg}")
             if target_reg != arg_reg:
-                self.output.append(f"MOV {target_reg}, {arg_reg}")
+                self.current_output.append(f"MOV {target_reg}, {arg_reg}")
                 self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "LOWSTRING":
             # LOWSTRING uses STRLWR
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"STRLWR {arg_reg}")
+            self.current_output.append(f"STRLWR {arg_reg}")
             if target_reg != arg_reg:
-                self.output.append(f"MOV {target_reg}, {arg_reg}")
+                self.current_output.append(f"MOV {target_reg}, {arg_reg}")
                 self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "UPSTRING":
             # UPSTRING uses STRUPR
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"STRUPR {arg_reg}")
+            self.current_output.append(f"STRUPR {arg_reg}")
             if target_reg != arg_reg:
-                self.output.append(f"MOV {target_reg}, {arg_reg}")
+                self.current_output.append(f"MOV {target_reg}, {arg_reg}")
                 self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "LENSTRING":
             # LENSTRING uses STRLEN
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"STRLEN {arg_reg}")
+            self.current_output.append(f"STRLEN {arg_reg}")
             # STRLEN stores result in R0, so copy to target
             if target_reg != "R0":
-                self.output.append(f"MOV {target_reg}, R0")
+                self.current_output.append(f"MOV {target_reg}, R0")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "INSTRING":
             # INSTRING uses STRFIND
             haystack_reg = self.generate_expression(expr.arguments[0], "R1")
             needle_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"STRFIND {haystack_reg}, {needle_reg}")
+            self.current_output.append(f"STRFIND {haystack_reg}, {needle_reg}")
             # STRFIND stores result in R0
             if target_reg != "R0":
-                self.output.append(f"MOV {target_reg}, R0")
+                self.current_output.append(f"MOV {target_reg}, R0")
             self.smart_deallocate(haystack_reg, is_last_use=True)
             self.smart_deallocate(needle_reg, is_last_use=True)
         elif func_name == "STRREV":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"STRREV {arg_reg}")
+            self.current_output.append(f"STRREV {arg_reg}")
             if target_reg != arg_reg:
-                self.output.append(f"MOV {target_reg}, {arg_reg}")
+                self.current_output.append(f"MOV {target_reg}, {arg_reg}")
                 self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "STRFIND":
             haystack_reg = self.generate_expression(expr.arguments[0], "R1")
             needle_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"STRFIND {haystack_reg}, {needle_reg}")
+            self.current_output.append(f"STRFIND {haystack_reg}, {needle_reg}")
             if target_reg != "R0":
-                self.output.append(f"MOV {target_reg}, R0")
+                self.current_output.append(f"MOV {target_reg}, R0")
             self.smart_deallocate(haystack_reg, is_last_use=True)
             self.smart_deallocate(needle_reg, is_last_use=True)
         elif func_name == "STRFINDI":
             haystack_reg = self.generate_expression(expr.arguments[0], "R1")
             needle_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"STRFINDI {haystack_reg}, {needle_reg}")
+            self.current_output.append(f"STRFINDI {haystack_reg}, {needle_reg}")
             if target_reg != "R0":
-                self.output.append(f"MOV {target_reg}, R0")
+                self.current_output.append(f"MOV {target_reg}, R0")
             self.smart_deallocate(haystack_reg, is_last_use=True)
             self.smart_deallocate(needle_reg, is_last_use=True)
         elif func_name == "STREXT":
@@ -2818,8 +2977,8 @@ class CodeGenerator:
             self.generate_expression_into(expr.arguments[1], "R2")
             self.generate_expression_into(expr.arguments[2], "R3")
             self.generate_expression_into(expr.arguments[3], "R4")
-            self.output.append("STREXT R1, R2, R3, R4")
-            self.output.append(f"MOV {target_reg}, R1")  # Return destination
+            self.current_output.append("STREXT R1, R2, R3, R4")
+            self.current_output.append(f"MOV {target_reg}, R1")  # Return destination
             for reg in ("R1", "R2", "R3", "R4"):
                 if reg != target_reg:
                     self.smart_deallocate(reg, is_last_use=True)
@@ -2828,15 +2987,15 @@ class CodeGenerator:
             self.generate_expression_into(expr.arguments[1], "R2")
             self.generate_expression_into(expr.arguments[2], "R3")
             self.generate_expression_into(expr.arguments[3], "R4")
-            self.output.append("STREXTI R1, R2, R3, R4")
-            self.output.append(f"MOV {target_reg}, R1")  # Return destination
+            self.current_output.append("STREXTI R1, R2, R3, R4")
+            self.current_output.append(f"MOV {target_reg}, R1")  # Return destination
             for reg in ("R1", "R2", "R3", "R4"):
                 if reg != target_reg:
                     self.smart_deallocate(reg, is_last_use=True)
         elif func_name == "MIN":
             left_reg = self.generate_expression(expr.arguments[0], "R1")
             right_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"MIN {target_reg}, {left_reg}, {right_reg}")
+            self.current_output.append(f"MIN {target_reg}, {left_reg}, {right_reg}")
             # Don't free if it's the target register (needed for nested calls)
             if left_reg != target_reg:
                 self.smart_deallocate(left_reg, is_last_use=True)
@@ -2845,7 +3004,7 @@ class CodeGenerator:
         elif func_name == "MAX":
             left_reg = self.generate_expression(expr.arguments[0], "R1")
             right_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"MAX {target_reg}, {left_reg}, {right_reg}")
+            self.current_output.append(f"MAX {target_reg}, {left_reg}, {right_reg}")
             # Don't free if it's the target register (needed for nested calls)
             if left_reg != target_reg:
                 self.smart_deallocate(left_reg, is_last_use=True)
@@ -2853,73 +3012,73 @@ class CodeGenerator:
                 self.smart_deallocate(right_reg, is_last_use=True)
         elif func_name == "ATAN":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"ATAN {target_reg}, {arg_reg}")
+            self.current_output.append(f"ATAN {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "ASIN":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"ASIN {target_reg}, {arg_reg}")
+            self.current_output.append(f"ASIN {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "ACOS":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"ACOS {target_reg}, {arg_reg}")
+            self.current_output.append(f"ACOS {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "DEG":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"DEG {target_reg}, {arg_reg}")
+            self.current_output.append(f"DEG {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "RAD":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"RAD {target_reg}, {arg_reg}")
+            self.current_output.append(f"RAD {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "FLOOR":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"FLOOR {target_reg}, {arg_reg}")
+            self.current_output.append(f"FLOOR {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "CEIL":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"CEIL {target_reg}, {arg_reg}")
+            self.current_output.append(f"CEIL {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "ROUND":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"ROUND {target_reg}, {arg_reg}")
+            self.current_output.append(f"ROUND {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "TRUNC":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"TRUNC {target_reg}, {arg_reg}")
+            self.current_output.append(f"TRUNC {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "FRAC":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"FRAC {target_reg}, {arg_reg}")
+            self.current_output.append(f"FRAC {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "INTGR":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"INTGR {target_reg}, {arg_reg}")
+            self.current_output.append(f"INTGR {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "POWR":
             left_reg = self.generate_expression(expr.arguments[0], "R1")
             right_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"POWR {target_reg}, {left_reg}, {right_reg}")
+            self.current_output.append(f"POWR {target_reg}, {left_reg}, {right_reg}")
             self.smart_deallocate(left_reg, is_last_use=True)
             self.smart_deallocate(right_reg, is_last_use=True)
         elif func_name == "LOG":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"LOG {target_reg}, {arg_reg}")
+            self.current_output.append(f"LOG {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "EXP":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"EXP {target_reg}, {arg_reg}")
+            self.current_output.append(f"EXP {target_reg}, {arg_reg}")
             self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "BTST":
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             bit_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"BTST {target_reg}, {bit_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"BTST {target_reg}, {bit_reg}")
             result_label = self.new_label()
-            self.output.append(f"MOV {target_reg}, 0")
-            self.output.append(f"JZ {result_label}")
-            self.output.append(f"MOV {target_reg}, 1")
-            self.output.append(f"{result_label}:")
+            self.current_output.append(f"MOV {target_reg}, 0")
+            self.current_output.append(f"JZ {result_label}")
+            self.current_output.append(f"MOV {target_reg}, 1")
+            self.current_output.append(f"{result_label}:")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if bit_reg != target_reg:
@@ -2928,8 +3087,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             bit_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"BSET {target_reg}, {bit_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"BSET {target_reg}, {bit_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if bit_reg != target_reg:
@@ -2938,8 +3097,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             bit_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"BCLR {target_reg}, {bit_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"BCLR {target_reg}, {bit_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if bit_reg != target_reg:
@@ -2948,8 +3107,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             bit_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"BFLIP {target_reg}, {bit_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"BFLIP {target_reg}, {bit_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if bit_reg != target_reg:
@@ -2957,44 +3116,44 @@ class CodeGenerator:
         elif func_name == "CLZ":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             if arg_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {arg_reg}")
-            self.output.append(f"CLZ {target_reg}")
+                self.current_output.append(f"MOV {target_reg}, {arg_reg}")
+            self.current_output.append(f"CLZ {target_reg}")
             if arg_reg != target_reg:
                 self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "CTZ":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             if arg_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {arg_reg}")
-            self.output.append(f"CTZ {target_reg}")
+                self.current_output.append(f"MOV {target_reg}, {arg_reg}")
+            self.current_output.append(f"CTZ {target_reg}")
             if arg_reg != target_reg:
                 self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "POPCNT":
             arg_reg = self.generate_expression(expr.arguments[0], "R1")
             if arg_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {arg_reg}")
-            self.output.append(f"POPCNT {target_reg}")
+                self.current_output.append(f"MOV {target_reg}, {arg_reg}")
+            self.current_output.append(f"POPCNT {target_reg}")
             if arg_reg != target_reg:
                 self.smart_deallocate(arg_reg, is_last_use=True)
         elif func_name == "MEMREAD":
             # Read a value from memory address
             # MEMREAD(addr) returns the 16-bit value at that address
             addr_reg = self.generate_expression(expr.arguments[0], "P1")
-            self.output.append(f"; MEMREAD - Read from memory")
+            self.current_output.append(f"; MEMREAD - Read from memory")
             # Ensure we're using a P register for addressing
             if not addr_reg.startswith('P'):
                 temp_p = "P1"
-                self.output.append(f"MOV {temp_p}, {addr_reg}")
+                self.current_output.append(f"MOV {temp_p}, {addr_reg}")
                 addr_reg = temp_p
             # If addr_reg == target_reg, we need a temp to avoid MOV P1, [P1]
             if addr_reg == target_reg:
                 # Find another P register for the address
                 temp_addr = self.allocate_register(preferred_reg="P2")
-                self.output.append(f"MOV {temp_addr}, {addr_reg}")
-                self.output.append(f"MOV {target_reg}, [{temp_addr}]")
+                self.current_output.append(f"MOV {temp_addr}, {addr_reg}")
+                self.current_output.append(f"MOV {target_reg}, [{temp_addr}]")
                 self.smart_deallocate(temp_addr, is_last_use=True)
                 self.smart_deallocate(addr_reg, is_last_use=True)
             else:
-                self.output.append(f"MOV {target_reg}, [{addr_reg}]")
+                self.current_output.append(f"MOV {target_reg}, [{addr_reg}]")
                 # Only deallocate addr_reg if it's not the target register
                 self.smart_deallocate(addr_reg, is_last_use=True)
         elif func_name == "MEMWRITE":
@@ -3002,14 +3161,14 @@ class CodeGenerator:
             # MEMWRITE(addr, value) returns the value written
             addr_reg = self.generate_expression(expr.arguments[0], "P1")
             value_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"; MEMWRITE - Write to memory")
+            self.current_output.append(f"; MEMWRITE - Write to memory")
             # Ensure we're using a P register for addressing
             if not addr_reg.startswith('P'):
                 temp_p = "P1"
-                self.output.append(f"MOV {temp_p}, {addr_reg}")
+                self.current_output.append(f"MOV {temp_p}, {addr_reg}")
                 addr_reg = temp_p
-            self.output.append(f"MOV [{addr_reg}], {value_reg}")
-            self.output.append(f"MOV {target_reg}, {value_reg}")  # Return value written
+            self.current_output.append(f"MOV [{addr_reg}], {value_reg}")
+            self.current_output.append(f"MOV {target_reg}, {value_reg}")  # Return value written
             # Only deallocate if they're not the target register
             if addr_reg != target_reg:
                 self.smart_deallocate(addr_reg, is_last_use=True)
@@ -3019,86 +3178,86 @@ class CodeGenerator:
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             src_reg = self.generate_expression(expr.arguments[1], "R2")
             len_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"MEMCPY {dest_reg}, {src_reg}, {len_reg}")
-            self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+            self.current_output.append(f"MEMCPY {dest_reg}, {src_reg}, {len_reg}")
+            self.current_output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
         elif func_name == "MEMSET":
             addr_reg = self.generate_expression(expr.arguments[0], "R1")
             value_reg = self.generate_expression(expr.arguments[1], "R2")
             len_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"MEMSET {addr_reg}, {value_reg}, {len_reg}")
-            self.output.append(f"MOV {target_reg}, {addr_reg}")  # Return address
+            self.current_output.append(f"MEMSET {addr_reg}, {value_reg}, {len_reg}")
+            self.current_output.append(f"MOV {target_reg}, {addr_reg}")  # Return address
         elif func_name == "MEMTEST":
             addr1_reg = self.generate_expression(expr.arguments[0], "R1")
             addr2_reg = self.generate_expression(expr.arguments[1], "R2")
             len_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"MEMTEST {target_reg}, {addr1_reg}, {addr2_reg}, {len_reg}")
+            self.current_output.append(f"MEMTEST {target_reg}, {addr1_reg}, {addr2_reg}, {len_reg}")
         elif func_name == "MEMMOVE":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             src_reg = self.generate_expression(expr.arguments[1], "R2")
             len_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"MEMMOVE {dest_reg}, {src_reg}, {len_reg}")
-            self.output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
+            self.current_output.append(f"MEMMOVE {dest_reg}, {src_reg}, {len_reg}")
+            self.current_output.append(f"MOV {target_reg}, {dest_reg}")  # Return destination
         elif func_name == "MEMCMP":
             result_reg = self.generate_expression(expr.arguments[0], "R1")
             addr1_reg = self.generate_expression(expr.arguments[1], "R2")
             addr2_reg = self.generate_expression(expr.arguments[2], "R3")
             len_reg = self.generate_expression(expr.arguments[3], "R4")
-            self.output.append(f"MEMCMP {result_reg}, {addr1_reg}, {addr2_reg}, {len_reg}")
-            self.output.append(f"MOV {target_reg}, {result_reg}")  # Return result
+            self.current_output.append(f"MEMCMP {result_reg}, {addr1_reg}, {addr2_reg}, {len_reg}")
+            self.current_output.append(f"MOV {target_reg}, {result_reg}")  # Return result
         elif func_name == "MEMSWAP":
             addr1_reg = self.generate_expression(expr.arguments[0], "R1")
             addr2_reg = self.generate_expression(expr.arguments[1], "R2")
             len_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"MEMSWAP {addr1_reg}, {addr2_reg}, {len_reg}")
-            self.output.append(f"MOV {target_reg}, {addr1_reg}")  # Return first address
+            self.current_output.append(f"MEMSWAP {addr1_reg}, {addr2_reg}, {len_reg}")
+            self.current_output.append(f"MOV {target_reg}, {addr1_reg}")  # Return first address
         elif func_name == "ADC":
             result_reg = self.generate_expression(expr.arguments[0], "R1")
             a_reg = self.generate_expression(expr.arguments[1], "R2")
             b_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"ADC {result_reg}, {a_reg}, {b_reg}")
-            self.output.append(f"MOV {target_reg}, {result_reg}")
+            self.current_output.append(f"ADC {result_reg}, {a_reg}, {b_reg}")
+            self.current_output.append(f"MOV {target_reg}, {result_reg}")
         elif func_name == "SBC":
             result_reg = self.generate_expression(expr.arguments[0], "R1")
             a_reg = self.generate_expression(expr.arguments[1], "R2")
             b_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"SBC {result_reg}, {a_reg}, {b_reg}")
-            self.output.append(f"MOV {target_reg}, {result_reg}")
+            self.current_output.append(f"SBC {result_reg}, {a_reg}, {b_reg}")
+            self.current_output.append(f"MOV {target_reg}, {result_reg}")
         elif func_name == "MULH":
             result_reg = self.generate_expression(expr.arguments[0], "R1")
             a_reg = self.generate_expression(expr.arguments[1], "R2")
             b_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"MULH {result_reg}, {a_reg}, {b_reg}")
-            self.output.append(f"MOV {target_reg}, {result_reg}")
+            self.current_output.append(f"MULH {result_reg}, {a_reg}, {b_reg}")
+            self.current_output.append(f"MOV {target_reg}, {result_reg}")
         elif func_name == "DIVH":
             result_reg = self.generate_expression(expr.arguments[0], "R1")
             a_reg = self.generate_expression(expr.arguments[1], "R2")
             b_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"DIVH {result_reg}, {a_reg}, {b_reg}")
-            self.output.append(f"MOV {target_reg}, {result_reg}")
+            self.current_output.append(f"DIVH {result_reg}, {a_reg}, {b_reg}")
+            self.current_output.append(f"MOV {target_reg}, {result_reg}")
         elif func_name == "SWAP":
             value_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"SWAP {value_reg}")
-            self.output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"SWAP {value_reg}")
+            self.current_output.append(f"MOV {target_reg}, {value_reg}")
         elif func_name == "XCHNG":
             a_reg = self.generate_expression(expr.arguments[0], "R1")
             b_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"XCHNG {a_reg}, {b_reg}")
-            self.output.append(f"MOV {target_reg}, {a_reg}")
+            self.current_output.append(f"XCHNG {a_reg}, {b_reg}")
+            self.current_output.append(f"MOV {target_reg}, {a_reg}")
         elif func_name == "MOVZ":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             src_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"MOVZ {dest_reg}, {src_reg}")
-            self.output.append(f"MOV {target_reg}, {dest_reg}")
+            self.current_output.append(f"MOVZ {dest_reg}, {src_reg}")
+            self.current_output.append(f"MOV {target_reg}, {dest_reg}")
         elif func_name == "MOVNZ":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             src_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"MOVNZ {dest_reg}, {src_reg}")
-            self.output.append(f"MOV {target_reg}, {dest_reg}")
+            self.current_output.append(f"MOVNZ {dest_reg}, {src_reg}")
+            self.current_output.append(f"MOV {target_reg}, {dest_reg}")
         elif func_name == "LEA":
             self.generate_expression_into(expr.arguments[0], "R1")
             self.generate_expression_into(expr.arguments[1], "R2")
-            self.output.append("LEA R1, R2")
-            self.output.append(f"MOV {target_reg}, R1")
+            self.current_output.append("LEA R1, R2")
+            self.current_output.append(f"MOV {target_reg}, R1")
             for reg in ("R1", "R2"):
                 if reg != target_reg:
                     self.smart_deallocate(reg, is_last_use=True)
@@ -3106,8 +3265,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             shift_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"SHL {target_reg}, {shift_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"SHL {target_reg}, {shift_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if shift_reg != target_reg:
@@ -3116,8 +3275,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             shift_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"SHR {target_reg}, {shift_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"SHR {target_reg}, {shift_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if shift_reg != target_reg:
@@ -3126,8 +3285,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             shift_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"SAL {target_reg}, {shift_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"SAL {target_reg}, {shift_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if shift_reg != target_reg:
@@ -3136,8 +3295,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             shift_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"SAR {target_reg}, {shift_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"SAR {target_reg}, {shift_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if shift_reg != target_reg:
@@ -3146,8 +3305,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             shift_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"ROL {target_reg}, {shift_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"ROL {target_reg}, {shift_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if shift_reg != target_reg:
@@ -3156,8 +3315,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             shift_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"ROR {target_reg}, {shift_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"ROR {target_reg}, {shift_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if shift_reg != target_reg:
@@ -3166,8 +3325,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             shift_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"RCL {target_reg}, {shift_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"RCL {target_reg}, {shift_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if shift_reg != target_reg:
@@ -3176,8 +3335,8 @@ class CodeGenerator:
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             shift_reg = self.generate_expression(expr.arguments[1], "R2")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"RCR {target_reg}, {shift_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"RCR {target_reg}, {shift_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if shift_reg != target_reg:
@@ -3186,8 +3345,8 @@ class CodeGenerator:
             a_reg = self.generate_expression(expr.arguments[0], "R1")
             b_reg = self.generate_expression(expr.arguments[1], "R2")
             if a_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {a_reg}")
-            self.output.append(f"AND {target_reg}, {b_reg}")
+                self.current_output.append(f"MOV {target_reg}, {a_reg}")
+            self.current_output.append(f"AND {target_reg}, {b_reg}")
             if a_reg != target_reg:
                 self.smart_deallocate(a_reg, is_last_use=True)
             if b_reg != target_reg:
@@ -3196,8 +3355,8 @@ class CodeGenerator:
             a_reg = self.generate_expression(expr.arguments[0], "R1")
             b_reg = self.generate_expression(expr.arguments[1], "R2")
             if a_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {a_reg}")
-            self.output.append(f"OR {target_reg}, {b_reg}")
+                self.current_output.append(f"MOV {target_reg}, {a_reg}")
+            self.current_output.append(f"OR {target_reg}, {b_reg}")
             if a_reg != target_reg:
                 self.smart_deallocate(a_reg, is_last_use=True)
             if b_reg != target_reg:
@@ -3206,8 +3365,8 @@ class CodeGenerator:
             a_reg = self.generate_expression(expr.arguments[0], "R1")
             b_reg = self.generate_expression(expr.arguments[1], "R2")
             if a_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {a_reg}")
-            self.output.append(f"XOR {target_reg}, {b_reg}")
+                self.current_output.append(f"MOV {target_reg}, {a_reg}")
+            self.current_output.append(f"XOR {target_reg}, {b_reg}")
             if a_reg != target_reg:
                 self.smart_deallocate(a_reg, is_last_use=True)
             if b_reg != target_reg:
@@ -3215,89 +3374,89 @@ class CodeGenerator:
         elif func_name == "BNOT":
             value_reg = self.generate_expression(expr.arguments[0], "R1")
             if value_reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {value_reg}")
-            self.output.append(f"NOT {target_reg}")
+                self.current_output.append(f"MOV {target_reg}, {value_reg}")
+            self.current_output.append(f"NOT {target_reg}")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
         elif func_name == "ITOB":
             result_reg = self.generate_expression(expr.arguments[0], "R1")
             value_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"ITOB {result_reg}, {value_reg}")
-            self.output.append(f"MOV {target_reg}, {result_reg}")
+            self.current_output.append(f"ITOB {result_reg}, {value_reg}")
+            self.current_output.append(f"MOV {target_reg}, {result_reg}")
         elif func_name == "BTOI":
             result_reg = self.generate_expression(expr.arguments[0], "R1")
             binary_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"BTOI {result_reg}, {binary_reg}")
-            self.output.append(f"MOV {target_reg}, {result_reg}")
+            self.current_output.append(f"BTOI {result_reg}, {binary_reg}")
+            self.current_output.append(f"MOV {target_reg}, {result_reg}")
         elif func_name == "ITOS":
             result_reg = self.generate_expression(expr.arguments[0], "R1")
             value_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"ITOS {result_reg}, {value_reg}")
-            self.output.append(f"MOV {target_reg}, {result_reg}")
+            self.current_output.append(f"ITOS {result_reg}, {value_reg}")
+            self.current_output.append(f"MOV {target_reg}, {result_reg}")
         elif func_name == "STOI":
             result_reg = self.generate_expression(expr.arguments[0], "R1")
             string_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"STOI {result_reg}, {string_reg}")
-            self.output.append(f"MOV {target_reg}, {result_reg}")
+            self.current_output.append(f"STOI {result_reg}, {string_reg}")
+            self.current_output.append(f"MOV {target_reg}, {result_reg}")
         elif func_name == "SUB":
             string_reg = self.generate_expression(expr.arguments[0], "R1")
             start_reg = self.generate_expression(expr.arguments[1], "R2")
             len_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"STREXT {target_reg}, {string_reg}, {start_reg}, {len_reg}")
+            self.current_output.append(f"STREXT {target_reg}, {string_reg}, {start_reg}, {len_reg}")
         elif func_name == "CLRDRAW":
-            self.output.append("MOV VM, 0")  # Clear screen mode
-            self.output.append("SFILL 0")    # Fill with black
+            self.current_output.append("MOV VM, 0")  # Clear screen mode
+            self.current_output.append("SFILL 0")    # Fill with black
         elif func_name == "SETLAYER":
             layer_reg = self.generate_expression(expr.arguments[0], "R1")
-            self.output.append(f"MOV VL, {layer_reg}")
+            self.current_output.append(f"MOV VL, {layer_reg}")
         elif func_name == "PXLON":
             x_reg = self.generate_expression(expr.arguments[0], "R1")
             y_reg = self.generate_expression(expr.arguments[1], "R2")
             color_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.output.append(f"MOV VX, {x_reg}")
-            self.output.append(f"MOV VY, {y_reg}")
-            self.output.append(f"MOV VC, {color_reg}")
-            self.output.append("SWRITE VC")
+            self.current_output.append(f"MOV VX, {x_reg}")
+            self.current_output.append(f"MOV VY, {y_reg}")
+            self.current_output.append(f"MOV VC, {color_reg}")
+            self.current_output.append("SWRITE VC")
         elif func_name == "PXLOFF":
             x_reg = self.generate_expression(expr.arguments[0], "R1")
             y_reg = self.generate_expression(expr.arguments[1], "R2")
-            self.output.append(f"MOV VX, {x_reg}")
-            self.output.append(f"MOV VY, {y_reg}")
-            self.output.append("SWRITE 0")
+            self.current_output.append(f"MOV VX, {x_reg}")
+            self.current_output.append(f"MOV VY, {y_reg}")
+            self.current_output.append("SWRITE 0")
         elif func_name == "LINE":
             x1_reg = self.generate_expression(expr.arguments[0], "R1")
             y1_reg = self.generate_expression(expr.arguments[1], "R2")
             x2_reg = self.generate_expression(expr.arguments[2], "R3")
             y2_reg = self.generate_expression(expr.arguments[3], "R4")
             color_reg = self.generate_expression(expr.arguments[4], "R5")
-            self.output.append(f"MOV VX, {x1_reg}")
-            self.output.append(f"MOV VY, {y1_reg}")
-            self.output.append(f"SLINE {x2_reg}, {y2_reg}, {color_reg}")
+            self.current_output.append(f"MOV VX, {x1_reg}")
+            self.current_output.append(f"MOV VY, {y1_reg}")
+            self.current_output.append(f"SLINE {x2_reg}, {y2_reg}, {color_reg}")
         elif func_name == "CIRCLE":
             x_reg = self.generate_expression(expr.arguments[0], "R1")
             y_reg = self.generate_expression(expr.arguments[1], "R2")
             radius_reg = self.generate_expression(expr.arguments[2], "R3")
             color_reg = self.generate_expression(expr.arguments[3], "R4")
-            self.output.append(f"MOV VX, {x_reg}")
-            self.output.append(f"MOV VY, {y_reg}")
-            self.output.append(f"SCIRC {radius_reg}, {color_reg}")
+            self.current_output.append(f"MOV VX, {x_reg}")
+            self.current_output.append(f"MOV VY, {y_reg}")
+            self.current_output.append(f"SCIRC {radius_reg}, {color_reg}")
         elif func_name == "TEXT":
             x_reg = self.generate_expression(expr.arguments[0], "R1")
             y_reg = self.generate_expression(expr.arguments[1], "R2")
             text_reg = self.generate_expression(expr.arguments[2], "R3")
             color_reg = self.generate_expression(expr.arguments[3], "R4")
-            self.output.append(f"MOV VX, {x_reg}")
-            self.output.append(f"MOV VY, {y_reg}")
-            self.output.append(f"TEXT {text_reg}, {color_reg}")
+            self.current_output.append(f"MOV VX, {x_reg}")
+            self.current_output.append(f"MOV VY, {y_reg}")
+            self.current_output.append(f"TEXT {text_reg}, {color_reg}")
         elif func_name == "RECT":
             x1_reg = self.generate_expression(expr.arguments[0], "R1")
             y1_reg = self.generate_expression(expr.arguments[1], "R2")
             x2_reg = self.generate_expression(expr.arguments[2], "R3")
             y2_reg = self.generate_expression(expr.arguments[3], "R4")
             fill_reg = self.generate_expression(expr.arguments[4], "R5")
-            self.output.append(f"MOV VX, {x1_reg}")
-            self.output.append(f"MOV VY, {y1_reg}")
-            self.output.append(f"SRECT {x2_reg}, {y2_reg}, {fill_reg}")
+            self.current_output.append(f"MOV VX, {x1_reg}")
+            self.current_output.append(f"MOV VY, {y1_reg}")
+            self.current_output.append(f"SRECT {x2_reg}, {y2_reg}, {fill_reg}")
         elif func_name in {"FILL", "SORTA", "SORTD", "SEQ", "REVERSE"}:
             # Resolve target list base address; default to L1 if not identifiable
             base_addr = 0x1000
@@ -3314,70 +3473,70 @@ class CodeGenerator:
                 value_reg = self.generate_expression(expr.arguments[1], "P3")
                 # Keep base address in a dedicated P-register to avoid clobbering value_reg
                 base_reg = "P4" if value_reg != "P4" else ("P5" if value_reg != "P5" else "P6")
-                self.output.append(f"; Fill list starting at 0x{base_addr:04X}")
-                self.output.append(f"MOV {base_reg}, 0x{base_addr:04X}")
-                self.output.append("MOV R1, 0")
+                self.current_output.append(f"; Fill list starting at 0x{base_addr:04X}")
+                self.current_output.append(f"MOV {base_reg}, 0x{base_addr:04X}")
+                self.current_output.append("MOV R1, 0")
                 loop_label = self.new_label()
                 end_label = self.new_label()
-                self.output.append(f"{loop_label}:")
-                self.output.append("CMP R1, 100")
-                self.output.append(f"JGE {end_label}")
-                self.output.append("MOV P1, R1")
-                self.output.append("MUL P1, 2")
-                self.output.append(f"ADD P1, {base_reg}")
-                self.output.append(f"MOV [P1], {value_reg}")
-                self.output.append("INC R1")
-                self.output.append(f"JMP {loop_label}")
-                self.output.append(f"{end_label}:")
-                self.output.append(f"MOV {target_reg}, {base_addr}")
+                self.current_output.append(f"{loop_label}:")
+                self.current_output.append("CMP R1, 100")
+                self.current_output.append(f"JGE {end_label}")
+                self.current_output.append("MOV P1, R1")
+                self.current_output.append("MUL P1, 2")
+                self.current_output.append(f"ADD P1, {base_reg}")
+                self.current_output.append(f"MOV [P1], {value_reg}")
+                self.current_output.append("INC R1")
+                self.current_output.append(f"JMP {loop_label}")
+                self.current_output.append(f"{end_label}:")
+                self.current_output.append(f"MOV {target_reg}, {base_addr}")
                 if value_reg != target_reg:
                     self.smart_deallocate(value_reg, is_last_use=True)
 
             elif func_name in {"SORTA", "SORTD"}:
                 # Simple bubble sort (100 elements, 0-based indices)
                 ascending = func_name == "SORTA"
-                self.output.append(f"; Sort {'ascending' if ascending else 'descending'} list at 0x{base_addr:04X}")
-                self.output.append(f"MOV P0, 0x{base_addr:04X}")
+                self.current_output.append(f"; Sort {'ascending' if ascending else 'descending'} list at 0x{base_addr:04X}")
+                self.current_output.append(f"MOV P0, 0x{base_addr:04X}")
                 outer_label = self.new_label()
                 inner_label = self.new_label()
                 next_outer = self.new_label()
                 skip_label = self.new_label()
                 end_label = self.new_label()
-                self.output.append("MOV R1, 0")  # i
-                self.output.append(f"{outer_label}:")
-                self.output.append("CMP R1, 100")
-                self.output.append(f"JGE {end_label}")
-                self.output.append("MOV R2, 0")  # j
-                self.output.append(f"{inner_label}:")
-                self.output.append("MOV R5, 99")
-                self.output.append("SUB R5, R1")  # limit = 99 - i
-                self.output.append("CMP R2, R5")
-                self.output.append(f"JGE {next_outer}")
+                self.current_output.append("MOV R1, 0")  # i
+                self.current_output.append(f"{outer_label}:")
+                self.current_output.append("CMP R1, 100")
+                self.current_output.append(f"JGE {end_label}")
+                self.current_output.append("MOV R2, 0")  # j
+                self.current_output.append(f"{inner_label}:")
+                self.current_output.append("MOV R5, 99")
+                self.current_output.append("SUB R5, R1")  # limit = 99 - i
+                self.current_output.append("CMP R2, R5")
+                self.current_output.append(f"JGE {next_outer}")
                 # Addresses for j and j+1
-                self.output.append("MOV P1, R2")
-                self.output.append("MUL P1, 2")  # Scale index to bytes
-                self.output.append("ADD P1, P0")
-                self.output.append("MOV P2, P1")
-                self.output.append("INC P2")
-                self.output.append("INC P2")
-                self.output.append("MOV P3, [P1]")
-                self.output.append("MOV P4, [P2]")
-                self.output.append("CMP P3, P4")
+                self.current_output.append("MOV P1, R2")
+                self.current_output.append("MUL P1, 2")  # Scale index to bytes
+                self.current_output.append("ADD P1, P0")
+                self.current_output.append("MOV P2, P1")
+                self.current_output.append("INC P2")
+                self.current_output.append("INC P2")
+                self.current_output.append("MOV P3, [P1]")
+                self.current_output.append("MOV P4, [P2]")
+                self.current_output.append("CMP P3, P4")
                 if ascending:
-                    self.output.append(f"JLE {skip_label}")
+                    self.current_output.append(f"JLE {skip_label}")
                 else:
-                    self.output.append(f"JGE {skip_label}")
+                    self.current_output.append(f"JGE {skip_label}")
                 # Swap when out of order
-                self.output.append("MOV [P1], P4")
-                self.output.append("MOV [P2], P3")
-                self.output.append(f"{skip_label}:")
-                self.output.append("INC R2")
-                self.output.append(f"JMP {inner_label}")
-                self.output.append(f"{next_outer}:")
-                self.output.append("INC R1")
-                self.output.append(f"JMP {outer_label}")
-                self.output.append(f"{end_label}:")
-                self.output.append(f"MOV {target_reg}, {base_addr}")
+                self.current_output.append("MOV [P1], P4")
+                self.current_output.append("MOV [P2], P3")
+                self.current_output.append(f"{skip_label}:")
+                self.current_output.append("INC R2")
+                self.current_output.append(f"JMP {inner_label}")
+                self.current_output.append(f"{next_outer}:")
+                self.current_output.append("INC R1")
+                self.current_output.append(f"JMP {outer_label}")
+                self.current_output.append(f"{end_label}:")
+                self.current_output.append(f"MOV {target_reg}, {base_addr}")
 
             elif func_name == "SEQ":
                 # Generate a numeric sequence into the target list (default L1)
@@ -3386,61 +3545,61 @@ class CodeGenerator:
                 step_reg = None
                 if len(expr.arguments) > 4:
                     step_reg = self.generate_expression(expr.arguments[4], "P5")
-                self.output.append(f"; Seq into list at 0x{base_addr:04X}")
-                self.output.append("MOV R1, 0")       # list index
+                self.current_output.append(f"; Seq into list at 0x{base_addr:04X}")
+                self.current_output.append("MOV R1, 0")       # list index
                 loop_label = self.new_label()
                 end_label = self.new_label()
-                self.output.append(f"{loop_label}:")
-                self.output.append("CMP R1, 100")
-                self.output.append(f"JGE {end_label}")
-                self.output.append(f"CMP {current_reg}, {end_reg}")
-                self.output.append(f"JGT {end_label}")
-                self.output.append("MOV P1, R1")
-                self.output.append("MUL P1, 2")
-                self.output.append(f"MOV P0, 0x{base_addr:04X}")
-                self.output.append("ADD P1, P0")
-                self.output.append(f"MOV [P1], {current_reg}")
-                self.output.append("INC R1")
+                self.current_output.append(f"{loop_label}:")
+                self.current_output.append("CMP R1, 100")
+                self.current_output.append(f"JGE {end_label}")
+                self.current_output.append(f"CMP {current_reg}, {end_reg}")
+                self.current_output.append(f"JGT {end_label}")
+                self.current_output.append("MOV P1, R1")
+                self.current_output.append("MUL P1, 2")
+                self.current_output.append(f"MOV P0, 0x{base_addr:04X}")
+                self.current_output.append("ADD P1, P0")
+                self.current_output.append(f"MOV [P1], {current_reg}")
+                self.current_output.append("INC R1")
                 if step_reg:
-                    self.output.append(f"ADD {current_reg}, {step_reg}")
+                    self.current_output.append(f"ADD {current_reg}, {step_reg}")
                 else:
-                    self.output.append(f"INC {current_reg}")
-                self.output.append(f"JMP {loop_label}")
-                self.output.append(f"{end_label}:")
-                self.output.append(f"MOV {target_reg}, {base_addr}")
+                    self.current_output.append(f"INC {current_reg}")
+                self.current_output.append(f"JMP {loop_label}")
+                self.current_output.append(f"{end_label}:")
+                self.current_output.append(f"MOV {target_reg}, {base_addr}")
                 if step_reg:
                     self.smart_deallocate(step_reg, is_last_use=True)
 
             elif func_name == "REVERSE":
                 # Reverse the list in place (100 elements)
-                self.output.append(f"; Reverse list at 0x{base_addr:04X}")
-                self.output.append(f"MOV P0, 0x{base_addr:04X}")
-                self.output.append("MOV R1, 0")          # i
-                self.output.append("MOV R2, 99")         # j = size-1
+                self.current_output.append(f"; Reverse list at 0x{base_addr:04X}")
+                self.current_output.append(f"MOV P0, 0x{base_addr:04X}")
+                self.current_output.append("MOV R1, 0")          # i
+                self.current_output.append("MOV R2, 99")         # j = size-1
                 outer_label = self.new_label()
                 end_label = self.new_label()
-                self.output.append(f"{outer_label}:")
+                self.current_output.append(f"{outer_label}:")
                 # Stop when i >= j
-                self.output.append("CMP R1, R2")
-                self.output.append(f"JGE {end_label}")
+                self.current_output.append("CMP R1, R2")
+                self.current_output.append(f"JGE {end_label}")
                 # Compute addresses for i and j
-                self.output.append("MOV P1, R1")
-                self.output.append("MUL P1, 2")
-                self.output.append("ADD P1, P0")
-                self.output.append("MOV P2, R2")
-                self.output.append("MUL P2, 2")
-                self.output.append("ADD P2, P0")
+                self.current_output.append("MOV P1, R1")
+                self.current_output.append("MUL P1, 2")
+                self.current_output.append("ADD P1, P0")
+                self.current_output.append("MOV P2, R2")
+                self.current_output.append("MUL P2, 2")
+                self.current_output.append("ADD P2, P0")
                 # Swap values
-                self.output.append("MOV P3, [P1]")
-                self.output.append("MOV P4, [P2]")
-                self.output.append("MOV [P1], P4")
-                self.output.append("MOV [P2], P3")
+                self.current_output.append("MOV P3, [P1]")
+                self.current_output.append("MOV P4, [P2]")
+                self.current_output.append("MOV [P1], P4")
+                self.current_output.append("MOV [P2], P3")
                 # Move indices
-                self.output.append("INC R1")
-                self.output.append("DEC R2")
-                self.output.append(f"JMP {outer_label}")
-                self.output.append(f"{end_label}:")
-                self.output.append(f"MOV {target_reg}, {base_addr}")
+                self.current_output.append("INC R1")
+                self.current_output.append("DEC R2")
+                self.current_output.append(f"JMP {outer_label}")
+                self.current_output.append(f"{end_label}:")
+                self.current_output.append(f"MOV {target_reg}, {base_addr}")
 
         elif func_name == "SUM":
             # Sum all elements in the list
@@ -3451,35 +3610,35 @@ class CodeGenerator:
                     base_addr = 0x1000 + (list_num - 1) * 0x100
                     size = 100
                     # Initialize sum
-                    self.output.append(f"MOV {target_reg}, 0")
-                    self.output.append(f"MOV P5, 0x{base_addr:04X}")
+                    self.current_output.append(f"MOV {target_reg}, 0")
+                    self.current_output.append(f"MOV P5, 0x{base_addr:04X}")
                     # Use R1 for index, R2 for value, P2 for address
                     index_reg = "R1"
                     value_reg = "R2"
                     addr_reg = "P2"
-                    self.output.append(f"MOV {index_reg}, 0")
+                    self.current_output.append(f"MOV {index_reg}, 0")
                     loop_label = self.new_label()
                     end_label = self.new_label()
-                    self.output.append(f"{loop_label}:")
-                    self.output.append(f"CMP {index_reg}, {size}")
-                    self.output.append(f"JGE {end_label}")
+                    self.current_output.append(f"{loop_label}:")
+                    self.current_output.append(f"CMP {index_reg}, {size}")
+                    self.current_output.append(f"JGE {end_label}")
                     # Calculate address
-                    self.output.append(f"MOV {addr_reg}, {index_reg}")
-                    self.output.append(f"MUL {addr_reg}, 2")
-                    self.output.append(f"ADD {addr_reg}, P5")
+                    self.current_output.append(f"MOV {addr_reg}, {index_reg}")
+                    self.current_output.append(f"MUL {addr_reg}, 2")
+                    self.current_output.append(f"ADD {addr_reg}, P5")
                     # Load value
-                    self.output.append(f"MOV P0, {addr_reg}")
-                    self.output.append(f"MOV {value_reg}, [P0]")
+                    self.current_output.append(f"MOV P0, {addr_reg}")
+                    self.current_output.append(f"MOV {value_reg}, [P0]")
                     # Add to sum
-                    self.output.append(f"ADD {target_reg}, {value_reg}")
+                    self.current_output.append(f"ADD {target_reg}, {value_reg}")
                     # Increment index
-                    self.output.append(f"INC {index_reg}")
-                    self.output.append(f"JMP {loop_label}")
-                    self.output.append(f"{end_label}:")
+                    self.current_output.append(f"INC {index_reg}")
+                    self.current_output.append(f"JMP {loop_label}")
+                    self.current_output.append(f"{end_label}:")
                 except ValueError:
-                    self.output.append(f"MOV {target_reg}, 0")
+                    self.current_output.append(f"MOV {target_reg}, 0")
             else:
-                self.output.append(f"MOV {target_reg}, 0")
+                self.current_output.append(f"MOV {target_reg}, 0")
         elif func_name == "MEAN":
             # Calculate average of list elements
             list_expr = expr.arguments[0]
@@ -3489,38 +3648,38 @@ class CodeGenerator:
                     base_addr = 0x1000 + (list_num - 1) * 0x100
                     size = 100
                     # Initialize sum
-                    self.output.append(f"MOV {target_reg}, 0")
-                    self.output.append(f"MOV P5, 0x{base_addr:04X}")
+                    self.current_output.append(f"MOV {target_reg}, 0")
+                    self.current_output.append(f"MOV P5, 0x{base_addr:04X}")
                     # Use R1 for index, R2 for value, P2 for address
                     index_reg = "R1"
                     value_reg = "R2"
                     addr_reg = "P2"
-                    self.output.append(f"MOV {index_reg}, 0")
+                    self.current_output.append(f"MOV {index_reg}, 0")
                     loop_label = self.new_label()
                     end_label = self.new_label()
-                    self.output.append(f"{loop_label}:")
-                    self.output.append(f"CMP {index_reg}, {size}")
-                    self.output.append(f"JGE {end_label}")
+                    self.current_output.append(f"{loop_label}:")
+                    self.current_output.append(f"CMP {index_reg}, {size}")
+                    self.current_output.append(f"JGE {end_label}")
                     # Calculate address
-                    self.output.append(f"MOV {addr_reg}, {index_reg}")
-                    self.output.append(f"MUL {addr_reg}, 2")
-                    self.output.append(f"ADD {addr_reg}, P5")
+                    self.current_output.append(f"MOV {addr_reg}, {index_reg}")
+                    self.current_output.append(f"MUL {addr_reg}, 2")
+                    self.current_output.append(f"ADD {addr_reg}, P5")
                     # Load value
-                    self.output.append(f"MOV P0, {addr_reg}")
-                    self.output.append(f"MOV {value_reg}, [P0]")
+                    self.current_output.append(f"MOV P0, {addr_reg}")
+                    self.current_output.append(f"MOV {value_reg}, [P0]")
                     # Add to sum
-                    self.output.append(f"ADD {target_reg}, {value_reg}")
+                    self.current_output.append(f"ADD {target_reg}, {value_reg}")
                     # Increment index
-                    self.output.append(f"INC {index_reg}")
-                    self.output.append(f"JMP {loop_label}")
-                    self.output.append(f"{end_label}:")
+                    self.current_output.append(f"INC {index_reg}")
+                    self.current_output.append(f"JMP {loop_label}")
+                    self.current_output.append(f"{end_label}:")
                     # Divide by size
-                    self.output.append(f"MOV R3, {size}")
-                    self.output.append(f"DIV {target_reg}, R3")
+                    self.current_output.append(f"MOV R3, {size}")
+                    self.current_output.append(f"DIV {target_reg}, R3")
                 except ValueError:
-                    self.output.append(f"MOV {target_reg}, 0")
+                    self.current_output.append(f"MOV {target_reg}, 0")
             else:
-                self.output.append(f"MOV {target_reg}, 0")
+                self.current_output.append(f"MOV {target_reg}, 0")
         elif func_name == "DIM":
             # Return the size of the list (default 100 elements)
             list_expr = expr.arguments[0]
@@ -3528,23 +3687,23 @@ class CodeGenerator:
                 try:
                     list_num = int(list_expr.name[1:])
                     size = 100  # Default size per list
-                    self.output.append(f"MOV {target_reg}, {size}")
+                    self.current_output.append(f"MOV {target_reg}, {size}")
                 except ValueError:
-                    self.output.append(f"MOV {target_reg}, 0")
+                    self.current_output.append(f"MOV {target_reg}, 0")
             else:
-                self.output.append(f"MOV {target_reg}, 0")
+                self.current_output.append(f"MOV {target_reg}, 0")
         elif func_name == "GETKEY":
             # Non-blocking: returns key code or 0 if no key available
-            self.output.append("KEYIN R0")          # Read key (0 if empty)
-            self.output.append(f"MOV {target_reg}, R0")
+            self.current_output.append("KEYIN R0")          # Read key (0 if empty)
+            self.current_output.append(f"MOV {target_reg}, R0")
         elif func_name == "PAUSE":
             # Wait for key press
             label = self.new_label()
-            self.output.append(f"{label}:")
-            self.output.append("KEYSTAT R0")
-            self.output.append("CMP R0, 0")
-            self.output.append(f"JZ {label}")  # Loop until key is available
-            self.output.append("KEYIN R0")  # Consume the key
+            self.current_output.append(f"{label}:")
+            self.current_output.append("KEYSTAT R0")
+            self.current_output.append("CMP R0, 0")
+            self.current_output.append(f"JZ {label}")  # Loop until key is available
+            self.current_output.append("KEYIN R0")  # Consume the key
         
         # Return the target register for all function calls
         return target_reg
@@ -3558,21 +3717,37 @@ class CodeGenerator:
         NOTE: All NoBASIC variables are 16-bit, so if a spilled variable is requested
         into an R register, we upgrade to a P register to avoid truncation.
         """
+        # Function local variable access: fetch from stack via FP
+        if self.current_function and self.current_function in self.function_locals and name in self.function_locals[self.current_function]:
+            offset = self.function_locals[self.current_function][name]
+            # Use P register for full 16-bit local load; fall back to target if already P
+            dest_reg = target_reg
+            if dest_reg.startswith('R'):
+                dest_reg = self.allocate_register('P1')
+            self.current_output.append(f"MOV P0, FP")
+            self.current_output.append(f"ADD P0, {offset}")
+            self.current_output.append(f"MOV {dest_reg}, [P0]")
+            return dest_reg
+
         # Function parameter access: fetch directly from the call stack via FP
         if self.current_function:
             func = self.functions.get(self.current_function.lower())
             if func:
-                _, params = func
+                _, params, _ = func
                 if name in params:
                     idx = params.index(name)
-                    offset = 4 + idx * 2  # FP points to saved FP; return @ +2; params start @ +4
+                    # Parameters are pushed in order, so the last parameter pushed is closest to FP.
+                    # FP points to saved FP, FP+2 is return address, FP+4 is the last parameter.
+                    # Therefore: param[0] (first pushed) is at FP + 4 + (len(params) - 1 - 0) * 2
+                    #           param[1] (second pushed) is at FP + 4 + (len(params) - 1 - 1) * 2, etc.
+                    offset = 4 + (len(params) - 1 - idx) * 2
                     # Use P register for full 16-bit parameter load; fall back to target if already P
                     dest_reg = target_reg
                     if dest_reg.startswith('R'):
                         dest_reg = self.allocate_register('P1')
-                    self.output.append(f"MOV P0, FP")
-                    self.output.append(f"ADD P0, {offset}")
-                    self.output.append(f"MOV {dest_reg}, [P0]")
+                    self.current_output.append(f"MOV P0, FP")
+                    self.current_output.append(f"ADD P0, {offset}")
+                    self.current_output.append(f"MOV {dest_reg}, [P0]")
                     return dest_reg
 
         # String variables need P registers (16-bit addresses)
@@ -3588,7 +3763,7 @@ class CodeGenerator:
             if reg.startswith('P') and target_reg.startswith('R'):
                 return reg
             if reg != target_reg:
-                self.output.append(f"MOV {target_reg}, {reg}")
+                self.current_output.append(f"MOV {target_reg}, {reg}")
             return target_reg
         
         # Check if variable is spilled
@@ -3613,16 +3788,16 @@ class CodeGenerator:
                 # P0 needs to be allocated since we're returning it
                 self.register_usage['P0'] = True
                 self.auto_free_registers.add('P0')
-                self.output.append(f"MOV P0, {spill_addr}")
-                self.output.append(f"MOV P0, [P0]")
+                self.current_output.append(f"MOV P0, {spill_addr}")
+                self.current_output.append(f"MOV P0, [P0]")
                 # Return P0 so caller gets the full 16-bit value (P0 is now allocated)
                 if self.debug_allocation:
                     print(f"[LOAD] Allocated P0 for spilled '{name}'")
                 return 'P0'
             else:
                 # For 16-bit P registers, read the full word
-                self.output.append(f"MOV P0, {spill_addr}")
-                self.output.append(f"MOV {target_reg}, [P0]")
+                self.current_output.append(f"MOV P0, {spill_addr}")
+                self.current_output.append(f"MOV {target_reg}, [P0]")
             
             return target_reg
         
@@ -3635,16 +3810,16 @@ class CodeGenerator:
             # P0 needs to be allocated since we're returning it
             self.register_usage['P0'] = True
             self.auto_free_registers.add('P0')
-            self.output.append(f"MOV P0, {addr}")
-            self.output.append(f"MOV P0, [P0]")
+            self.current_output.append(f"MOV P0, {addr}")
+            self.current_output.append(f"MOV P0, [P0]")
             # Return P0 so caller gets the full 16-bit value (P0 is now allocated)
             if self.debug_allocation:
                 print(f"[LOAD] Allocated P0 for non-spilled memory variable '{name}'")
             return 'P0'
         else:
             # For 16-bit P registers, read the full word
-            self.output.append(f"MOV P0, {addr}")
-            self.output.append(f"MOV {target_reg}, [P0]")
+            self.current_output.append(f"MOV P0, {addr}")
+            self.current_output.append(f"MOV {target_reg}, [P0]")
         return target_reg
     
     def store_variable(self, name: str, source_reg: str):
@@ -3652,24 +3827,33 @@ class CodeGenerator:
         Store a value from a register into a variable.
         Handles both register-allocated and spilled variables.
         """
+        # Function local variable store: write to stack via FP
+        if self.current_function and self.current_function in self.function_locals and name in self.function_locals[self.current_function]:
+            offset = self.function_locals[self.current_function][name]
+            self.current_output.append(f"MOV P0, FP")
+            self.current_output.append(f"ADD P0, {offset}")
+            self.current_output.append(f"MOV [P0], {source_reg}")
+            return
+
         # Function parameter store: write back to caller-passed stack slot
         if self.current_function:
             func = self.functions.get(self.current_function.lower())
             if func:
-                _, params = func
+                _, params, _ = func
                 if name in params:
                     idx = params.index(name)
-                    offset = 4 + idx * 2
-                    self.output.append(f"MOV P0, FP")
-                    self.output.append(f"ADD P0, {offset}")
-                    self.output.append(f"MOV [P0], {source_reg}")
+                    # Same offset calculation as load_variable: account for reversed parameter order
+                    offset = 4 + (len(params) - 1 - idx) * 2
+                    self.current_output.append(f"MOV P0, FP")
+                    self.current_output.append(f"ADD P0, {offset}")
+                    self.current_output.append(f"MOV [P0], {source_reg}")
                     return
 
         # Check if variable is in a register
         if name in self.var_reg:
             reg = self.var_reg[name]
             if reg != source_reg:
-                self.output.append(f"MOV {reg}, {source_reg}")
+                self.current_output.append(f"MOV {reg}, {source_reg}")
             return
         
         # Check if variable is spilled
@@ -3688,15 +3872,15 @@ class CodeGenerator:
             # All NoBASIC variables are 16-bit, so always write the full word to spill_addr
             if source_reg.startswith('R'):
                 # For 8-bit R registers, use P0 as intermediate for full 16-bit store
-                self.output.append(f"MOV P0, 0")
-                self.output.append(f"MOV :P0, {source_reg}")  # Move to LOW byte (not high!)
-                self.output.append(f"MOV P1, {spill_addr}")
-                self.output.append(f"MOV [P1], P0")
+                self.current_output.append(f"MOV P0, 0")
+                self.current_output.append(f"MOV :P0, {source_reg}")  # Move to LOW byte (not high!)
+                self.current_output.append(f"MOV P1, {spill_addr}")
+                self.current_output.append(f"MOV [P1], P0")
             else:
                 # For 16-bit P registers, avoid clobbering the source register when it is P0
                 addr_reg = 'P1' if source_reg == 'P0' else 'P0'
-                self.output.append(f"MOV {addr_reg}, {spill_addr}")
-                self.output.append(f"MOV [{addr_reg}], {source_reg}")
+                self.current_output.append(f"MOV {addr_reg}, {spill_addr}")
+                self.current_output.append(f"MOV [{addr_reg}], {source_reg}")
             
             return
         
@@ -3705,15 +3889,15 @@ class CodeGenerator:
         # All NoBASIC variables are 16-bit, so always write the full word
         if source_reg.startswith('R'):
             # For 8-bit R registers, use P0 as intermediate for full 16-bit store
-            self.output.append(f"MOV P0, 0")
-            self.output.append(f"MOV :P0, {source_reg}")  # Move to LOW byte (not high!)
-            self.output.append(f"MOV P1, {addr}")
-            self.output.append(f"MOV [P1], P0")
+            self.current_output.append(f"MOV P0, 0")
+            self.current_output.append(f"MOV :P0, {source_reg}")  # Move to LOW byte (not high!)
+            self.current_output.append(f"MOV P1, {addr}")
+            self.current_output.append(f"MOV [P1], P0")
         else:
             # For 16-bit P registers, avoid clobbering the source register when it is P0
             addr_reg = 'P1' if source_reg == 'P0' else 'P0'
-            self.output.append(f"MOV {addr_reg}, {addr}")
-            self.output.append(f"MOV [{addr_reg}], {source_reg}")
+            self.current_output.append(f"MOV {addr_reg}, {addr}")
+            self.current_output.append(f"MOV [{addr_reg}], {source_reg}")
 
     def analyze_ssa_form(self):
         """

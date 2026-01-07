@@ -33,7 +33,7 @@ LOOP:
 
 SPINWHEELS:
     INC SA
-    CMP SA, 0x2FFF
+    CMP SA, 0x0FFF
     JNZ SPINWHEELS
     XOR SA, SA
     RET

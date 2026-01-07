@@ -780,7 +780,7 @@ class Parser:
         return expr
 
     def function_definition(self) -> FunctionDefStmt:
-        """Parse Function Name(param1, param2, ...) ... End"""
+        """Parse Function Name(param1 [= default], param2 [= default], ...) ... End"""
         self.consume(TokenType.FUNCTION, "Expected 'Function'")
         
         name_token = self.consume(TokenType.IDENTIFIER, "Expected function name")
@@ -788,12 +788,21 @@ class Parser:
         
         self.consume(TokenType.LPAREN, "Expected '(' after function name")
         
-        # Parse parameters
+        # Parse parameters with optional defaults
         params = []
         if not self.check(TokenType.RPAREN):
-            params.append(self.consume(TokenType.IDENTIFIER, "Expected parameter name").lexeme.lower())
+            param_name = self.consume(TokenType.IDENTIFIER, "Expected parameter name").lexeme.lower()
+            default_value = None
+            if self.match(TokenType.EQUAL):
+                default_value = self.expression()
+            params.append((param_name, default_value))
+            
             while self.match(TokenType.COMMA):
-                params.append(self.consume(TokenType.IDENTIFIER, "Expected parameter name").lexeme.lower())
+                param_name = self.consume(TokenType.IDENTIFIER, "Expected parameter name").lexeme.lower()
+                default_value = None
+                if self.match(TokenType.EQUAL):
+                    default_value = self.expression()
+                params.append((param_name, default_value))
         
         self.consume(TokenType.RPAREN, "Expected ')' after parameters")
         

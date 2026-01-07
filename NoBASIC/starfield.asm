@@ -138,21 +138,20 @@ MOV VC, 31
 TEXT STR12
 ; --- Inline Assembly Block ---
 LOOP:
-    MOV VL, 1
-    SROL 0, 1
-    MOV VL, 2
-    SROL 0, 2
-    MOV VL, 3
-    SROL 0, 3
-    CALL SPINWHEELS
-    JMP LOOP
-
+MOV VL, 1
+SROL 0, 1
+MOV VL, 2
+SROL 0, 2
+MOV VL, 3
+SROL 0, 3
+CALL SPINWHEELS
+JMP LOOP
 SPINWHEELS:
-    INC SA
-    CMP SA, 0x2FFF
-    JNZ SPINWHEELS
-    XOR SA, SA
-    RET
+INC SA
+CMP SA, 0x0FFF
+JNZ SPINWHEELS
+XOR SA, SA
+RET
 ; --- End Inline Assembly ---
 HLT
 STR12: DEFSTR "StarField"

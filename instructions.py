@@ -2778,17 +2778,30 @@ class Btoi(BaseInstruction):
         cpu.set_operand_value(dest_operand, result)
 
 class Itos(BaseInstruction):
-    """ITOS instruction - integer to decimal string"""
+    """ITOS instruction - integer to decimal string
+    
+    Usage: ITOS dest_reg, value_reg
+    Converts the integer in value_reg to a decimal string, writes it to a static buffer
+    at 0xA000-0xA03F (64 bytes), and stores the buffer address in dest_reg.
+    """
     def __init__(self):
         opcode_val = 0x85  # ITOS
         super().__init__("ITOS", opcode_val)
     
     def execute(self, cpu):
         operands = cpu.parse_operands(2)
-        dest_addr = cpu.get_operand_value(operands[0])
+        dest_operand = operands[0]  # This is now a register operand, not an address
         value = cpu.get_operand_value(operands[1])
         
-        # Convert integer to decimal string
+        # Use static buffer at 0xA000-0xA03F (64 bytes) for ITOS conversions
+        # This is in the upper memory area, unlikely to conflict with typical programs
+        buffer_addr = 0xA000
+        
+        # Convert integer to decimal string (handle signed 16-bit range)
+        # Ensure value is treated as signed 16-bit
+        if value > 32767:
+            value = value - 65536
+        
         if value == 0:
             decimal_str = "0"
         else:
@@ -2800,11 +2813,14 @@ class Itos(BaseInstruction):
             if value < 0:
                 decimal_str = "-" + decimal_str
         
-        # Write decimal string to destination address
+        # Write decimal string to buffer
         for i, char in enumerate(decimal_str):
-            cpu.write_memory((dest_addr + i) & 0xFFFF, ord(char), 1)
+            cpu.write_memory((buffer_addr + i) & 0xFFFF, ord(char), 1)
         # Null terminate
-        cpu.write_memory((dest_addr + len(decimal_str)) & 0xFFFF, 0, 1)
+        cpu.write_memory((buffer_addr + len(decimal_str)) & 0xFFFF, 0, 1)
+        
+        # Store buffer address in destination operand
+        cpu.set_operand_value(dest_operand, buffer_addr)
 
 class Stoi(BaseInstruction):
     """STOI instruction - decimal string to integer"""

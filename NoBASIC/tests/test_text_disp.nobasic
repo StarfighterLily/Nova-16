@@ -1,0 +1,19 @@
+// Test TEXT/Disp functionality
+
+// Test 1: Display string literal
+Disp "Hello World"
+
+// Test 2: Display numeric value
+x = 42
+Disp x
+
+// Test 3: Display calculation
+Disp 5 + 3
+
+// Test 4: Display function result  
+Function Add(a, b)
+    Return a + b
+End
+
+result = Add(10, 20)
+Disp result

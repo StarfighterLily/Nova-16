@@ -1,7 +1,9 @@
 ; NoBASIC compiler output
 ; Generated for Nova-16
 ORG 0x0200
-MOV SP, 0xFFFF
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV SP, P7
 MOV FP, SP
 ; ClrDraw
 MOV VM, 0
@@ -14,11 +16,13 @@ MOV R0, R1
 L1:
 CMP P2, R0
 JGT L2
-MOV R4, 1
-SHL R4, 1
-MOV R1, P2
-MUL R1, R4
-; Free R4 (last use)
+; Preserve left operand in register across right-side evaluation
+MOV R2, P2
+MOV R3, 1
+SHL R3, 1
+MOV R1, R2
+MUL R1, R3
+; Free R3 (last use)
 MOV P3, R1
 INC P2
 JMP L1

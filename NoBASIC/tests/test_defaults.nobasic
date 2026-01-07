@@ -1,0 +1,9 @@
+// Test default parameters
+Function Add(a, b = 10)
+    Return a + b
+End
+
+result1 = Add(5)      // Should be 15
+result2 = Add(5, 3)   // Should be 8
+Disp result1
+Disp result2

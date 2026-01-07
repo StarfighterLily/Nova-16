@@ -1,0 +1,82 @@
+// Comprehensive user-defined function tests
+
+// Test 1: Simple function with parameters
+Function Add(a, b)
+    Return a + b
+End
+
+// Test 2: Function with parameter reassignment
+Function Double(x)
+    x = x * 2
+    Return x
+End
+
+// Test 3: Function with local variables
+Function AddWithTemp(a, b)
+    LOCAL temp
+    temp = a + b
+    Return temp
+End
+
+// Test 4: Function with default parameter
+Function Greet(name = 42)
+    Return name
+End
+
+// Test 5: Function with multiple defaults
+Function MakePoint(x = 10, y = 20)
+    Return x + y
+End
+
+// Test 6: Recursive function
+Function Factorial(n)
+    If n <= 1 Then
+        Return 1
+    End
+    Return n * Factorial(n - 1)
+End
+
+// Run tests
+result1 = Add(5, 3)
+Disp "Add(5,3) = "
+Disp result1
+Disp ""
+
+result2 = Double(7)
+Disp "Double(7) = "
+Disp result2
+Disp ""
+
+result3 = AddWithTemp(10, 15)
+Disp "AddWithTemp(10,15) = "
+Disp result3
+Disp ""
+
+result4 = Greet()
+Disp "Greet() = "
+Disp result4
+Disp ""
+
+result5 = Greet(99)
+Disp "Greet(99) = "
+Disp result5
+Disp ""
+
+result6 = MakePoint()
+Disp "MakePoint() = "
+Disp result6
+Disp ""
+
+result7 = MakePoint(5)
+Disp "MakePoint(5) = "
+Disp result7
+Disp ""
+
+result8 = MakePoint(5, 10)
+Disp "MakePoint(5,10) = "
+Disp result8
+Disp ""
+
+result9 = Factorial(5)
+Disp "Factorial(5) = "
+Disp result9

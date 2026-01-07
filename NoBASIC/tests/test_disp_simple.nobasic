@@ -1,0 +1,4 @@
+// Simple test of Disp with numeric constant
+x = 42
+Disp x
+Disp 8

@@ -181,9 +181,10 @@ class SemanticAnalyzer:
         # First pass: collect all function definitions
         for stmt in program.statements:
             if isinstance(stmt, FunctionDefStmt):
-                if stmt.name in self.functions:
+                func_key = stmt.name.lower()
+                if func_key in self.functions:
                     raise SemanticError(f"Function '{stmt.name}' already defined", 0, 0)
-                self.functions[stmt.name] = stmt
+                self.functions[func_key] = stmt
 
         # Second pass: analyze all statements
         for stmt in program.statements:
@@ -233,14 +234,16 @@ class SemanticAnalyzer:
         """Analyze a function definition."""
         # Save current function context
         prev_function = self.current_function
-        self.current_function = stmt.name
+        self.current_function = stmt.name.lower()
         
         # Push new scope for function
         self.symbol_table.push_scope()
         
         # Define parameters as variables in function scope
-        for param in stmt.params:
-            self.symbol_table.define_variable(param, DataType.NUMBER)
+        for param_name, default_value in stmt.params:
+            self.symbol_table.define_variable(param_name, DataType.NUMBER)
+            if default_value:
+                self.analyze_expression(default_value)
         
         # Analyze function body
         for body_stmt in stmt.body:
@@ -453,16 +456,20 @@ class SemanticAnalyzer:
             if func_name_lower in self.functions:
                 # User-defined function
                 func_def = self.functions[func_name_lower]
-                # Check argument count
-                if len(expr.arguments) != len(func_def.params):
+                # Check argument count - allow fewer args if defaults are provided
+                param_specs = func_def.params  # List of (name, default)
+                min_args = sum(1 for _, default in param_specs if default is None)
+                max_args = len(param_specs)
+                
+                if not (min_args <= len(expr.arguments) <= max_args):
                     raise SemanticError(
-                        f"Wrong number of arguments for function '{expr.name}': expected {len(func_def.params)}, got {len(expr.arguments)}", 
+                        f"Wrong number of arguments for function '{expr.name}': expected {min_args}-{max_args}, got {len(expr.arguments)}", 
                         self.filename
                     )
-                # Analyze argument expressions
+                # Analyze provided argument expressions
                 for arg in expr.arguments:
                     self.analyze_expression(arg)
-                # User-defined functions return numbers
+                # Note: Default values are analyzed in function definition, not here
                 return DataType.NUMBER
             
             # Check if function is built-in

@@ -1,0 +1,6 @@
+// Simple function test without Disp
+Function Add(a, b)
+    Return a + b
+End
+
+x = Add(5, 3)

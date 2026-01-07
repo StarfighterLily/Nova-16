@@ -1,0 +1,10 @@
+// Test local variables
+Function TestLocals(a)
+    Local x, y
+    x = a + 1
+    y = x * 2
+    Return y
+End
+
+result = TestLocals(5)
+Disp result

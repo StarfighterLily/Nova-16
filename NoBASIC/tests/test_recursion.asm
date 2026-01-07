@@ -23,8 +23,8 @@ HLT
 _func_fib_0:
 ; Function: fib
 ; Parameters: n
-PUSH FP
-MOV FP, SP
+; Locals:  (0 bytes)
+ENTER 0
 MOV P0, FP
 ADD P0, 4
 MOV P1, [P0]
@@ -44,54 +44,46 @@ JZ L1
 MOV P0, FP
 ADD P0, 4
 MOV P1, [P0]
-MOV SP, FP
-POP FP
+MOV R0, P1
+; Free P1 (last use)
+LEAVE
 RET
 L1:
 MOV P0, FP
 ADD P0, 4
 MOV P1, [P0]
-; Preserve left operand across right-side evaluation
-PUSH P1
-MOV R4, 1
-POP P1
-MOV R2, P1
-SUB R2, R4
-; Free P1 (last use)
-; Free R4 (last use)
-MOV P1, R2
-PUSH P1
+; Preserve left operand in register across right-side evaluation
+MOV R4, P1
+MOV R5, 1
+MOV R2, R4
+SUB R2, R5
+; Free R5 (last use)
+MOV R4, R2
+PUSH R4
 ; Free R2 (last use)
 CALL _func_fib_0
 ADD SP, 2
 MOV R1, R0
-; Preserve left operand across right-side evaluation
-MOV P1, R1
-PUSH P1
+; Preserve left operand in register across right-side evaluation
+MOV R2, R1
 MOV P0, FP
 ADD P0, 4
-MOV P1, [P0]
-; Preserve left operand across right-side evaluation
-PUSH P1
-MOV R6, 1
-SHL R6, 1
-POP P1
-MOV R4, P1
-SUB R4, R6
-; Free P1 (last use)
-; Free R6 (last use)
-MOV P1, R4
-PUSH P1
-; Free R4 (last use)
+MOV R7, [P0]
+; Preserve left operand in register across right-side evaluation
+MOV R8, R7
+MOV R9, 1
+SHL R9, 1
+MOV R5, R8
+SUB R5, R9
+; Free R9 (last use)
+MOV R8, R5
+PUSH R8
+; Free R5 (last use)
 CALL _func_fib_0
 ADD SP, 2
-MOV R2, R0
-POP P1
-MOV R1, P1
-MOV R0, R1
-ADD R0, R2
-; Free R1 (last use)
-; Free R2 (last use)
-MOV SP, FP
-POP FP
+MOV R4, R0
+MOV R0, R2
+ADD R0, R4
+; Free R4 (last use)
+LEAVE
 RET

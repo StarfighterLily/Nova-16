@@ -2,7 +2,7 @@
 NoBASIC Abstract Syntax Tree Definitions
 """
 
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -267,7 +267,7 @@ class AsmBlockStmt(Statement):
 class FunctionDefStmt(Statement):
     """Function definition statement: Function Name(params) ... End"""
     name: str
-    params: List[str]
+    params: List[Tuple[str, Optional[Expression]]]  # (param_name, default_value)
     body: List[Statement]
 
 

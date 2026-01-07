@@ -1,0 +1,22 @@
+; Direct test of RNDR with R registers
+ORG 0x0200
+
+MOV R2, 1
+MOV R4, 15
+XOR P1, P1
+
+LOOP:
+CMP P1, 5
+JGT END
+RNDR R0, R2, R4
+MOV R3, P1
+MUL R3, 10
+MOV VX, R3
+MOV VY, 50
+MOV VC, R0
+SWRITE VC
+INC P1
+JMP LOOP
+
+END:
+HLT
