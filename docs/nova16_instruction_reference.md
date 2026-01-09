@@ -70,9 +70,22 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 - **ABS** (0x0F): 1 operand - Absolute value
   - Operands: dest
   - Side Effects: dest = |dest|, sets Z, C, S, O flags
-- **ADC** (0x87): 2 operands - Add with carry
+
+## Fixed-Point Arithmetic Operations (Q8.8)
+- **FMUL** (0xAC): 2 operands - Fixed-point multiplication
   - Operands: dest, src
-  - Side Effects: dest = dest + src + C, sets Z, C, S, O flags
+  - Side Effects: dest = (dest * src) >> 8, sets Z, C, S, O flags
+- **FDIV** (0xAD): 2 operands - Fixed-point division
+  - Operands: dest, src
+  - Side Effects: dest = (dest << 8) / src, sets Z, C, S, O flags
+- **FTOI** (0xAE): 1 operand - Fixed to integer
+  - Operands: dest
+  - Side Effects: dest = dest >> 8, sets Z, C, S, O flags
+- **ITOF** (0xAF): 1 operand - Integer to fixed
+  - Operands: dest
+  - Side Effects: dest = dest << 8, sets Z, C, S, O flags
+
+## Enhanced Arithmetic Operations
 - **SBC** (0x88): 2 operands - Subtract with carry
   - Operands: dest, src
   - Side Effects: dest = dest - src - C, sets Z, C, S, O flags
@@ -593,7 +606,14 @@ These are special register access instructions, operands are values to set/get.
 
 ## Notes
 - Operands are specified using a prefixed operand system (register, immediate, indirect, indexed).
-- Flags: Z (zero), C (carry), S (sign), O (overflow), I (interrupt), T (trap), B (break), D (decimal), P (parity), H (half-carry), A (auxiliary), E (error).
+- Flags: Z (zero), C (carry), S (sign), O (overflow), I (interrupt), T (trap), B (break), D (decimal), P (parity), H (unused), A (auxiliary), E (error).
 - Some instructions are unimplemented or marked as such in the source.
 - For string operations, addresses point to null-terminated strings.
 - Graphics operations often use VX, VY for coordinates.
+
+# Assembler Directives
+- **DB, DW, DS** Define byte, word, or space
+- **MACRO/ENDM** Define a macro
+- **ORG** Set where code goes in memory. NOTE: The first ORG directive is what PC sets to on binary loading.
+- **Label:** Labels for code sections
+- **EQU** Define constants

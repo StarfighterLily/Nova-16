@@ -1,0 +1,8 @@
+; Test DS directive
+BUFFER DS 10
+DATA DB 1, 2, 3
+END_BUFFER DS 5
+
+START:
+    MOV R0, BUFFER
+    HLT

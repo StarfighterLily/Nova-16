@@ -1,0 +1,3 @@
+# Symbol table
+# Format: <symbol> <value>
+loop_label 0x100F

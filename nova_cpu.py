@@ -65,6 +65,10 @@ class CPU:
         self.interrupts[ 3 ] = 0 # User interrupt (U1) set to 1 if the User interrupt 1 is enabled
         self.interrupts[ 4 ] = 0 # User interrupt (U2) set to 1 if the User interrupt 2 is enabled
 
+        # Hardware breakpoints
+        self.hw_breakpoints = [0] * 4
+        self.hw_breakpoint_enabled = [False] * 4
+
         self.timer = [0] * 4  # Timer registers # Timers for the timer interrupt
         self.timer[ 0 ] = 0 # Timer counter (T)
         self.timer[ 1 ] = 0 # Timer modulo (M)
@@ -1177,6 +1181,20 @@ class CPU:
             
         return False  # No interrupt handled
     
+    def _check_hw_breakpoints(self):
+        """Check for hardware breakpoints and single-step trap"""
+        # Check hardware breakpoints
+        for i in range(4):
+            if self.hw_breakpoint_enabled[i] and self.pc == self.hw_breakpoints[i]:
+                self._flags[3] = 1  # Set B flag
+                self._trigger_interrupt(7)  # Debug interrupt
+                return
+        
+        # Check single-step trap
+        if self._flags[0] == 1:  # T flag set
+            self._flags[3] = 1  # Set B flag
+            self._trigger_interrupt(7)
+    
     def _check_timer_interrupt(self):
         """Check if timer interrupt should be triggered"""
         if not self.timer_enabled:
@@ -1865,7 +1883,7 @@ class CPU:
             self._current_mode_byte = mode_byte
             
             # Set PC to position after mode byte (opcode + mode byte = +2)
-            if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D, 0x3B, 0x3D]:
+            if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D, 0x3B, 0x3D, 0xA8, 0xA9, 0xAA, 0xAB]:
                 # No-operand instruction: PC should be after opcode
                 self.pc = (self.pc + 1) & 0xFFFF
             else:
@@ -1873,6 +1891,7 @@ class CPU:
                 self.pc = (self.pc + 2) & 0xFFFF
             
             instruction.execute(self)
+            self._check_hw_breakpoints()
         else:
             # Cache miss - fetch and decode instruction
             opcode = self.fetch_byte()  # Use optimized fetch for single byte opcodes
@@ -1892,11 +1911,12 @@ class CPU:
         instruction = self.instruction_table.get(opcode)
         if instruction:
             # Check if this is a no-operand instruction
-            if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D, 0x3B]:  # HLT, NOP, RET, IRET, CLI, STI, PUSHF, POPF, PUSHA, POPA, SINV
+            if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D, 0x3B, 0xA8, 0xA9, 0xAA, 0xAB]:  # HLT, NOP, RET, IRET, CLI, STI, PUSHF, POPF, PUSHA, POPA, SINV, ENABRK, DISBRK, ENATRAP, DISATRAP
                 # No-operand instructions don't have mode byte
                 self._current_mode_byte = 0  # Dummy mode byte
                 start_pc = self.pc - 1  # PC was already advanced by fetch_byte
                 instruction.execute(self)
+                self._check_hw_breakpoints()
                 # Cache the instruction (opcode, mode_byte, instruction)
                 self.cache_instruction(start_pc, (opcode, 0, instruction))
             else:
@@ -1905,6 +1925,7 @@ class CPU:
                 self._current_mode_byte = mode_byte
                 start_pc = self.pc - 2  # PC was advanced by fetch_byte (opcode) + fetch_byte (mode)
                 instruction.execute(self)
+                self._check_hw_breakpoints()
                 # Cache the instruction (opcode, mode_byte, instruction)
                 self.cache_instruction(start_pc, (opcode, mode_byte, instruction))
         else:

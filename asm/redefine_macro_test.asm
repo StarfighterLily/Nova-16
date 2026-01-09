@@ -1,0 +1,14 @@
+; Test macro redefined
+ORG 0x1000
+
+MACRO TEST
+    NOP
+ENDM
+
+MACRO TEST
+    MOV R0, 1
+ENDM
+
+TEST
+
+HLT

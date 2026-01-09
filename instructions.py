@@ -279,6 +279,81 @@ class Abs(BaseInstruction):
         cpu.set_operand_value(operands[0], result)
         cpu._set_flags_16bit(result, result)
 
+# Floating point operations (Q8.8 fixed point)
+class Fmul(BaseInstruction):
+    """FMUL instruction for Q8.8 fixed point multiply"""
+    def __init__(self):
+        opcode_val = 0xAC  # FMUL
+        super().__init__("FMUL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
+        # Treat as signed 16-bit
+        dest_signed = dest_value if dest_value < 0x8000 else dest_value - 0x10000
+        src_signed = source_value if source_value < 0x8000 else source_value - 0x10000
+        result_signed = (dest_signed * src_signed) >> 8
+        # Convert back to unsigned 16-bit
+        result = result_signed & 0xFFFF
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result_signed)
+
+class Fdiv(BaseInstruction):
+    """FDIV instruction for Q8.8 fixed point divide"""
+    def __init__(self):
+        opcode_val = 0xAD  # FDIV
+        super().__init__("FDIV", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        dest_value = cpu.get_operand_value(operands[0])
+        source_value = cpu.get_operand_value(operands[1], operands[0])
+        if source_value == 0:
+            raise RuntimeError("Division by zero")
+        # Treat as signed 16-bit
+        dest_signed = dest_value if dest_value < 0x8000 else dest_value - 0x10000
+        src_signed = source_value if source_value < 0x8000 else source_value - 0x10000
+        result_signed = (dest_signed << 8) // src_signed
+        # Convert back to unsigned 16-bit
+        result = result_signed & 0xFFFF
+        cpu.set_operand_value(operands[0], result)
+        cpu._set_flags_16bit(result, result_signed)
+
+class Ftoi(BaseInstruction):
+    """FTOI instruction for Q8.8 fixed to integer"""
+    def __init__(self):
+        opcode_val = 0xAE  # FTOI
+        super().__init__("FTOI", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        # Treat as signed 16-bit Q8.8
+        signed_value = value if value < 0x8000 else value - 0x10000
+        result = signed_value >> 8
+        # Convert back to unsigned 16-bit
+        result_unsigned = result & 0xFFFF
+        cpu.set_operand_value(operands[0], result_unsigned)
+        cpu._set_flags_16bit(result_unsigned, result)
+
+class Itof(BaseInstruction):
+    """ITOF instruction for integer to Q8.8 fixed"""
+    def __init__(self):
+        opcode_val = 0xAF  # ITOF
+        super().__init__("ITOF", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        # Treat as signed 16-bit integer
+        signed_value = value if value < 0x8000 else value - 0x10000
+        result = signed_value << 8
+        # Convert back to unsigned 16-bit
+        result_unsigned = result & 0xFFFF
+        cpu.set_operand_value(operands[0], result_unsigned)
+        cpu._set_flags_16bit(result_unsigned, result)
+
 # Enhanced arithmetic operations
 class Adc(BaseInstruction):
     """ADC instruction for prefixed operand system - Add with Carry"""
@@ -2058,6 +2133,125 @@ class Keyctrl(BaseInstruction):
         cpu.keyboard[2] = control  # Set control register
         cpu.interrupts[2] = control  # Enable keyboard interrupt
 
+# Serial operations
+class Serin(BaseInstruction):
+    """SERIN instruction - read serial data"""
+    def __init__(self):
+        opcode_val = 0xA2  # SERIN
+        super().__init__("SERIN", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        data = cpu.serial[0]  # Read from serial data register
+        cpu.set_operand_value(operands[0], data)
+        # Clear data available flag after reading
+        cpu.serial[1] &= ~0x01
+
+class Serout(BaseInstruction):
+    """SEROUT instruction - write serial data"""
+    def __init__(self):
+        opcode_val = 0xA3  # SEROUT
+        super().__init__("SEROUT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        data = cpu.get_operand_value(operands[0])
+        cpu.serial[0] = data  # Write to serial data register
+        # Set transmission complete flag
+        cpu.serial[1] |= 0x02
+        # Trigger interrupt if enabled
+        if cpu.interrupts[1]:
+            cpu.serial[1] |= 0x80  # Set interrupt pending
+
+class Serstat(BaseInstruction):
+    """SERSTAT instruction - check serial status"""
+    def __init__(self):
+        opcode_val = 0xA4  # SERSTAT
+        super().__init__("SERSTAT", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        status = cpu.serial[1] & 0x03  # Return status flags (data available, tx complete)
+        cpu.set_operand_value(operands[0], status)
+
+class Serctrl(BaseInstruction):
+    """SERCTRL instruction - serial control"""
+    def __init__(self):
+        opcode_val = 0xA5  # SERCTRL
+        super().__init__("SERCTRL", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        control = cpu.get_operand_value(operands[0])
+        cpu.serial[1] = (cpu.serial[1] & 0x80) | (control & 0x7F)  # Set control bits, preserve interrupt pending
+        cpu.interrupts[1] = control & 0x01  # Enable serial interrupt if bit 0 set
+
+# Hardware debugging operations
+class Setbp(BaseInstruction):
+    """SETBP instruction - set hardware breakpoint"""
+    def __init__(self):
+        opcode_val = 0xA6  # SETBP
+        super().__init__("SETBP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(2)
+        index = cpu.get_operand_value(operands[0])
+        address = cpu.get_operand_value(operands[1])
+        if 0 <= index < 4:
+            cpu.hw_breakpoints[index] = address
+            cpu.hw_breakpoint_enabled[index] = True
+
+class Clrbp(BaseInstruction):
+    """CLRBP instruction - clear hardware breakpoint"""
+    def __init__(self):
+        opcode_val = 0xA7  # CLRBP
+        super().__init__("CLRBP", opcode_val)
+    
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        index = cpu.get_operand_value(operands[0])
+        if 0 <= index < 4:
+            cpu.hw_breakpoint_enabled[index] = False
+
+class Enabrk(BaseInstruction):
+    """ENABRK instruction - enable hardware breakpoints"""
+    def __init__(self):
+        opcode_val = 0xA8  # ENABRK
+        super().__init__("ENABRK", opcode_val)
+    
+    def execute(self, cpu):
+        for i in range(4):
+            if cpu.hw_breakpoints[i] != 0:  # Only enable if address set
+                cpu.hw_breakpoint_enabled[i] = True
+
+class Disbrk(BaseInstruction):
+    """DISBRK instruction - disable hardware breakpoints"""
+    def __init__(self):
+        opcode_val = 0xA9  # DISBRK
+        super().__init__("DISBRK", opcode_val)
+    
+    def execute(self, cpu):
+        for i in range(4):
+            cpu.hw_breakpoint_enabled[i] = False
+
+class Enatrap(BaseInstruction):
+    """ENATRAP instruction - enable single-step trap"""
+    def __init__(self):
+        opcode_val = 0xAA  # ENATRAP
+        super().__init__("ENATRAP", opcode_val)
+    
+    def execute(self, cpu):
+        cpu._flags[0] = 1  # Set T flag
+
+class Disatrap(BaseInstruction):
+    """DISATRAP instruction - disable single-step trap"""
+    def __init__(self):
+        opcode_val = 0xAB  # DISATRAP
+        super().__init__("DISATRAP", opcode_val)
+    
+    def execute(self, cpu):
+        cpu._flags[0] = 0  # Clear T flag
+
 # Random operations
 class Rnd(BaseInstruction):
     """RND instruction - random number"""
@@ -3437,6 +3631,12 @@ def create_instruction_table():
         Neg(),     # 0x0E
         Abs(),     # 0x0F
 
+        # Floating point operations (Q8.8 fixed point)
+        Fmul(),    # 0xAC
+        Fdiv(),    # 0xAD
+        Ftoi(),    # 0xAE
+        Itof(),    # 0xAF
+
         # Enhanced arithmetic operations
         Adc(),     # 0x87
         Sbc(),     # 0x88
@@ -3564,6 +3764,20 @@ def create_instruction_table():
         Keycount(), # 0x45
         Keyclear(), # 0x46
         Keyctrl(),  # 0x47
+
+        # Serial operations
+        Serin(),    # 0xA2
+        Serout(),   # 0xA3
+        Serstat(),  # 0xA4
+        Serctrl(),  # 0xA5
+
+        # Hardware debugging operations
+        Setbp(),    # 0xA6
+        Clrbp(),    # 0xA7
+        Enabrk(),   # 0xA8
+        Disbrk(),   # 0xA9
+        Enatrap(),  # 0xAA
+        Disatrap(), # 0xAB
 
         # Random operations
         Rnd(),      # 0x48

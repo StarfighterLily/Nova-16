@@ -1290,6 +1290,90 @@ class TestCPUKeyboardInstructions:
             assert_register_equals(cpu, f'R{i}', expected_key)
 
 
+class TestCPUSerialInstructions:
+    """Test serial instructions (SERIN, SEROUT, SERSTAT, SERCTRL)"""
+
+    def test_serin_instruction(self, cpu):
+        """Test SERIN instruction."""
+        # Simulate serial data available
+        cpu.serial[0] = 65  # ASCII 'A'
+        cpu.serial[1] |= 0x01  # Set data available flag
+
+        # Read serial data into R0
+        cpu.memory.write_byte(0x0000, 0xA2)  # SERIN opcode
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: register direct
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+
+        cpu.memory.write_byte(0x0003, 0x00)  # HLT
+
+        # Run program
+        cpu.pc = 0
+        while not cpu.halted:
+            cpu.step()
+
+        # Verify data was read
+        assert_register_equals(cpu, 'R0', 65)
+        # Verify flag was cleared
+        assert (cpu.serial[1] & 0x01) == 0
+
+    def test_serout_instruction(self, cpu):
+        """Test SEROUT instruction."""
+        # Write data to serial
+        cpu.memory.write_byte(0x0000, 0xA3)  # SEROUT opcode
+        cpu.memory.write_byte(0x0001, 0x01)  # Mode: immediate 8-bit
+        cpu.memory.write_byte(0x0002, 66)    # Data 'B'
+
+        cpu.memory.write_byte(0x0003, 0x00)  # HLT
+
+        # Run program
+        cpu.pc = 0
+        while not cpu.halted:
+            cpu.step()
+
+        # Verify data was written
+        assert cpu.serial[0] == 66
+        # Verify tx complete flag set
+        assert (cpu.serial[1] & 0x02) != 0
+
+    def test_serstat_instruction(self, cpu):
+        """Test SERSTAT instruction."""
+        # Set some status flags
+        cpu.serial[1] = 0x03  # Data available and tx complete
+
+        # Read status into R0
+        cpu.memory.write_byte(0x0000, 0xA4)  # SERSTAT opcode
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: register direct
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+
+        cpu.memory.write_byte(0x0003, 0x00)  # HLT
+
+        # Run program
+        cpu.pc = 0
+        while not cpu.halted:
+            cpu.step()
+
+        # Verify status was read
+        assert_register_equals(cpu, 'R0', 0x03)
+
+    def test_serctrl_instruction(self, cpu):
+        """Test SERCTRL instruction."""
+        # Set serial control
+        cpu.memory.write_byte(0x0000, 0xA5)  # SERCTRL opcode
+        cpu.memory.write_byte(0x0001, 0x01)  # Mode: immediate 8-bit
+        cpu.memory.write_byte(0x0002, 0x01)  # Control value (enable interrupts)
+
+        cpu.memory.write_byte(0x0003, 0x00)  # HLT
+
+        # Run program
+        cpu.pc = 0
+        while not cpu.halted:
+            cpu.step()
+
+        # Verify control was set and interrupts enabled
+        assert (cpu.serial[1] & 0x01) != 0  # Control bit set
+        assert cpu.interrupts[1] == 1  # Serial interrupt enabled
+
+
 class TestCPUMemoryOperations:
     """Test memory operations (MEMCPY, MEMSET)"""
 
@@ -3047,3 +3131,79 @@ class TestEnhancedArithmeticInstructions:
         cpu.step()
         assert_register_equals(cpu, 'P0', 0x0000)  # Bit 0 moves to carry, 0 shifts in
         assert cpu.carry_flag == 1  # Carry set from bit 0
+
+
+class TestCPUDebuggingInstructions:
+
+    def test_setbp_instruction(self, cpu):
+        """Test SETBP instruction sets hardware breakpoint."""
+        cpu.Rregisters[0] = 1  # Index 1
+        cpu.Pregisters[1] = 0x1234  # Address
+
+        # SETBP R0, P1
+        cpu.memory.write_byte(0x0000, 0xA6)  # SETBP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: register, register
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+        cpu.memory.write_byte(0x0003, 0xF2)  # P1
+
+        cpu.step()
+        assert cpu.hw_breakpoints[1] == 0x1234
+        assert cpu.hw_breakpoint_enabled[1] == True
+
+    def test_clrbp_instruction(self, cpu):
+        """Test CLRBP instruction clears hardware breakpoint."""
+        cpu.hw_breakpoints[2] = 0x5678
+        cpu.hw_breakpoint_enabled[2] = True
+        cpu.Rregisters[0] = 2  # Index
+
+        # CLRBP R0
+        cpu.memory.write_byte(0x0000, 0xA7)  # CLRBP
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: register
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+
+        cpu.step()
+        assert cpu.hw_breakpoint_enabled[2] == False
+
+    def test_enabrk_instruction(self, cpu):
+        """Test ENABRK instruction enables breakpoints."""
+        cpu.hw_breakpoints[0] = 0x1000
+        cpu.hw_breakpoints[1] = 0x2000
+        cpu.hw_breakpoint_enabled[0] = False
+        cpu.hw_breakpoint_enabled[1] = False
+
+        # ENABRK
+        cpu.memory.write_byte(0x0000, 0xA8)  # ENABRK
+
+        cpu.step()
+        assert cpu.hw_breakpoint_enabled[0] == True
+        assert cpu.hw_breakpoint_enabled[1] == True
+
+    def test_disbrk_instruction(self, cpu):
+        """Test DISBRK instruction disables breakpoints."""
+        cpu.hw_breakpoint_enabled[0] = True
+        cpu.hw_breakpoint_enabled[1] = True
+
+        # DISBRK
+        cpu.memory.write_byte(0x0000, 0xA9)  # DISBRK
+
+        cpu.step()
+        assert cpu.hw_breakpoint_enabled[0] == False
+        assert cpu.hw_breakpoint_enabled[1] == False
+
+    def test_enatrap_instruction(self, cpu):
+        """Test ENATRAP instruction sets trap flag."""
+        # ENATRAP
+        cpu.memory.write_byte(0x0000, 0xAA)  # ENATRAP
+
+        cpu.step()
+        assert cpu.trap_flag == 1
+
+    def test_disatrap_instruction(self, cpu):
+        """Test DISATRAP instruction clears trap flag."""
+        cpu.flags[0] = 1  # Set trap
+
+        # DISATRAP
+        cpu.memory.write_byte(0x0000, 0xAB)  # DISATRAP
+
+        cpu.step()
+        assert cpu.trap_flag == 0

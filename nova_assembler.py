@@ -87,15 +87,18 @@ class InstructionSet:
         return token in self.low_byte_registers
 
 
+
 class Parser:
-    """Parses assembly source code into structured data"""
+    """Parses assembly source code into structured data, with macro support"""
 
     def __init__(self, instruction_set: InstructionSet):
         self.instruction_set = instruction_set
         self.patterns = {
             'comment': re.compile(r';.*$'),
             'label': re.compile(r'^([A-Za-z_][A-Za-z0-9_-]*):'),
-            'directive': re.compile(r'^\s*(ORG|EQU|DB|DW|DEFSTR)\s+', re.IGNORECASE),
+            'directive': re.compile(r'^\s*(ORG|EQU|DB|DW|DEFSTR|DS|MACRO|ENDM|INCLUDE|IF|IFDEF|IFNDEF|ELSE|ENDIF)\s+', re.IGNORECASE),
+            'macro_def': re.compile(r'^\s*MACRO\s+(\w+)(.*)$', re.IGNORECASE),
+            'macro_end': re.compile(r'^\s*ENDM\b', re.IGNORECASE),
             'hex16': re.compile(r'^0x[0-9A-Fa-f]{1,4}$'),
             'hex8': re.compile(r'^0x[0-9A-Fa-f]{1,2}$'),
             'decimal': re.compile(r'^-?\d+$'),
@@ -105,6 +108,8 @@ class Parser:
             'direct': re.compile(r'^\[0x([0-9A-Fa-f]{1,4})\]$'),
             'string': re.compile(r'^"([^"\\]|\\.)*"$'),
         }
+        self.macros = {}  # name -> (param_list, body_lines)
+        self.instructions = {mnemonic.upper() for mnemonic, _, _ in opcodes}
 
     def _parse_operands_with_strings(self, operand_str: str) -> List[str]:
         """Parse operands while respecting quoted strings"""
@@ -149,60 +154,269 @@ class Parser:
         if not line:
             return asm_line
 
-        # Check for label
-        label_match = self.patterns['label'].match(line)
-        if label_match:
-            asm_line.label = label_match.group(1)
-            line = line[label_match.end():].strip()
-
-        if not line:
+        # Split into tokens
+        tokens = line.split()
+        if not tokens:
             return asm_line
 
-        # Check for directive
-        directive_match = self.patterns['directive'].match(line)
-        if directive_match:
-            parts = line.split(None, 1)
-            asm_line.directive = parts[0].upper()
-            if len(parts) > 1:
-                if asm_line.directive in ['DB', 'DW', 'DEFSTR']:
-                    asm_line.directive_args = self._parse_operands_with_strings(parts[1])
-                else:
-                    asm_line.directive_args = [parts[1].strip()]
-            return asm_line
+        i = 0
+        first = tokens[0].upper()
 
-        # Check for EQU directive (label EQU value format)
-        if 'EQU' in line.upper():
-            parts = line.split(None, 2)
-            if len(parts) >= 3 and parts[1].upper() == 'EQU':
-                if not asm_line.label:
-                    asm_line.label = parts[0]
-                asm_line.directive = 'EQU'
-                asm_line.directive_args = [parts[2].strip()]
+        directives = {'ORG', 'EQU', 'DB', 'DW', 'DEFSTR', 'DS', 'MACRO', 'ENDM', 'INCLUDE', 'IF', 'IFDEF', 'IFNDEF', 'ELSE', 'ENDIF'}
+
+        if first in self.instructions or first in directives:
+            # no label, directive or instruction
+            if first in directives:
+                asm_line.directive = first
+                i += 1
+                if i < len(tokens):
+                    arg_str = ' '.join(tokens[i:])
+                    if asm_line.directive in {'DB', 'DW', 'DEFSTR', 'DS'}:
+                        asm_line.directive_args = self._parse_operands_with_strings(arg_str)
+                    else:
+                        asm_line.directive_args = [arg_str]
+            else:
+                asm_line.instruction = first
+                i += 1
+                if i < len(tokens):
+                    operand_str = ' '.join(tokens[i:])
+                    asm_line.operands = [op.strip() for op in operand_str.split(',')]
+        else:
+            # label
+            if first.endswith(':'):
+                asm_line.label = first[:-1]
+            else:
+                asm_line.label = first
+            i += 1
+            if i >= len(tokens):
                 return asm_line
-
-        # Parse instruction and operands
-        parts = line.split(None, 1)
-        if parts:
-            asm_line.instruction = parts[0].upper()
-            if len(parts) > 1:
-                operand_str = parts[1]
-                asm_line.operands = [op.strip() for op in operand_str.split(',')]
+            # now parse the rest as directive or instruction
+            current = tokens[i].upper()
+            if current in directives:
+                asm_line.directive = current
+                i += 1
+                if i < len(tokens):
+                    arg_str = ' '.join(tokens[i:])
+                    if asm_line.directive in {'DB', 'DW', 'DEFSTR', 'DS'}:
+                        asm_line.directive_args = self._parse_operands_with_strings(arg_str)
+                    else:
+                        asm_line.directive_args = [arg_str]
+            else:
+                asm_line.instruction = current
+                i += 1
+                if i < len(tokens):
+                    operand_str = ' '.join(tokens[i:])
+                    asm_line.operands = [op.strip() for op in operand_str.split(',')]
 
         return asm_line
 
+
     def parse_file(self, filename: str) -> List[AssemblyLine]:
-        """Parse an entire assembly file"""
+        """Parse an entire assembly file, with include and macro support"""
         lines = []
         try:
             with open(filename, 'r', encoding='utf-8') as f:
-                for line_num, line in enumerate(f, 1):
-                    parsed_line = self.parse_line(line.rstrip(), line_num)
-                    if parsed_line:
-                        lines.append(parsed_line)
+                raw_lines = list(f)
         except IOError as e:
             raise Exception(f"Could not read file {filename}: {e}")
 
+        # Include expansion pass
+        expanded_lines = self._expand_includes(raw_lines, filename)
+
+        # Pre-scan for symbols defined by EQU
+        defined_symbols = self._pre_scan_symbols(expanded_lines)
+
+        # Conditional expansion pass
+        expanded_lines = self._expand_conditionals(expanded_lines, defined_symbols)
+
+        # Macro preprocessing pass
+        expanded_lines = self._expand_macros(expanded_lines)
+        for line_num, line in enumerate(expanded_lines, 1):
+            parsed_line = self.parse_line(line.rstrip(), line_num)
+            if parsed_line:
+                lines.append(parsed_line)
         return lines
+
+    def _expand_includes(self, raw_lines: List[str], base_filename: str) -> List[str]:
+        """Expand INCLUDE directives recursively"""
+        included_files = set()
+        return self._expand_includes_recursive(raw_lines, base_filename, included_files)
+
+    def _expand_includes_recursive(self, raw_lines: List[str], base_filename: str, included_files: set) -> List[str]:
+        """Recursively expand includes"""
+        output_lines = []
+        base_dir = os.path.dirname(os.path.abspath(base_filename))
+
+        for line in raw_lines:
+            stripped = line.strip()
+            if stripped.upper().startswith('INCLUDE'):
+                # Parse include directive
+                parts = stripped.split(None, 1)
+                if len(parts) < 2:
+                    raise ValueError(f"Invalid INCLUDE directive: {line}")
+                include_file = parts[1].strip().strip('"').strip("'")
+                include_path = os.path.join(base_dir, include_file)
+                abs_include_path = os.path.abspath(include_path)
+
+                if abs_include_path in included_files:
+                    raise ValueError(f"Circular include detected: {include_file}")
+
+                included_files.add(abs_include_path)
+
+                try:
+                    with open(include_path, 'r', encoding='utf-8') as f:
+                        include_lines = f.readlines()
+                    # Recursively expand includes in the included file
+                    expanded_include = self._expand_includes_recursive(include_lines, include_path, included_files)
+                    output_lines.extend(expanded_include)
+                except IOError as e:
+                    raise ValueError(f"Could not include file {include_file}: {e}")
+            else:
+                output_lines.append(line)
+
+        return output_lines
+
+    def _pre_scan_symbols(self, raw_lines: List[str]) -> set:
+        """Pre-scan for symbols defined by EQU"""
+        defined = set()
+        for line in raw_lines:
+            stripped = line.strip()
+            if ' EQU ' in stripped.upper():
+                parts = stripped.split(None, 2)
+                if len(parts) >= 3 and parts[1].upper() == 'EQU':
+                    defined.add(parts[0])
+        return defined
+
+    def _expand_conditionals(self, raw_lines: List[str], defined_symbols: set) -> List[str]:
+        """Expand conditional directives"""
+        output_lines = []
+        i = 0
+        n = len(raw_lines)
+        condition_stack = []
+
+        while i < n:
+            line = raw_lines[i]
+            stripped = line.strip().upper()
+
+            if stripped.startswith('IF '):
+                # Parse IF condition
+                parts = stripped.split(None, 1)
+                if len(parts) < 2:
+                    raise ValueError(f"Invalid IF directive: {line}")
+                condition = parts[1].strip()
+                # Simple evaluation: if condition is '1' or 'TRUE', include, else skip
+                include = condition in ['1', 'TRUE']
+                condition_stack.append(include)
+                i += 1
+                continue
+
+            elif stripped.startswith('IFDEF '):
+                parts = stripped.split(None, 1)
+                if len(parts) < 2:
+                    raise ValueError(f"Invalid IFDEF directive: {line}")
+                symbol = parts[1].strip()
+                include = symbol in defined_symbols
+                condition_stack.append(include)
+                i += 1
+                continue
+
+            elif stripped.startswith('IFNDEF '):
+                parts = stripped.split(None, 1)
+                if len(parts) < 2:
+                    raise ValueError(f"Invalid IFNDEF directive: {line}")
+                symbol = parts[1].strip()
+                include = symbol not in defined_symbols
+                condition_stack.append(include)
+                i += 1
+                continue
+
+            elif stripped == 'ELSE':
+                if not condition_stack:
+                    raise ValueError(f"ELSE without IF: {line}")
+                # Toggle the condition
+                condition_stack[-1] = not condition_stack[-1]
+                i += 1
+                continue
+
+            elif stripped == 'ENDIF':
+                if not condition_stack:
+                    raise ValueError(f"ENDIF without IF: {line}")
+                condition_stack.pop()
+                i += 1
+                continue
+
+            else:
+                # If in a false condition block, skip
+                if condition_stack and not all(condition_stack):
+                    i += 1
+                    continue
+                else:
+                    output_lines.append(line)
+                    i += 1
+
+        if condition_stack:
+            raise ValueError("Unclosed conditional directives")
+
+        return output_lines
+
+    def _expand_macros(self, raw_lines: List[str]) -> List[str]:
+        """Preprocess macros: collect definitions, expand invocations"""
+        macros = {}
+        output_lines = []
+        i = 0
+        n = len(raw_lines)
+        # First pass: collect macro definitions
+        while i < n:
+            line = raw_lines[i]
+            macro_def = self.patterns['macro_def'].match(line)
+            if macro_def:
+                macro_name = macro_def.group(1)
+                if macro_name in macros:
+                    raise ValueError(f"Macro '{macro_name}' redefined")
+                param_str = macro_def.group(2).strip()
+                params = [p.strip() for p in param_str.split(',')] if param_str else []
+                body = []
+                i += 1
+                while i < n and not self.patterns['macro_end'].match(raw_lines[i]):
+                    body.append(raw_lines[i].rstrip('\n'))
+                    i += 1
+                if i >= n:
+                    raise ValueError(f"Macro '{macro_name}' definition incomplete - missing ENDM")
+                macros[macro_name] = (params, body)
+                # Skip ENDM
+                if i < n and self.patterns['macro_end'].match(raw_lines[i]):
+                    i += 1  # skip ENDM
+                continue
+            else:
+                output_lines.append(line.rstrip('\n'))
+                i += 1
+        self.macros = macros
+        # Second pass: expand macro invocations recursively
+        expanded = []
+        for line in output_lines:
+            expanded.extend(self._expand_line(line, macros))
+        return expanded
+
+    def _expand_line(self, line: str, macros: dict) -> List[str]:
+        """Recursively expand a single line if it contains macro invocations"""
+        tokens = line.strip().split()
+        if tokens and tokens[0] in macros:
+            macro_name = tokens[0]
+            args = ' '.join(tokens[1:]).split(',') if len(tokens) > 1 else []
+            args = [a.strip() for a in args]
+            params, body = macros[macro_name]
+            arg_map = {p: (args[i] if i < len(args) else '') for i, p in enumerate(params)}
+            result = []
+            for body_line in body:
+                # Replace parameters in body
+                expanded_line = body_line
+                for p, v in arg_map.items():
+                    expanded_line = re.sub(rf'\b{re.escape(p)}\b', v, expanded_line)
+                # Recursively expand the expanded line
+                result.extend(self._expand_line(expanded_line, macros))
+            return result
+        else:
+            return [line]
 
 
 class OperandClassifier:
@@ -513,9 +727,9 @@ class CodeGenerator:
                     offset_val = (-offset_val) & 0xFF
 
                 if reg_type == 'P' and 0 <= reg_num <= 9:
-                    reg_opcode = 0xF3 + reg_num
+                    reg_opcode = 0xF1 + reg_num
                 elif reg_type == 'R' and 0 <= reg_num <= 9:
-                    reg_opcode = 0xE9 + reg_num
+                    reg_opcode = 0xE7 + reg_num
                 else:
                     raise ValueError(f"Invalid register in offset: {reg_type}{reg_num}")
 
@@ -562,42 +776,39 @@ class CodeGenerator:
 
     def _parse_immediate_value(self, operand: str, symbol_table: Dict[str, str], bit_width: int) -> int:
         """Parse an immediate value"""
-        try:
-            if operand.startswith('0x'):
-                return int(operand, 16)
-            elif self.classifier.patterns['char_literal'].match(operand):
-                char_content = operand[1:-1]
-                if char_content.startswith('\\'):
-                    if char_content == '\\n':
-                        return ord('\n')
-                    elif char_content == '\\t':
-                        return ord('\t')
-                    elif char_content == '\\r':
-                        return ord('\r')
-                    elif char_content == '\\\\':
-                        return ord('\\')
-                    elif char_content == "\\'":
-                        return ord("'")
-                    else:
-                        return ord(char_content[1])
+        if operand.startswith('0x'):
+            return int(operand, 16)
+        elif self.classifier.patterns['char_literal'].match(operand):
+            char_content = operand[1:-1]
+            if char_content.startswith('\\'):
+                if char_content == '\\n':
+                    return ord('\n')
+                elif char_content == '\\t':
+                    return ord('\t')
+                elif char_content == '\\r':
+                    return ord('\r')
+                elif char_content == '\\\\':
+                    return ord('\\')
+                elif char_content == "\\'":
+                    return ord("'")
                 else:
-                    return ord(char_content)
-            elif operand.isdigit() or (operand.startswith('-') and operand[1:].isdigit()):
-                return int(operand)
-            elif symbol_table and operand in symbol_table:
-                symbol_val = symbol_table[operand].strip()
-                if symbol_val.startswith('0x'):
-                    val = int(symbol_val, 16)
-                else:
-                    val = int(symbol_val)
-                # For branch instructions, calculate relative offset
-                if bit_width == 16 and val > 0x7FFF:  # Likely a branch instruction
-                    val = val - 0  # Would need location_counter passed in
-                return val
+                    return ord(char_content[1])
             else:
-                return 0  # Unknown symbol defaults to 0
-        except ValueError:
-            return 0
+                return ord(char_content)
+        elif operand.isdigit() or (operand.startswith('-') and operand[1:].isdigit()):
+            return int(operand)
+        elif symbol_table and operand in symbol_table:
+            symbol_val = symbol_table[operand].strip()
+            if symbol_val.startswith('0x'):
+                val = int(symbol_val, 16)
+            else:
+                val = int(symbol_val)
+            # For branch instructions, calculate relative offset
+            if bit_width == 16 and val > 0x7FFF:  # Likely a branch instruction
+                val = val - 0  # Would need location_counter passed in
+            return val
+        else:
+            raise ValueError(f"Undefined symbol: {operand}")
 
     def generate_instruction(self, asm_line: AssemblyLine, symbol_table: Dict[str, str], location_counter: int) -> List[int]:
         """Generate machine code for an instruction"""
@@ -642,6 +853,7 @@ class Assembler:
         self.code_generator = CodeGenerator(self.instruction_set)
         self.data_generator = DataGenerator(self.parser)
         self.classifier = OperandClassifier(self.instruction_set)
+        self.errors = []
 
     def first_pass(self, lines: List[AssemblyLine]) -> Dict[str, str]:
         """First pass: build symbol table"""
@@ -666,7 +878,7 @@ class Assembler:
                 continue
 
             # Handle data directives
-            if line.directive in ['DB', 'DW', 'DEFSTR']:
+            if line.directive in ['DB', 'DW', 'DEFSTR', 'DS']:
                 data_size = self._calculate_data_size(line)
                 location_counter += data_size
                 continue
@@ -721,6 +933,15 @@ class Assembler:
                     string_bytes = self.classifier.parse_string_literal(arg)
                     return len(string_bytes) + 1  # + null terminator
             return 1
+        elif line.directive == 'DS':
+            if line.directive_args:
+                arg = line.directive_args[0].strip()
+                try:
+                    size = int(arg)
+                    return size
+                except ValueError:
+                    raise ValueError(f"DS requires a numeric argument: {arg}")
+            return 0
         return 0
 
     def second_pass(self, lines: List[AssemblyLine], symbol_table: Dict[str, str]) -> Tuple[bytearray, List[Tuple[int, int, int]]]:
@@ -745,7 +966,7 @@ class Assembler:
                 continue
 
             # Handle data directives
-            if line.directive in ['DB', 'DW', 'DEFSTR']:
+            if line.directive in ['DB', 'DW', 'DEFSTR', 'DS']:
                 try:
                     if line.directive == 'DB':
                         data_bytes = self.data_generator.generate_db_data(line.directive_args, symbol_table)
@@ -753,16 +974,15 @@ class Assembler:
                         data_bytes = self.data_generator.generate_dw_data(line.directive_args, symbol_table)
                     elif line.directive == 'DEFSTR':
                         data_bytes = self.data_generator.generate_defstr_data(line.directive_args, symbol_table)
+                    elif line.directive == 'DS':
+                        size = int(line.directive_args[0].strip()) if line.directive_args else 0
+                        data_bytes = [0] * size
 
                     code.extend(data_bytes)
                     location_counter += len(data_bytes)
                     print(f"Line {line.line_num} ({line.directive}): {[f'0x{b:02X}' for b in data_bytes]}")
                 except Exception as e:
-                    print(f"Error on line {line.line_num}: {e}")
-                continue
-
-            # Skip EQU and labels
-            if line.directive == 'EQU' or not line.instruction:
+                    self.errors.append(f"Line {line.line_num}: {e}")
                 continue
 
             # Skip standalone registers
@@ -775,7 +995,8 @@ class Assembler:
                 location_counter += len(instruction_bytes)
                 print(f"Line {line.line_num}: {[f'0x{b:02X}' for b in instruction_bytes]}")
             except Exception as e:
-                print(f"Error on line {line.line_num}: {e}")
+                self.errors.append(f"Line {line.line_num}: {e}")
+                continue
 
         # Final segment
         if len(code) > current_segment_binary_offset:
@@ -798,6 +1019,12 @@ class Assembler:
             # Second pass
             print("Second pass...")
             machine_code, segments = self.second_pass(lines, symbol_table)
+
+            if self.errors:
+                print("Assembly failed due to errors:")
+                for error in self.errors:
+                    print(f"  {error}")
+                return False
 
             # Write output files
             base_name = os.path.splitext(filename)[0]

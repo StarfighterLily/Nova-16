@@ -66,16 +66,16 @@ NOVA-16 is a custom 16-bit CPU emulator with Princeton architecture (unified mem
 ### Assembly Development (Primary)
 ```powershell
 # Assemble .asm to .bin (creates .bin and optional .sym symbol table)
-python .\nova_assembler.py program.asm
+python ..\nova_assembler.py program.asm
 
 # Test headlessly (no GUI)
-python .\nova.py --headless program.bin --cycles 10000
+python ..\nova.py --headless program.bin --cycles 10000
 
 # Run with GUI
-python .\nova.py program.bin
+python ..\nova.py program.bin
 
 # Disassemble binary for inspection
-python .\nova_disassembler.py program.bin
+python ..\nova_disassembler.py program.bin
 ```
 
 ### MCP Server (LLM Integration)
@@ -104,11 +104,11 @@ python .\nova_assembler.py NoBASIC/program.asm
 python nova_debugger.py program.bin
 
 # Graphics system analysis (detailed output on rendering)
-python nova_graphics_monitor.py program.bin --cycles 1000 --export debug_output
+python ..\nova_graphics_monitor.py program.bin --cycles 1000 --export debug_output
 
 # Profiling (CPU, memory, performance)
-python nova_profiler.py program.bin
-python nova_memory_profiler.py program.bin
+python ..\nova_profiler.py program.bin
+python ..\nova_memory_profiler.py program.bin
 ```
 
 ### Testing
@@ -276,7 +276,7 @@ print(f"Flags: Z={proc.flags[7]}, C={proc.flags[6]}, S={proc.flags[1]}, O={proc.
 ```
 
 ## Dependencies & Environment
-- **Python 3.8+** with numpy, pygame
+- **Python 3.13** with numpy, pygame. Invoke with `py -3.13` to access correct version.
 - **Windows PowerShell** for all commands
 - **Windows 10** development platform
 - **MCP package** (optional): `pip install mcp` for LLM integration
@@ -309,4 +309,4 @@ print(f"P0-P9: {[f'0x{r:04X}' for r in proc.Pregisters[:10]]}")
 - `@pytest.mark.memory` - Memory access and caching tests
 - `@pytest.mark.slow` - Slow-running tests (> 5s)
 
-Use the gnosis server to save and recall detailed memories with important details and specifics about the overall project as well as the task at hand, and semantic search/replace operations for efficiency. Use the sophia server for enhanced reasoning, thought/reason/logic critique, testing multiple hypotheses and threads of thought, and reflection.
+Use the sophia server for enhanced reasoning, thought/reason/logic critique, testing multiple hypotheses and threads of thought, and reflection. Store project details, architecture, and design patterns in sophia memories for agent reference.

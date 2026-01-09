@@ -1,0 +1,13 @@
+{
+	"servers": {
+		"Nova-16": {
+			"type": "stdio",
+			"command": "py",
+			"args": [
+				"-3.13",
+				"c:\\Code\\Nova\\nova_mcp_server.py"
+			]
+		}
+	},
+	"inputs": []
+}

@@ -234,6 +234,26 @@ opcodes = [
     ("LOOPZ",              "0xA0", 2), # Loop while zero (counter, label) # implemented
     ("WHILE",              "0xA1", 1), # While loop start (with condition) # implemented
 
+    # Serial operations
+    ("SERIN",              "0xA2", 1), # Read serial data # implemented
+    ("SEROUT",             "0xA3", 1), # Write serial data # implemented
+    ("SERSTAT",            "0xA4", 1), # Check serial status # implemented
+    ("SERCTRL",            "0xA5", 1), # Serial control # implemented
+
+    # Hardware debugging operations
+    ("SETBP",              "0xA6", 2), # Set hardware breakpoint address, index # implemented
+    ("CLRBP",              "0xA7", 1), # Clear hardware breakpoint by index # implemented
+    ("ENABRK",             "0xA8", 0), # Enable all hardware breakpoints # implemented
+    ("DISBRK",             "0xA9", 0), # Disable all hardware breakpoints # implemented
+    ("ENATRAP",            "0xAA", 0), # Enable single-step trap # implemented
+    ("DISATRAP",           "0xAB", 0), # Disable single-step trap # implemented
+
+    # Floating point operations (Q8.8 fixed point)
+    ("FMUL",               "0xAC", 2), # Fixed point multiply # implemented
+    ("FDIV",               "0xAD", 2), # Fixed point divide # implemented
+    ("FTOI",               "0xAE", 1), # Fixed to integer # implemented
+    ("ITOF",               "0xAF", 1), # Integer to fixed # implemented
+
     ("VC",                 "0xC8", 1), # Video Color
     ("P0:",                "0xC9", 1), # P0 high byte
     ("P1:",                "0xCA", 1), # P1 high byte

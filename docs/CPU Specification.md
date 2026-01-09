@@ -151,11 +151,13 @@ The Nova-16 supports 8 interrupt levels with hardware prioritization:
 | Vector | Address | Priority | Type | Description |
 |--------|---------|----------|------|-------------|
 | 0 | 0x0100 | Highest | Timer | Timer/counter overflow |
-| 1 | 0x0104 | High | Serial | Serial I/O completion | unimplemented
+| 1 | 0x0104 | High | Serial | Serial I/O completion |
 | 2 | 0x0108 | Medium | Keyboard | Keyboard input available |
 | 3 | 0x010C | Low | User 1 | User-defined interrupt 1 |
 | 4 | 0x0110 | Low | User 2 | User-defined interrupt 2 |
-| 5-7 | 0x0114-0x011C | Lowest | Reserved | Future expansion |
+| 5 | 0x0114 | Lower | Reserved | Future expansion |
+| 6 | 0x0118 | Lower | Reserved | Future expansion |
+| 7 | 0x011C | lowest | Debug | Used for hardware breakpoints and trap mode |
 
 #### Interrupt Handling
 - **Automatic context saving**: PC and flags pushed to stack
@@ -171,8 +173,7 @@ The Nova-16 supports 8 interrupt levels with hardware prioritization:
 - Programmable timer with overflow interrupt capability
 
 **Serial Interrupt (Vector 1) unimplemented**
-- 2-byte control structure: Data register, Control register
-- Interrupt on transmission complete or data received
+- Update me!
 
 **Keyboard Interrupt (Vector 2)**
 - 4-byte control structure: Data, Status, Control, Buffer count
@@ -224,24 +225,6 @@ PUSH P0
  |  +---- 0x00 (mode: op1=reg)
  +------- 0x2E (PUSH opcode)
 ```
-
-### Register Encoding
-The CPU uses specific byte codes to identify registers in the new prefixed operand format:
-
-| Register | Encoding | Type | Description |
-|----------|----------|------|-------------|
-| R0-R9 | 0xA9-0xB2 | 8-bit | General purpose registers |
-| P0-P9 | 0xB3-0xBC | 16-bit | General purpose registers |
-| VX | 0xBD | 8-bit | Graphics X coordinate |
-| VY | 0xBE | 8-bit | Graphics Y coordinate |
-| VM | 0x5F | 8-bit | Video mode register |
-| VL | 0x60 | 8-bit | Video layer register |
-| TT | 0x61 | 16-bit | Timer counter |
-| TM | 0x62 | 16-bit | Timer match value |
-| TC | 0x63 | 8-bit | Timer control |
-| TS | 0x64 | 8-bit | Timer speed |
-| SP | 0xBB | 16-bit | Stack pointer (P8) |
-| FP | 0xBC | 16-bit | Frame pointer (P9) |
 
 #### Memory Addressing Encodings
 | Addressing Mode | Encoding Format | Example |
