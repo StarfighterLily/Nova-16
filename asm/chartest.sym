@@ -2,5 +2,5 @@
 # Format: <symbol> <value>
 START 0x1000
 MAIN 0x1010
-STR 0x1021
-CHARA 0x1032
+STR 0x1015
+CHR 0x1026

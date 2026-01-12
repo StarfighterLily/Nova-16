@@ -7,14 +7,11 @@ START:
     MOV VM, 0       ; Video mode set to 0 (coordinate system instead of linear addressing)
 
 MAIN:
-    TEXT STR    ; Print string at STR label with color in R0, at position set in VX, VY
-    XOR VX, VX
-    MOV VY, 16
-    CHAR STR
+    CHAR CHR
     HLT
 
 STR: 
     DEFSTR "A simple string."
 
-CHARA:
-    DB "C"
+CHR:
+    DW 0x65
