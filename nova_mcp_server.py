@@ -14,6 +14,7 @@ To use with Claude or other MCP clients:
 import sys
 import json
 import traceback
+import contextlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Literal
 import base64
@@ -1324,19 +1325,58 @@ def _handle_sound_control(args):
         return json.dumps({"error": f"Unknown action: {action}"})
 
 def _handle_disassemble(args):
-    """Simple memory disassembly (hex dump)"""
+    """Disassemble memory into Nova-16 assembly text."""
     ensure_emulator()
-    start_addr = int(args.get("start_addr", 0x0000))
-    num_instructions = int(args.get("num_instructions", 100))
-    # Dump 2 bytes per instruction as a rough estimate
-    size = max(1, num_instructions) * 2
+
+    def _parse_int(value, default=0):
+        if value is None:
+            return default
+        if isinstance(value, str):
+            return int(value, 0)
+        return int(value)
+
+    start_addr = _parse_int(args.get("start_addr", 0x0000), 0x0000) & 0xFFFF
+    num_instructions = max(1, _parse_int(args.get("num_instructions", 100), 100))
+
     memory = _emulator_state["memory"]
-    data = [memory.read_byte(start_addr + i) for i in range(size) if start_addr + i < 0x10000]
-    hex_str = " ".join(f"{b:02X}" for b in data)
+    bytecode = bytes(memory.read_byte(i) for i in range(0x10000))
+    opcode_map, register_map = nova_disassembler.create_reverse_maps()
+
+    lines: List[str] = []
+    pc = start_addr
+
+    for _ in range(num_instructions):
+        if pc >= len(bytecode):
+            break
+
+        opcode = bytecode[pc]
+
+        if opcode in opcode_map:
+            mnemonic, operands, size = nova_disassembler.disassemble_instruction_new(
+                bytecode,
+                pc,
+                opcode_map,
+                register_map,
+            )
+            size = max(1, int(size))
+            instruction_bytes = bytecode[pc:pc + size]
+            hex_dump = " ".join(f"{b:02X}" for b in instruction_bytes)
+            operand_str = ", ".join(operands) if operands else ""
+            asm_text = f"{mnemonic} {operand_str}".strip()
+            lines.append(f"{pc:04X}: {hex_dump:<15} {asm_text}")
+            pc += size
+        else:
+            lines.append(f"{pc:04X}: {opcode:02X}              DB 0x{opcode:02X}")
+            pc += 1
+
+        if pc >= 0x10000:
+            break
+
     return json.dumps({
         "start_addr": f"0x{start_addr:04X}",
-        "bytes": size,
-        "hex": hex_str
+        "num_instructions": num_instructions,
+        "decoded_instructions": len(lines),
+        "assembly": "\n".join(lines)
     })
 
 def _handle_memory_dump(args):
@@ -1559,31 +1599,51 @@ def _handle_disassemble_program(args):
     prog = _emulator_state.get("program_path")
     if not prog:
         return json.dumps({"error": "No program loaded"})
+
+    def _parse_optional_int(value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return int(value, 0)
+        return int(value)
+
+    def _parse_bool(value, default):
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+
     # Build a minimal arg namespace
     class _Args:
         def __init__(self, d):
-            self.start = d.get("start")
-            self.end = d.get("end")
-            self.show_hex = bool(d.get("show_hex", True))
-            self.show_addresses = bool(d.get("show_addresses", True))
+            self.start = _parse_optional_int(d.get("start"))
+            self.end = _parse_optional_int(d.get("end"))
+            self.show_hex = _parse_bool(d.get("show_hex"), True)
+            self.show_addresses = _parse_bool(d.get("show_addresses"), True)
             self.filter_instructions = d.get("filter_instructions")
             self.exclude_instructions = d.get("exclude_instructions")
+            self.format = "text"
             self.output = None
             self.quiet = True
+            self.interactive = False
+            self.analyze_dataflow = False
+            self.analyze_liveness = False
+            self.analyze_functions = False
+            self.analyze_loops = False
+            self.analyze_deadcode = False
+            self.analyze_security = False
+            self.analyze_patterns = False
+
     buf = io.StringIO()
     try:
-        # Redirect stdout temporarily
-        import sys as _sys
-        _old = _sys.stdout
-        _sys.stdout = buf
-        nova_disassembler.disassemble(str(prog), _Args(args))
-        _sys.stdout = _old
+        with contextlib.redirect_stdout(buf):
+            nova_disassembler.disassemble(str(prog), _Args(args))
     except Exception as e:
-        try:
-            _sys.stdout = _old
-        except Exception:
-            pass
         return json.dumps({"error": f"Disassembly failed: {e}"})
+
     return json.dumps({"assembly": buf.getvalue()[:100000]})
 
 # Debugger tool handlers
