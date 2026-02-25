@@ -7,11 +7,13 @@ START:
     MOV VM, 0       ; Video mode set to 0 (coordinate system instead of linear addressing)
 
 MAIN:
-    CHAR CHR
+    MOV P0, CHR
+    CHAR [P0]
+    MOV VX, 9
+    CHAR 'B'
+    MOV VX, 17
+    CHAR 0x43    ; Hex value for 'C'
     HLT
 
-STR: 
-    DEFSTR "A simple string."
-
 CHR:
-    DW 0x65
+    DW 0x41    ; Hex value for 'A'

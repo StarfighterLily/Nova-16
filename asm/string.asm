@@ -8,13 +8,7 @@ START:
 
 MAIN:
     TEXT STR    ; Print string at STR label with color in R0, at position set in VX, VY
-    XOR VX, VX
-    MOV VY, 16
-    CHAR STR
     HLT
 
 STR: 
     DEFSTR "A simple string."
-
-CHARA:
-    DB "C"
