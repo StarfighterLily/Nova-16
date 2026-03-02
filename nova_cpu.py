@@ -136,6 +136,25 @@ class CPU:
         
         # Initialize instruction dispatch table
         self.instruction_table = create_instruction_table()
+
+        # Opcodes that do not use a mode byte / operand parsing
+        self.no_operand_opcodes = {
+            0x00,  # HLT
+            0xFF,  # NOP
+            0x01,  # RET
+            0x02,  # IRET
+            0x03,  # CLI
+            0x04,  # STI
+            0x1A,  # PUSHF
+            0x1B,  # POPF
+            0x1C,  # PUSHA
+            0x1D,  # POPA
+            0x3B,  # SINV
+            0xA8,  # ENABRK
+            0xA9,  # DISBRK
+            0xAA,  # ENATRAP
+            0xAB,  # DISATRAP
+        }
         
         # Create reverse mapping for profiling (opcode -> name)
         self.opcode_to_name = {}
@@ -880,8 +899,7 @@ class CPU:
         self.flags[1] = 1 if (result & 0x80) != 0 else 0
         
         # Parity flag (P) - even number of 1s in result
-        parity = bin(result & 0xFF).count('1') % 2
-        self.flags[8] = 1 if parity == 0 else 0
+        self.flags[8] = self._parity_table[result & 0xFF]
 
     def _set_flags_16bit(self, result, original_result=None):
         """Set flags for 16-bit operations using readable property names"""
@@ -1004,8 +1022,7 @@ class CPU:
         self.sign_flag = (result & 0x80) != 0
         
         # Parity flag (P) - even number of 1s in result
-        parity = bin(result & 0xFF).count('1') % 2
-        self.parity_flag = parity == 0
+        self.parity_flag = bool(self._parity_table[result & 0xFF])
     
     # Public BCD methods for instructions
     def bcd_add(self, val1, val2):
@@ -1411,13 +1428,32 @@ class CPU:
     def _fill_prefetch_buffer(self):
         """Fill the prefetch buffer with 64 bytes starting from current PC"""
         self.prefetch_pc = self.pc
-        # Read bytes using memory.read_byte to respect caching
-        for i in range(64):
-            addr = (self.pc + i) & 0xFFFF
-            if addr >= len(self.memory.memory):
-                self.prefetch_buffer[i] = 0
-            else:
+
+        # Fast path: contiguous non-wrapping copy from backing memory
+        if self.pc + 64 <= self.memory.size:
+            self.prefetch_buffer[:] = self.memory.memory[self.pc:self.pc + 64]
+
+            # Overlay cached regions to preserve lazy write-back correctness
+            if self.pc < 0x0100:
+                zero_page_end = min(self.pc + 64, 0x0100)
+                count = zero_page_end - self.pc
+                if count > 0:
+                    self.prefetch_buffer[:count] = self.memory.zero_page_cache[self.pc:zero_page_end]
+
+            if self.pc < 0x0120 and self.pc + 64 > 0x0100:
+                int_start = max(self.pc, 0x0100)
+                int_end = min(self.pc + 64, 0x0120)
+                count = int_end - int_start
+                if count > 0:
+                    buf_offset = int_start - self.pc
+                    cache_offset = int_start - 0x0100
+                    self.prefetch_buffer[buf_offset:buf_offset + count] = self.memory.interrupt_vector_cache[cache_offset:cache_offset + count]
+        else:
+            # Slow path: wrapping reads across memory end
+            for i in range(64):
+                addr = (self.pc + i) & 0xFFFF
                 self.prefetch_buffer[i] = self.memory.read_byte(addr)
+
         self.prefetch_valid = True
     
     def invalidate_prefetch(self):
@@ -1883,7 +1919,7 @@ class CPU:
             self._current_mode_byte = mode_byte
             
             # Set PC to position after mode byte (opcode + mode byte = +2)
-            if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D, 0x3B, 0x3D, 0xA8, 0xA9, 0xAA, 0xAB]:
+            if opcode in self.no_operand_opcodes:
                 # No-operand instruction: PC should be after opcode
                 self.pc = (self.pc + 1) & 0xFFFF
             else:
@@ -1911,7 +1947,7 @@ class CPU:
         instruction = self.instruction_table.get(opcode)
         if instruction:
             # Check if this is a no-operand instruction
-            if opcode in [0x00, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x1A, 0x1B, 0x1C, 0x1D, 0x3B, 0xA8, 0xA9, 0xAA, 0xAB]:  # HLT, NOP, RET, IRET, CLI, STI, PUSHF, POPF, PUSHA, POPA, SINV, ENABRK, DISBRK, ENATRAP, DISATRAP
+            if opcode in self.no_operand_opcodes:
                 # No-operand instructions don't have mode byte
                 self._current_mode_byte = 0  # Dummy mode byte
                 start_pc = self.pc - 1  # PC was already advanced by fetch_byte

@@ -138,35 +138,31 @@ class Memory:
         if address < 0 or address + bytes > self.size:
             raise IndexError(f"Write address out of bounds: {address}")
         
-        # Invalidate instruction cache and prefetch if CPU exists (for self-modifying code)
-        if hasattr(self, 'cpu') and self.cpu:
-            self.cpu.invalidate_instruction_cache()
-            self.cpu.invalidate_prefetch()
-        
         # Check if writing to sprite memory region (0xF000-0xF0FF)
         if 0xF000 <= address <= 0xF0FF and self.gfx_system:
             self.gfx_system.sprites_dirty = True  # Mark sprites as needing re-render
         
         if bytes == 1:
-            self.write_byte(address, value)
+            self.write_byte(address, value, invalidate_cpu_cache=False)
         elif bytes == 2:
             # Big-endian for Nova-16: store high byte first, then low byte
-            self.write_byte(address, (value >> 8) & 0xFF)
-            self.write_byte(address + 1, value & 0xFF)
+            self.write_byte(address, (value >> 8) & 0xFF, invalidate_cpu_cache=False)
+            self.write_byte(address + 1, value & 0xFF, invalidate_cpu_cache=False)
         else:
             # For multi-byte writes, store in big-endian order
             for i in range( bytes ):
-                self.write_byte(address + i, (value >> (8 * (bytes - 1 - i))) & 0xFF)
+                self.write_byte(address + i, (value >> (8 * (bytes - 1 - i))) & 0xFF, invalidate_cpu_cache=False)
+
+        # Invalidate instruction cache and prefetch once per write operation
+        if hasattr(self, 'cpu') and self.cpu:
+            self.cpu.invalidate_instruction_cache()
+            self.cpu.invalidate_prefetch()
 
     def read( self, address, bytes=1 ):
         address = int(address)
         bytes = int(bytes)
         if address < 0 or address + bytes > self.size:
             raise IndexError(f"Read address out of bounds: {address}")
-        
-        # Ensure cache consistency for multi-byte reads
-        if bytes > 1:
-            self.flush_cache()
         
         # For multi-byte reads, use the optimized byte-by-byte method for cache consistency
         if bytes == 1:
@@ -222,7 +218,7 @@ class Memory:
         low_byte = self.read_byte(addr + 1)
         return (high_byte << 8) | low_byte
     
-    def write_byte(self, address, value):
+    def write_byte(self, address, value, invalidate_cpu_cache=True):
         """Optimized single byte write with lazy write-back caching"""
         addr = int(address)
         if addr < 0 or addr >= self.size:
@@ -256,7 +252,7 @@ class Memory:
         self._check_write_back_needed()
         
         # Invalidate instruction cache and prefetch if CPU exists (for self-modifying code)
-        if hasattr(self, 'cpu') and self.cpu:
+        if invalidate_cpu_cache and hasattr(self, 'cpu') and self.cpu:
             self.cpu.invalidate_instruction_cache()
             self.cpu.invalidate_prefetch()
     
@@ -273,8 +269,13 @@ class Memory:
         val = int(value) & 0xFFFF  # Ensure value is within 16-bit bounds
         
         # Write byte by byte to maintain cache consistency
-        self.write_byte(addr, (val >> 8) & 0xFF)      # High byte first
-        self.write_byte(addr + 1, val & 0xFF)         # Low byte second
+        self.write_byte(addr, (val >> 8) & 0xFF, invalidate_cpu_cache=False)      # High byte first
+        self.write_byte(addr + 1, val & 0xFF, invalidate_cpu_cache=False)         # Low byte second
+
+        # Invalidate instruction cache and prefetch once per write operation
+        if hasattr(self, 'cpu') and self.cpu:
+            self.cpu.invalidate_instruction_cache()
+            self.cpu.invalidate_prefetch()
     
     def read_bytes_direct(self, address, count):
         """Optimized multi-byte read returning list of ints"""

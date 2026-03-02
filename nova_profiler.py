@@ -219,7 +219,7 @@ class NovaProfiler:
         print(f"Benchmark completed:")
         print(f"- Cycles: {cycles}")
         print(f"- Time: {total_time:.6f} seconds")
-        print(f"- Avg time per instruction: {results['avg_time_per_instruction']:.2f} μs")
+        print(f"- Avg time per instruction: {results['avg_time_per_instruction']:.2f} us")
         print(f"- Instructions per second: {results['instructions_per_second']:.2f}")
 
         return results
