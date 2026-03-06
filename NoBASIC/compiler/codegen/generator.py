@@ -1662,6 +1662,7 @@ class CodeGenerator:
         self.current_output.append("MOV R1, 0")  # Character count
         self.current_output.append("MOV R2, VX")  # Save starting X position
         self.current_output.append("MOV R3, VY")  # Save starting Y position
+        self.current_output.append("MOV R4, 0")  # Shift-pending flag for uppercase input
         
         # Input loop
         input_loop_label = self.new_label()
@@ -1673,6 +1674,17 @@ class CodeGenerator:
         self.current_output.append(f"JZ {input_loop_label}")  # Wait for key
         
         self.current_output.append("KEYIN R0")  # Read the key
+
+        # Treat Shift (0x97 / 151) as a one-shot modifier for the next letter.
+        shift_pressed_label = self.new_label()
+        after_shift_check_label = self.new_label()
+        self.current_output.append("CMP R0, 151")
+        self.current_output.append(f"JZ {shift_pressed_label}")
+        self.current_output.append(f"JMP {after_shift_check_label}")
+        self.current_output.append(f"{shift_pressed_label}:")
+        self.current_output.append("MOV R4, 1")
+        self.current_output.append(f"JMP {input_loop_label}")
+        self.current_output.append(f"{after_shift_check_label}:")
         
         # Check for Enter key (ASCII 13 or key code 10)
         self.current_output.append("CMP R0, 13")  # Enter key
@@ -1711,6 +1723,26 @@ class CodeGenerator:
         
         # Store character in buffer
         self.current_output.append(f"{after_backspace_label}:")
+
+        # Apply one-shot shift to lowercase ASCII letters (a-z -> A-Z).
+        apply_shift_label = self.new_label()
+        skip_shift_label = self.new_label()
+        clear_shift_only_label = self.new_label()
+        shift_done_label = self.new_label()
+        self.current_output.append("CMP R4, 0")
+        self.current_output.append(f"JZ {skip_shift_label}")
+        self.current_output.append(f"{apply_shift_label}:")
+        self.current_output.append("CMP R0, 97")
+        self.current_output.append(f"JLT {clear_shift_only_label}")
+        self.current_output.append("CMP R0, 122")
+        self.current_output.append(f"JGT {clear_shift_only_label}")
+        self.current_output.append("SUB R0, 32")
+        self.current_output.append(f"JMP {shift_done_label}")
+        self.current_output.append(f"{clear_shift_only_label}:")
+        self.current_output.append(f"{shift_done_label}:")
+        self.current_output.append("MOV R4, 0")
+        self.current_output.append(f"{skip_shift_label}:")
+
         self.current_output.append("CMP R1, 63")  # Max 63 characters
         self.current_output.append(f"JGE {input_loop_label}")  # Buffer full
         # Calculate address: P4 = P1 + R1

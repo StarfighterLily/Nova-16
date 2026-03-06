@@ -227,6 +227,12 @@ def main( cpu, memory, gfx, kbd=None ):
                 elif kbd is not None:
                     # Handle keyboard input for Nova-16
                     key_name = None
+                    if event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
+                        key_name = 'shift'
+                    elif event.key in (pygame.K_LCTRL, pygame.K_RCTRL):
+                        key_name = 'ctrl'
+                    elif event.key in (pygame.K_LALT, pygame.K_RALT):
+                        key_name = 'alt'
                     if event.key == pygame.K_RETURN:
                         key_name = 'enter'
                     elif event.key == pygame.K_BACKSPACE:
@@ -275,6 +281,15 @@ def main( cpu, memory, gfx, kbd=None ):
                     
                     if key_name:
                         kbd.press_key(key_name)
+
+            elif event.type == pygame.KEYUP and kbd is not None:
+                # Keep modifier state synchronized with key releases.
+                if event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
+                    kbd.release_key('shift')
+                elif event.key in (pygame.K_LCTRL, pygame.K_RCTRL):
+                    kbd.release_key('ctrl')
+                elif event.key in (pygame.K_LALT, pygame.K_RALT):
+                    kbd.release_key('alt')
                     
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pos = event.pos

@@ -406,6 +406,17 @@ class TestCodeGenerator:
         # Echo path redraws the buffer text after each character.
         assert len(re.findall(r"TEXT L\d+", code)) >= 2
 
+    def test_input_shift_modifier_uppercases_letters(self):
+        """Input should support Shift as a one-shot modifier for capital letters."""
+        code = self.generate_code('input("Name:", userName)')
+        assert "CMP R0, 151" in code  # Shift key code
+        assert "MOV R4, 1" in code    # Shift pending flag
+        assert "CMP R4, 0" in code
+        assert "CMP R0, 97" in code   # 'a'
+        assert "CMP R0, 122" in code  # 'z'
+        assert "SUB R0, 32" in code   # to uppercase
+        assert "MOV R4, 0" in code    # one-shot clear
+
     def test_input_resets_vx_before_prompt(self):
         """Input prompt code should left-justify using VX without changing row."""
         code = self.generate_code('input("Name:", userName)')
