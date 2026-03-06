@@ -403,6 +403,7 @@ class TestCodeGenerator:
         assert "KEYIN R0" in code
         assert "CMP R0, 8" in code
         assert "CMP R0, 127" in code
+        assert "SRECT 255, R6, 1" in code
         # Echo path redraws the buffer text after each character.
         assert len(re.findall(r"TEXT L\d+", code)) >= 2
 

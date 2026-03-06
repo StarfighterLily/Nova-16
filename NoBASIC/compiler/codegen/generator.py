@@ -1663,6 +1663,8 @@ class CodeGenerator:
         self.current_output.append("MOV R2, VX")  # Save starting X position
         self.current_output.append("MOV R3, VY")  # Save starting Y position
         self.current_output.append("MOV R4, 0")  # Shift-pending flag for uppercase input
+        self.current_output.append("MOV R6, R3")  # Input row bottom Y for rectangle clears
+        self.current_output.append("ADD R6, 7")
         
         # Input loop
         input_loop_label = self.new_label()
@@ -1714,7 +1716,7 @@ class CodeGenerator:
         self.current_output.append("MOV VX, R2")  # Reset to start X
         self.current_output.append("MOV VY, R3")  # Reset to start Y
         self.current_output.append("MOV VC, 0")  # Black to clear
-        self.current_output.append(f"TEXT {input_buffer_label}")  # Clear old text
+        self.current_output.append("SRECT 255, R6, 1")  # Clear row segment so deleted glyph pixels are erased
         self.current_output.append("MOV VX, R2")  # Reset to start X
         self.current_output.append("MOV VY, R3")  # Reset to start Y
         self.current_output.append("MOV VC, 15")  # White
@@ -1756,6 +1758,10 @@ class CodeGenerator:
         self.current_output.append("MOV [P4], 0")  # Null terminate
         
         # Echo character to screen
+        self.current_output.append("MOV VX, R2")  # Reset to start X
+        self.current_output.append("MOV VY, R3")  # Reset to start Y
+        self.current_output.append("MOV VC, 0")  # Clear row before redraw to avoid overdraw artifacts
+        self.current_output.append("SRECT 255, R6, 1")
         self.current_output.append("MOV VX, R2")  # Reset to start X
         self.current_output.append("MOV VY, R3")  # Reset to start Y
         self.current_output.append("MOV VC, 15")  # White color
