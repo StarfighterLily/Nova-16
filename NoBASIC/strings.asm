@@ -5,30 +5,29 @@ MOV P7:, 0xFF
 MOV :P7, 0xFF
 MOV SP, P7
 MOV FP, SP
-MOV VC, 15
-TEXT STR0
+MOV VX, 0
 ; Input: Read string from keyboard
-MOV P1, L2
+MOV P1, L1
 MOV R1, 0
 MOV R2, VX
 MOV R3, VY
-L3:
+L2:
 KEYSTAT R0
 CMP R0, 0
-JZ L3
+JZ L2
 KEYIN R0
 CMP R0, 13
-JZ L4
-CMP R0, 10
-JZ L4
-CMP R0, 8
-JZ L5
-CMP R0, 127
-JZ L5
-JMP L6
-L5:
-CMP R1, 0
 JZ L3
+CMP R0, 10
+JZ L3
+CMP R0, 8
+JZ L4
+CMP R0, 127
+JZ L4
+JMP L5
+L4:
+CMP R1, 0
+JZ L2
 DEC R1
 MOV P4, P1
 ADD P4, R1
@@ -36,15 +35,15 @@ MOV [P4], 0
 MOV VX, R2
 MOV VY, R3
 MOV VC, 0
-TEXT L2
+TEXT L1
 MOV VX, R2
 MOV VY, R3
 MOV VC, 15
-TEXT L2
-JMP L3
-L6:
+TEXT L1
+JMP L2
+L5:
 CMP R1, 63
-JGE L3
+JGE L2
 MOV P4, P1
 ADD P4, R1
 MOV [P4], R0
@@ -55,15 +54,15 @@ MOV [P4], 0
 MOV VX, R2
 MOV VY, R3
 MOV VC, 15
-TEXT L2
-JMP L3
-L4:
+TEXT L1
+JMP L2
+L3:
 MOV P4, P1
 ADD P4, R1
 MOV [P4], 0
 MOV VX, 0
 ADD VY, 8
-MOV P2, L2
+MOV P2, L1
 MOV P0, 288
 MOV [P0], P2
 MOV P0, 288
@@ -72,11 +71,84 @@ MOV VX, 0
 MOV VC, 15
 TEXT P1
 ADD VY, 8
+; ClrDraw
+MOV VM, 0
+MOV VL, 1
+SFILL 0x00
 MOV VX, 0
 MOV VC, 15
-TEXT STR6
+TEXT STR5
+; Input: Read string from keyboard
+MOV P1, L7
+MOV R1, 0
+MOV R2, VX
+MOV R3, VY
+L8:
+KEYSTAT R0
+CMP R0, 0
+JZ L8
+KEYIN R0
+CMP R0, 13
+JZ L9
+CMP R0, 10
+JZ L9
+CMP R0, 8
+JZ L10
+CMP R0, 127
+JZ L10
+JMP L11
+L10:
+CMP R1, 0
+JZ L8
+DEC R1
+MOV P4, P1
+ADD P4, R1
+MOV [P4], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 0
+TEXT L7
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L7
+JMP L8
+L11:
+CMP R1, 63
+JGE L8
+MOV P4, P1
+ADD P4, R1
+MOV [P4], R0
+INC R1
+MOV P4, P1
+ADD P4, R1
+MOV [P4], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L7
+JMP L8
+L9:
+MOV P4, P1
+ADD P4, R1
+MOV [P4], 0
+MOV VX, 0
+ADD VY, 8
+MOV P2, L7
+MOV P0, 290
+MOV [P0], P2
+MOV P0, 290
+MOV P1, [P0]
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV VX, 0
+MOV VC, 15
+TEXT STR11
 ADD VY, 8
 HLT
-STR0: DEFSTR "Hello?"
-L2: DEFB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-STR6: DEFSTR "Hello!"
+L1: DB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+STR5: DEFSTR "Who are you? >"
+L7: DB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+STR11: DEFSTR "Hello!"

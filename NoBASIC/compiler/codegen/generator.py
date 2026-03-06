@@ -1177,7 +1177,7 @@ class CodeGenerator:
             if string_value.startswith("__BUFFER__"):
                 # Special buffer allocation
                 size = int(string_value.split("__")[2])
-                self.current_output.append(f"{label}: DEFB " + ", ".join(["0"] * size))
+                self.current_output.append(f"{label}: DB " + ", ".join(["0"] * size))
             else:
                 self.current_output.append(f"{label}: DEFSTR \"{string_value}\"")
 
@@ -1627,6 +1627,9 @@ class CodeGenerator:
 
     def generate_input(self, stmt: InputStmt):
         """Generate Input(prompt, variable) code."""
+        # Left-justify prompt on the current row after prior Disp calls.
+        self.current_output.append("MOV VX, 0")
+
         # Display prompt if provided
         if stmt.prompt is not None:
             # Handle prompt display
@@ -1649,7 +1652,7 @@ class CodeGenerator:
         # We need a writable buffer, so we'll add it as raw bytes after the code
         # Reserve 64 bytes (63 chars + null terminator) initialized to zero
         # We'll add this to the output directly rather than using the strings list
-        buffer_init = f"{input_buffer_label}: DEFB " + ", ".join(["0"] * 64)
+        buffer_init = f"{input_buffer_label}: DB " + ", ".join(["0"] * 64)
         # Add to strings list but mark it specially (we'll handle it differently)
         self.strings.append((input_buffer_label, "__BUFFER__64__"))
         
@@ -1739,11 +1742,10 @@ class CodeGenerator:
         self.current_output.append("MOV VX, 0")
         self.current_output.append("ADD VY, 8")
         
-        # Store buffer address in variable
-        var_addr = self.get_variable_address(stmt.variable)
+        # Store buffer address in target variable using normal variable storage rules.
+        # This keeps register-allocated variables in sync with Input results.
         self.current_output.append(f"MOV P2, {input_buffer_label}")  # Load buffer address into P2
-        self.current_output.append(f"MOV P0, {var_addr}")
-        self.current_output.append(f"MOV [P0], P2")  # Store buffer address in variable
+        self.store_variable(stmt.variable, "P2")
 
     def generate_disp(self, stmt: DispStmt):
         """Generate Disp expression code."""

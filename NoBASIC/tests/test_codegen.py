@@ -2,6 +2,7 @@
 Unit tests for the NoBASIC code generator component.
 """
 
+import re
 import pytest
 from compiler.codegen.generator import CodeGenerator
 from compiler.parser.ast import (
@@ -388,6 +389,48 @@ class TestCodeGenerator:
         lines = code.strip().split("\n")
         assert "KEYIN R0" in lines
         assert "KEYSTAT R0" in lines
+
+    def test_input_buffer_uses_db_not_defb(self):
+        """Input should emit writable DB buffers compatible with nova_assembler."""
+        code = self.generate_code('input("Name:", userName)')
+        assert "DEFB" not in code
+        assert ": DB " in code
+
+    def test_input_echo_and_backspace_paths(self):
+        """Input should include key polling, echo redraw, and backspace handling."""
+        code = self.generate_code('input("Name:", userName)')
+        assert "KEYSTAT R0" in code
+        assert "KEYIN R0" in code
+        assert "CMP R0, 8" in code
+        assert "CMP R0, 127" in code
+        # Echo path redraws the buffer text after each character.
+        assert len(re.findall(r"TEXT L\d+", code)) >= 2
+
+    def test_input_resets_vx_before_prompt(self):
+        """Input prompt code should left-justify using VX without changing row."""
+        code = self.generate_code('input("Name:", userName)')
+        assert "MOV VX, 0" in code
+        assert "MOV VY, 0" not in code
+
+        lines = code.split("\n")
+        vx_line = next(i for i, line in enumerate(lines) if line.strip() == "MOV VX, 0")
+        first_text_line = next(i for i, line in enumerate(lines) if line.strip().startswith("TEXT "))
+        assert vx_line < first_text_line
+
+    def test_input_updates_register_allocated_variable(self):
+        """Input should synchronize the target variable even when register allocated."""
+        code = self.generate_code('a = 1\ninput("Name:", name)\ndisp "Hello, " + name\ndisp a')
+
+        # Name should be register allocated because it is used after Input.
+        assert "name" in self.generator.var_reg
+        name_reg = self.generator.var_reg["name"]
+
+        # Input always loads buffer address into P2 before storing it to the variable.
+        assert re.search(r"MOV P2, L\d+", code)
+
+        # If a different register is assigned, storage path must sync from P2.
+        if name_reg != "P2":
+            assert f"MOV {name_reg}, P2" in code
 
     def test_goto_label_codegen(self):
         """Test code generation for goto and labels."""
