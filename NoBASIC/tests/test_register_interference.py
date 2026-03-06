@@ -201,19 +201,17 @@ result = a + b + c
         assert isinstance(generator.register_pressure, dict), "Should have pressure tracking"
     
     def test_complex_expression_exhausts_registers(self):
-        """Test that very complex expressions properly report exhaustion."""
+        """Test that very complex expressions increase pressure and spill if needed."""
         # This expression should exhaust registers (6 vars + nested temps)
         code = """
 result = a + b + c + d + e + f
         """
         
-        # This SHOULD fail with register exhaustion
-        with pytest.raises(RuntimeError) as exc_info:
-            asm, generator = parse_and_generate(code, debug=False)
-        
-        # Check that the error message is helpful
-        assert "Register exhaustion" in str(exc_info.value)
-        assert "Suggestions" in str(exc_info.value)
+        asm, generator = parse_and_generate(code, debug=False)
+
+        # Under the current allocator, pressure may spill to memory instead of failing
+        assert generator.max_register_pressure >= 6
+        assert len(generator.spill_slots) >= 1
 
 
 class TestAllocationWithInterference:

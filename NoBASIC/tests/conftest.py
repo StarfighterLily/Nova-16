@@ -10,3 +10,5 @@ for path in (ROOT, COMPILER_DIR):
     str_path = str(path)
     if str_path not in sys.path:
         sys.path.insert(0, str_path)
+
+collect_ignore = ["test_text_disp_disasm.txt"]

@@ -275,6 +275,106 @@ class TestSemanticAnalyzer:
         program = self.parse_and_analyze('result = "text" + 1')
         assert self.analyzer.symbol_table.get_variable_type("result") == DataType.STRING
 
+    def test_analyzer_reuse_allows_same_function_name_in_new_program(self):
+        """Reusing one analyzer should not leak function definitions across programs."""
+        first = self.parser.parse(self.lexer.tokenize("""
+        function foo()
+            return 1
+        end
+        x = foo()
+        """))
+        second = self.parser.parse(self.lexer.tokenize("""
+        function foo()
+            return 2
+        end
+        y = foo()
+        """))
+
+        self.analyzer.analyze(first)
+        self.analyzer.analyze(second)
+        assert self.analyzer.symbol_table.get_variable_type("y") == DataType.NUMBER
+
+    def test_analyzer_reuse_clears_pending_gotos_after_failure(self):
+        """A failed analysis with unresolved goto must not poison the next analysis."""
+        with pytest.raises(SemanticError, match="Undefined label 'missing'"):
+            bad_program = self.parser.parse(self.lexer.tokenize("goto missing"))
+            self.analyzer.analyze(bad_program)
+
+        good_program = self.parser.parse(self.lexer.tokenize("""
+        ok:
+        value = 1
+        goto ok
+        """))
+        self.analyzer.analyze(good_program)
+        assert self.analyzer.symbol_table.get_variable_type("value") == DataType.NUMBER
+
+    def test_analyzer_reuse_allows_same_struct_name_in_new_program(self):
+        """Reusing one analyzer should not leak struct definitions across programs."""
+        first = self.parser.parse(self.lexer.tokenize("""
+        struct Point x y end
+        p.x = 1
+        """))
+        second = self.parser.parse(self.lexer.tokenize("""
+        struct Point x y end
+        q.y = 2
+        """))
+
+        self.analyzer.analyze(first)
+        self.analyzer.analyze(second)
+        assert self.analyzer.symbol_table.is_struct("Point")
+
+    def test_local_declaration_in_global_scope_errors(self):
+        """LOCAL declarations are invalid at global scope."""
+        with pytest.raises(SemanticError, match="Cannot declare LOCAL variable"):
+            self.parse_and_analyze("local temp")
+
+    def test_local_declaration_inside_function_is_scoped(self):
+        """LOCAL declarations inside functions should be allowed and scoped."""
+        self.parse_and_analyze("""
+        function bump(x)
+            local temp
+            temp = x + 1
+            return temp
+        end
+        y = bump(5)
+        """)
+        assert self.analyzer.symbol_table.get_variable_type("y") == DataType.NUMBER
+
+    def test_duplicate_explicit_global_declaration_errors(self):
+        """Duplicate explicit GLOBAL declarations should fail."""
+        with pytest.raises(SemanticError, match="already declared as global"):
+            self.parse_and_analyze("""
+            global score
+            global score
+            """)
+
+    def test_return_outside_function_errors(self):
+        """Return outside of a function should fail semantic analysis."""
+        with pytest.raises(SemanticError, match="Return outside of function"):
+            self.parse_and_analyze("return 1")
+
+    def test_user_function_default_args_semantics(self):
+        """User-defined function calls should honor required and default params."""
+        self.parse_and_analyze("""
+        function add(a, b = 2)
+            return a + b
+        end
+        x = add(3)
+        y = add(3, 4)
+        """)
+        assert self.analyzer.symbol_table.get_variable_type("x") == DataType.NUMBER
+        assert self.analyzer.symbol_table.get_variable_type("y") == DataType.NUMBER
+
+    def test_user_function_default_args_too_few_arguments(self):
+        """Calling a user-defined function with too few args should fail."""
+        with pytest.raises(SemanticError, match="Wrong number of arguments for function 'add'"):
+            self.parse_and_analyze("""
+            function add(a, b = 2)
+                return a + b
+            end
+            x = add()
+            """)
+
 
 class TestSymbolTable:
     """Test cases for the SymbolTable class."""
@@ -608,3 +708,80 @@ class TestSymbolTable:
         program = self.parse_and_analyze("x = L1(1000)\ny = MatA(100, 200)")
         assert self.analyzer.symbol_table.get_variable_type("x") == DataType.NUMBER
         assert self.analyzer.symbol_table.get_variable_type("y") == DataType.NUMBER
+
+    def test_struct_member_assignment_auto_infers_single_struct(self):
+        """Single declared struct should be inferred for member assignments."""
+        self.parse_and_analyze("""
+        struct Point x y end
+        p.x = 5
+        q = p.y
+        """)
+
+        assert self.analyzer.symbol_table.get_struct_instance_type("p") == "Point"
+        assert self.analyzer.symbol_table.get_variable_type("q") == DataType.NUMBER
+
+    def test_struct_member_access_unknown_field_errors(self):
+        """Reading an unknown struct field should fail semantic analysis."""
+        with pytest.raises(SemanticError, match="has no field"):
+            self.parse_and_analyze("""
+            struct Point x y end
+            p.z = 1
+            """)
+
+    def test_struct_member_assignment_requires_numeric_value(self):
+        """Struct fields are numeric-only according to language constraints."""
+        with pytest.raises(SemanticError, match="Struct fields can only hold numeric values"):
+            self.parse_and_analyze("""
+            struct Point x y end
+            p.x = "hello"
+            """)
+
+    def test_struct_member_access_requires_known_instance_when_ambiguous(self):
+        """Multiple structs prevent implicit instance inference for member access."""
+        with pytest.raises(SemanticError, match="is not a struct instance"):
+            self.parse_and_analyze("""
+            struct Point x y end
+            struct Size w h end
+            p.x = 1
+            """)
+
+    def test_struct_member_access_is_case_insensitive(self):
+        """Struct names and fields should be handled case-insensitively."""
+        self.parse_and_analyze("""
+        struct Point X Y end
+        p.x = 5
+        q = P.Y
+        """)
+
+        assert self.analyzer.symbol_table.get_struct_instance_type("P") == "Point"
+        assert self.analyzer.symbol_table.get_variable_type("q") == DataType.NUMBER
+
+    def test_struct_declaration_rejects_duplicate_fields_case_insensitive(self):
+        """Duplicate fields should be rejected even when case differs."""
+        with pytest.raises(SemanticError, match="Duplicate field"):
+            self.parse_and_analyze("""
+            struct Point X x end
+            """)
+
+    def test_struct_member_read_auto_infers_single_struct(self):
+        """Single declared struct should be inferred for member reads too."""
+        self.parse_and_analyze("""
+        struct Point x y end
+        q = p.x
+        """)
+
+        assert self.analyzer.symbol_table.get_struct_instance_type("p") == "Point"
+        assert self.analyzer.symbol_table.get_variable_type("q") == DataType.NUMBER
+
+    def test_struct_member_read_requires_known_instance_when_no_struct_defined(self):
+        """Member access should fail when no structs exist to infer from."""
+        with pytest.raises(SemanticError, match="is not a struct instance"):
+            self.parse_and_analyze("q = p.x")
+
+    def test_struct_member_read_unknown_field_errors(self):
+        """Reading unknown fields from inferred struct instances should fail."""
+        with pytest.raises(SemanticError, match="has no field"):
+            self.parse_and_analyze("""
+            struct Point x y end
+            q = p.z
+            """)

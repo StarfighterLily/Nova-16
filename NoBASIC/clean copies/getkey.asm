@@ -1,0 +1,32 @@
+; NoBASIC compiler output
+; Generated for Nova-16
+ORG 0x0200
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV SP, P7
+MOV FP, SP
+XOR R1, R1
+MOV P2, R1
+L1:
+XOR R3, R3
+CMP P2, R3
+; Free R3 (last use)
+MOV R1, 0
+JZ L3
+JMP L4
+L3:
+MOV R1, 1
+L4:
+CMP R1, 0
+JZ L2
+KEYIN R0
+MOV R1, R0
+MOV P2, R1
+JMP L1
+L2:
+ITOS P1, P2
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+HLT

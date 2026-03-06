@@ -18,6 +18,11 @@ import nova_sound as sound
 import nova_keyboard as keyboard
 
 
+def pytest_configure(config):
+    """Register custom markers used by the test suite."""
+    config.addinivalue_line("markers", "assembler: Tests related to the assembler pipeline")
+
+
 @pytest.fixture
 def memory():
     """Create a fresh memory instance for testing."""

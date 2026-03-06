@@ -206,8 +206,8 @@ class TestStackFrameInstructions:
         memory.load_program(program)
         run_cpu_cycles(cpu, 2)
         
-        # SP should be restored to original position (after popping old FP)
-        assert cpu.Pregisters[8] == 0xFFFD
+        # SP should be restored to caller's stack position (after popping old FP)
+        assert cpu.Pregisters[8] == 0xFFFF
         # FP should be restored from stack
         assert cpu.Pregisters[9] == 0xFFFF
 

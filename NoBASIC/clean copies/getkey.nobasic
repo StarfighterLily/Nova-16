@@ -1,0 +1,5 @@
+key = 0
+While key = 0
+    key = getkey()
+End
+Disp key

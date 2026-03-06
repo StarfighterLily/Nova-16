@@ -154,13 +154,20 @@ class Parser:
         if not line:
             return asm_line
 
-        # Split into tokens
-        tokens = line.split()
-        if not tokens:
+        def split_head(text: str) -> Tuple[Optional[str], str]:
+            stripped = text.lstrip()
+            if not stripped:
+                return None, ""
+            parts = stripped.split(None, 1)
+            if len(parts) == 1:
+                return parts[0], ""
+            return parts[0], parts[1]
+
+        first_token, remainder = split_head(line)
+        if not first_token:
             return asm_line
 
-        i = 0
-        first = tokens[0].upper()
+        first = first_token.upper()
 
         directives = {'ORG', 'EQU', 'DB', 'DW', 'DEFSTR', 'DS', 'MACRO', 'ENDM', 'INCLUDE', 'IF', 'IFDEF', 'IFNDEF', 'ELSE', 'ENDIF'}
 
@@ -168,44 +175,42 @@ class Parser:
             # no label, directive or instruction
             if first in directives:
                 asm_line.directive = first
-                i += 1
-                if i < len(tokens):
-                    arg_str = ' '.join(tokens[i:])
+                if remainder:
+                    arg_str = remainder
                     if asm_line.directive in {'DB', 'DW', 'DEFSTR', 'DS'}:
                         asm_line.directive_args = self._parse_operands_with_strings(arg_str)
                     else:
                         asm_line.directive_args = [arg_str]
             else:
                 asm_line.instruction = first
-                i += 1
-                if i < len(tokens):
-                    operand_str = ' '.join(tokens[i:])
+                if remainder:
+                    operand_str = remainder
                     asm_line.operands = [op.strip() for op in operand_str.split(',')]
         else:
             # label
-            if first.endswith(':'):
-                asm_line.label = first[:-1]
+            if first_token.endswith(':'):
+                asm_line.label = first_token[:-1]
             else:
-                asm_line.label = first
-            i += 1
-            if i >= len(tokens):
+                asm_line.label = first_token
+
+            current_token, current_remainder = split_head(remainder)
+            if not current_token:
                 return asm_line
+
             # now parse the rest as directive or instruction
-            current = tokens[i].upper()
+            current = current_token.upper()
             if current in directives:
                 asm_line.directive = current
-                i += 1
-                if i < len(tokens):
-                    arg_str = ' '.join(tokens[i:])
+                if current_remainder:
+                    arg_str = current_remainder
                     if asm_line.directive in {'DB', 'DW', 'DEFSTR', 'DS'}:
                         asm_line.directive_args = self._parse_operands_with_strings(arg_str)
                     else:
                         asm_line.directive_args = [arg_str]
             else:
                 asm_line.instruction = current
-                i += 1
-                if i < len(tokens):
-                    operand_str = ' '.join(tokens[i:])
+                if current_remainder:
+                    operand_str = current_remainder
                     asm_line.operands = [op.strip() for op in operand_str.split(',')]
 
         return asm_line

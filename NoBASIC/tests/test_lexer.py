@@ -302,6 +302,52 @@ class TestLexer:
         for token, expected in zip(tokens, expected_types):
             assert token.type == expected
 
+    def test_asm_block_tokenization_basic(self):
+        """Test that Asm...End is tokenized as ASM + ASM_BLOCK + END."""
+        source = """Asm
+MOV R0, 1
+ADD R0, 2
+End
+x = 1
+"""
+        tokens = self.lexer.tokenize(source)
+
+        expected_types = [
+            TokenType.ASM,
+            TokenType.ASM_BLOCK,
+            TokenType.END,
+            TokenType.IDENTIFIER,
+            TokenType.EQUAL,
+            TokenType.NUMBER_LITERAL,
+            TokenType.EOF,
+        ]
+        assert [t.type for t in tokens] == expected_types
+        assert "MOV R0, 1" in tokens[1].literal
+        assert "ADD R0, 2" in tokens[1].literal
+
+    def test_asm_block_does_not_end_on_end_prefix_word(self):
+        """Test that words starting with 'end' inside Asm block do not terminate it."""
+        source = """Asm
+MOV R0, 1
+endlabel:
+MOV R1, 2
+eNd
+"""
+        tokens = self.lexer.tokenize(source)
+
+        assert tokens[0].type == TokenType.ASM
+        assert tokens[1].type == TokenType.ASM_BLOCK
+        assert tokens[2].type == TokenType.END
+        assert "endlabel:" in tokens[1].literal
+
+    def test_asm_block_unterminated_raises_error(self):
+        """Test lexer error for unterminated Asm blocks."""
+        source = """Asm
+MOV R0, 1
+"""
+        with pytest.raises(LexerError, match="Unterminated Asm block"):
+            self.lexer.tokenize(source)
+
     def test_consecutive_operators(self):
         """Test consecutive operators."""
         source = "x+=y-=z"

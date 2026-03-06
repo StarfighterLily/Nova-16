@@ -211,6 +211,29 @@ class TestCodeGenerator:
         # Should generate code that includes 42
         assert any("42" in line for line in lines)
 
+    def test_float_literal_is_normalized_for_assembler(self):
+        """Test float literals are normalized to integer immediates in assembly output."""
+        code = self.generate_code("x = 2.7")
+        non_comment_lines = [line for line in code.split("\n") if not line.strip().startswith(";")]
+        assert all("2.7" not in line for line in non_comment_lines)
+        assert (
+            any("MOV" in line and ", 2" in line for line in non_comment_lines)
+            or any("SHL" in line and ", 1" in line for line in non_comment_lines)
+        )
+
+    def test_unary_minus_float_literal_is_normalized(self):
+        """Test folded unary float literals are normalized to integer immediates."""
+        code = self.generate_code("x = -3.14")
+        non_comment_lines = [line for line in code.split("\n") if not line.strip().startswith(";")]
+        assert all("-3.14" not in line for line in non_comment_lines)
+        assert any("MOV" in line and "-3" in line for line in code.split("\n"))
+
+    def test_int_function_maps_to_intgr_instruction(self):
+        """Test TI-style int() maps to supported INTGR opcode path."""
+        code = self.generate_code("x = int(2.7)")
+        assert "INTGR" in code
+        assert "2.7" not in code
+
     def test_repeat_statement(self):
         """Test repeat loop code generation."""
         code = self.generate_code("repeat\nx = x + 1\nuntil x = 10")
@@ -922,3 +945,45 @@ class TestCodeGenerator:
         # ITOS and STOI with appropriate registers
         assert any("ITOS" in line for line in lines)
         assert any("STOI" in line for line in lines)
+
+    def test_struct_member_store_and_load_codegen(self):
+        """Struct assignment/access should emit declaration, allocation, store, and load code."""
+        code = self.generate_code("""
+        struct Point x y end
+        p.x = 42
+        z = p.x
+        """)
+        lines = code.strip().split("\n")
+
+        assert any("; Struct Point declared with fields: x, y" in line for line in lines)
+        assert any("; Allocate struct p (Point)" in line for line in lines)
+        assert any("; Store to p.x" in line for line in lines)
+        assert any("; Load p.x" in line for line in lines)
+        assert any("MOV [P0]," in line for line in lines)
+
+    def test_struct_member_codegen_is_case_insensitive(self):
+        """Struct field/member codegen should work across mixed-case declarations and accesses."""
+        code = self.generate_code("""
+        struct Point X Y end
+        p.x = 42
+        z = P.y
+        """)
+        lines = code.strip().split("\n")
+
+        assert any("; Struct Point declared with fields: X, Y" in line for line in lines)
+        assert any("; Allocate struct p (Point)" in line for line in lines)
+        assert any("; Store to p.x" in line for line in lines)
+        assert any("; Load P.y" in line for line in lines)
+        assert any("MOV [P0]," in line for line in lines)
+
+    def test_struct_instance_allocation_is_case_insensitive(self):
+        """Accessing the same struct instance with different variable casing should not reallocate."""
+        code = self.generate_code("""
+        struct Point x y end
+        p.x = 1
+        q = P.y
+        """)
+        lines = code.strip().split("\n")
+
+        allocation_lines = [line for line in lines if "; Allocate struct" in line]
+        assert len(allocation_lines) == 1

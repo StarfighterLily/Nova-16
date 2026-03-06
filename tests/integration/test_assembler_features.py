@@ -44,13 +44,13 @@ def test_ds_directive():
     assert success
     assert os.path.exists("tests/integration/ds_test.bin")
 
-    # Check binary size: 10 (DS) + 3 (DB) + 5 (DS) = 18 bytes
+    # Check binary size: 10 (DS) + 3 (DB) + 5 (DS) + 5 (MOV R0, BUFFER) + 1 (HLT) = 24 bytes
     with open("tests/integration/ds_test.bin", 'rb') as f:
         data = f.read()
-        assert len(data) == 18
+        assert len(data) == 24
         # First 10 bytes should be 0 (DS 10)
         assert data[:10] == b'\x00' * 10
         # Next 3 bytes: 1,2,3
         assert data[10:13] == b'\x01\x02\x03'
-        # Last 5 bytes: 0
-        assert data[13:] == b'\x00' * 5
+        # Next 5 bytes: 0 (DS 5)
+        assert data[13:18] == b'\x00' * 5

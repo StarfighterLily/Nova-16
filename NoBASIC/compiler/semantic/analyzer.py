@@ -97,23 +97,23 @@ class SymbolTable:
     
     def define_struct(self, name: str, fields: list):
         """Define a struct type."""
-        self.structs[name] = StructType(name, fields)
+        self.structs[name.lower()] = StructType(name, [field.lower() for field in fields])
     
     def get_struct(self, name: str) -> StructType:
         """Get a struct type definition."""
-        return self.structs.get(name)
+        return self.structs.get(name.lower())
     
     def is_struct(self, name: str) -> bool:
         """Check if name is a struct type."""
-        return name in self.structs
+        return name.lower() in self.structs
     
     def define_struct_instance(self, var_name: str, struct_name: str):
         """Define a struct instance variable."""
-        self.struct_instances[var_name] = struct_name
+        self.struct_instances[var_name.lower()] = struct_name
     
     def get_struct_instance_type(self, var_name: str) -> str:
         """Get the struct type name for a variable."""
-        return self.struct_instances.get(var_name)
+        return self.struct_instances.get(var_name.lower())
 
     def is_list(self, name: str) -> bool:
         """Check if name is a list."""
@@ -170,6 +170,12 @@ class SemanticAnalyzer:
         Raises:
             SemanticError: If semantic analysis fails
         """
+        # Reset analysis state so one SemanticAnalyzer instance can safely analyze
+        # multiple independent programs without leaking symbols/functions/gotos.
+        self.symbol_table = SymbolTable()
+        self.pending_gotos = []
+        self.functions = {}
+        self.current_function = None
         self.filename = filename
 
         # Initialize some built-in variables
@@ -327,9 +333,10 @@ class SemanticAnalyzer:
         # Check for duplicate field names
         field_set = set()
         for field in stmt.fields:
-            if field in field_set:
+            field_key = field.lower()
+            if field_key in field_set:
                 raise SemanticError(f"Duplicate field '{field}' in struct '{stmt.name}'", 0, 0)
-            field_set.add(field)
+            field_set.add(field_key)
         
         # Define the struct
         self.symbol_table.define_struct(stmt.name, stmt.fields)
@@ -404,14 +411,14 @@ class SemanticAnalyzer:
                 if not struct_name:
                     # Auto-infer struct type if only one struct is defined
                     if len(self.symbol_table.structs) == 1:
-                        struct_name = list(self.symbol_table.structs.keys())[0]
+                        struct_name = next(iter(self.symbol_table.structs.values())).name
                         self.symbol_table.define_struct_instance(var_name, struct_name)
                     else:
                         raise SemanticError(f"Variable '{var_name}' is not a struct instance", self.filename)
                 
                 if struct_name:
                     struct_def = self.symbol_table.get_struct(struct_name)
-                    if struct_def and expr.member in struct_def.fields:
+                    if struct_def and expr.member.lower() in struct_def.fields:
                         return DataType.NUMBER  # All struct fields are 16-bit numbers
                     else:
                         raise SemanticError(f"Struct '{struct_name}' has no field '{expr.member}'", self.filename)
@@ -662,13 +669,13 @@ class SemanticAnalyzer:
                 if not struct_name:
                     # Auto-infer struct type if only one struct is defined
                     if len(self.symbol_table.structs) == 1:
-                        struct_name = list(self.symbol_table.structs.keys())[0]
+                        struct_name = next(iter(self.symbol_table.structs.values())).name
                         self.symbol_table.define_struct_instance(var_name, struct_name)
                     else:
                         raise SemanticError(f"Variable '{var_name}' is not a struct instance", 0, 0)
                 
                 struct_def = self.symbol_table.get_struct(struct_name)
-                if not struct_def or expr.member not in struct_def.fields:
+                if not struct_def or expr.member.lower() not in struct_def.fields:
                     raise SemanticError(f"Struct '{struct_name}' has no field '{expr.member}'", 0, 0)
                 
                 # Struct fields must be numbers

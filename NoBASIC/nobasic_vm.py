@@ -518,10 +518,24 @@ class NoBASICVM:
             return value[row - 1][col - 1]
 
         if isinstance(expression, MemberAccessExpr):
-            obj = self._eval_expr(expression.object)
             member = expression.member.lower()
+            if isinstance(expression.object, VariableExpr):
+                var_name = expression.object.name
+                if not self._has_var(var_name):
+                    struct_name = self._infer_struct_type(var_name, member)
+                    if struct_name is None:
+                        raise VMRuntimeError(f"Cannot infer struct type for variable '{var_name}'")
+                    self._set_var(var_name, self._create_struct_instance(struct_name))
+                obj = self._get_var(var_name)
+            else:
+                obj = self._eval_expr(expression.object)
             if not isinstance(obj, dict):
                 raise VMRuntimeError("Member access requires a struct/dict value")
+            struct_name = obj.get("__struct__")
+            if struct_name is not None:
+                fields = self.struct_defs.get(struct_name, [])
+                if member not in fields:
+                    raise VMRuntimeError(f"Struct '{struct_name}' has no field '{member}'")
             if member not in obj:
                 obj[member] = 0
             return obj[member]
@@ -646,10 +660,25 @@ class NoBASICVM:
             return
 
         if isinstance(target, MemberAccessExpr):
-            obj = self._eval_expr(target.object)
+            member = target.member.lower()
+            if isinstance(target.object, VariableExpr):
+                var_name = target.object.name
+                if not self._has_var(var_name):
+                    struct_name = self._infer_struct_type(var_name, member)
+                    if struct_name is None:
+                        raise VMRuntimeError(f"Cannot infer struct type for variable '{var_name}'")
+                    self._set_var(var_name, self._create_struct_instance(struct_name))
+                obj = self._get_var(var_name)
+            else:
+                obj = self._eval_expr(target.object)
             if not isinstance(obj, dict):
                 raise VMRuntimeError("Member assignment requires a struct/dict value")
-            obj[target.member.lower()] = value
+            struct_name = obj.get("__struct__")
+            if struct_name is not None:
+                fields = self.struct_defs.get(struct_name, [])
+                if member not in fields:
+                    raise VMRuntimeError(f"Struct '{struct_name}' has no field '{member}'")
+            obj[member] = value
             return
 
         raise VMRuntimeError("Invalid assignment target")
@@ -885,6 +914,32 @@ class NoBASICVM:
 
     def _has_var(self, name: str) -> bool:
         return self._find_frame_with_var(name.lower()) is not None
+
+    def _create_struct_instance(self, struct_name: str) -> Dict[str, Any]:
+        fields = self.struct_defs.get(struct_name)
+        if fields is None:
+            raise VMRuntimeError(f"Unknown struct '{struct_name}'")
+        instance: Dict[str, Any] = {"__struct__": struct_name}
+        for field_name in fields:
+            instance[field_name] = 0
+        return instance
+
+    def _infer_struct_type(self, var_name: str, member: str) -> Optional[str]:
+        if not self.struct_defs:
+            return None
+
+        matching = [
+            name for name, fields in self.struct_defs.items() if member.lower() in fields
+        ]
+        if len(matching) == 1:
+            return matching[0]
+        if len(matching) > 1:
+            return None
+
+        if len(self.struct_defs) == 1:
+            return next(iter(self.struct_defs.keys()))
+
+        return None
 
     @staticmethod
     def _check_arity(name: str, arguments: List[Any], allowed: List[int]) -> None:

@@ -10,7 +10,8 @@ from compiler.parser.ast import (
     PauseStmt, GroupingExpr, RepeatStmt, FunctionCallExpr, ListAccessExpr,
     MatrixAccessExpr, UnaryExpr, GotoStmt, LabelStmt, LineStmt, CircleStmt,
     TextStmt, PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt,
-    GetKeyStmt, InputStmt, DispStmt
+    GetKeyStmt, InputStmt, DispStmt, VarDeclarationStmt, FunctionDefStmt,
+    ReturnStmt, StructDeclarationStmt, MemberAccessExpr, VarScope
 )
 from compiler.lexer.lexer import Lexer
 from compiler.utils.error import ParserError
@@ -742,3 +743,82 @@ class TestParser:
             program = self.parse_source(prog)
             assert isinstance(program, Program)
             assert len(program.statements) >= 1
+
+    def test_global_declaration_multiple_variables(self):
+        """Test parsing GLOBAL declarations with multiple variables."""
+        program = self.parse_source("global score, lives, level")
+        assert len(program.statements) == 1
+        stmt = program.statements[0]
+        assert isinstance(stmt, VarDeclarationStmt)
+        assert stmt.scope == VarScope.GLOBAL
+        assert stmt.variables == ["score", "lives", "level"]
+
+    def test_local_declaration_single_variable(self):
+        """Test parsing LOCAL declaration."""
+        program = self.parse_source("local temp")
+        assert len(program.statements) == 1
+        stmt = program.statements[0]
+        assert isinstance(stmt, VarDeclarationStmt)
+        assert stmt.scope == VarScope.LOCAL
+        assert stmt.variables == ["temp"]
+
+    def test_function_definition_with_default_parameter(self):
+        """Test parsing function definitions with default parameters."""
+        source = """
+        function add(a, b = 2)
+            return a + b
+        end
+        """
+        program = self.parse_source(source)
+        assert len(program.statements) == 1
+        stmt = program.statements[0]
+        assert isinstance(stmt, FunctionDefStmt)
+        assert stmt.name == "add"
+        assert len(stmt.params) == 2
+        assert stmt.params[0][0] == "a"
+        assert stmt.params[0][1] is None
+        assert stmt.params[1][0] == "b"
+        assert isinstance(stmt.params[1][1], LiteralExpr)
+        assert stmt.params[1][1].value == 2
+        assert len(stmt.body) == 1
+        assert isinstance(stmt.body[0], ReturnStmt)
+
+    def test_return_without_value_in_function_body(self):
+        """Test parsing Return without expression inside a function."""
+        source = """
+        function noop()
+            return
+        end
+        """
+        program = self.parse_source(source)
+        stmt = program.statements[0]
+        assert isinstance(stmt, FunctionDefStmt)
+        assert isinstance(stmt.body[0], ReturnStmt)
+        assert stmt.body[0].value is None
+
+    def test_struct_declaration_and_member_assignment_parse(self):
+        """Test parsing struct declaration and member assignment."""
+        program = self.parse_source("struct Point x y end\np.x = 1")
+        assert len(program.statements) == 2
+
+        struct_stmt = program.statements[0]
+        assert isinstance(struct_stmt, StructDeclarationStmt)
+        assert struct_stmt.name == "Point"
+        assert struct_stmt.fields == ["x", "y"]
+
+        assign_stmt = program.statements[1]
+        assert isinstance(assign_stmt, AssignmentStmt)
+        assert isinstance(assign_stmt.variable, MemberAccessExpr)
+        assert isinstance(assign_stmt.variable.object, VariableExpr)
+        assert assign_stmt.variable.object.name == "p"
+        assert assign_stmt.variable.member == "x"
+
+    def test_struct_declaration_rejects_more_than_ten_fields(self):
+        """Struct declarations should enforce the documented 10-field max."""
+        with pytest.raises(ParserError, match="maximum is 10"):
+            self.parse_source("struct Big a b c d e f g h i j k end")
+
+    def test_struct_declaration_requires_at_least_one_field(self):
+        """Struct declarations should require at least one field."""
+        with pytest.raises(ParserError, match="must have at least one field"):
+            self.parse_source("struct Empty end")

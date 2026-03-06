@@ -1360,7 +1360,7 @@ class CodeGenerator:
 
     def generate_struct_declaration(self, stmt: StructDeclarationStmt):
         """Register struct type (no assembly code generated)."""
-        self.struct_types[stmt.name] = StructType(stmt.name, stmt.fields)
+        self.struct_types[stmt.name.lower()] = StructType(stmt.name, [field.lower() for field in stmt.fields])
         self.current_output.append(f"; Struct {stmt.name} declared with fields: {', '.join(stmt.fields)}")
 
     def generate_asm_block(self, stmt: AsmBlockStmt):
@@ -1882,15 +1882,17 @@ class CodeGenerator:
         """Generate code to load from a struct member."""
         if isinstance(expr.object, VariableExpr):
             var_name = expr.object.name
+            var_key = var_name.lower()
+            member_name = expr.member.lower()
             
             # Check if this is a struct instance
-            if var_name in self.struct_instances:
-                struct_name = self.struct_instances[var_name]
+            if var_key in self.struct_instances:
+                struct_name = self.struct_instances[var_key]
                 struct_def = self.struct_types[struct_name]
-                base_addr = self.struct_bases[var_name]
+                base_addr = self.struct_bases[var_key]
                 
                 # Calculate field offset
-                field_index = struct_def.fields.index(expr.member)
+                field_index = struct_def.fields.index(member_name)
                 field_offset = field_index * 2  # 2 bytes per field
                 field_addr = base_addr + field_offset
                 
@@ -1929,15 +1931,17 @@ class CodeGenerator:
         """Generate code to store to a struct member."""
         if isinstance(expr.object, VariableExpr):
             var_name = expr.object.name
+            var_key = var_name.lower()
+            member_name = expr.member.lower()
             
             # Check if this is a struct instance
-            if var_name in self.struct_instances:
-                struct_name = self.struct_instances[var_name]
+            if var_key in self.struct_instances:
+                struct_name = self.struct_instances[var_key]
                 struct_def = self.struct_types[struct_name]
-                base_addr = self.struct_bases[var_name]
+                base_addr = self.struct_bases[var_key]
                 
                 # Calculate field offset
-                field_index = struct_def.fields.index(expr.member)
+                field_index = struct_def.fields.index(member_name)
                 field_offset = field_index * 2  # 2 bytes per field
                 field_addr = base_addr + field_offset
                 
@@ -1959,18 +1963,21 @@ class CodeGenerator:
 
     def allocate_struct_instance(self, var_name: str, struct_name: str) -> int:
         """Allocate memory for a struct instance."""
-        if var_name in self.struct_bases:
-            return self.struct_bases[var_name]
+        var_key = var_name.lower()
+        struct_key = struct_name.lower()
+
+        if var_key in self.struct_bases:
+            return self.struct_bases[var_key]
         
-        struct_def = self.struct_types[struct_name]
+        struct_def = self.struct_types[struct_key]
         field_count = len(struct_def.fields)
         
         base_addr = self.next_address
-        self.struct_bases[var_name] = base_addr
-        self.struct_instances[var_name] = struct_name
+        self.struct_bases[var_key] = base_addr
+        self.struct_instances[var_key] = struct_key
         self.next_address += field_count * 2  # 2 bytes per field
         
-        self.current_output.append(f"; Allocate struct {var_name} ({struct_name}) at 0x{base_addr:04X}")
+        self.current_output.append(f"; Allocate struct {var_name} ({struct_def.name}) at 0x{base_addr:04X}")
         return base_addr
 
     def generate_if(self, stmt: IfStmt):
@@ -2273,6 +2280,16 @@ class CodeGenerator:
                 return self.is_string_expression(expr.left) or self.is_string_expression(expr.right)
         return False
 
+    def _normalize_numeric_literal(self, value):
+        """Normalize NoBASIC numeric literals to assembler-safe integer immediates."""
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, float):
+            if not value.is_integer():
+                return int(value)
+            return int(value)
+        return value
+
     def generate_expression_into(self, expr: Expression, target_reg: str):
         """
         Generate an expression directly into a target register (hardware or general).
@@ -2286,18 +2303,19 @@ class CodeGenerator:
         # For simple cases, generate directly
         if isinstance(expr, LiteralExpr):
             if expr.data_type.name == "NUMBER":
+                literal_value = self._normalize_numeric_literal(expr.value)
                 # Generate literal directly into target
-                if expr.value == 0:
+                if literal_value == 0:
                     self.current_output.append(f"XOR {target_reg}, {target_reg}")
-                elif expr.value == 1:
+                elif literal_value == 1:
                     self.current_output.append(f"MOV {target_reg}, 1")
-                elif expr.value in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
+                elif literal_value in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
                     # Use shifts for powers of 2
-                    shift_amount = expr.value.bit_length() - 1
+                    shift_amount = literal_value.bit_length() - 1
                     self.current_output.append(f"MOV {target_reg}, 1")
                     self.current_output.append(f"SHL {target_reg}, {shift_amount}")
                 else:
-                    self.current_output.append(f"MOV {target_reg}, {expr.value}")
+                    self.current_output.append(f"MOV {target_reg}, {literal_value}")
             elif expr.data_type.name == "STRING":
                 label = self.add_string_literal(expr.value)
                 self.current_output.append(f"MOV {target_reg}, {label}")
@@ -2374,8 +2392,9 @@ class CodeGenerator:
             result_reg = None
             if isinstance(expr, LiteralExpr):
                 if expr.data_type.name == "NUMBER":  # Use .name to get enum name
+                    literal_value = self._normalize_numeric_literal(expr.value)
                     # Check if we need a P register for this value (> 255 or negative)
-                    if (expr.value > 255 or expr.value < 0) and target_reg.startswith('R'):
+                    if (literal_value > 255 or literal_value < 0) and target_reg.startswith('R'):
                         # Value doesn't fit in 8 bits, need a P register
                         self.deallocate_register(target_reg)
                         # Find any available P register
@@ -2387,20 +2406,20 @@ class CodeGenerator:
                         if p_reg:
                             target_reg = self.allocate_register(p_reg)
                         else:
-                            raise RuntimeError(f"No available P registers for 16-bit literal {expr.value}")
+                            raise RuntimeError(f"No available P registers for 16-bit literal {literal_value}")
                     
                     # Optimize for common values
-                    if expr.value == 0:
+                    if literal_value == 0:
                         self.current_output.append(f"XOR {target_reg}, {target_reg}")  # Zero register
-                    elif expr.value == 1:
+                    elif literal_value == 1:
                         self.current_output.append(f"MOV {target_reg}, 1")
-                    elif expr.value in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
+                    elif literal_value in [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]:
                         # Use shifts for powers of 2
-                        shift_amount = expr.value.bit_length() - 1
+                        shift_amount = literal_value.bit_length() - 1
                         self.current_output.append(f"MOV {target_reg}, 1")
                         self.current_output.append(f"SHL {target_reg}, {shift_amount}")
                     else:
-                        self.current_output.append(f"MOV {target_reg}, {expr.value}")
+                        self.current_output.append(f"MOV {target_reg}, {literal_value}")
                     result_reg = target_reg
                 elif expr.data_type.name == "STRING":
                     # String literals: create DEFSTR label and load address (16-bit, needs P register)
@@ -2450,8 +2469,9 @@ class CodeGenerator:
             
             folded_value = self.fold_constants(expr.operator, expr.left.value, expr.right.value)
             if folded_value is not None:
+                folded_emit_value = self._normalize_numeric_literal(folded_value)
                 self.current_output.append(f"; Constant folded: {expr.left.value} {expr.operator} {expr.right.value} = {folded_value}")
-                self.current_output.append(f"MOV {target_reg}, {folded_value}")
+                self.current_output.append(f"MOV {target_reg}, {folded_emit_value}")
                 return target_reg
         
         # Check if this is string concatenation using our helper
@@ -2727,8 +2747,9 @@ class CodeGenerator:
         if isinstance(expr.expression, LiteralExpr) and expr.expression.data_type.name == "NUMBER":
             folded_value = self.fold_unary_constant(expr.operator, expr.expression.value)
             if folded_value is not None:
+                folded_emit_value = self._normalize_numeric_literal(folded_value)
                 self.current_output.append(f"; Constant folded: {expr.operator}({expr.expression.value}) = {folded_value}")
-                self.current_output.append(f"MOV {target_reg}, {folded_value}")
+                self.current_output.append(f"MOV {target_reg}, {folded_emit_value}")
                 return target_reg
         
         operand_reg = self.generate_expression(expr.expression, target_reg)
@@ -2830,6 +2851,7 @@ class CodeGenerator:
             "TRUNC": "TRUNC",
             "FRAC": "FRAC",
             "INTGR": "INTGR",
+            "INT": "INTGR",
             "LOG": "LOG",
             "EXP": "EXP",
         }
