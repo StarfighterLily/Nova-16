@@ -1,0 +1,24 @@
+// Simple struct test
+STRUCT Point x y END
+
+// Initialize
+point.x = 10
+point.y = 20
+
+// Display initial values
+Text(0, 0, "Initial:", 31)
+Text(0, 16, point.x, 31)
+Text(0, 32, point.y, 31)
+
+Pause
+
+// Modify values
+point.x = 50
+point.y = 100
+
+// Display modified values
+Text(0, 48, "Modified:", 31)
+Text(0, 64, point.x, 31)
+Text(0, 80, point.y, 31)
+
+Pause

@@ -1174,7 +1174,12 @@ class CodeGenerator:
         
         # Add string literals
         for label, string_value in self.strings:
-            self.current_output.append(f"{label}: DEFSTR \"{string_value}\"")
+            if string_value.startswith("__BUFFER__"):
+                # Special buffer allocation
+                size = int(string_value.split("__")[2])
+                self.current_output.append(f"{label}: DEFB " + ", ".join(["0"] * size))
+            else:
+                self.current_output.append(f"{label}: DEFSTR \"{string_value}\"")
 
         # **POST-GENERATION OPTIMIZATIONS**
         # Apply peephole and live range optimizations to reduce code size and improve performance
@@ -1198,7 +1203,9 @@ class CodeGenerator:
             
             if self.debug_allocation:
                 print("[CODEGEN] Peephole optimization applied")
-                print(f"[CODEGEN] Code size reduction: {len('\n'.join(self.output))} -> {len(assembly_output)} bytes")
+                original_size = len('\n'.join(self.output))
+                optimized_size = len(assembly_output)
+                print(f"[CODEGEN] Code size reduction: {original_size} -> {optimized_size} bytes")
 
         return assembly_output
 
@@ -1626,24 +1633,117 @@ class CodeGenerator:
             if isinstance(stmt.prompt, LiteralExpr) and stmt.prompt.data_type.name == "STRING":
                 # For string literals, display directly
                 prompt_label = self.add_string_literal(stmt.prompt.value)
-                self.current_output.append(f"TEXT {prompt_label}, 15")  # White color
+                self.current_output.append("MOV VC, 15")  # Set color to white
+                self.current_output.append(f"TEXT {prompt_label}")  # Display prompt
             else:
-                # For expressions, evaluate and try to display (simplified for now)
-                prompt_reg = self.generate_expression(stmt.prompt, "R1")
-                self.current_output.append(f"TEXT {prompt_reg}, 15")  # This may not work properly for non-strings
+                # For expressions, evaluate and try to display
+                prompt_reg = self.generate_expression(stmt.prompt, "P1")
+                self.current_output.append("MOV VC, 15")  # Set color to white
+                self.current_output.append(f"TEXT {prompt_reg}")  # Display prompt
+                if prompt_reg not in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'SP', 'FP']:
+                    self.smart_deallocate(prompt_reg, is_last_use=True)
 
-        # Wait for and read input
-        input_label = self.new_label()
-        self.current_output.append(f"{input_label}:")
-        self.current_output.append("KEYSTAT R0")
+        # Allocate buffer for input string (64 bytes)
+        # Create a unique buffer label for this input statement
+        input_buffer_label = self.new_label()
+        # We need a writable buffer, so we'll add it as raw bytes after the code
+        # Reserve 64 bytes (63 chars + null terminator) initialized to zero
+        # We'll add this to the output directly rather than using the strings list
+        buffer_init = f"{input_buffer_label}: DEFB " + ", ".join(["0"] * 64)
+        # Add to strings list but mark it specially (we'll handle it differently)
+        self.strings.append((input_buffer_label, "__BUFFER__64__"))
+        
+        # Save current VX, VY for cursor position
+        self.current_output.append("; Input: Read string from keyboard")
+        self.current_output.append(f"MOV P1, {input_buffer_label}")  # Buffer pointer
+        self.current_output.append("MOV R1, 0")  # Character count
+        self.current_output.append("MOV R2, VX")  # Save starting X position
+        self.current_output.append("MOV R3, VY")  # Save starting Y position
+        
+        # Input loop
+        input_loop_label = self.new_label()
+        input_done_label = self.new_label()
+        
+        self.current_output.append(f"{input_loop_label}:")
+        self.current_output.append("KEYSTAT R0")  # Check if key available
         self.current_output.append("CMP R0, 0")
-        self.current_output.append(f"JZ {input_label}")  # Wait for key
+        self.current_output.append(f"JZ {input_loop_label}")  # Wait for key
+        
         self.current_output.append("KEYIN R0")  # Read the key
-
-        # Store in variable
+        
+        # Check for Enter key (ASCII 13 or key code 10)
+        self.current_output.append("CMP R0, 13")  # Enter key
+        self.current_output.append(f"JZ {input_done_label}")
+        self.current_output.append("CMP R0, 10")  # Alternate Enter
+        self.current_output.append(f"JZ {input_done_label}")
+        
+        # Check for backspace (ASCII 8 or 127)
+        backspace_label = self.new_label()
+        after_backspace_label = self.new_label()
+        self.current_output.append("CMP R0, 8")  # Backspace
+        self.current_output.append(f"JZ {backspace_label}")
+        self.current_output.append("CMP R0, 127")  # Delete
+        self.current_output.append(f"JZ {backspace_label}")
+        self.current_output.append(f"JMP {after_backspace_label}")
+        
+        # Handle backspace
+        self.current_output.append(f"{backspace_label}:")
+        self.current_output.append("CMP R1, 0")  # Check if buffer empty
+        self.current_output.append(f"JZ {input_loop_label}")  # Nothing to delete
+        self.current_output.append("DEC R1")  # Decrease count
+        # Calculate address: P4 = P1 + R1
+        self.current_output.append("MOV P4, P1")
+        self.current_output.append("ADD P4, R1")
+        self.current_output.append("MOV [P4], 0")  # Clear character in buffer
+        # Redraw input area (clear and redisplay)
+        self.current_output.append("MOV VX, R2")  # Reset to start X
+        self.current_output.append("MOV VY, R3")  # Reset to start Y
+        self.current_output.append("MOV VC, 0")  # Black to clear
+        self.current_output.append(f"TEXT {input_buffer_label}")  # Clear old text
+        self.current_output.append("MOV VX, R2")  # Reset to start X
+        self.current_output.append("MOV VY, R3")  # Reset to start Y
+        self.current_output.append("MOV VC, 15")  # White
+        self.current_output.append(f"TEXT {input_buffer_label}")  # Redraw
+        self.current_output.append(f"JMP {input_loop_label}")
+        
+        # Store character in buffer
+        self.current_output.append(f"{after_backspace_label}:")
+        self.current_output.append("CMP R1, 63")  # Max 63 characters
+        self.current_output.append(f"JGE {input_loop_label}")  # Buffer full
+        # Calculate address: P4 = P1 + R1
+        self.current_output.append("MOV P4, P1")
+        self.current_output.append("ADD P4, R1")
+        self.current_output.append("MOV [P4], R0")  # Store character
+        self.current_output.append("INC R1")  # Increment count
+        # Calculate address for null terminator: P4 = P1 + R1
+        self.current_output.append("MOV P4, P1")
+        self.current_output.append("ADD P4, R1")
+        self.current_output.append("MOV [P4], 0")  # Null terminate
+        
+        # Echo character to screen
+        self.current_output.append("MOV VX, R2")  # Reset to start X
+        self.current_output.append("MOV VY, R3")  # Reset to start Y
+        self.current_output.append("MOV VC, 15")  # White color
+        self.current_output.append(f"TEXT {input_buffer_label}")  # Display updated string
+        
+        self.current_output.append(f"JMP {input_loop_label}")
+        
+        # Input complete
+        self.current_output.append(f"{input_done_label}:")
+        # Calculate address for final null terminator: P4 = P1 + R1
+        self.current_output.append("MOV P4, P1")
+        self.current_output.append("ADD P4, R1")
+        self.current_output.append("MOV [P4], 0")  # Ensure null termination
+        
+        # Move cursor to next line
+        self.current_output.append("MOV VX, 0")
+        self.current_output.append("ADD VY, 8")
+        
+        # Store buffer address in variable
         var_addr = self.get_variable_address(stmt.variable)
+        self.current_output.append(f"MOV P2, {input_buffer_label}")  # Load buffer address into P2
         self.current_output.append(f"MOV P0, {var_addr}")
-        self.current_output.append(f"MOV [P0], R0")
+        self.current_output.append(f"MOV [P0], P2")  # Store buffer address in variable
 
     def generate_disp(self, stmt: DispStmt):
         """Generate Disp expression code."""
@@ -1898,21 +1998,23 @@ class CodeGenerator:
                 
                 # CRITICAL: Struct fields are 16-bit unsigned values.
                 # ALWAYS load into 16-bit P registers to preserve unsigned values!
-                # This fixes signed comparison issues with values > 127.
                 self.current_output.append(f"; Load {var_name}.{expr.member}")
                 self.current_output.append(f"MOV P0, {field_addr}")
                 
-                # If target_reg is a P register, use it directly
-                # If target_reg is an R register, we cannot use it (would lose unsigned value)
-                # In that case, just use P1 and return it (caller will handle the mismatch)
-                if target_reg.startswith('P'):
-                    # Target is already a P register, use it
+                # CRITICAL FIX: Use target_reg if it's a P register (and not P0 which we just used)
+                # This ensures different registers are used for left/right operands in comparisons
+                if target_reg and target_reg.startswith('P') and target_reg != 'P0':
                     self.current_output.append(f"MOV {target_reg}, [P0]")
                     return target_reg
                 else:
-                    # Target is an R register, but we need P for unsigned values
-                    # Use P1 as a temporary and return it
-                    # The caller's target_reg will be unused but that's OK
+                    # Target is not suitable, find a free P register
+                    for reg in ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']:
+                        if not self.register_usage.get(reg, False):
+                            self.current_output.append(f"MOV {reg}, [P0]")
+                            # Don't mark as in-use here - let the caller manage it
+                            return reg
+                    
+                    # No free register, use P1 as fallback
                     self.current_output.append(f"MOV P1, [P0]")
                     return 'P1'
             else:
@@ -1948,7 +2050,15 @@ class CodeGenerator:
                 # Store field value
                 self.current_output.append(f"; Store to {var_name}.{expr.member}")
                 self.current_output.append(f"MOV P0, {field_addr}")
-                self.current_output.append(f"MOV [P0], {value_reg}")
+                
+                # CRITICAL FIX: Struct fields are 16-bit, so if value is in R register,
+                # we need to move it to a P register first to ensure 16-bit write
+                if value_reg.startswith('R'):
+                    # Move 8-bit R register to 16-bit P register for proper storage
+                    self.current_output.append(f"MOV P1, {value_reg}")
+                    self.current_output.append(f"MOV [P0], P1")
+                else:
+                    self.current_output.append(f"MOV [P0], {value_reg}")
             else:
                 # Auto-allocate struct instance on first use
                 # Try to infer struct type from context (if only one struct defined)
@@ -2528,7 +2638,14 @@ class CodeGenerator:
                 self.deallocate_register('P3')
         
         # Numeric operations - pick preferred registers (but don't pre-allocate to avoid clobber)
-        available_regs = [r for r in self.allocation_order if r != target_reg]
+        # For comparisons, prefer P registers since struct members are 16-bit
+        is_comparison = expr.operator in {"<", ">", "=", "<>", "<=", ">="}
+        if is_comparison:
+            # Use P registers for comparisons to handle struct members properly
+            available_regs = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']
+        else:
+            available_regs = [r for r in self.allocation_order if r != target_reg]
+        
         left_pref = available_regs[0] if available_regs else None
         right_pref = available_regs[1] if len(available_regs) > 1 else None
 
@@ -2536,8 +2653,12 @@ class CodeGenerator:
         left_result = self.generate_expression(expr.left, left_pref)
 
         # Preserve left across right-side evaluation ONLY for non-comparison ops
-        is_comparison = expr.operator in {"<", ">", "=", "<>", "<=", ">="}
         left_preserved_reg = None
+        
+        # CRITICAL FIX: For comparisons, mark left_result as in-use to prevent right operand from using it
+        if is_comparison:
+            self.register_usage[left_result] = True
+        
         if not is_comparison:
             # **OPTIMIZATION: Use register allocation instead of PUSH/POP for left operand preservation**
             # Find a free register to preserve left operand (avoid target_reg and right_pref)
@@ -2560,6 +2681,17 @@ class CodeGenerator:
 
         # Generate right operand
         right_result = self.generate_expression(expr.right, right_pref)
+        
+        # CRITICAL FIX: If right_result is the same register as left_result (for comparisons),
+        # we need to move one of them to a different register
+        if is_comparison and right_result == left_result:
+            # Find a different register for right operand
+            for reg in ['P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P1']:
+                if reg != left_result and not self.register_usage.get(reg, False):
+                    self.current_output.append(f"MOV {reg}, {right_result}")
+                    right_result = reg
+                    self.register_usage[reg] = True
+                    break
 
         if not is_comparison:
             # Restore left operand from register or stack

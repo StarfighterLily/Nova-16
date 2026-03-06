@@ -1,3 +1,7 @@
+// Define game structs
+STRUCT Player x y oldx oldy facing counter END
+
+// Initialize game
 SetLayer(1)
 Text(0, 0, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 0x1F)
 For a = 0 to 240 Step 8
@@ -7,96 +11,109 @@ Text(0, 248, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 0x1F)
 
 Str1 = "--"
 
-x = 8
-y = 8
-facing = 0
-counter = 0
+// Initialize player struct
+player.x = 8
+player.y = 8
+player.oldx = 8
+player.oldy = 8
+player.facing = 0
+player.counter = 0
 
 SetLayer(5)
 While 1
 
     Player:
-       oldx = x
-       oldy = y
-       counter = counter + 1
+       // Store old position
+       player.oldx = player.x
+       player.oldy = player.y
+       player.counter = player.counter + 1
 
        key = getKey()
        
+       // Handle attack action
        If key = 101 Then // 'e'
-           If facing = 0 Then
-               Text(x - 16, y + 8, Str1, 0x0F)
+           If player.facing = 0 Then
+               Text(player.x - 16, player.y + 8, Str1, 0x0F)
            End
-           If facing = 1 Then
-               Text(x + 8, y + 8, Str1, 0x0F)
+           If player.facing = 1 Then
+               Text(player.x + 8, player.y + 8, Str1, 0x0F)
            End
-           counter = 0
+           player.counter = 0
        End
        
+       // Handle movement - left
        If key = 97 Then // 'a'
-           x = x - 8
-           facing = 0
+           player.x = player.x - 8
+           player.facing = 0
        End
-       If key = 128 Then // right
-           x = x - 8
-           facing = 0
+       If key = 128 Then // right arrow
+           player.x = player.x - 8
+           player.facing = 0
        End
 
+       // Handle movement - right
        If key = 100 Then // 'd'
-           x = x + 8
-           facing = 1
+           player.x = player.x + 8
+           player.facing = 1
        End
-       If key = 129 Then // left
-           x = x + 8
-           facing = 1
+       If key = 129 Then // left arrow
+           player.x = player.x + 8
+           player.facing = 1
        End
        
+       // Handle movement - down
        If key = 115 Then // 's'
-           y = y + 8
+           player.y = player.y + 8
        End
-       If key = 131 Then // down
-           y = y + 8
+       If key = 131 Then // down arrow
+           player.y = player.y + 8
        End
        
+       // Handle movement - up
        If key = 119 Then // 'w'
-           y = y - 8
+           player.y = player.y - 8
        End
-       If key = 130 Then // up
-           y = y - 8
-       End
-
-       If x < 8 Then
-           x = 8
-       End
-       If x > 240 Then
-           x = 240
-       End
-       If y < 8 Then
-           y = 8
-       End
-       If y > 232 Then
-           y = 232
+       If key = 130 Then // up arrow
+           player.y = player.y - 8
        End
 
-       If oldx <> x Then
-           Text(oldx, oldy, "O", 0x00)
-           Text(oldx, oldy + 8, "X", 0x00)
-           Text(oldx - 16, oldy + 8, Str1, 0x00)
-           Text(oldx + 8, oldy + 8, Str1, 0x00)
+       // Boundary checking
+       If player.x < 8 Then
+           player.x = 8
        End
-       If oldy <> y Then
-           Text(oldx, oldy, "O", 0x00)
-           Text(oldx, oldy + 8, "X", 0x00)
-           Text(oldx - 16, oldy + 8, Str1, 0x00)
-           Text(oldx + 8, oldy + 8, Str1, 0x00)
+       If player.x > 240 Then
+           player.x = 240
+       End
+       If player.y < 8 Then
+           player.y = 8
+       End
+       If player.y > 232 Then
+           player.y = 232
        End
 
-       Text(x, y, "O", 0x0F)
-       Text(x, y + 8, "X", 0x0F)
+       // Clear old player position if moved
+       If player.oldx <> player.x Then
+           Text(player.oldx, player.oldy, "O", 0x00)
+           Text(player.oldx, player.oldy + 8, "X", 0x00)
+           Text(player.oldx - 16, player.oldy + 8, Str1, 0x00)
+           Text(player.oldx + 8, player.oldy + 8, Str1, 0x00)
+       End
+       If player.oldy <> player.y Then
+           Text(player.oldx, player.oldy, "O", 0x00)
+           Text(player.oldx, player.oldy + 8, "X", 0x00)
+           Text(player.oldx - 16, player.oldy + 8, Str1, 0x00)
+           Text(player.oldx + 8, player.oldy + 8, Str1, 0x00)
+       End
 
-       If counter = 255 Then
-           counter = 0
-           Text(oldx - 16, oldy + 8, Str1, 0x00)
-           Text(oldx + 8, oldy + 8, Str1, 0x00)
+       // Draw player at new position
+       Text(player.x, player.y, "O", 0x0F)
+       Text(player.x, player.y + 8, "X", 0x0F)
+
+       // Clear attack animation after timeout
+       If player.counter = 255 Then
+           player.counter = 0
+           Text(player.oldx - 16, player.oldy + 8, Str1, 0x00)
+           Text(player.oldx + 8, player.oldy + 8, Str1, 0x00)
        End
 
 End

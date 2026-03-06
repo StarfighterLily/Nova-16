@@ -1,0 +1,4 @@
+# Symbol table
+# Format: <symbol> <value>
+L2 0x0259
+STR0 0x0265

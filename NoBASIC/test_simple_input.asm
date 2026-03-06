@@ -1,0 +1,73 @@
+; NoBASIC compiler output
+; Generated for Nova-16
+ORG 0x0200
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV SP, P7
+MOV FP, SP
+MOV VC, 15
+TEXT STR0
+; Input: Read string from keyboard
+MOV P1, L2
+MOV R1, 0
+MOV R2, VX
+MOV R3, VY
+L3:
+KEYSTAT R0
+CMP R0, 0
+JZ L3
+KEYIN R0
+CMP R0, 13
+JZ L4
+CMP R0, 10
+JZ L4
+CMP R0, 8
+JZ L5
+CMP R0, 127
+JZ L5
+JMP L6
+L5:
+CMP R1, 0
+JZ L3
+DEC R1
+MOV [P1 + R1], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 0
+TEXT L2
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L2
+JMP L3
+L6:
+CMP R1, 63
+JGE L3
+MOV [P1 + R1], R0
+INC R1
+MOV [P1 + R1], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L2
+JMP L3
+L4:
+MOV [P1 + R1], 0
+MOV VX, 0
+ADD VY, 8
+MOV P0, 288
+MOV [P0], L2
+MOV VX, 0
+MOV VC, 15
+TEXT STR6
+ADD VY, 8
+MOV P0, 288
+MOV P1, [P0]
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+HLT
+STR0: DEFSTR "Name: "
+L2: DEFSTR "                                                               "
+STR6: DEFSTR "You entered:"

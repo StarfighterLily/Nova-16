@@ -1,0 +1,4 @@
+// Test string variable assignment and display
+Str1 = "Test String"
+Disp "Displaying Str1:"
+Disp Str1

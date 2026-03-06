@@ -5,6 +5,7 @@ MOV P7:, 0xFF
 MOV :P7, 0xFF
 MOV SP, P7
 MOV FP, SP
+; Struct Player declared with fields: x, y, oldx, oldy, facing, counter
 MOV VM, 0
 MOV VL, 1
 XOR VX, VX
@@ -32,19 +33,44 @@ XOR VX, VX
 MOV VY, 248
 MOV VC, 31
 TEXT STR0
-MOV P0, STR4
-MOV P1, 288
-MOV [P1], P0
+MOV P1, STR4
+MOV P0, 288
+MOV [P0], P1
 MOV R1, 1
 SHL R1, 3
-MOV P3, R1
+; Allocate struct player (Player) at 0x0122
+; Store to player.x
+MOV P0, 290
+MOV P1, R1
+MOV [P0], P1
 MOV R1, 1
 SHL R1, 3
-MOV P4, R1
+; Store to player.y
+MOV P0, 292
+MOV P1, R1
+MOV [P0], P1
+MOV R1, 1
+SHL R1, 3
+; Store to player.oldx
+MOV P0, 294
+MOV P1, R1
+MOV [P0], P1
+MOV R1, 1
+SHL R1, 3
+; Store to player.oldy
+MOV P0, 296
+MOV P1, R1
+MOV [P0], P1
 XOR R1, R1
-MOV P2, R1
+; Store to player.facing
+MOV P0, 298
+MOV P1, R1
+MOV [P0], P1
 XOR R1, R1
-MOV P5, R1
+; Store to player.counter
+MOV P0, 300
+MOV P1, R1
+MOV [P0], P1
 MOV VM, 0
 MOV VL, 5
 L6:
@@ -52,21 +78,39 @@ MOV R1, 1
 CMP R1, 0
 JZ L7
 Player:
-MOV P6, P3
-MOV P7, P4
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
+; Store to player.oldx
+MOV P0, 294
+MOV [P0], P1
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
+; Store to player.oldy
+MOV P0, 296
+MOV [P0], P1
+; Load player.counter
+MOV P0, 300
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P5
+MOV R2, P1
 MOV R3, 1
 MOV R1, R2
 ADD R1, R3
 ; Free R3 (last use)
-MOV P5, R1
+; Store to player.counter
+MOV P0, 300
+MOV P1, R1
+MOV [P0], P1
 KEYIN R0
 MOV R1, R0
-MOV P1, R1
-MOV R3, 101
-CMP P1, R3
-; Free R3 (last use)
+MOV P2, R1
+MOV P1, P2
+MOV R2, 101
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L10
 JMP L11
@@ -75,9 +119,13 @@ MOV R1, 1
 L11:
 CMP R1, 0
 JZ L8
-XOR R3, R3
-CMP P2, R3
-; Free R3 (last use)
+; Load player.facing
+MOV P0, 298
+MOV P1, [P0]
+XOR R2, R2
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L14
 JMP L15
@@ -86,16 +134,22 @@ MOV R1, 1
 L15:
 CMP R1, 0
 JZ L12
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P3
+MOV R2, P1
 MOV R3, 1
 SHL R3, 4
 MOV R0, R2
 SUB R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P4
+MOV R3, P1
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -107,9 +161,13 @@ MOV P0, 288
 MOV P0, [P0]
 TEXT P0
 L12:
-MOV R3, 1
-CMP P2, R3
-; Free R3 (last use)
+; Load player.facing
+MOV P0, 298
+MOV P1, [P0]
+MOV R2, 1
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L18
 JMP L19
@@ -118,16 +176,22 @@ MOV R1, 1
 L19:
 CMP R1, 0
 JZ L16
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P3
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R0, R2
 ADD R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P4
+MOV R3, P1
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -140,11 +204,16 @@ MOV P0, [P0]
 TEXT P0
 L16:
 XOR R1, R1
-MOV P5, R1
+; Store to player.counter
+MOV P0, 300
+MOV P1, R1
+MOV [P0], P1
 L8:
-MOV R3, 97
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 97
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L22
 JMP L23
@@ -153,21 +222,32 @@ MOV R1, 1
 L23:
 CMP R1, 0
 JZ L20
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P3
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
 SUB R1, R3
 ; Free R3 (last use)
-MOV P3, R1
+; Store to player.x
+MOV P0, 290
+MOV P1, R1
+MOV [P0], P1
 XOR R1, R1
-MOV P2, R1
+; Store to player.facing
+MOV P0, 298
+MOV P1, R1
+MOV [P0], P1
 L20:
-MOV R3, 1
-SHL R3, 7
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 1
+SHL R2, 7
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L26
 JMP L27
@@ -176,20 +256,31 @@ MOV R1, 1
 L27:
 CMP R1, 0
 JZ L24
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P3
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
 SUB R1, R3
 ; Free R3 (last use)
-MOV P3, R1
+; Store to player.x
+MOV P0, 290
+MOV P1, R1
+MOV [P0], P1
 XOR R1, R1
-MOV P2, R1
+; Store to player.facing
+MOV P0, 298
+MOV P1, R1
+MOV [P0], P1
 L24:
-MOV R3, 100
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 100
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L30
 JMP L31
@@ -198,20 +289,31 @@ MOV R1, 1
 L31:
 CMP R1, 0
 JZ L28
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P3
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
 ADD R1, R3
 ; Free R3 (last use)
-MOV P3, R1
+; Store to player.x
+MOV P0, 290
+MOV P1, R1
+MOV [P0], P1
 MOV R1, 1
-MOV P2, R1
+; Store to player.facing
+MOV P0, 298
+MOV P1, R1
+MOV [P0], P1
 L28:
-MOV R3, 129
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 129
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L34
 JMP L35
@@ -220,20 +322,31 @@ MOV R1, 1
 L35:
 CMP R1, 0
 JZ L32
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P3
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
 ADD R1, R3
 ; Free R3 (last use)
-MOV P3, R1
+; Store to player.x
+MOV P0, 290
+MOV P1, R1
+MOV [P0], P1
 MOV R1, 1
-MOV P2, R1
+; Store to player.facing
+MOV P0, 298
+MOV P1, R1
+MOV [P0], P1
 L32:
-MOV R3, 115
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 115
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L38
 JMP L39
@@ -242,18 +355,26 @@ MOV R1, 1
 L39:
 CMP R1, 0
 JZ L36
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P4
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
 ADD R1, R3
 ; Free R3 (last use)
-MOV P4, R1
+; Store to player.y
+MOV P0, 292
+MOV P1, R1
+MOV [P0], P1
 L36:
-MOV R3, 131
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 131
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L42
 JMP L43
@@ -262,18 +383,26 @@ MOV R1, 1
 L43:
 CMP R1, 0
 JZ L40
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P4
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
 ADD R1, R3
 ; Free R3 (last use)
-MOV P4, R1
+; Store to player.y
+MOV P0, 292
+MOV P1, R1
+MOV [P0], P1
 L40:
-MOV R3, 119
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 119
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L46
 JMP L47
@@ -282,18 +411,26 @@ MOV R1, 1
 L47:
 CMP R1, 0
 JZ L44
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P4
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
 SUB R1, R3
 ; Free R3 (last use)
-MOV P4, R1
+; Store to player.y
+MOV P0, 292
+MOV P1, R1
+MOV [P0], P1
 L44:
-MOV R3, 130
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 130
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L50
 JMP L51
@@ -302,19 +439,29 @@ MOV R1, 1
 L51:
 CMP R1, 0
 JZ L48
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P4
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
 SUB R1, R3
 ; Free R3 (last use)
-MOV P4, R1
+; Store to player.y
+MOV P0, 292
+MOV P1, R1
+MOV [P0], P1
 L48:
-MOV R3, 1
-SHL R3, 3
-CMP P3, R3
-; Free R3 (last use)
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
+MOV R2, 1
+SHL R2, 3
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JLT L54
 JMP L55
@@ -325,11 +472,18 @@ CMP R1, 0
 JZ L52
 MOV R1, 1
 SHL R1, 3
-MOV P3, R1
+; Store to player.x
+MOV P0, 290
+MOV P1, R1
+MOV [P0], P1
 L52:
-MOV R3, 240
-CMP P3, R3
-; Free R3 (last use)
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
+MOV R2, 240
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JGT L58
 JMP L59
@@ -339,12 +493,19 @@ L59:
 CMP R1, 0
 JZ L56
 MOV R1, 240
-MOV P3, R1
+; Store to player.x
+MOV P0, 290
+MOV P1, R1
+MOV [P0], P1
 L56:
-MOV R3, 1
-SHL R3, 3
-CMP P4, R3
-; Free R3 (last use)
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
+MOV R2, 1
+SHL R2, 3
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JLT L62
 JMP L63
@@ -355,11 +516,18 @@ CMP R1, 0
 JZ L60
 MOV R1, 1
 SHL R1, 3
-MOV P4, R1
+; Store to player.y
+MOV P0, 292
+MOV P1, R1
+MOV [P0], P1
 L60:
-MOV R3, 232
-CMP P4, R3
-; Free R3 (last use)
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
+MOV R2, 232
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JGT L66
 JMP L67
@@ -369,9 +537,19 @@ L67:
 CMP R1, 0
 JZ L64
 MOV R1, 232
-MOV P4, R1
+; Store to player.y
+MOV P0, 292
+MOV P1, R1
+MOV [P0], P1
 L64:
-CMP P6, P3
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
+; Load player.x
+MOV P0, 290
+MOV P4, [P0]
+CMP P1, P4
+; Free P1 (last use)
 MOV R1, 0
 JNZ L70
 JMP L71
@@ -380,31 +558,49 @@ MOV R1, 1
 L71:
 CMP R1, 0
 JZ L68
-MOV VX, P6
-MOV VY, P7
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
+MOV VX, P1
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
+MOV VY, P1
 XOR VC, VC
 TEXT STR71
-MOV VX, P6
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
+MOV VX, P1
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P7
-MOV R3, 1
-SHL R3, 3
-MOV R0, R2
-ADD R0, R3
-; Free R3 (last use)
-MOV VY, R0
+MOV R3, P1
+MOV R4, 1
+SHL R4, 3
+MOV R1, R3
+ADD R1, R4
+; Free R4 (last use)
+MOV VY, R1
 XOR VC, VC
 TEXT STR72
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P6
+MOV R2, P1
 MOV R3, 1
 SHL R3, 4
 MOV R0, R2
 SUB R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P1
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -415,16 +611,22 @@ XOR VC, VC
 MOV P0, 288
 MOV P0, [P0]
 TEXT P0
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P6
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R0, R2
 ADD R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P1
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -436,7 +638,14 @@ MOV P0, 288
 MOV P0, [P0]
 TEXT P0
 L68:
-CMP P7, P4
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
+; Load player.y
+MOV P0, 292
+MOV P4, [P0]
+CMP P1, P4
+; Free P1 (last use)
 MOV R1, 0
 JNZ L76
 JMP L77
@@ -445,31 +654,49 @@ MOV R1, 1
 L77:
 CMP R1, 0
 JZ L74
-MOV VX, P6
-MOV VY, P7
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
+MOV VX, P1
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
+MOV VY, P1
 XOR VC, VC
 TEXT STR71
-MOV VX, P6
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
+MOV VX, P1
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P7
-MOV R3, 1
-SHL R3, 3
-MOV R0, R2
-ADD R0, R3
-; Free R3 (last use)
-MOV VY, R0
+MOV R3, P1
+MOV R4, 1
+SHL R4, 3
+MOV R1, R3
+ADD R1, R4
+; Free R4 (last use)
+MOV VY, R1
 XOR VC, VC
 TEXT STR72
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P6
+MOV R2, P1
 MOV R3, 1
 SHL R3, 4
 MOV R0, R2
 SUB R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P1
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -480,16 +707,22 @@ XOR VC, VC
 MOV P0, 288
 MOV P0, [P0]
 TEXT P0
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P6
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R0, R2
 ADD R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P1
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -501,24 +734,40 @@ MOV P0, 288
 MOV P0, [P0]
 TEXT P0
 L74:
-MOV VX, P3
-MOV VY, P4
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
+MOV VX, P1
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
+MOV VY, P1
 MOV VC, 15
 TEXT STR71
-MOV VX, P3
+; Load player.x
+MOV P0, 290
+MOV P1, [P0]
+MOV VX, P1
+; Load player.y
+MOV P0, 292
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P4
-MOV R3, 1
-SHL R3, 3
-MOV R0, R2
-ADD R0, R3
-; Free R3 (last use)
-MOV VY, R0
+MOV R3, P1
+MOV R4, 1
+SHL R4, 3
+MOV R1, R3
+ADD R1, R4
+; Free R4 (last use)
+MOV VY, R1
 MOV VC, 15
 TEXT STR72
-MOV R3, 255
-CMP P5, R3
-; Free R3 (last use)
+; Load player.counter
+MOV P0, 300
+MOV P1, [P0]
+MOV R2, 255
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L80
 JMP L81
@@ -528,17 +777,26 @@ L81:
 CMP R1, 0
 JZ L78
 XOR R1, R1
-MOV P5, R1
+; Store to player.counter
+MOV P0, 300
+MOV P1, R1
+MOV [P0], P1
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P6
+MOV R2, P1
 MOV R3, 1
 SHL R3, 4
 MOV R0, R2
 SUB R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P1
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -549,16 +807,22 @@ XOR VC, VC
 MOV P0, 288
 MOV P0, [P0]
 TEXT P0
+; Load player.oldx
+MOV P0, 294
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P6
+MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R0, R2
 ADD R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+; Load player.oldy
+MOV P0, 296
+MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P1
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3

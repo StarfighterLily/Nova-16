@@ -1,0 +1,22 @@
+// Test Input statement implementation
+Disp "Input Test Program"
+Disp "=================="
+
+// Test 1: Simple input with prompt
+Input("Enter your name: ", name)
+Disp "Hello, "
+Disp name
+
+// Test 2: Input with another prompt
+Input("Enter age: ", age)
+Disp "Age entered: "
+Disp age
+
+// Test 3: Multiple inputs
+Input("First: ", str1)
+Input("Second: ", str2)
+Disp "You entered:"
+Disp str1
+Disp str2
+
+Pause

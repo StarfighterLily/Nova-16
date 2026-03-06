@@ -1,0 +1,277 @@
+; NoBASIC compiler output
+; Generated for Nova-16
+ORG 0x0200
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV SP, P7
+MOV FP, SP
+MOV VX, 0
+MOV VC, 15
+TEXT STR0
+ADD VY, 8
+MOV VX, 0
+MOV VC, 15
+TEXT STR1
+ADD VY, 8
+MOV VC, 15
+TEXT STR2
+; Input: Read string from keyboard
+MOV P1, L4
+MOV R1, 0
+MOV R2, VX
+MOV R3, VY
+L5:
+KEYSTAT R0
+CMP R0, 0
+JZ L5
+KEYIN R0
+CMP R0, 13
+JZ L6
+CMP R0, 10
+JZ L6
+CMP R0, 8
+JZ L7
+CMP R0, 127
+JZ L7
+JMP L8
+L7:
+CMP R1, 0
+JZ L5
+DEC R1
+MOV [P1 + R1], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 0
+TEXT L4
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L4
+JMP L5
+L8:
+CMP R1, 63
+JGE L5
+MOV [P1 + R1], R0
+INC R1
+MOV [P1 + R1], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L4
+JMP L5
+L6:
+MOV [P1 + R1], 0
+MOV VX, 0
+ADD VY, 8
+MOV P0, 288
+MOV [P0], L4
+MOV VX, 0
+MOV VC, 15
+TEXT STR8
+ADD VY, 8
+MOV R0, P2
+ITOS P1, R0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV VC, 15
+TEXT STR9
+; Input: Read string from keyboard
+MOV P1, L11
+MOV R1, 0
+MOV R2, VX
+MOV R3, VY
+L12:
+KEYSTAT R0
+CMP R0, 0
+JZ L12
+KEYIN R0
+CMP R0, 13
+JZ L13
+CMP R0, 10
+JZ L13
+CMP R0, 8
+JZ L14
+CMP R0, 127
+JZ L14
+JMP L15
+L14:
+CMP R1, 0
+JZ L12
+DEC R1
+MOV [P1 + R1], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 0
+TEXT L11
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L11
+JMP L12
+L15:
+CMP R1, 63
+JGE L12
+MOV [P1 + R1], R0
+INC R1
+MOV [P1 + R1], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L11
+JMP L12
+L13:
+MOV [P1 + R1], 0
+MOV VX, 0
+ADD VY, 8
+MOV P0, 290
+MOV [P0], L11
+MOV VX, 0
+MOV VC, 15
+TEXT STR15
+ADD VY, 8
+MOV R0, P2
+ITOS P1, R0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV VC, 15
+TEXT STR16
+; Input: Read string from keyboard
+MOV P1, L18
+MOV R1, 0
+MOV R2, VX
+MOV R3, VY
+L19:
+KEYSTAT R0
+CMP R0, 0
+JZ L19
+KEYIN R0
+CMP R0, 13
+JZ L20
+CMP R0, 10
+JZ L20
+CMP R0, 8
+JZ L21
+CMP R0, 127
+JZ L21
+JMP L22
+L21:
+CMP R1, 0
+JZ L19
+DEC R1
+MOV [P1 + R1], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 0
+TEXT L18
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L18
+JMP L19
+L22:
+CMP R1, 63
+JGE L19
+MOV [P1 + R1], R0
+INC R1
+MOV [P1 + R1], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L18
+JMP L19
+L20:
+MOV [P1 + R1], 0
+MOV VX, 0
+ADD VY, 8
+MOV P0, 292
+MOV [P0], L18
+MOV VC, 15
+TEXT STR22
+; Input: Read string from keyboard
+MOV P1, L24
+MOV R1, 0
+MOV R2, VX
+MOV R3, VY
+L25:
+KEYSTAT R0
+CMP R0, 0
+JZ L25
+KEYIN R0
+CMP R0, 13
+JZ L26
+CMP R0, 10
+JZ L26
+CMP R0, 8
+JZ L27
+CMP R0, 127
+JZ L27
+JMP L28
+L27:
+CMP R1, 0
+JZ L25
+DEC R1
+MOV [P1 + R1], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 0
+TEXT L24
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L24
+JMP L25
+L28:
+CMP R1, 63
+JGE L25
+MOV [P1 + R1], R0
+INC R1
+MOV [P1 + R1], 0
+MOV VX, R2
+MOV VY, R3
+MOV VC, 15
+TEXT L24
+JMP L25
+L26:
+MOV [P1 + R1], 0
+MOV VX, 0
+ADD VY, 8
+MOV P0, 294
+MOV [P0], L24
+MOV VX, 0
+MOV VC, 15
+TEXT STR28
+ADD VY, 8
+MOV P0, 292
+MOV P1, [P0]
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV P0, 294
+MOV P1, [P0]
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+L30:
+KEYSTAT R0
+CMP R0, 0
+JZ L30
+HLT
+STR0: DEFSTR "Input Test Program"
+STR1: DEFSTR "=================="
+STR2: DEFSTR "Enter your name: "
+L4: DEFSTR "                                                               "
+STR8: DEFSTR "Hello, "
+STR9: DEFSTR "Enter age: "
+L11: DEFSTR "                                                               "
+STR15: DEFSTR "Age entered: "
+STR16: DEFSTR "First: "
+L18: DEFSTR "                                                               "
+STR22: DEFSTR "Second: "
+L24: DEFSTR "                                                               "
+STR28: DEFSTR "You entered:"

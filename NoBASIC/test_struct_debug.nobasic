@@ -1,0 +1,48 @@
+// Debug struct test for game
+STRUCT Player x y facing END
+
+// Initialize
+player.x = 8
+player.y = 8  
+player.facing = 0
+
+// Display values immediately
+Text(0, 0, "Player X:", 31)
+Text(80, 0, player.x, 31)
+Text(0, 16, "Player Y:", 31)
+Text(80, 16, player.y, 31)
+Text(0, 32, "Facing:", 31)
+Text(80, 32, player.facing, 31)
+
+Pause
+
+// Test modification
+player.x = 16
+player.y = 24
+
+Text(0, 48, "After change:", 31)
+Text(0, 64, "X:", 31)
+Text(32, 64, player.x, 31)
+Text(0, 80, "Y:", 31)
+Text(32, 80, player.y, 31)
+
+Pause
+
+// Test in loop
+While 1
+    key = GetKey()
+    
+    If key = 100 Then // 'd'
+        player.x = player.x + 8
+    End
+    
+    If key = 97 Then // 'a'
+        player.x = player.x - 8
+    End
+    
+    // Display current position
+    Text(0, 100, "Loop X:", 31)
+    Text(64, 100, player.x, 31)
+    Text(0, 116, "Key:", 31)
+    Text(48, 116, key, 31)
+End

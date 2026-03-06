@@ -1,0 +1,23 @@
+; NoBASIC compiler output
+; Generated for Nova-16
+ORG 0x0200
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV SP, P7
+MOV FP, SP
+MOV P1, STR0
+MOV P0, 288
+MOV [P0], P1
+MOV VX, 0
+MOV VC, 15
+TEXT STR1
+ADD VY, 8
+MOV P0, 288
+MOV P1, [P0]
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+HLT
+STR0: DEFSTR "Test String"
+STR1: DEFSTR "Displaying Str1:"

@@ -1,0 +1,4 @@
+// Simple test
+Input("Name: ", Str1)
+Disp "You entered:"
+Disp Str1

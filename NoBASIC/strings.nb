@@ -1,0 +1,3 @@
+Input("Hello?", Str1)
+Disp Str1
+Disp "Hello!"

@@ -1,0 +1,12 @@
+// Minimal struct test
+STRUCT Test val END
+
+// Set value
+test.val = 42
+
+// Read and display
+x = test.val
+Text(0, 0, "Value:", 31)
+Text(64, 0, x, 31)
+
+Pause
