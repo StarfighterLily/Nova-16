@@ -375,6 +375,21 @@ class TestSemanticAnalyzer:
             x = add()
             """)
 
+    def test_function_implicit_assignment_remains_global(self):
+        """Implicit assignments in functions should define/update globals by default."""
+        self.parse_and_analyze("""
+        function setscore(v)
+            score = v
+            return score
+        end
+        x = setscore(7)
+        y = score + 1
+        """)
+
+        assert "score" in self.analyzer.symbol_table.variables
+        assert self.analyzer.symbol_table.get_variable_type("score") == DataType.NUMBER
+        assert self.analyzer.symbol_table.get_variable_type("y") == DataType.NUMBER
+
 
 class TestSymbolTable:
     """Test cases for the SymbolTable class."""

@@ -92,15 +92,16 @@ class CodeGenerator:
         # Preferred register order for allocation (R registers first, then P registers)
         self.allocation_order = [
             'R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9',
-            'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7'
+            'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6'
         ]
         
         # Preferred register order for variable allocation (P registers for 16-bit)
         self.var_allocation_order = [
-            'P2', 'P3', 'P4', 'P5', 'P6', 'P7'  # Skip P0/P1 by default
+            'P2', 'P3', 'P4', 'P5', 'P6'  # Skip P0/P1 and reserve P7 for call linkage
         ]
-        # Opportunistic fallback registers (used only when pressure is within capacity)
-        self.var_allocation_fallback = ['P1']
+        # Opportunistic fallback registers (used only when pressure is within capacity).
+        # Keep empty: P1 is used as a legacy scratch register in multiple codegen paths.
+        self.var_allocation_fallback = []
 
         # Variable register allocation (unified with temp tracking)
         self.var_reg: Dict[str, str] = {}  # variable name -> register
@@ -1117,6 +1118,12 @@ class CodeGenerator:
         self.var_lifetime = {}
         self.statement_counter = 0
         self.var_register_hints = {}
+        self.functions = {}
+        self.function_labels = {}
+        self.function_counter = 0
+        self.current_function = None
+        self.function_outputs = []
+        self.function_locals = {}
 
         # First pass: collect function definitions and assign labels
         for stmt in program.statements:
@@ -1280,6 +1287,26 @@ class CodeGenerator:
         elif isinstance(stmt, AsmBlockStmt):
             self.generate_asm_block(stmt)
 
+    def _collect_function_local_variables(self, statements: List[Statement]) -> List[str]:
+        """Collect LOCAL declarations from a function body, including nested blocks."""
+        local_vars: List[str] = []
+
+        for statement in statements:
+            if isinstance(statement, VarDeclarationStmt) and statement.scope == VarScope.LOCAL:
+                local_vars.extend(statement.variables)
+                continue
+
+            if isinstance(statement, IfStmt):
+                local_vars.extend(self._collect_function_local_variables(statement.then_branch))
+                if statement.else_branch:
+                    local_vars.extend(self._collect_function_local_variables(statement.else_branch))
+                continue
+
+            if isinstance(statement, (ForStmt, WhileStmt, RepeatStmt)):
+                local_vars.extend(self._collect_function_local_variables(statement.body))
+
+        return local_vars
+
     def generate_function_def(self, stmt: FunctionDefStmt, func_key: Optional[str] = None):
         """Generate a function definition with prologue, body, and epilogue."""
         func_key = func_key or stmt.name.lower()
@@ -1288,11 +1315,9 @@ class CodeGenerator:
         # Extract parameter names
         param_names = [param_name for param_name, _ in stmt.params]
         
-        # Collect local variables and calculate stack space needed
-        local_vars = []
-        for body_stmt in stmt.body:
-            if isinstance(body_stmt, VarDeclarationStmt) and body_stmt.scope == VarScope.LOCAL:
-                local_vars.extend(body_stmt.variables)
+        # Collect local variables and calculate stack space needed.
+        # This must include declarations nested inside If/For/While/Repeat blocks.
+        local_vars = self._collect_function_local_variables(stmt.body)
         
         # Calculate space for local variables (2 bytes each)
         locals_size = len(local_vars) * 2
@@ -1316,6 +1341,9 @@ class CodeGenerator:
         
         # Save old frame pointer and set up new frame with locals space
         func_lines.append(f"ENTER {locals_size}")  # Allocate space for local variables
+
+        # Use explicit frame teardown in epilogues instead of LEAVE because
+        # LEAVE encoding/decoding currently risks consuming the next opcode.
         
         # Note: Parameters are already on stack (pushed by caller)
         # FP now points to saved FP, params are at FP+4, FP+6, etc.
@@ -1328,20 +1356,23 @@ class CodeGenerator:
         # Temporarily redirect output to func_lines
         old_output = self.current_output
         self.current_output = func_lines
-        
-        # Generate function body
-        for body_stmt in stmt.body:
-            # Skip explicit return statements here, they'll emit their own RET
-            self.generate_statement(body_stmt)
-        
-        # If no explicit return, add default return 0
-        if not stmt.body or not isinstance(stmt.body[-1], ReturnStmt):
-            self.current_output.append("MOV R0, 0")
-            self.current_output.append("LEAVE")  # Native frame teardown
-            self.current_output.append("RET")
-        
-        # Restore output
-        self.current_output = old_output
+
+        try:
+            # Generate function body
+            for body_stmt in stmt.body:
+                # Skip explicit return statements here, they'll emit their own RET
+                self.generate_statement(body_stmt)
+
+            # If no explicit return, add default return 0
+            if not stmt.body or not isinstance(stmt.body[-1], ReturnStmt):
+                self.current_output.append("MOV R0, 0")
+                self.current_output.append("MOV SP, FP")
+                self.current_output.append("POP FP")
+                self.current_output.append("RET")
+        finally:
+            # Always restore generator context after emitting a function body.
+            self.current_output = old_output
+            self.current_function = prev_function
         
         # Add function code to collected outputs
         self.function_outputs.append(func_lines)
@@ -1361,7 +1392,8 @@ class CodeGenerator:
         
         # Function epilogue
         if self.current_function:
-            self.current_output.append("LEAVE")  # Native frame teardown
+            self.current_output.append("MOV SP, FP")
+            self.current_output.append("POP FP")
 
         self.current_output.append("RET")
 
@@ -4068,8 +4100,9 @@ class CodeGenerator:
                 # For 8-bit R registers, use P0 as intermediate for full 16-bit store
                 self.current_output.append(f"MOV P0, 0")
                 self.current_output.append(f"MOV :P0, {source_reg}")  # Move to LOW byte (not high!)
-                self.current_output.append(f"MOV P1, {spill_addr}")
-                self.current_output.append(f"MOV [P1], P0")
+                addr_reg = self._select_address_scratch_reg(exclude={'P0', source_reg})
+                self.current_output.append(f"MOV {addr_reg}, {spill_addr}")
+                self.current_output.append(f"MOV [{addr_reg}], P0")
             else:
                 # For 16-bit P registers, avoid clobbering the source register when it is P0
                 addr_reg = 'P1' if source_reg == 'P0' else 'P0'
@@ -4085,13 +4118,43 @@ class CodeGenerator:
             # For 8-bit R registers, use P0 as intermediate for full 16-bit store
             self.current_output.append(f"MOV P0, 0")
             self.current_output.append(f"MOV :P0, {source_reg}")  # Move to LOW byte (not high!)
-            self.current_output.append(f"MOV P1, {addr}")
-            self.current_output.append(f"MOV [P1], P0")
+            addr_reg = self._select_address_scratch_reg(exclude={'P0', source_reg})
+            self.current_output.append(f"MOV {addr_reg}, {addr}")
+            self.current_output.append(f"MOV [{addr_reg}], P0")
         else:
             # For 16-bit P registers, avoid clobbering the source register when it is P0
             addr_reg = 'P1' if source_reg == 'P0' else 'P0'
             self.current_output.append(f"MOV {addr_reg}, {addr}")
             self.current_output.append(f"MOV [{addr_reg}], {source_reg}")
+
+    def _select_address_scratch_reg(self, exclude: Optional[Set[str]] = None) -> str:
+        """Pick a P-register scratch for address operands without clobbering live variable registers."""
+        excluded = set(exclude or set())
+
+        # Prefer classic scratch registers first, but keep P7 reserved for call linkage.
+        candidates = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']
+
+        live_vars = self.live_at_point.get(self.program_counter, set())
+        blocked = {self.var_reg.get(v) for v in live_vars if v in self.var_reg}
+        blocked.discard(None)
+
+        for reg in candidates:
+            if reg in excluded:
+                continue
+            if self.register_usage.get(reg, False):
+                continue
+            if reg in blocked:
+                continue
+            return reg
+
+        for reg in candidates:
+            if reg in excluded:
+                continue
+            if reg in blocked:
+                continue
+            return reg
+
+        return 'P1' if 'P1' not in excluded else 'P2'
 
     def analyze_ssa_form(self):
         """

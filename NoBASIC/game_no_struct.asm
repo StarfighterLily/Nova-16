@@ -1,3 +1,11 @@
+; WARNING: 2 variable(s) using dedicated spill slots
+;          Spilled variables: oldy, facing
+;          Spill region: 0x7000-0x7004
+;          Register pressure: 2 (max), 5 available
+;          This will impact performance. Consider:
+;          - Reducing total variable count (currently 8)
+;          - Reducing variable lifetimes by localizing scope
+;          - Breaking complex expressions into simpler parts
 ; NoBASIC compiler output
 ; Generated for Nova-16
 ORG 0x0200
@@ -32,9 +40,9 @@ XOR VX, VX
 MOV VY, 248
 MOV VC, 31
 TEXT STR0
-MOV P0, STR4
-MOV P1, 288
-MOV [P1], P0
+MOV P1, STR4
+MOV P0, 288
+MOV [P0], P1
 MOV R1, 1
 SHL R1, 3
 MOV P3, R1
@@ -42,7 +50,10 @@ MOV R1, 1
 SHL R1, 3
 MOV P4, R1
 XOR R1, R1
-MOV P2, R1
+MOV P0, 0
+MOV :P0, R1
+MOV P1, 28674
+MOV [P1], P0
 XOR R1, R1
 MOV P5, R1
 MOV VM, 0
@@ -53,7 +64,8 @@ CMP R1, 0
 JZ L7
 Player:
 MOV P6, P3
-MOV P7, P4
+MOV P0, 28672
+MOV [P0], P4
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P5
 MOV R3, 1
@@ -63,10 +75,12 @@ ADD R1, R3
 MOV P5, R1
 KEYIN R0
 MOV R1, R0
-MOV P1, R1
-MOV R3, 101
-CMP P1, R3
-; Free R3 (last use)
+MOV P2, R1
+MOV P1, P2
+MOV R2, 101
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L10
 JMP L11
@@ -75,9 +89,12 @@ MOV R1, 1
 L11:
 CMP R1, 0
 JZ L8
-XOR R3, R3
-CMP P2, R3
-; Free R3 (last use)
+MOV P0, 28674
+MOV P1, [P0]
+XOR R2, R2
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L14
 JMP L15
@@ -107,9 +124,12 @@ MOV P0, 288
 MOV P0, [P0]
 TEXT P0
 L12:
-MOV R3, 1
-CMP P2, R3
-; Free R3 (last use)
+MOV P0, 28674
+MOV P1, [P0]
+MOV R2, 1
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L18
 JMP L19
@@ -142,9 +162,11 @@ L16:
 XOR R1, R1
 MOV P5, R1
 L8:
-MOV R3, 97
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 97
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L22
 JMP L23
@@ -162,12 +184,17 @@ SUB R1, R3
 ; Free R3 (last use)
 MOV P3, R1
 XOR R1, R1
-MOV P2, R1
+MOV P0, 0
+MOV :P0, R1
+MOV P1, 28674
+MOV [P1], P0
 L20:
-MOV R3, 1
-SHL R3, 7
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 1
+SHL R2, 7
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L26
 JMP L27
@@ -185,11 +212,16 @@ SUB R1, R3
 ; Free R3 (last use)
 MOV P3, R1
 XOR R1, R1
-MOV P2, R1
+MOV P0, 0
+MOV :P0, R1
+MOV P1, 28674
+MOV [P1], P0
 L24:
-MOV R3, 100
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 100
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L30
 JMP L31
@@ -207,11 +239,16 @@ ADD R1, R3
 ; Free R3 (last use)
 MOV P3, R1
 MOV R1, 1
-MOV P2, R1
+MOV P0, 0
+MOV :P0, R1
+MOV P1, 28674
+MOV [P1], P0
 L28:
-MOV R3, 129
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 129
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L34
 JMP L35
@@ -229,10 +266,15 @@ ADD R1, R3
 ; Free R3 (last use)
 MOV P3, R1
 MOV R1, 1
-MOV P2, R1
+MOV P0, 0
+MOV :P0, R1
+MOV P1, 28674
+MOV [P1], P0
 L32:
+MOV P1, P2
 MOV P0, 515
 CMP P1, P0
+; Free P1 (last use)
 ; Free P0 (last use)
 MOV R1, 0
 JZ L38
@@ -251,9 +293,11 @@ ADD R1, R3
 ; Free R3 (last use)
 MOV P4, R1
 L36:
-MOV R3, 131
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 131
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L42
 JMP L43
@@ -271,9 +315,11 @@ ADD R1, R3
 ; Free R3 (last use)
 MOV P4, R1
 L40:
-MOV R3, 119
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 119
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L46
 JMP L47
@@ -291,9 +337,11 @@ SUB R1, R3
 ; Free R3 (last use)
 MOV P4, R1
 L44:
-MOV R3, 130
-CMP P1, R3
-; Free R3 (last use)
+MOV P1, P2
+MOV R2, 130
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L50
 JMP L51
@@ -311,10 +359,12 @@ SUB R1, R3
 ; Free R3 (last use)
 MOV P4, R1
 L48:
-MOV R3, 1
-SHL R3, 3
-CMP P3, R3
-; Free R3 (last use)
+MOV P1, P3
+MOV R2, 1
+SHL R2, 3
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JLT L54
 JMP L55
@@ -327,9 +377,11 @@ MOV R1, 1
 SHL R1, 3
 MOV P3, R1
 L52:
-MOV R3, 240
-CMP P3, R3
-; Free R3 (last use)
+MOV P1, P3
+MOV R2, 240
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JGT L58
 JMP L59
@@ -341,10 +393,12 @@ JZ L56
 MOV R1, 240
 MOV P3, R1
 L56:
-MOV R3, 1
-SHL R3, 3
-CMP P4, R3
-; Free R3 (last use)
+MOV P1, P4
+MOV R2, 1
+SHL R2, 3
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JLT L62
 JMP L63
@@ -357,9 +411,11 @@ MOV R1, 1
 SHL R1, 3
 MOV P4, R1
 L60:
-MOV R3, 232
-CMP P4, R3
-; Free R3 (last use)
+MOV P1, P4
+MOV R2, 232
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JGT L66
 JMP L67
@@ -371,7 +427,9 @@ JZ L64
 MOV R1, 232
 MOV P4, R1
 L64:
-CMP P6, P3
+MOV P1, P6
+CMP P1, P3
+; Free P1 (last use)
 MOV R1, 0
 JNZ L70
 JMP L71
@@ -381,12 +439,16 @@ L71:
 CMP R1, 0
 JZ L68
 MOV VX, P6
-MOV VY, P7
+MOV P0, 28672
+MOV P0, [P0]
+MOV VY, :P0
 XOR VC, VC
 TEXT STR71
 MOV VX, P6
+MOV P0, 28672
+MOV P0, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P7
+MOV R2, P0
 MOV R3, 1
 SHL R3, 3
 MOV R0, R2
@@ -403,8 +465,10 @@ MOV R0, R2
 SUB R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P0
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -413,8 +477,8 @@ ADD R0, R4
 MOV VY, R0
 XOR VC, VC
 MOV P0, 288
-MOV P0, [P0]
-TEXT P0
+MOV P1, [P0]
+TEXT P1
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P6
 MOV R3, 1
@@ -423,8 +487,10 @@ MOV R0, R2
 ADD R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P0
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -433,10 +499,13 @@ ADD R0, R4
 MOV VY, R0
 XOR VC, VC
 MOV P0, 288
-MOV P0, [P0]
-TEXT P0
+MOV P1, [P0]
+TEXT P1
 L68:
-CMP P7, P4
+MOV P0, 28672
+MOV P1, [P0]
+CMP P1, P4
+; Free P1 (last use)
 MOV R1, 0
 JNZ L76
 JMP L77
@@ -446,12 +515,16 @@ L77:
 CMP R1, 0
 JZ L74
 MOV VX, P6
-MOV VY, P7
+MOV P0, 28672
+MOV P0, [P0]
+MOV VY, :P0
 XOR VC, VC
 TEXT STR71
 MOV VX, P6
+MOV P0, 28672
+MOV P0, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P7
+MOV R2, P0
 MOV R3, 1
 SHL R3, 3
 MOV R0, R2
@@ -468,8 +541,10 @@ MOV R0, R2
 SUB R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P0
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -478,8 +553,8 @@ ADD R0, R4
 MOV VY, R0
 XOR VC, VC
 MOV P0, 288
-MOV P0, [P0]
-TEXT P0
+MOV P1, [P0]
+TEXT P1
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P6
 MOV R3, 1
@@ -488,8 +563,10 @@ MOV R0, R2
 ADD R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P0
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -498,8 +575,8 @@ ADD R0, R4
 MOV VY, R0
 XOR VC, VC
 MOV P0, 288
-MOV P0, [P0]
-TEXT P0
+MOV P1, [P0]
+TEXT P1
 L74:
 MOV VX, P3
 MOV VY, P4
@@ -516,9 +593,11 @@ ADD R0, R3
 MOV VY, R0
 MOV VC, 15
 TEXT STR72
-MOV R3, 255
-CMP P5, R3
-; Free R3 (last use)
+MOV P1, P5
+MOV R2, 255
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
 MOV R1, 0
 JZ L80
 JMP L81
@@ -537,8 +616,10 @@ MOV R0, R2
 SUB R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P0
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -547,8 +628,8 @@ ADD R0, R4
 MOV VY, R0
 XOR VC, VC
 MOV P0, 288
-MOV P0, [P0]
-TEXT P0
+MOV P1, [P0]
+TEXT P1
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P6
 MOV R3, 1
@@ -557,8 +638,10 @@ MOV R0, R2
 ADD R0, R3
 ; Free R3 (last use)
 MOV VX, R0
+MOV P0, 28672
+MOV P0, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R3, P7
+MOV R3, P0
 MOV R4, 1
 SHL R4, 3
 MOV R0, R3
@@ -567,8 +650,8 @@ ADD R0, R4
 MOV VY, R0
 XOR VC, VC
 MOV P0, 288
-MOV P0, [P0]
-TEXT P0
+MOV P1, [P0]
+TEXT P1
 L78:
 JMP L6
 L7:

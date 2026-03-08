@@ -5,6 +5,7 @@ Tests end-to-end compilation and execution.
 
 import pytest
 import os
+import re
 import tempfile
 import subprocess
 from pathlib import Path
@@ -915,3 +916,67 @@ class TestIntegration:
             
             # Should complete in reasonable time
             assert end_time - start_time < 10.0  # Less than 10 seconds for 200 statements
+
+    def test_user_function_implicit_assignment_compiles_as_global_access(self):
+        """Implicit function assignments should compile as global variable access, not stack locals."""
+        source = """
+        function setscore(v)
+            score = v
+            return score
+        end
+        x = setscore(5)
+        y = score
+        """
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_file = Path(tmpdir) / "implicit_global_func.nobasic"
+            source_file.write_text(source)
+
+            compile_nobasic(str(source_file))
+
+            asm_file = source_file.with_suffix('.asm')
+            asm_content = asm_file.read_text()
+
+            # Function has only one parameter and no explicit locals.
+            assert "; Parameters: v" in asm_content
+            assert "; Locals:  (0 bytes)" in asm_content
+            # Score should be emitted as regular/global storage path (absolute address usage).
+            assert "MOV P0," in asm_content
+
+    def test_game_attack_function_has_edge_guards_for_sword_draw(self):
+        """Sword draw in game source should guard left/right edge positions before drawing."""
+        source = Path(__file__).parent.parent / "game.nobasic"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_file = Path(tmpdir) / "game.nobasic"
+            source_file.write_text(source.read_text())
+
+            compile_nobasic(str(source_file))
+
+            asm_file = source_file.with_suffix('.asm')
+            asm_content = asm_file.read_text().lower()
+            attack_section = asm_content.split("_func_attackifpressed_2:", 1)[1].split("_func_movexbykey_3:", 1)[0]
+
+            # Left edge guard (>= 16) may be folded as SHL by 4 with varying temp registers.
+            assert re.search(r"shl\s+[pr]\d,\s*4", attack_section)
+            assert "jge" in attack_section
+            # Right edge guard should compare against 232 and branch with <=.
+            assert "mov p2, 232" in attack_section
+            assert "jle" in attack_section
+
+    def test_game_no_struct_old_position_clear_does_not_use_p1_for_spill_addressing(self):
+        """Regression: game_no_struct clear path must avoid P1 scratch clobber from spill stores."""
+        source = Path(__file__).parent.parent / "game_no_struct.nobasic"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_file = Path(tmpdir) / "game_no_struct.nobasic"
+            source_file.write_text(source.read_text())
+
+            compile_nobasic(str(source_file))
+
+            asm_file = source_file.with_suffix('.asm')
+            asm_content = asm_file.read_text().lower()
+
+            # P1 was previously used as a hardcoded spill-address scratch register,
+            # which could overwrite a live old-position variable and break clear-on-move.
+            assert "mov p1, 28672" not in asm_content

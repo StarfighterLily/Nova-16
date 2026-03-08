@@ -282,6 +282,132 @@ class TestCodeGenerator:
         # length() is implemented via strlen
         assert any("STRLEN" in line for line in lines)
 
+    def test_user_function_codegen_keeps_main_scope_outside_function_frame(self):
+        """Global code after function defs should not use function FP parameter loads."""
+        code = self.generate_code("""
+        function add(a)
+            return a + 1
+        end
+        a = 10
+        x = add(a)
+        """)
+
+        main_code = code.split("HLT")[0]
+
+        assert self.generator.current_function is None
+        assert "ADD P0, 4" not in main_code
+        assert "MOV P1, [P0]" not in main_code
+
+    def test_user_function_codegen_resets_function_state_between_generate_calls(self):
+        """A reused CodeGenerator should not leak old function labels/blocks into new output."""
+        first = self.generate_code("""
+        function add(a)
+            return a + 1
+        end
+        x = add(1)
+        """)
+        assert "_func_add_0" in first
+
+        second = self.generate_code("x = 42")
+        assert "_func_add_0" not in second
+        assert "; Function: add" not in second
+
+    def test_user_function_default_arg_codegen_pushes_full_arity(self):
+        """Calling with omitted default args should still push a full argument frame."""
+        code = self.generate_code("""
+        function add(a, b = 5)
+            return a + b
+        end
+        x = add(2)
+        """)
+
+        lines = code.split("\n")
+        push_count = sum(1 for line in lines if line.strip().startswith("PUSH "))
+
+        assert "CALL _func_add_0" in code
+        assert "ADD SP, 4" in code
+        assert push_count >= 2
+
+    def test_codegen_reserves_p7_for_call_linkage(self):
+        """P7 must not be used as a general variable register when user functions are present."""
+        code = self.generate_code("""
+        function clearat(x, y)
+            text(x, y, "O", 0)
+        end
+        function calc(a, b, c, d)
+            return a + b + c + d
+        end
+        x = 8
+        y = 8
+        oldx = 8
+        oldy = 8
+        k = 0
+        s = "--"
+        while 1
+            oldx = x
+            oldy = y
+            k = getkey()
+            x = calc(x, y, oldx, oldy)
+            clearat(oldx, oldy)
+        end
+        """)
+
+        for line in code.split("\n"):
+            if line.strip().startswith("MOV P7, ") and "MOV P7, P7" not in line:
+                pytest.fail(f"P7 should be reserved, but found variable assignment: {line}")
+
+    def test_codegen_function_epilogue_uses_explicit_frame_teardown(self):
+        """Function epilogue should keep RET aligned by not relying on LEAVE opcode."""
+        code = self.generate_code("""
+        function add(a, b)
+            return a + b
+        end
+        x = add(1, 2)
+        """)
+
+        assert "LEAVE" not in code
+        assert "MOV SP, FP" in code
+        assert "POP FP" in code
+        assert "RET" in code
+
+    def test_user_function_codegen_allocates_local_declared_inside_if_block(self):
+        """LOCAL declarations nested in IF blocks should get real stack slots."""
+        code = self.generate_code("""
+        function bump(a)
+            if a > 0 then
+                local tmp
+                tmp = a + 1
+                return tmp
+            end
+            return 0
+        end
+        x = bump(2)
+        """)
+
+        assert "; LOCAL variable: tmp @ FP-2" in code
+        assert "ADD P0, -2" in code
+        assert "; LOCAL variable: tmp @ FP+0" not in code
+
+    def test_user_function_codegen_collects_locals_from_both_if_branches(self):
+        """Stack frame size should account for LOCAL vars declared in nested branch bodies."""
+        code = self.generate_code("""
+        function choose(flag)
+            if flag > 0 then
+                local left
+                left = 1
+            else
+                local right
+                right = 2
+            end
+            return 0
+        end
+        x = choose(1)
+        """)
+
+        assert "; Locals: left, right (4 bytes)" in code
+        assert "; LOCAL variable: left @ FP-2" in code
+        assert "; LOCAL variable: right @ FP-4" in code
+
     def test_list_and_matrix_access_codegen(self):
         """Test code generation for list and matrix access."""
         code = self.generate_code("x = L1(5)\ny = MatA(1, 2)")
@@ -443,6 +569,42 @@ class TestCodeGenerator:
         # If a different register is assigned, storage path must sync from P2.
         if name_reg != "P2":
             assert f"MOV {name_reg}, P2" in code
+
+    def test_store_variable_from_r_register_keeps_p7_reserved_for_regular_memory_addressing(self):
+        """R-source stores should keep P7 reserved for call linkage."""
+        self.generator.store_variable("x", "R3")
+        lines = self.generator.current_output
+
+        assert "MOV P0, 0" in lines
+        assert "MOV :P0, R3" in lines
+        addr_moves = [line for line in lines if line.startswith("MOV P") and line.endswith(", 288")]
+        assert addr_moves
+        assert "MOV P7, 288" not in lines
+        assert any(line.startswith("MOV [P") and line.endswith("], P0") for line in lines)
+
+    def test_store_variable_from_r_register_keeps_p7_reserved_for_spill_addressing(self):
+        """Spill writes from R-source should keep P7 reserved for call linkage."""
+        self.generator.spill_slots["tmp"] = 0x7000
+        self.generator.store_variable("tmp", "R5")
+        lines = self.generator.current_output
+
+        assert "MOV P0, 0" in lines
+        assert "MOV :P0, R5" in lines
+        addr_moves = [line for line in lines if line.startswith("MOV P") and line.endswith(", 28672")]
+        assert addr_moves
+        assert "MOV P7, 28672" not in lines
+        assert any(line.startswith("MOV [P") and line.endswith("], P0") for line in lines)
+
+    def test_store_variable_from_r_register_does_not_clobber_live_p1_variable(self):
+        """When P1 is live for a variable, address scratch selection must use a different register."""
+        self.generator.var_reg["oldy"] = "P1"
+        self.generator.live_at_point[self.generator.program_counter] = {"oldy"}
+
+        self.generator.store_variable("x", "R2")
+        lines = self.generator.current_output
+
+        assert "MOV P1, 288" not in lines
+        assert any(line.startswith("MOV P") and line.endswith(", 288") for line in lines)
 
     def test_goto_label_codegen(self):
         """Test code generation for goto and labels."""

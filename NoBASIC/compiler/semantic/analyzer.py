@@ -76,8 +76,14 @@ class SymbolTable:
                 raise SemanticError(f"Cannot declare LOCAL variable '{name}' in global scope", 0, 0)
             self.scopes[-1].define_variable(name, data_type, explicit=True)
         else:  # IMPLICIT
-            # Default behavior: define in current scope (global by default)
-            self.scopes[-1].define_variable(name, data_type, explicit=False)
+            # Match NoBASIC default scoping semantics:
+            # 1) If the name already exists in any visible scope, update that scope.
+            # 2) Otherwise create it in global scope (implicit globals by default).
+            for scope_obj in reversed(self.scopes):
+                if scope_obj.has_variable(name):
+                    scope_obj.define_variable(name, data_type, explicit=False)
+                    return
+            self.scopes[0].define_variable(name, data_type, explicit=False)
 
     def get_variable_type(self, name: str) -> DataType:
         """Get the type of a variable (searches from current scope upward)."""
@@ -657,8 +663,8 @@ class SemanticAnalyzer:
     def analyze_assignable_expression(self, expr: Expression, value_type: DataType):
         """Analyze an expression that can be assigned to (left-hand side of assignment)."""
         if isinstance(expr, VariableExpr):
-            # Variables are dynamically typed - implicit definition uses current scope
-            # This means variables default to global unless we're in a local scope
+            # Variables are dynamically typed and implicitly global by default,
+            # unless an existing local/parameter binding already exists.
             self.symbol_table.define_variable(expr.name, value_type, VarScope.IMPLICIT)
         elif isinstance(expr, MemberAccessExpr):
             # Struct member assignment
