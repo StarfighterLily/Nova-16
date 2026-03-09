@@ -18,7 +18,8 @@ from contextlib import contextmanager
 from collections import Counter
 from ..parser.ast import (
     Program, Statement, Expression, ClrDrawStmt, PxlOnStmt, PxlOffStmt,
-    LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
+    LineStmt, CircleStmt, TextStmt, SetLayerStmt, SRolStmt, SRotStmt, SShftStmt, SFlipStmt,
+    SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, ExpressionStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
@@ -1249,6 +1250,14 @@ class CodeGenerator:
             self.generate_text(stmt)
         elif isinstance(stmt, SetLayerStmt):
             self.generate_set_layer(stmt)
+        elif isinstance(stmt, SRolStmt):
+            self.generate_srol(stmt)
+        elif isinstance(stmt, SRotStmt):
+            self.generate_srot(stmt)
+        elif isinstance(stmt, SShftStmt):
+            self.generate_sshft(stmt)
+        elif isinstance(stmt, SFlipStmt):
+            self.generate_sflip(stmt)
         elif isinstance(stmt, SpriteOnStmt):
             self.generate_sprite_on(stmt)
         elif isinstance(stmt, SpriteOffStmt):
@@ -1533,6 +1542,36 @@ class CodeGenerator:
         """Generate optimized SetLayer(layer) code with direct register assignment."""
         self.current_output.append("MOV VM, 0")  # Coordinate mode for pixel operations
         self.generate_expression_into(stmt.layer, 'VL')
+
+    def generate_srol(self, stmt: SRolStmt):
+        """Generate SROL(axis, amount) code."""
+        axis_reg = self.generate_expression(stmt.axis)
+        amount_reg = self.generate_expression(stmt.amount)
+        self.current_output.append(f"SROL {axis_reg}, {amount_reg}")
+        self.smart_deallocate(axis_reg, is_last_use=True)
+        self.smart_deallocate(amount_reg, is_last_use=True)
+
+    def generate_srot(self, stmt: SRotStmt):
+        """Generate SROT(direction, amount) code."""
+        direction_reg = self.generate_expression(stmt.direction)
+        amount_reg = self.generate_expression(stmt.amount)
+        self.current_output.append(f"SROT {direction_reg}, {amount_reg}")
+        self.smart_deallocate(direction_reg, is_last_use=True)
+        self.smart_deallocate(amount_reg, is_last_use=True)
+
+    def generate_sshft(self, stmt: SShftStmt):
+        """Generate SSHFT(axis, amount) code."""
+        axis_reg = self.generate_expression(stmt.axis)
+        amount_reg = self.generate_expression(stmt.amount)
+        self.current_output.append(f"SSHFT {axis_reg}, {amount_reg}")
+        self.smart_deallocate(axis_reg, is_last_use=True)
+        self.smart_deallocate(amount_reg, is_last_use=True)
+
+    def generate_sflip(self, stmt: SFlipStmt):
+        """Generate SFLIP(axis) code."""
+        axis_reg = self.generate_expression(stmt.axis)
+        self.current_output.append(f"SFLIP {axis_reg}")
+        self.smart_deallocate(axis_reg, is_last_use=True)
 
     def generate_sprite_on(self, stmt: SpriteOnStmt):
         """Generate SpriteOn(spriteId, x, y) code.

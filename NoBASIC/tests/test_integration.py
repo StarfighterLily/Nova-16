@@ -64,6 +64,37 @@ class TestIntegration:
             assert "SFILL" in asm_content or "ClrDraw" in asm_content
             assert "SWRITE" in asm_content    # PxlOn
 
+    def test_screen_transform_compilation(self):
+        """Test compiling a program that uses screen transform statements."""
+        source = """
+        ClrDraw
+        axis = 1
+        amount = 4
+        Srol(axis, amount)
+        Srot(0, 45)
+        Sshft(axis, 2)
+        Sflip(axis)
+        Pause
+        """
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_file = Path(tmpdir) / "screen_transforms.nobasic"
+            source_file.write_text(source)
+
+            compile_nobasic(str(source_file))
+
+            asm_file = source_file.with_suffix('.asm')
+            bin_file = source_file.with_suffix('.bin')
+
+            assert asm_file.exists()
+            assert bin_file.exists()
+
+            asm_content = asm_file.read_text()
+            assert "SROL" in asm_content
+            assert "SROT" in asm_content
+            assert "SSHFT" in asm_content
+            assert "SFLIP" in asm_content
+
     def test_loop_compilation(self):
         """Test compiling a program with loops."""
         source = """

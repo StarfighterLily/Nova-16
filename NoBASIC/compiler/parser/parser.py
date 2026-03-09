@@ -8,7 +8,8 @@ from ..utils.error import ParserError
 from ..lexer.tokens import Token, TokenType
 from .ast import (
     Program, Statement, Expression, ClrDrawStmt, PxlOnStmt, PxlOffStmt,
-    LineStmt, CircleStmt, TextStmt, SetLayerStmt, SpriteOnStmt, SpriteOffStmt,
+    LineStmt, CircleStmt, TextStmt, SetLayerStmt, SRolStmt, SRotStmt, SShftStmt, SFlipStmt,
+    SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, ExpressionStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
@@ -79,6 +80,14 @@ class Parser:
             return self.text_statement()
         elif token.type == TokenType.SETLAYER:
             return self.set_layer_statement()
+        elif token.type == TokenType.SROL:
+            return self.srol_statement()
+        elif token.type == TokenType.SROT:
+            return self.srot_statement()
+        elif token.type == TokenType.SSHFT:
+            return self.sshft_statement()
+        elif token.type == TokenType.SFLIP:
+            return self.sflip_statement()
         elif token.type == TokenType.SPRITEON:
             return self.sprite_on_statement()
         elif token.type == TokenType.SPRITEOFF:
@@ -199,6 +208,44 @@ class Parser:
         layer = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after layer")
         return SetLayerStmt(layer)
+
+    def srol_statement(self) -> SRolStmt:
+        """Parse SROL(axis, amount)."""
+        self.advance()  # consume SROL
+        self.consume(TokenType.LPAREN, "Expected '(' after SROL")
+        axis = self.expression()
+        self.consume(TokenType.COMMA, "Expected ',' after axis")
+        amount = self.expression()
+        self.consume(TokenType.RPAREN, "Expected ')' after amount")
+        return SRolStmt(axis=axis, amount=amount)
+
+    def srot_statement(self) -> SRotStmt:
+        """Parse SROT(direction, amount)."""
+        self.advance()  # consume SROT
+        self.consume(TokenType.LPAREN, "Expected '(' after SROT")
+        direction = self.expression()
+        self.consume(TokenType.COMMA, "Expected ',' after direction")
+        amount = self.expression()
+        self.consume(TokenType.RPAREN, "Expected ')' after amount")
+        return SRotStmt(direction=direction, amount=amount)
+
+    def sshft_statement(self) -> SShftStmt:
+        """Parse SSHFT(axis, amount)."""
+        self.advance()  # consume SSHFT
+        self.consume(TokenType.LPAREN, "Expected '(' after SSHFT")
+        axis = self.expression()
+        self.consume(TokenType.COMMA, "Expected ',' after axis")
+        amount = self.expression()
+        self.consume(TokenType.RPAREN, "Expected ')' after amount")
+        return SShftStmt(axis=axis, amount=amount)
+
+    def sflip_statement(self) -> SFlipStmt:
+        """Parse SFLIP(axis)."""
+        self.advance()  # consume SFLIP
+        self.consume(TokenType.LPAREN, "Expected '(' after SFLIP")
+        axis = self.expression()
+        self.consume(TokenType.RPAREN, "Expected ')' after axis")
+        return SFlipStmt(axis=axis)
 
     def sprite_on_statement(self) -> SpriteOnStmt:
         """Parse SpriteOn(spriteId, x, y)"""

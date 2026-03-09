@@ -46,6 +46,11 @@ L4:
 INC P2
 JMP L1
 L2:
+MOV R0, 1
+MOV R1, 25
+SROT R0, R1
+; Free R0 (last use)
+; Free R1 (last use)
 MOV VM, 0
 MOV VL, 1
 SHL VL, 1
@@ -88,6 +93,11 @@ L8:
 INC P2
 JMP L5
 L6:
+MOV R0, 1
+MOV R1, 36
+SROT R0, R1
+; Free R0 (last use)
+; Free R1 (last use)
 MOV VM, 0
 MOV VL, 3
 XOR R1, R1
@@ -129,6 +139,11 @@ L12:
 INC P2
 JMP L9
 L10:
+MOV R0, 1
+MOV R1, 48
+SROT R0, R1
+; Free R0 (last use)
+; Free R1 (last use)
 MOV VM, 0
 MOV VL, 1
 SHL VL, 2
@@ -136,22 +151,54 @@ MOV VX, 80
 MOV VY, 118
 MOV VC, 31
 TEXT STR12
-; --- Inline Assembly Block ---
-LOOP:
+L14:
+MOV R1, 1
+WHILE R1
+JZ L15
+MOV VM, 0
 MOV VL, 1
-SROL 0, 1
-MOV VL, 2
-SROL 0, 2
+XOR R0, R0
+MOV R1, 1
+SROL R0, R1
+; Free R0 (last use)
+; Free R1 (last use)
+MOV VM, 0
+MOV VL, 1
+SHL VL, 1
+XOR R0, R0
+MOV R1, 1
+SHL R1, 1
+SROL R0, R1
+; Free R0 (last use)
+; Free R1 (last use)
+MOV VM, 0
 MOV VL, 3
-SROL 0, 3
-CALL SPINWHEELS
-JMP LOOP
-SPINWHEELS:
-INC SA
-CMP SA, 0x0FFF
-JNZ SPINWHEELS
-XOR SA, SA
-RET
-; --- End Inline Assembly ---
+XOR R0, R0
+MOV R1, 3
+SROL R0, R1
+; Free R0 (last use)
+; Free R1 (last use)
+XOR R1, R1
+MOV P2, R1
+MOV R1, 255
+MOV R0, R1
+L16:
+CMP P2, R0
+JGT L17
+XOR R0, R0
+MOV P3, R0
+MOV R0, 40
+MOV P5, R0
+L18:
+CMP P3, P5
+JGT L19
+INC P3
+JMP L18
+L19:
+INC P2
+JMP L16
+L17:
+JMP L14
+L15:
 HLT
 STR12: DEFSTR "StarField"

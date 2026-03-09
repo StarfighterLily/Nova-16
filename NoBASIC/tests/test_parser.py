@@ -9,7 +9,8 @@ from compiler.parser.ast import (
     LiteralExpr, VariableExpr, BinaryExpr, IfStmt, ForStmt, WhileStmt,
     PauseStmt, GroupingExpr, RepeatStmt, FunctionCallExpr, ListAccessExpr,
     MatrixAccessExpr, UnaryExpr, GotoStmt, LabelStmt, LineStmt, CircleStmt,
-    TextStmt, PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt,
+    TextStmt, SRolStmt, SRotStmt, SShftStmt, SFlipStmt,
+    PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt,
     GetKeyStmt, InputStmt, DispStmt, VarDeclarationStmt, FunctionDefStmt,
     ReturnStmt, StructDeclarationStmt, MemberAccessExpr, VarScope
 )
@@ -65,6 +66,37 @@ class TestParser:
         assert stmt.x.value == 10
         assert isinstance(stmt.y, LiteralExpr)
         assert stmt.y.value == 20
+
+    def test_screen_transform_statements(self):
+        """Test parsing screen transform statements."""
+        program = self.parse_source("srol(0, 5)\nsrot(1, 45)\nsshft(1, 2)\nsflip(0)")
+        assert len(program.statements) == 4
+
+        srol_stmt = program.statements[0]
+        assert isinstance(srol_stmt, SRolStmt)
+        assert isinstance(srol_stmt.axis, LiteralExpr)
+        assert srol_stmt.axis.value == 0
+        assert isinstance(srol_stmt.amount, LiteralExpr)
+        assert srol_stmt.amount.value == 5
+
+        srot_stmt = program.statements[1]
+        assert isinstance(srot_stmt, SRotStmt)
+        assert isinstance(srot_stmt.direction, LiteralExpr)
+        assert srot_stmt.direction.value == 1
+        assert isinstance(srot_stmt.amount, LiteralExpr)
+        assert srot_stmt.amount.value == 45
+
+        sshft_stmt = program.statements[2]
+        assert isinstance(sshft_stmt, SShftStmt)
+        assert isinstance(sshft_stmt.axis, LiteralExpr)
+        assert sshft_stmt.axis.value == 1
+        assert isinstance(sshft_stmt.amount, LiteralExpr)
+        assert sshft_stmt.amount.value == 2
+
+        sflip_stmt = program.statements[3]
+        assert isinstance(sflip_stmt, SFlipStmt)
+        assert isinstance(sflip_stmt.axis, LiteralExpr)
+        assert sflip_stmt.axis.value == 0
 
     def test_assignment_statement(self):
         """Test parsing assignment statement."""

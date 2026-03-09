@@ -10,6 +10,7 @@ from ..parser.ast import (
     FunctionCallStmt, FunctionDefStmt, ReturnStmt, VariableExpr, ListAccessExpr, MatrixAccessExpr,
     MemberAccessExpr, FunctionCallExpr, LiteralExpr, BinaryExpr, UnaryExpr, GroupingExpr,
     PxlOnStmt, PxlOffStmt, LineStmt, CircleStmt, TextStmt,
+    SRolStmt, SRotStmt, SShftStmt, SFlipStmt,
     SetLayerStmt, SpriteOnStmt, SpriteOffStmt, PlayToneStmt,
     PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt, DataType, StructType, VarScope
 )
@@ -236,6 +237,7 @@ class SemanticAnalyzer:
         elif isinstance(stmt, ExpressionStmt):
             self.analyze_expression_statement(stmt)
         elif isinstance(stmt, (PxlOnStmt, PxlOffStmt, LineStmt, CircleStmt, TextStmt,
+                      SRolStmt, SRotStmt, SShftStmt, SFlipStmt,
                               SetLayerStmt, SpriteOnStmt, SpriteOffStmt, PlayToneStmt,
                               PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt)):
             # These statements have expressions that need checking

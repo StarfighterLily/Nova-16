@@ -114,6 +114,33 @@ class SetLayerStmt(Statement):
 
 
 @dataclass
+class SRolStmt(Statement):
+    """SROL(axis, amount) statement."""
+    axis: Expression
+    amount: Expression
+
+
+@dataclass
+class SRotStmt(Statement):
+    """SROT(direction, amount) statement."""
+    direction: Expression
+    amount: Expression
+
+
+@dataclass
+class SShftStmt(Statement):
+    """SSHFT(axis, amount) statement."""
+    axis: Expression
+    amount: Expression
+
+
+@dataclass
+class SFlipStmt(Statement):
+    """SFLIP(axis) statement."""
+    axis: Expression
+
+
+@dataclass
 class SpriteOnStmt(Statement):
     """SpriteOn(spriteId, x, y) statement."""
     sprite_id: Expression

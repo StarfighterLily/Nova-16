@@ -224,6 +224,12 @@ class TestSemanticAnalyzer:
         program = self.parse_and_analyze("pxlon(10, 20, 31)\npxloff(5, 5)\nsetlayer(2)")
         # Should complete without errors
 
+    def test_screen_transform_statement_validation(self):
+        """Screen transform statements should analyze expression operands."""
+        program = self.parse_and_analyze("axis = 1\namount = 4\nsrol(axis, amount)\nsrot(0, amount)\nsshft(axis, 2)\nsflip(axis)")
+        assert self.analyzer.symbol_table.get_variable_type("axis") == DataType.NUMBER
+        assert self.analyzer.symbol_table.get_variable_type("amount") == DataType.NUMBER
+
     def test_sound_statement_validation(self):
         """Test semantic validation of sound statements."""
         program = self.parse_and_analyze("playtone(440, 1000, 128)\nplaywave(1, 220, 64)\nstopsound")

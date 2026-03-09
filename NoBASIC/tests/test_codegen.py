@@ -887,6 +887,22 @@ class TestCodeGenerator:
         assert any("SWRITE" in line for line in lines)
         assert any("SLINE" in line for line in lines)
 
+    def test_screen_transform_codegen(self):
+        """Test code generation for screen transform statements."""
+        code = self.generate_code("srol(0, 5)\nsrot(1, 45)\nsshft(1, 2)\nsflip(0)")
+        lines = code.strip().split("\n")
+        assert any("SROL" in line for line in lines)
+        assert any("SROT" in line for line in lines)
+        assert any("SSHFT" in line for line in lines)
+        assert any("SFLIP" in line for line in lines)
+
+    def test_screen_transform_codegen_with_variables(self):
+        """Screen transform statements should evaluate variable expressions."""
+        code = self.generate_code("axis = 1\namount = 3\nsrol(axis, amount)\nsflip(axis)")
+        lines = code.strip().split("\n")
+        assert any("SROL" in line for line in lines)
+        assert any("SFLIP" in line for line in lines)
+
     def test_sound_codegen_optimization(self):
         """Test optimized sound code generation."""
         code = self.generate_code("playtone(440, 1000, 128)")

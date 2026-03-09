@@ -4,37 +4,36 @@ For x = 0 to 25
         PxlOn(rnd()+x, rnd()-y, rndr(0x01, 0x05))
     Next
 Next
+SRot(1,25)
+
 SetLayer(2)
 For x = 0 to 20
     For y = 0 to 15
         PxlOn(rnd()+x, rnd()+x, rndr(0x06, 0x0A))
     Next
 Next
+SRot(1,36)
+
 SetLayer(3)
 For x = 0 to 15
     For y = 0 to 10
         PxlOn(rnd()-x, rnd()-y, rndr(0x0B, 0x0F))
     Next
 Next
+SRot(1,48)
 
 SetLayer(4)
 Text(80, 118, "StarField", 0x1F)
 
-Asm
-LOOP:
-    MOV VL, 1
-    SROL 0, 1
-    MOV VL, 2
-    SROL 0, 2
-    MOV VL, 3
-    SROL 0, 3
-    CALL SPINWHEELS
-    JMP LOOP
-
-SPINWHEELS:
-    INC SA
-    CMP SA, 0x0FFF
-    JNZ SPINWHEELS
-    XOR SA, SA
-    RET
+While 1
+    SetLayer(1)
+    SRol(0, 1)
+    SetLayer(2)
+    SRol(0, 2)
+    SetLayer(3)
+    SRol(0, 3)
+    For x = 0 to 255
+        For y = 0 to 40
+        Next
+    Next
 End
