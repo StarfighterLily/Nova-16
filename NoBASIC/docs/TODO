@@ -11,12 +11,3 @@ Compile-time gain: ~40-80% on repeated runs in local iteration.
 Add pass-level timing and counters in verbose mode.
 Report instruction counts pre/post each pass and spill/load-store counts.
 Not direct speedup, but improves optimization ROI quickly.
-
-
-Recommended Priority Order
-
-Peephole label/directive correctness fix (unblocks safe use of existing gains).
-Direct branch lowering for comparisons/conditions.
-Spill allocator correctness fix.
-Loop-invariant load hoisting.
-Real expression simplifier + pass metrics.
