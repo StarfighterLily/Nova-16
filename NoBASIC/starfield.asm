@@ -47,7 +47,7 @@ INC P2
 JMP L1
 L2:
 MOV R0, 1
-MOV R1, 25
+XOR R1, R1
 SROT R0, R1
 ; Free R0 (last use)
 ; Free R1 (last use)
@@ -94,7 +94,7 @@ INC P2
 JMP L5
 L6:
 MOV R0, 1
-MOV R1, 36
+MOV R1, 1
 SROT R0, R1
 ; Free R0 (last use)
 ; Free R1 (last use)
@@ -140,7 +140,8 @@ INC P2
 JMP L9
 L10:
 MOV R0, 1
-MOV R1, 48
+MOV R1, 1
+SHL R1, 1
 SROT R0, R1
 ; Free R0 (last use)
 ; Free R1 (last use)
