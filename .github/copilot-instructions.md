@@ -1,8 +1,6 @@
 
 # Nova-16 AI Agent Coding Guidelines
 
-**All AI agents must use the gnosis MCP server tools for todos, memories, and file reads/replaces, sophia MCP server for advanced thinking, reasoning, and memory, and Nova-16 MCP server tools for every code, assembly, debugging, and memory operation, unless said tools are unavailable or fail.**
-
 ## Core Principles
 - **Never assume implementation details**—always check code and patterns in the repo before making changes.
 - **Work incrementally**: Make small, testable changes and validate frequently.
@@ -10,12 +8,6 @@
 - **Use project-specific workflows and patterns**—see below for concrete examples.
 
 ## Required Agent Behaviors
-- Use MCP tools for:
-    - Assembly, disassembly, and symbol table access ([nova_assembler.py], [nova_disassembler.py])
-    - Running, debugging, and stepping ([nova.py], [nova_debugger.py])
-    - Graphics, sound, and keyboard I/O ([nova_gfx.py], [nova_sound.py], [nova_keyboard.py])
-    - Memory inspection and manipulation ([nova_memory.py], [nova_memory_profiler.py])
-- **Never bypass MCP tools** (e.g., do not run shell commands or edit files directly for emulator actions unless required)
 - Reference and follow patterns from these files:
     - [nova_cpu.py]: CPU core, register/flag handling
     - [nova_memory.py]: Memory layout, caching
@@ -34,11 +26,11 @@
 ## Example MCP Tool Usage
 ```powershell
 # Assemble and run a program
-python nova_assembler.py asm/test_add.asm
-python nova.py test_add.bin --headless --cycles 10000
+py -3.13 nova_assembler.py asm/test_add.asm
+py -3.13 nova.py test_add.bin --headless --cycles 10000
 
 # Start MCP server for agent control
-python nova_mcp_server.py
+py -3.13 nova_mcp_server.py
 ```
 
 ## File/Directory Conventions
@@ -66,22 +58,22 @@ NOVA-16 is a custom 16-bit CPU emulator with Princeton architecture (unified mem
 ### Assembly Development (Primary)
 ```powershell
 # Assemble .asm to .bin (creates .bin and optional .sym symbol table)
-python ..\nova_assembler.py program.asm
+py -3.13 ..\nova_assembler.py program.asm
 
 # Test headlessly (no GUI)
-python ..\nova.py --headless program.bin --cycles 10000
+py -3.13 ..\nova.py --headless program.bin --cycles 10000
 
 # Run with GUI
-python ..\nova.py program.bin
+py -3.13 ..\nova.py program.bin
 
 # Disassemble binary for inspection
-python ..\nova_disassembler.py program.bin
+py -3.13 ..\nova_disassembler.py program.bin
 ```
 
 ### MCP Server (LLM Integration)
 ```powershell
 # Start MCP server (enables Claude/AI agent control)
-python .\nova_mcp_server.py
+py -3.13 .\nova_mcp_server.py
 
 # Server provides 40+ tools for assembly, debugging, graphics, memory, sound
 # Tools can be used via MCP clients (VS Code Copilot, Claude, etc.)
@@ -91,24 +83,24 @@ python .\nova_mcp_server.py
 ```powershell
 # Compile NoBASIC to Nova-16 assembly
 cd NoBASIC
-python nobasic_compiler.py program.nb --output program.asm
+py -3.13 nobasic_compiler.py program.nb --output program.asm
 
 # Then assemble normally
 cd ..
-python .\nova_assembler.py NoBASIC/program.asm
+py -3.13 .\nova_assembler.py NoBASIC/program.asm
 ```
 
 ### Debugging & Analysis
 ```powershell
 # Interactive debugger (step, breakpoints, inspect)
-python nova_debugger.py program.bin
+py -3.13 nova_debugger.py program.bin
 
 # Graphics system analysis (detailed output on rendering)
-python ..\nova_graphics_monitor.py program.bin --cycles 1000 --export debug_output
+py -3.13 ..\nova_graphics_monitor.py program.bin --cycles 1000 --export debug_output
 
 # Profiling (CPU, memory, performance)
-python ..\nova_profiler.py program.bin
-python ..\nova_memory_profiler.py program.bin
+py -3.13 ..\nova_profiler.py program.bin
+py -3.13 ..\nova_memory_profiler.py program.bin
 ```
 
 ### Testing
@@ -276,7 +268,7 @@ print(f"Flags: Z={proc.flags[7]}, C={proc.flags[6]}, S={proc.flags[1]}, O={proc.
 ```
 
 ## Dependencies & Environment
-- **Python 3.13** with numpy, pygame. Invoke with `py -3.13` to access correct version.
+- **py -3.13** with numpy, pygame. Invoke with `py -3.13` to access correct version.
 - **Windows PowerShell** for all commands
 - **Windows 10** development platform
 - **MCP package** (optional): `pip install mcp` for LLM integration
@@ -308,5 +300,3 @@ print(f"P0-P9: {[f'0x{r:04X}' for r in proc.Pregisters[:10]]}")
 - `@pytest.mark.sound` - Audio system tests
 - `@pytest.mark.memory` - Memory access and caching tests
 - `@pytest.mark.slow` - Slow-running tests (> 5s)
-
-Use the sophia server for enhanced reasoning, thought/reason/logic critique, testing multiple hypotheses and threads of thought, and reflection. Store project details, architecture, and design patterns in sophia memories for agent reference.
