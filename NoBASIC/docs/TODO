@@ -1,9 +1,5 @@
 Highest-Value Optimizations
 
-Hoist loop-invariant memory loads for frequently reused vars.
-Repeated loads like MOV P0, 28672 / MOV P0, 288 and repeated TEXT address fetches inside loop body.
-Estimated gain: ~3-8% runtime in hot loops, modest code-size reduction.
-
 Implement real expression simplification pass (currently mostly placeholder).
 ExpressionSimplifier.simplify_expression currently returns original expr with fixed cost estimate.
 Add algebraic simplification + CSE-lite + constant propagation.
