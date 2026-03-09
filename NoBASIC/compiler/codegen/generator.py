@@ -141,6 +141,7 @@ class CodeGenerator:
         self.pressure_monitor: Optional[RegisterPressureMonitor] = None
         self.spill_allocator: Optional[DynamicSpillAllocator] = None
         self.expr_simplifier: Optional[ExpressionSimplifier] = None
+        self.expr_constant_values: Dict[str, int] = {}
 
     def allocate_register(self, preferred_reg: str = None, exclude_interfering: bool = True) -> str:
         """
@@ -1123,6 +1124,7 @@ class CodeGenerator:
         self.current_function = None
         self.function_outputs = []
         self.function_locals = {}
+        self.expr_constant_values = {}
 
         # First pass: collect function definitions and assign labels
         for stmt in program.statements:
@@ -1219,6 +1221,10 @@ class CodeGenerator:
         """Generate code for a statement."""
         # Increment program counter for runtime liveness tracking
         self.program_counter += 1
+
+        # Keep constant propagation conservative across control-flow boundaries.
+        if not isinstance(stmt, AssignmentStmt):
+            self.expr_constant_values.clear()
         
         # Clear temp registers at statement boundaries (safety measure)
         self._clear_temp_registers()
@@ -1920,10 +1926,17 @@ class CodeGenerator:
         is_string_assignment = False
         if isinstance(stmt.variable, VariableExpr):
             is_string_assignment = stmt.variable.name.upper().startswith("STR")
+
+        expr_to_generate = stmt.expression
+        if self.expr_simplifier is not None:
+            expr_to_generate, _ = self.expr_simplifier.simplify_expression(
+                stmt.expression,
+                context={"constants": self.expr_constant_values},
+            )
         
         # Generate the value - prefer a P register for strings, R1 for numeric temps
         preferred_reg = "P1" if is_string_assignment else "R1"
-        value_reg = self.generate_expression(stmt.expression, preferred_reg)
+        value_reg = self.generate_expression(expr_to_generate, preferred_reg)
 
         if isinstance(stmt.variable, VariableExpr):
             var_name = stmt.variable.name
@@ -1935,15 +1948,26 @@ class CodeGenerator:
             else:
                 # Store to memory (handles both regular memory and spill slots)
                 self.store_variable(var_name, value_reg)
+
+            if (
+                isinstance(expr_to_generate, LiteralExpr)
+                and expr_to_generate.data_type.name == "NUMBER"
+            ):
+                self.expr_constant_values[var_name] = self._normalize_numeric_literal(expr_to_generate.value)
+            else:
+                self.expr_constant_values.pop(var_name, None)
         elif isinstance(stmt.variable, MemberAccessExpr):
             # Struct member assignment
             self.generate_member_store(stmt.variable, value_reg)
+            self.expr_constant_values.clear()
         elif isinstance(stmt.variable, ListAccessExpr):
             # Array element assignment
             self.generate_list_store(stmt.variable, value_reg)
+            self.expr_constant_values.clear()
         elif isinstance(stmt.variable, MatrixAccessExpr):
             # Matrix element assignment
             self.generate_matrix_store(stmt.variable, value_reg)
+            self.expr_constant_values.clear()
         else:
             raise TypeError(f"Unsupported assignment target: {type(stmt.variable)}")
 
@@ -2617,6 +2641,12 @@ class CodeGenerator:
 
     def generate_expression(self, expr: Expression, preferred_reg: str = None) -> str:
         """Generate code for an expression and return the register containing the result."""
+        if self.expr_simplifier is not None:
+            expr, _ = self.expr_simplifier.simplify_expression(
+                expr,
+                context={"constants": self.expr_constant_values},
+            )
+
         # Check if this expression will produce a string address (needs P register)
         needs_p_register = self.is_string_expression(expr)
         

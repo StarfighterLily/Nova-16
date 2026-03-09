@@ -1,16 +1,3 @@
-Highest-Value Optimizations
-
-Implement real expression simplification pass (currently mostly placeholder).
-ExpressionSimplifier.simplify_expression currently returns original expr with fixed cost estimate.
-Add algebraic simplification + CSE-lite + constant propagation.
-Estimated gain: ~4-10% instruction reduction, ~3-8% runtime.
-
-Tighten live-range scheduler to basic-block scope only (or strict barriers).
-Current scheduling is conservative but still global enough to risk subtle ordering issues.
-Limit reordering to explicit basic blocks for safer wins.
-Estimated gain: ~2-5% runtime, lower regression risk.
-
-
 Pipeline Optimizations
 
 Add --asm-only / --no-assemble mode in nobasic_compiler.py.

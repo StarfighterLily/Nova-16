@@ -100,7 +100,8 @@ class TestCodeGenerator:
         # Compiler uses register allocation for variables
         # Should have MOV operations with P or R registers
         assert any("MOV" in line for line in lines)
-        assert any("ADD" in line for line in lines)
+        # Expression simplification may fold x + 5 into an immediate.
+        assert any("15" in line for line in lines) or any("ADD" in line for line in lines)
 
     def test_if_statement_simple(self):
         """Test if statement code generation."""
@@ -785,8 +786,14 @@ class TestCodeGenerator:
         """Test code generation for comparisons."""
         code = self.generate_code("a = 1\nb = 2\nresult = a = b")
         lines = code.strip().split("\n")
-        assert any("CMP" in line for line in lines)
-        assert any("JZ" in line for line in lines) or any("JNZ" in line for line in lines)
+        # If constants are propagated aggressively, comparison can fold to a literal 0.
+        has_runtime_compare = any("CMP" in line for line in lines) and (
+            any("JZ" in line for line in lines) or any("JNZ" in line for line in lines)
+        )
+        has_folded_literal = any(re.search(r"MOV\s+\w+,\s*0\b", line) for line in lines) or any(
+            re.search(r"XOR\s+(\w+),\s*\1\b", line) for line in lines
+        )
+        assert has_runtime_compare or has_folded_literal
 
     def test_string_operations_codegen(self):
         """Test code generation for string operations."""
@@ -859,8 +866,12 @@ class TestCodeGenerator:
         """Test constant propagation optimization."""
         code = self.generate_code("x = 5 * 3 + 2")
         lines = code.strip().split("\n")
-        # Could be optimized to x = 17, but current implementation doesn't do this
-        assert any("MUL" in line for line in lines) or any("ADD" in line for line in lines)
+        # Simplifier may fold this to a single immediate assignment (17).
+        assert (
+            any("MUL" in line for line in lines)
+            or any("ADD" in line for line in lines)
+            or any("17" in line for line in lines)
+        )
 
     def test_dead_code_elimination(self):
         """Test dead code elimination (if implemented)."""

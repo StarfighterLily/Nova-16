@@ -13,6 +13,16 @@ from typing import Dict, Set, List, Tuple, Optional, Any
 from collections import defaultdict, Counter
 from dataclasses import dataclass, field
 
+from ..parser.ast import (
+    BinaryExpr,
+    DataType,
+    FunctionCallExpr,
+    GroupingExpr,
+    LiteralExpr,
+    UnaryExpr,
+    VariableExpr,
+)
+
 
 @dataclass
 class RegisterColoringPass:
@@ -391,7 +401,7 @@ class ExpressionSimplifier:
     def __post_init__(self):
         """Initialize simplification state."""
         self.constant_cache: Dict[str, int] = {}  # expression -> constant value
-        self.cse_cache: Dict[str, str] = {}  # expression_str -> temp_var
+        self.cse_cache: Dict[str, Any] = {}  # expression_str -> simplified expr
         self.dead_vars: Set[str] = set()  # Variables with no uses
     
     def simplify_expression(self, expr: Any, context: Dict[str, Any] = None) -> Tuple[Any, int]:
@@ -406,19 +416,255 @@ class ExpressionSimplifier:
             Tuple of (simplified_expr, register_cost)
         """
         context = context or {}
-        
-        # Placeholder: this would be called during code generation
-        # For now, return original expression and estimated cost
-        register_cost = self._estimate_register_cost(expr)
+
+        constants = context.get("constants")
+        if not isinstance(constants, dict):
+            constants = {}
+
+        # Keep CSE local to a single simplify call to avoid stale cross-expression aliasing.
+        self.cse_cache = {}
+
+        simplified = self._simplify_node(expr, constants)
+        register_cost = self._estimate_register_cost(simplified)
         
         if self.debug and register_cost > 2:
             print(f"[EXPR_SIMP] High-cost expression (cost={register_cost})")
         
-        return expr, register_cost
+        return simplified, register_cost
+
+    def _simplify_node(self, expr: Any, constants: Dict[str, Any]) -> Any:
+        """Recursively simplify expression nodes."""
+        if isinstance(expr, GroupingExpr):
+            inner = self._simplify_node(expr.expression, constants)
+            return inner
+
+        if isinstance(expr, VariableExpr):
+            if expr.name in constants:
+                return LiteralExpr(value=constants[expr.name], data_type=DataType.NUMBER)
+            return expr
+
+        if isinstance(expr, LiteralExpr):
+            return expr
+
+        if isinstance(expr, UnaryExpr):
+            operand = self._simplify_node(expr.expression, constants)
+            if isinstance(operand, LiteralExpr) and operand.data_type == DataType.NUMBER:
+                folded = self._fold_unary(expr.operator, operand.value)
+                if folded is not None:
+                    return LiteralExpr(value=folded, data_type=DataType.NUMBER)
+
+            if expr.operator == "+":
+                return operand
+
+            return UnaryExpr(operator=expr.operator, expression=operand, is_post=expr.is_post)
+
+        if isinstance(expr, BinaryExpr):
+            left = self._simplify_node(expr.left, constants)
+            right = self._simplify_node(expr.right, constants)
+            operator = expr.operator
+
+            folded = self._fold_binary(operator, left, right)
+            if folded is not None:
+                return folded
+
+            algebraic = self._apply_algebraic_rules(operator, left, right)
+            if algebraic is not None:
+                return algebraic
+
+            canonical_left, canonical_right = self._canonicalize_binary_operands(operator, left, right)
+            simplified = BinaryExpr(left=canonical_left, operator=operator, right=canonical_right)
+
+            # CSE-lite: reuse equivalent simplified subtree within this expression tree.
+            key = self._expression_key(simplified)
+            if key in self.cse_cache:
+                return self.cse_cache[key]
+            self.cse_cache[key] = simplified
+            return simplified
+
+        if isinstance(expr, FunctionCallExpr):
+            simplified_args = [self._simplify_node(arg, constants) for arg in expr.arguments]
+            return FunctionCallExpr(name=expr.name, arguments=simplified_args)
+
+        return expr
+
+    def _fold_unary(self, operator: str, value: Any) -> Optional[Any]:
+        """Fold unary operation for numeric literals."""
+        try:
+            if operator == "-":
+                return -value
+            if operator == "NOT":
+                return ~int(value)
+            if operator == "ABS":
+                return abs(value)
+            return None
+        except (TypeError, ValueError):
+            return None
+
+    def _fold_binary(self, operator: str, left: Any, right: Any) -> Optional[LiteralExpr]:
+        """Fold binary operation when both sides are numeric literals."""
+        if not (
+            isinstance(left, LiteralExpr)
+            and isinstance(right, LiteralExpr)
+            and left.data_type == DataType.NUMBER
+            and right.data_type == DataType.NUMBER
+        ):
+            return None
+
+        try:
+            left_val = left.value
+            right_val = right.value
+
+            if operator == "+":
+                return LiteralExpr(left_val + right_val, DataType.NUMBER)
+            if operator == "-":
+                return LiteralExpr(left_val - right_val, DataType.NUMBER)
+            if operator == "*":
+                return LiteralExpr(left_val * right_val, DataType.NUMBER)
+            if operator == "/":
+                if right_val == 0:
+                    return None
+                return LiteralExpr(int(left_val / right_val), DataType.NUMBER)
+            if operator in {"%", "MOD"}:
+                if right_val == 0:
+                    return None
+                return LiteralExpr(left_val % right_val, DataType.NUMBER)
+            if operator in {"&", "AND"}:
+                return LiteralExpr(int(left_val) & int(right_val), DataType.NUMBER)
+            if operator in {"|", "OR"}:
+                return LiteralExpr(int(left_val) | int(right_val), DataType.NUMBER)
+            if operator in {"^", "XOR"}:
+                return LiteralExpr(int(left_val) ^ int(right_val), DataType.NUMBER)
+            if operator in {"<<", "SHL"}:
+                return LiteralExpr(int(left_val) << int(right_val), DataType.NUMBER)
+            if operator in {">>", "SHR"}:
+                return LiteralExpr(int(left_val) >> int(right_val), DataType.NUMBER)
+            if operator == "<":
+                return LiteralExpr(1 if left_val < right_val else 0, DataType.NUMBER)
+            if operator == ">":
+                return LiteralExpr(1 if left_val > right_val else 0, DataType.NUMBER)
+            if operator == "=":
+                return LiteralExpr(1 if left_val == right_val else 0, DataType.NUMBER)
+            if operator == "<>":
+                return LiteralExpr(1 if left_val != right_val else 0, DataType.NUMBER)
+            if operator == "<=":
+                return LiteralExpr(1 if left_val <= right_val else 0, DataType.NUMBER)
+            if operator == ">=":
+                return LiteralExpr(1 if left_val >= right_val else 0, DataType.NUMBER)
+        except (TypeError, ValueError, ZeroDivisionError):
+            return None
+
+        return None
+
+    def _apply_algebraic_rules(self, operator: str, left: Any, right: Any) -> Optional[Any]:
+        """Apply safe algebraic simplifications."""
+        if operator == "+":
+            if self._is_number_literal(right, 0):
+                return left
+            if self._is_number_literal(left, 0):
+                return right
+
+        if operator == "-":
+            if self._is_number_literal(right, 0):
+                return left
+            if self._expression_key(left) == self._expression_key(right):
+                return LiteralExpr(0, DataType.NUMBER)
+
+        if operator == "*":
+            if self._is_number_literal(right, 1):
+                return left
+            if self._is_number_literal(left, 1):
+                return right
+            if self._is_number_literal(right, 0) or self._is_number_literal(left, 0):
+                return LiteralExpr(0, DataType.NUMBER)
+
+        if operator == "/":
+            if self._is_number_literal(right, 1):
+                return left
+
+        if operator in {"%", "MOD"}:
+            if self._is_number_literal(right, 1):
+                return LiteralExpr(0, DataType.NUMBER)
+
+        if operator in {"&", "AND"}:
+            if self._is_number_literal(right, 0) or self._is_number_literal(left, 0):
+                return LiteralExpr(0, DataType.NUMBER)
+
+        if operator in {"|", "OR", "^", "XOR"}:
+            if self._is_number_literal(right, 0):
+                return left
+            if self._is_number_literal(left, 0):
+                return right
+
+        if operator in {"<<", "SHL", ">>", "SHR"}:
+            if self._is_number_literal(right, 0):
+                return left
+
+        return None
+
+    def _canonicalize_binary_operands(self, operator: str, left: Any, right: Any) -> Tuple[Any, Any]:
+        """Normalize commutative expression shape for better CSE hit-rate."""
+        if operator not in {"+", "*", "&", "AND", "|", "OR", "^", "XOR", "=", "<>"}:
+            return left, right
+
+        left_key = self._expression_key(left)
+        right_key = self._expression_key(right)
+        if right_key < left_key:
+            return right, left
+        return left, right
+
+    def _expression_key(self, expr: Any) -> str:
+        """Build a deterministic key for expression identity and CSE-lite."""
+        if isinstance(expr, LiteralExpr):
+            return f"lit:{expr.data_type.name}:{expr.value}"
+        if isinstance(expr, VariableExpr):
+            return f"var:{expr.name}"
+        if isinstance(expr, UnaryExpr):
+            return f"un:{expr.operator}:{self._expression_key(expr.expression)}"
+        if isinstance(expr, BinaryExpr):
+            left_key = self._expression_key(expr.left)
+            right_key = self._expression_key(expr.right)
+            if expr.operator in {"+", "*", "&", "AND", "|", "OR", "^", "XOR", "=", "<>"} and right_key < left_key:
+                left_key, right_key = right_key, left_key
+            return f"bin:{expr.operator}:{left_key}:{right_key}"
+        if isinstance(expr, GroupingExpr):
+            return f"grp:{self._expression_key(expr.expression)}"
+        if isinstance(expr, FunctionCallExpr):
+            args = ",".join(self._expression_key(arg) for arg in expr.arguments)
+            return f"call:{expr.name}({args})"
+        return repr(expr)
+
+    def _is_number_literal(self, expr: Any, expected: Any) -> bool:
+        return (
+            isinstance(expr, LiteralExpr)
+            and expr.data_type == DataType.NUMBER
+            and expr.value == expected
+        )
     
     def _estimate_register_cost(self, expr: Any) -> int:
         """Estimate how many registers an expression needs."""
-        # Simplified estimation - in real code, would analyze expression tree
+        if isinstance(expr, (LiteralExpr, VariableExpr)):
+            return 1
+
+        if isinstance(expr, GroupingExpr):
+            return self._estimate_register_cost(expr.expression)
+
+        if isinstance(expr, UnaryExpr):
+            return self._estimate_register_cost(expr.expression)
+
+        if isinstance(expr, FunctionCallExpr):
+            # Calls need at least one result register and temporary arg handling.
+            arg_cost = 0
+            for arg in expr.arguments:
+                arg_cost = max(arg_cost, self._estimate_register_cost(arg))
+            return max(1, arg_cost)
+
+        if isinstance(expr, BinaryExpr):
+            left_cost = self._estimate_register_cost(expr.left)
+            right_cost = self._estimate_register_cost(expr.right)
+            if left_cost == right_cost:
+                return left_cost + 1
+            return max(left_cost, right_cost)
+
         return 1
 
 
