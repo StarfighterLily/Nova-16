@@ -31,6 +31,19 @@ class TestCodeGenerator:
         self.analyzer.analyze(program)
         return self.generator.generate(program)
 
+    def has_boolean_materialization_pattern(self, code: str) -> bool:
+        """Detect comparison-to-boolean materialization blocks used by older lowering."""
+        return bool(
+            re.search(
+                r"MOV\s+(R\d|P\d),\s*0\s*\n"
+                r"\s*J(?:LT|LE|GT|GE|Z|NZ)\s+L\d+\s*\n"
+                r"\s*JMP\s+L\d+\s*\n"
+                r"\s*L\d+:\s*\n"
+                r"\s*MOV\s+\1,\s*1",
+                code,
+            )
+        )
+
     def test_empty_program(self):
         """Test code generation for empty program."""
         code = self.generate_code("")
@@ -93,7 +106,7 @@ class TestCodeGenerator:
         """Test if statement code generation."""
         code = self.generate_code("if x = 1 then y = 2 end")
         lines = code.strip().split("\n")
-        assert any("JZ" in line for line in lines)
+        assert any(any(jmp in line for jmp in ["JZ", "JNZ", "JLT", "JLE", "JGT", "JGE"]) for line in lines)
         # No JMP for simple if without else
         assert any("L1:" in line for line in lines)
 
@@ -120,7 +133,36 @@ class TestCodeGenerator:
         """Test while loop code generation."""
         code = self.generate_code("while x < 10\nx = x + 1\nend")
         lines = code.strip().split("\n")
-        assert any("JZ" in line for line in lines)
+        # Comparison conditions can use direct branch lowering (CMP + conditional jump)
+        assert any("WHILE" in line for line in lines) or any("CMP" in line for line in lines)
+        assert any(any(jmp in line for jmp in ["JZ", "JGE", "JGT", "JLE", "JLT", "JNZ"]) for line in lines)
+
+    def test_if_comparison_uses_direct_branch_lowering(self):
+        """If with comparison should branch directly without boolean materialization."""
+        code = self.generate_code("if x < y then z = 1 end")
+        lines = code.strip().split("\n")
+        assert any("CMP" in line for line in lines)
+        assert any("JGE" in line for line in lines)
+        assert not any(line.startswith("WHILE ") for line in lines)
+        assert not self.has_boolean_materialization_pattern(code)
+
+    def test_while_comparison_uses_direct_branch_lowering(self):
+        """While with comparison should branch directly without boolean materialization."""
+        code = self.generate_code("while x <= y\nend")
+        lines = code.strip().split("\n")
+        assert any("CMP" in line for line in lines)
+        assert any("JGT" in line for line in lines)
+        assert not any(line.startswith("WHILE ") for line in lines)
+        assert not self.has_boolean_materialization_pattern(code)
+
+    def test_repeat_comparison_uses_direct_branch_lowering(self):
+        """Repeat-until with comparison should branch directly without boolean materialization."""
+        code = self.generate_code("repeat\nuntil x >= y")
+        lines = code.strip().split("\n")
+        assert any("CMP" in line for line in lines)
+        assert any("JLT" in line for line in lines)
+        assert not any(line.startswith("WHILE ") for line in lines)
+        assert not self.has_boolean_materialization_pattern(code)
 
     def test_binary_expressions(self):
         """Test various binary operations."""
@@ -239,7 +281,7 @@ class TestCodeGenerator:
         """Test repeat loop code generation."""
         code = self.generate_code("repeat\nx = x + 1\nuntil x = 10")
         lines = code.strip().split("\n")
-        assert any("JZ" in line for line in lines)
+        assert any(any(jmp in line for jmp in ["JZ", "JNZ", "JLT", "JLE", "JGT", "JGE"]) for line in lines)
 
     def test_function_call(self):
         """Test function call code generation."""
@@ -368,7 +410,20 @@ class TestCodeGenerator:
         assert "LEAVE" not in code
         assert "MOV SP, FP" in code
         assert "POP FP" in code
-        assert "RET" in code
+        assert "RETN" in code
+
+    def test_codegen_return_uses_retn_with_value(self):
+        """Explicit return values should use RETN to preserve return data flow."""
+        code = self.generate_code("""
+        function add(a, b)
+            return a + b
+        end
+        x = add(1, 2)
+        """)
+
+        lines = [line.strip() for line in code.split("\n") if line.strip()]
+        assert "RETN" in code
+        assert "RET" not in lines
 
     def test_user_function_codegen_allocates_local_declared_inside_if_block(self):
         """LOCAL declarations nested in IF blocks should get real stack slots."""
@@ -430,10 +485,10 @@ class TestCodeGenerator:
         end
         """)
         lines = code.strip().split("\n")
-        # Should have multiple JZ and JMP instructions
-        jz_count = sum(1 for line in lines if "JZ" in line)
+        # Should have multiple conditional jumps and unconditional jumps
+        cond_count = sum(1 for line in lines if any(jmp in line for jmp in ["JZ", "JNZ", "JLT", "JLE", "JGT", "JGE"]))
         jmp_count = sum(1 for line in lines if "JMP" in line)
-        assert jz_count >= 2
+        assert cond_count >= 2
         assert jmp_count >= 2
 
     def test_loop_codegen_optimization(self):
@@ -606,6 +661,51 @@ class TestCodeGenerator:
         assert "MOV P1, 288" not in lines
         assert any(line.startswith("MOV P") and line.endswith(", 288") for line in lines)
 
+    def test_for_loop_hoists_global_loop_var_address_when_body_is_safe(self):
+        """Simple loop bodies should hoist loop-variable address and reuse it for stores."""
+        stmt = ForStmt(
+            variable="i",
+            start=LiteralExpr(1, DataType.NUMBER),
+            end=LiteralExpr(3, DataType.NUMBER),
+            step=None,
+            body=[
+                AssignmentStmt(
+                    variable=VariableExpr("x"),
+                    expression=BinaryExpr(VariableExpr("x"), "+", LiteralExpr(1, DataType.NUMBER)),
+                )
+            ],
+        )
+
+        self.generator.generate_for(stmt)
+        lines = self.generator.current_output
+
+        # i gets first global address (0x0120 = 288), hoisted into a stable P register once.
+        assert "MOV P6, 288" in lines
+        assert lines.count("MOV P6, 288") == 1
+        assert any(line == "MOV [P6], P1" for line in lines)
+
+    def test_for_loop_does_not_hoist_address_when_body_uses_function_call(self):
+        """Complex loop bodies keep legacy addressing path to avoid register-clobbering risk."""
+        stmt = ForStmt(
+            variable="i",
+            start=LiteralExpr(1, DataType.NUMBER),
+            end=LiteralExpr(3, DataType.NUMBER),
+            step=None,
+            body=[
+                AssignmentStmt(
+                    variable=VariableExpr("x"),
+                    expression=FunctionCallExpr("sin", [VariableExpr("i")]),
+                )
+            ],
+        )
+
+        self.generator.generate_for(stmt)
+        lines = self.generator.current_output
+
+        assert "MOV P6, 288" not in lines
+        # Legacy global loop-variable store path remains active.
+        assert lines.count("MOV P0, 288") >= 2
+
     def test_goto_label_codegen(self):
         """Test code generation for goto and labels."""
         code = self.generate_code("start:\nx = 1\ngoto start")
@@ -723,10 +823,10 @@ class TestCodeGenerator:
         code = self.generate_code("if x > 0 then y = 1 else y = 0 end")
         lines = code.strip().split("\n")
         # Should use conditional jumps
-        assert any("JZ" in line or "JNZ" in line or "JGT" in line for line in lines)
+        assert any(any(jmp in line for jmp in ["JZ", "JNZ", "JLT", "JLE", "JGT", "JGE"]) for line in lines)
         lines = code.strip().split("\n")
         # Check for conditional jumps
-        jump_instructions = [line for line in lines if any(jmp in line for jmp in ["JC", "JZ", "JMP", "CMP"])]
+        jump_instructions = [line for line in lines if any(jmp in line for jmp in ["JC", "JZ", "JNZ", "JLT", "JLE", "JGT", "JGE", "JMP", "CMP"])]
         assert len(jump_instructions) >= 2
 
     def test_expression_codegen_precedence(self):

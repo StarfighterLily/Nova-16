@@ -77,52 +77,38 @@ KEYIN R0
 MOV R1, R0
 MOV P2, R1
 MOV P1, P2
-MOV R0, 101
-CMP P1, R0
+MOV R2, 101
+CMP P1, R2
 ; Free P1 (last use)
-; Free R0 (last use)
-JNZ L8
+; Free R2 (last use)
+MOV R1, 0
+JZ L10
+JMP L11
+L10:
+MOV R1, 1
+L11:
+WHILE R1
+JZ L8
 MOV P0, 28674
 MOV P1, [P0]
-XOR R0, R0
-CMP P1, R0
+XOR R2, R2
+CMP P1, R2
 ; Free P1 (last use)
-; Free R0 (last use)
-JNZ L10
+; Free R2 (last use)
+MOV R1, 0
+JZ L14
+JMP L15
+L14:
+MOV R1, 1
+L15:
+WHILE R1
+JZ L12
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P3
 MOV R3, 1
 SHL R3, 4
 MOV R0, R2
 SUB R0, R3
-; Free R3 (last use)
-MOV VX, R0
-; Preserve left operand in register across right-side evaluation
-MOV R3, P4
-MOV R4, 1
-SHL R4, 3
-MOV R0, R3
-ADD R0, R4
-; Free R4 (last use)
-MOV VY, R0
-MOV VC, 15
-MOV P0, 288
-MOV P0, [P0]
-TEXT P0
-L10:
-MOV P0, 28674
-MOV P1, [P0]
-MOV R0, 1
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JNZ L12
-; Preserve left operand in register across right-side evaluation
-MOV R2, P3
-MOV R3, 1
-SHL R3, 3
-MOV R0, R2
-ADD R0, R3
 ; Free R3 (last use)
 MOV VX, R0
 ; Preserve left operand in register across right-side evaluation
@@ -138,15 +124,57 @@ MOV P0, 288
 MOV P0, [P0]
 TEXT P0
 L12:
+MOV P0, 28674
+MOV P1, [P0]
+MOV R2, 1
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JZ L18
+JMP L19
+L18:
+MOV R1, 1
+L19:
+WHILE R1
+JZ L16
+; Preserve left operand in register across right-side evaluation
+MOV R2, P3
+MOV R3, 1
+SHL R3, 3
+MOV R0, R2
+ADD R0, R3
+; Free R3 (last use)
+MOV VX, R0
+; Preserve left operand in register across right-side evaluation
+MOV R3, P4
+MOV R4, 1
+SHL R4, 3
+MOV R0, R3
+ADD R0, R4
+; Free R4 (last use)
+MOV VY, R0
+MOV VC, 15
+MOV P0, 288
+MOV P0, [P0]
+TEXT P0
+L16:
 XOR R1, R1
 MOV P5, R1
 L8:
 MOV P1, P2
-MOV R0, 97
-CMP P1, R0
+MOV R2, 97
+CMP P1, R2
 ; Free P1 (last use)
-; Free R0 (last use)
-JNZ L14
+; Free R2 (last use)
+MOV R1, 0
+JZ L22
+JMP L23
+L22:
+MOV R1, 1
+L23:
+WHILE R1
+JZ L20
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P3
 MOV R3, 1
@@ -156,78 +184,106 @@ SUB R1, R3
 ; Free R3 (last use)
 MOV P3, R1
 XOR R1, R1
-MOV P0, 0
-MOV :P0, R1
-MOV P1, 28674
-MOV [P1], P0
-L14:
-MOV P1, P2
-MOV R0, 1
-SHL R0, 7
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JNZ L16
-; Preserve left operand in register across right-side evaluation
-MOV R2, P3
-MOV R3, 1
-SHL R3, 3
-MOV R1, R2
-SUB R1, R3
-; Free R3 (last use)
-MOV P3, R1
-XOR R1, R1
-MOV P0, 0
-MOV :P0, R1
-MOV P1, 28674
-MOV [P1], P0
-L16:
-MOV P1, P2
-MOV R0, 100
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JNZ L18
-; Preserve left operand in register across right-side evaluation
-MOV R2, P3
-MOV R3, 1
-SHL R3, 3
-MOV R1, R2
-ADD R1, R3
-; Free R3 (last use)
-MOV P3, R1
-MOV R1, 1
-MOV P0, 0
-MOV :P0, R1
-MOV P1, 28674
-MOV [P1], P0
-L18:
-MOV P1, P2
-MOV R0, 129
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JNZ L20
-; Preserve left operand in register across right-side evaluation
-MOV R2, P3
-MOV R3, 1
-SHL R3, 3
-MOV R1, R2
-ADD R1, R3
-; Free R3 (last use)
-MOV P3, R1
-MOV R1, 1
 MOV P0, 0
 MOV :P0, R1
 MOV P1, 28674
 MOV [P1], P0
 L20:
 MOV P1, P2
+MOV R2, 1
+SHL R2, 7
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JZ L26
+JMP L27
+L26:
+MOV R1, 1
+L27:
+WHILE R1
+JZ L24
+; Preserve left operand in register across right-side evaluation
+MOV R2, P3
+MOV R3, 1
+SHL R3, 3
+MOV R1, R2
+SUB R1, R3
+; Free R3 (last use)
+MOV P3, R1
+XOR R1, R1
+MOV P0, 0
+MOV :P0, R1
+MOV P1, 28674
+MOV [P1], P0
+L24:
+MOV P1, P2
+MOV R2, 100
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JZ L30
+JMP L31
+L30:
+MOV R1, 1
+L31:
+WHILE R1
+JZ L28
+; Preserve left operand in register across right-side evaluation
+MOV R2, P3
+MOV R3, 1
+SHL R3, 3
+MOV R1, R2
+ADD R1, R3
+; Free R3 (last use)
+MOV P3, R1
+MOV R1, 1
+MOV P0, 0
+MOV :P0, R1
+MOV P1, 28674
+MOV [P1], P0
+L28:
+MOV P1, P2
+MOV R2, 129
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JZ L34
+JMP L35
+L34:
+MOV R1, 1
+L35:
+WHILE R1
+JZ L32
+; Preserve left operand in register across right-side evaluation
+MOV R2, P3
+MOV R3, 1
+SHL R3, 3
+MOV R1, R2
+ADD R1, R3
+; Free R3 (last use)
+MOV P3, R1
+MOV R1, 1
+MOV P0, 0
+MOV :P0, R1
+MOV P1, 28674
+MOV [P1], P0
+L32:
+MOV P1, P2
 MOV P0, 515
 CMP P1, P0
 ; Free P1 (last use)
 ; Free P0 (last use)
-JNZ L22
+MOV R1, 0
+JZ L38
+JMP L39
+L38:
+MOV R1, 1
+L39:
+WHILE R1
+JZ L36
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P4
 MOV R3, 1
@@ -235,103 +291,159 @@ SHL R3, 3
 MOV R1, R2
 ADD R1, R3
 ; Free R3 (last use)
-MOV P4, R1
-L22:
-MOV P1, P2
-MOV R0, 131
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JNZ L24
-; Preserve left operand in register across right-side evaluation
-MOV R2, P4
-MOV R3, 1
-SHL R3, 3
-MOV R1, R2
-ADD R1, R3
-; Free R3 (last use)
-MOV P4, R1
-L24:
-MOV P1, P2
-MOV R0, 119
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JNZ L26
-; Preserve left operand in register across right-side evaluation
-MOV R2, P4
-MOV R3, 1
-SHL R3, 3
-MOV R1, R2
-SUB R1, R3
-; Free R3 (last use)
-MOV P4, R1
-L26:
-MOV P1, P2
-MOV R0, 130
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JNZ L28
-; Preserve left operand in register across right-side evaluation
-MOV R2, P4
-MOV R3, 1
-SHL R3, 3
-MOV R1, R2
-SUB R1, R3
-; Free R3 (last use)
-MOV P4, R1
-L28:
-MOV P1, P3
-MOV R0, 1
-SHL R0, 3
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JGE L30
-MOV R1, 1
-SHL R1, 3
-MOV P3, R1
-L30:
-MOV P1, P3
-MOV R0, 240
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JLE L32
-MOV R1, 240
-MOV P3, R1
-L32:
-MOV P1, P4
-MOV R0, 1
-SHL R0, 3
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JGE L34
-MOV R1, 1
-SHL R1, 3
-MOV P4, R1
-L34:
-MOV P1, P4
-MOV R0, 232
-CMP P1, R0
-; Free P1 (last use)
-; Free R0 (last use)
-JLE L36
-MOV R1, 232
 MOV P4, R1
 L36:
+MOV P1, P2
+MOV R2, 131
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JZ L42
+JMP L43
+L42:
+MOV R1, 1
+L43:
+WHILE R1
+JZ L40
+; Preserve left operand in register across right-side evaluation
+MOV R2, P4
+MOV R3, 1
+SHL R3, 3
+MOV R1, R2
+ADD R1, R3
+; Free R3 (last use)
+MOV P4, R1
+L40:
+MOV P1, P2
+MOV R2, 119
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JZ L46
+JMP L47
+L46:
+MOV R1, 1
+L47:
+WHILE R1
+JZ L44
+; Preserve left operand in register across right-side evaluation
+MOV R2, P4
+MOV R3, 1
+SHL R3, 3
+MOV R1, R2
+SUB R1, R3
+; Free R3 (last use)
+MOV P4, R1
+L44:
+MOV P1, P2
+MOV R2, 130
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JZ L50
+JMP L51
+L50:
+MOV R1, 1
+L51:
+WHILE R1
+JZ L48
+; Preserve left operand in register across right-side evaluation
+MOV R2, P4
+MOV R3, 1
+SHL R3, 3
+MOV R1, R2
+SUB R1, R3
+; Free R3 (last use)
+MOV P4, R1
+L48:
+MOV P1, P3
+MOV R2, 1
+SHL R2, 3
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JLT L54
+JMP L55
+L54:
+MOV R1, 1
+L55:
+WHILE R1
+JZ L52
+MOV R1, 1
+SHL R1, 3
+MOV P3, R1
+L52:
+MOV P1, P3
+MOV R2, 240
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JGT L58
+JMP L59
+L58:
+MOV R1, 1
+L59:
+WHILE R1
+JZ L56
+MOV R1, 240
+MOV P3, R1
+L56:
+MOV P1, P4
+MOV R2, 1
+SHL R2, 3
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JLT L62
+JMP L63
+L62:
+MOV R1, 1
+L63:
+WHILE R1
+JZ L60
+MOV R1, 1
+SHL R1, 3
+MOV P4, R1
+L60:
+MOV P1, P4
+MOV R2, 232
+CMP P1, R2
+; Free P1 (last use)
+; Free R2 (last use)
+MOV R1, 0
+JGT L66
+JMP L67
+L66:
+MOV R1, 1
+L67:
+WHILE R1
+JZ L64
+MOV R1, 232
+MOV P4, R1
+L64:
 MOV P1, P6
 CMP P1, P3
 ; Free P1 (last use)
-JZ L38
+MOV R1, 0
+JNZ L70
+JMP L71
+L70:
+MOV R1, 1
+L71:
+WHILE R1
+JZ L68
 MOV VX, P6
 MOV P0, 28672
 MOV P0, [P0]
 MOV VY, :P0
 XOR VC, VC
-TEXT STR39
+TEXT STR71
 MOV VX, P6
 MOV P0, 28672
 MOV P0, [P0]
@@ -344,7 +456,7 @@ ADD R0, R3
 ; Free R3 (last use)
 MOV VY, R0
 XOR VC, VC
-TEXT STR40
+TEXT STR72
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P6
 MOV R3, 1
@@ -389,18 +501,25 @@ XOR VC, VC
 MOV P0, 288
 MOV P1, [P0]
 TEXT P1
-L38:
+L68:
 MOV P0, 28672
 MOV P1, [P0]
 CMP P1, P4
 ; Free P1 (last use)
-JZ L42
+MOV R1, 0
+JNZ L76
+JMP L77
+L76:
+MOV R1, 1
+L77:
+WHILE R1
+JZ L74
 MOV VX, P6
 MOV P0, 28672
 MOV P0, [P0]
 MOV VY, :P0
 XOR VC, VC
-TEXT STR39
+TEXT STR71
 MOV VX, P6
 MOV P0, 28672
 MOV P0, [P0]
@@ -413,7 +532,7 @@ ADD R0, R3
 ; Free R3 (last use)
 MOV VY, R0
 XOR VC, VC
-TEXT STR40
+TEXT STR72
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P6
 MOV R3, 1
@@ -458,11 +577,11 @@ XOR VC, VC
 MOV P0, 288
 MOV P1, [P0]
 TEXT P1
-L42:
+L74:
 MOV VX, P3
 MOV VY, P4
 MOV VC, 15
-TEXT STR39
+TEXT STR71
 MOV VX, P3
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P4
@@ -473,13 +592,20 @@ ADD R0, R3
 ; Free R3 (last use)
 MOV VY, R0
 MOV VC, 15
-TEXT STR40
+TEXT STR72
 MOV P1, P5
-MOV R0, 255
-CMP P1, R0
+MOV R2, 255
+CMP P1, R2
 ; Free P1 (last use)
-; Free R0 (last use)
-JNZ L44
+; Free R2 (last use)
+MOV R1, 0
+JZ L80
+JMP L81
+L80:
+MOV R1, 1
+L81:
+WHILE R1
+JZ L78
 XOR R1, R1
 MOV P5, R1
 ; Preserve left operand in register across right-side evaluation
@@ -526,12 +652,12 @@ XOR VC, VC
 MOV P0, 288
 MOV P1, [P0]
 TEXT P1
-L44:
+L78:
 JMP L6
 L7:
 HLT
 STR0: DEFSTR "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 STR3: DEFSTR "X                              X"
 STR4: DEFSTR "--"
-STR39: DEFSTR "O"
-STR40: DEFSTR "X"
+STR71: DEFSTR "O"
+STR72: DEFSTR "X"

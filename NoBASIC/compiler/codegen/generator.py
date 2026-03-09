@@ -787,15 +787,14 @@ class CodeGenerator:
                 print(f"\n[ASSIGN_REGS] Processing '{var}' at time {start}")
                 print(f"  Active intervals: {len(active_intervals)}, using regs: {active_regs}")
             
-            # Find available registers (not used by active intervals)
+            # Find available registers.
+            # Block registers held by active intervals plus interfering variables.
             used_regs = {reg for _, _, reg in active_intervals}
-            available_regs = [r for r in allocation_pool if r not in used_regs]
-            
-            # Also check interference graph - can't use registers of interfering variables
             interfering_vars = self.interference_graph.get(var, set())
             interfering_regs = {self.var_reg.get(v) for v in interfering_vars if v in self.var_reg}
             interfering_regs.discard(None)
-            available_regs = [r for r in available_regs if r not in interfering_regs]
+            blocked_regs = used_regs | interfering_regs
+            available_regs = [r for r in allocation_pool if r not in blocked_regs]
             
             # Respect pre-allocation register hints when available
             if var in self.var_register_hints:
@@ -1365,10 +1364,9 @@ class CodeGenerator:
 
             # If no explicit return, add default return 0
             if not stmt.body or not isinstance(stmt.body[-1], ReturnStmt):
-                self.current_output.append("MOV R0, 0")
                 self.current_output.append("MOV SP, FP")
                 self.current_output.append("POP FP")
-                self.current_output.append("RET")
+                self.current_output.append("RETN 0")
         finally:
             # Always restore generator context after emitting a function body.
             self.current_output = old_output
@@ -1379,23 +1377,20 @@ class CodeGenerator:
 
     def generate_return(self, stmt: ReturnStmt):
         """Generate a return statement."""
+        return_value = "0"
         if stmt.value:
             # Evaluate return value, preferring R0
             result_reg = self.generate_expression(stmt.value, 'R0')
-            # Ensure result is in R0 for return
-            if result_reg != 'R0':
-                self.current_output.append(f"MOV R0, {result_reg}")
-                self.smart_deallocate(result_reg, is_last_use=True)
+            return_value = result_reg
         else:
-            # Default return 0
-            self.current_output.append("MOV R0, 0")
+            return_value = "0"
         
         # Function epilogue
         if self.current_function:
             self.current_output.append("MOV SP, FP")
             self.current_output.append("POP FP")
 
-        self.current_output.append("RET")
+        self.current_output.append(f"RETN {return_value}")
 
     def generate_struct_declaration(self, stmt: StructDeclarationStmt):
         """Register struct type (no assembly code generated)."""
@@ -2167,17 +2162,7 @@ class CodeGenerator:
         else_label = self.new_label()
         end_label = self.new_label()
 
-        # Allocate a temporary register for the condition (ensures it can be freed)
-        temp_reg = self.allocate_register()
-        try:
-            condition_reg = self.generate_expression(stmt.condition, temp_reg)
-
-            # Test if condition is false (0)
-            self.current_output.append(f"CMP {condition_reg}, 0")
-            self.current_output.append(f"JZ {else_label}")
-        finally:
-            # Always free the temp register we allocated
-            self.deallocate_register(temp_reg)
+        self.emit_condition_false_jump(stmt.condition, else_label)
 
         for s in stmt.then_branch:
             self.generate_statement(s)
@@ -2192,6 +2177,64 @@ class CodeGenerator:
             self.current_output.append(f"{end_label}:")
         else:
             self.current_output.append(f"{else_label}:")
+
+    def _expr_has_unsafe_loop_addr_hoist_nodes(self, expr: Expression) -> bool:
+        """Return True when expression shape risks clobbering conservative hoist registers."""
+        if isinstance(expr, (FunctionCallExpr, ListAccessExpr, MatrixAccessExpr, MemberAccessExpr)):
+            return True
+        if isinstance(expr, BinaryExpr):
+            return (
+                self._expr_has_unsafe_loop_addr_hoist_nodes(expr.left)
+                or self._expr_has_unsafe_loop_addr_hoist_nodes(expr.right)
+            )
+        if isinstance(expr, UnaryExpr):
+            return self._expr_has_unsafe_loop_addr_hoist_nodes(expr.expression)
+        if isinstance(expr, GroupingExpr):
+            return self._expr_has_unsafe_loop_addr_hoist_nodes(expr.expression)
+        return False
+
+    def _stmt_allows_loop_addr_hoist(self, stmt: Statement) -> bool:
+        """Conservative statement-level check for loop address-hoist safety."""
+        if isinstance(stmt, AssignmentStmt):
+            target_unsafe = False
+            if isinstance(stmt.variable, (ListAccessExpr, MatrixAccessExpr, MemberAccessExpr)):
+                target_unsafe = True
+            elif isinstance(stmt.variable, Expression):
+                target_unsafe = self._expr_has_unsafe_loop_addr_hoist_nodes(stmt.variable)
+            return (not target_unsafe) and (not self._expr_has_unsafe_loop_addr_hoist_nodes(stmt.expression))
+
+        if isinstance(stmt, ExpressionStmt):
+            return not self._expr_has_unsafe_loop_addr_hoist_nodes(stmt.expression)
+
+        if isinstance(stmt, IfStmt):
+            if self._expr_has_unsafe_loop_addr_hoist_nodes(stmt.condition):
+                return False
+            return all(self._stmt_allows_loop_addr_hoist(s) for s in stmt.then_branch) and (
+                stmt.else_branch is None or all(self._stmt_allows_loop_addr_hoist(s) for s in stmt.else_branch)
+            )
+
+        # Graphics statements are safe when their arguments do not use complex memory helpers.
+        if isinstance(stmt, (PxlOnStmt, PxlOffStmt, LineStmt, CircleStmt, TextStmt, SetLayerStmt)):
+            exprs = []
+            if isinstance(stmt, PxlOnStmt):
+                exprs = [stmt.x, stmt.y, stmt.color]
+            elif isinstance(stmt, PxlOffStmt):
+                exprs = [stmt.x, stmt.y]
+            elif isinstance(stmt, LineStmt):
+                exprs = [stmt.x1, stmt.y1, stmt.x2, stmt.y2, stmt.color]
+            elif isinstance(stmt, CircleStmt):
+                exprs = [stmt.x, stmt.y, stmt.radius, stmt.color]
+            elif isinstance(stmt, TextStmt):
+                exprs = [stmt.x, stmt.y, stmt.text, stmt.color]
+            elif isinstance(stmt, SetLayerStmt):
+                exprs = [stmt.layer]
+            return all(not self._expr_has_unsafe_loop_addr_hoist_nodes(e) for e in exprs)
+
+        return False
+
+    def _loop_body_allows_address_hoist(self, body: List[Statement]) -> bool:
+        """Check whether a loop body is simple enough for conservative address-hoisting."""
+        return all(self._stmt_allows_loop_addr_hoist(stmt) for stmt in body)
 
     def generate_for(self, stmt: ForStmt):
         """Generate optimized For loop code with hoisted end value and efficient comparisons."""
@@ -2245,6 +2288,21 @@ class CodeGenerator:
             self.current_output.append(f"MOV {loop_reg}, {start_reg}")
             self.deallocate_register(start_reg)
         # else: start_reg == loop_reg, so generate_expression already set loop_reg to the start value
+
+        # Hoist global loop-variable memory address when loop body is simple/safe.
+        loop_var_addr_reg: Optional[str] = None
+        loop_var_addr: Optional[int] = None
+        if not is_local_var and not is_register_allocated and self.current_function is None:
+            loop_var_addr = self.get_variable_address(stmt.variable)
+            if self._loop_body_allows_address_hoist(stmt.body):
+                for candidate in ['P6', 'P5', 'P4']:
+                    if candidate in {loop_reg, end_reg, step_reg if stmt.step else ''}:
+                        continue
+                    if not self.register_usage.get(candidate, False):
+                        loop_var_addr_reg = candidate
+                        self.register_usage[loop_var_addr_reg] = True
+                        self.current_output.append(f"MOV {loop_var_addr_reg}, {loop_var_addr}")
+                        break
         
         # Store initial value if needed
         if is_local_var:
@@ -2254,9 +2312,11 @@ class CodeGenerator:
             self.current_output.append(f"ADD P0, {offset}")
             self.current_output.append(f"MOV [P0], {loop_reg}")
         elif not is_register_allocated and self.current_function is None:  # Only store in memory for global variables
-            var_addr = self.get_variable_address(stmt.variable)
-            self.current_output.append(f"MOV P0, {var_addr}")
-            self.current_output.append(f"MOV [P0], {loop_reg}")
+            if loop_var_addr_reg is not None:
+                self.current_output.append(f"MOV [{loop_var_addr_reg}], {loop_reg}")
+            else:
+                self.current_output.append(f"MOV P0, {loop_var_addr}")
+                self.current_output.append(f"MOV [P0], {loop_reg}")
 
         # **OPTIMIZATION: Load end value ONCE before loop**
         end_value_reg = self.generate_expression(stmt.end, end_reg)
@@ -2284,9 +2344,11 @@ class CodeGenerator:
             self.current_output.append(f"ADD P0, {offset}")
             self.current_output.append(f"MOV [P0], {loop_reg}")
         elif not is_register_allocated and self.current_function is None:  # Only store in memory for global variables
-            var_addr = self.get_variable_address(stmt.variable)
-            self.current_output.append(f"MOV P0, {var_addr}")
-            self.current_output.append(f"MOV [P0], {loop_reg}")
+            if loop_var_addr_reg is not None:
+                self.current_output.append(f"MOV [{loop_var_addr_reg}], {loop_reg}")
+            else:
+                self.current_output.append(f"MOV P0, {loop_var_addr}")
+                self.current_output.append(f"MOV [P0], {loop_reg}")
 
         # **OPTIMIZATION: Single comparison with proper jump instruction**
         # Compare current to end (end value already in register)
@@ -2327,6 +2389,8 @@ class CodeGenerator:
         self.deallocate_register(end_reg)
         if stmt.step:
             self.deallocate_register(step_reg)
+        if loop_var_addr_reg is not None:
+            self.deallocate_register(loop_var_addr_reg)
         
         # Decrement nesting level
         self.loop_nesting_level -= 1
@@ -2338,15 +2402,7 @@ class CodeGenerator:
 
         self.current_output.append(f"{loop_label}:")
 
-        # Allocate a temporary register for the condition (ensures it can be freed)
-        temp_reg = self.allocate_register()
-        try:
-            condition_reg = self.generate_expression(stmt.condition, temp_reg)
-            self.current_output.append(f"CMP {condition_reg}, 0")
-            self.current_output.append(f"JZ {end_label}")
-        finally:
-            # Always free the temp register we allocated
-            self.deallocate_register(temp_reg)
+        self.emit_condition_false_jump(stmt.condition, end_label)
 
         for s in stmt.body:
             self.generate_statement(s)
@@ -2363,15 +2419,38 @@ class CodeGenerator:
         for s in stmt.body:
             self.generate_statement(s)
 
-        # Allocate a temporary register for the condition (ensures it can be freed)
+        self.emit_condition_false_jump(stmt.condition, loop_label)
+
+    def emit_condition_false_jump(self, condition: Expression, false_label: str):
+        """Emit a jump to ``false_label`` when ``condition`` evaluates to false."""
+        if isinstance(condition, BinaryExpr):
+            false_jump_map = {
+                "<": "JGE",
+                ">": "JLE",
+                "=": "JNZ",
+                "<>": "JZ",
+                "<=": "JGT",
+                ">=": "JLT",
+            }
+            jump_opcode = false_jump_map.get(condition.operator)
+            if jump_opcode:
+                # Direct branch lowering avoids materializing booleans for control flow.
+                left_result = self.generate_expression(condition.left, 'P1')
+                right_result = self.generate_expression(condition.right, 'P2')
+                self.current_output.append(f"CMP {left_result}, {right_result}")
+                self.smart_deallocate(left_result, is_last_use=True)
+                self.smart_deallocate(right_result, is_last_use=True)
+                self.current_output.append(f"{jump_opcode} {false_label}")
+                return
+
+        # Fallback path for non-comparison conditions.
         temp_reg = self.allocate_register()
         try:
-            condition_reg = self.generate_expression(stmt.condition, temp_reg)
-            self.current_output.append(f"CMP {condition_reg}, 0")
-            self.current_output.append(f"JZ {loop_label}")
+            condition_reg = self.generate_expression(condition, temp_reg)
+            self.current_output.append(f"WHILE {condition_reg}")
+            self.current_output.append(f"JZ {false_label}")
         finally:
-            # Always free the temp register we allocated
-            self.deallocate_register(temp_reg)  # Continue looping if condition is false
+            self.deallocate_register(temp_reg)
 
     def generate_goto(self, stmt: GotoStmt):
         """Generate Goto code."""
@@ -2987,6 +3066,15 @@ class CodeGenerator:
         # Check for user-defined functions first
         if func_name_lower in self.functions:
             label, params, func_def = self.functions[func_name_lower]
+
+            # Preserve variable-backed registers across calls.
+            # User-defined callees freely use P-registers for locals/temps.
+            saved_var_regs = [
+                reg for reg in sorted(set(self.var_reg.values()))
+                if reg not in {'SP', 'FP'} and reg.startswith('P')
+            ]
+            for reg in saved_var_regs:
+                self.current_output.append(f"PUSH {reg}")
             
             # Handle default parameters: push provided args, then defaults for missing ones
             provided_args = expr.arguments
@@ -3030,6 +3118,10 @@ class CodeGenerator:
             total_args = len(all_args)
             if total_args > 0:
                 self.current_output.append(f"ADD SP, {total_args * 2}")
+
+            # Restore preserved variable registers (reverse stack order).
+            for reg in reversed(saved_var_regs):
+                self.current_output.append(f"POP {reg}")
             
             # Return value is in R0, move to target_reg
             if target_reg != 'R0':

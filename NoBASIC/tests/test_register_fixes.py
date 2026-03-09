@@ -244,5 +244,68 @@ z = x + y
             pass  # Just verify no crash
 
 
+class TestSpillPolicyRegression:
+    """Regression tests for spill policy under low measured pressure."""
+
+    def test_low_pressure_with_inflated_ranges_preserves_distinct_active_regs(self):
+        """Overlapping intervals must not alias even when measured pressure is low."""
+        generator = CodeGenerator(enable_optimizations=False)
+
+        vars_in_order = ["a", "b", "c", "d", "e", "f", "g"]
+
+        # Deliberately inflate interval ends to mimic conservative lifetime tracking.
+        generator.live_ranges = {
+            name: (idx + 1, 100)
+            for idx, name in enumerate(vars_in_order)
+        }
+
+        # Deliberately under-report measured pressure to mimic conservative/partial liveness.
+        generator.live_at_point = {
+            idx + 1: {name}
+            for idx, name in enumerate(vars_in_order)
+        }
+
+        generator.build_interference_graph()
+        generator.calculate_register_pressure()
+        generator.assign_registers()
+
+        # Because intervals overlap, allocator must avoid reusing the same register for all vars.
+        assigned_regs = list(generator.var_reg.values())
+        assert len(set(assigned_regs)) > 1
+
+    def test_game_no_struct_state_vars_do_not_alias(self):
+        """Critical state variables in game sample must not alias in the same register."""
+        source_path = Path(__file__).parent.parent / "game_no_struct.nobasic"
+        source = source_path.read_text(encoding="utf-8")
+
+        asm, generator = parse_and_generate(source)
+
+        # If both vars are in registers, they must not share the same register.
+        for left, right in [("x", "oldx"), ("y", "oldy")]:
+            if left in generator.var_reg and right in generator.var_reg:
+                assert generator.var_reg[left] != generator.var_reg[right], (
+                    f"State vars aliased: {left}/{right} -> {generator.var_reg[left]}"
+                )
+
+    def test_user_function_call_preserves_variable_registers(self):
+        """Codegen should save/restore variable P-registers around user function calls."""
+        code = """
+key = 97
+x = 1
+
+Function id(v)
+    Return v
+End
+
+a = id(key)
+b = id(key)
+        """
+
+        asm, _ = parse_and_generate(code)
+
+        assert "CALL _func_id_" in asm
+        assert "POP P" in asm, "Expected caller-side restore of preserved variable register(s)"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

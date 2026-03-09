@@ -173,6 +173,23 @@ class TestPeepholeOptimizer:
         lines = [l for l in result.split('\n') if l.strip()]
         assert len(lines) <= 2
 
+    def test_new_control_flow_opcodes_classification(self):
+        """CALLZ/CALLNZ/LOOPZ should be treated as conditional control-flow ops."""
+        assert self.optimizer._is_conditional_jump("CALLZ") is True
+        assert self.optimizer._is_conditional_jump("CALLNZ") is True
+        assert self.optimizer._is_conditional_jump("LOOPZ") is True
+        assert self.optimizer._is_unconditional_jump("RETN") is True
+
+    def test_flag_dependency_with_while_and_callz(self):
+        """WHILE writes flags and CALLZ reads them; optimizer must preserve dependency."""
+        code = """WHILE R0
+        CALLZ fn
+        fn:
+        HLT"""
+
+        self.optimizer.instructions = self.optimizer._parse_assembly(code)
+        assert self.optimizer._has_flag_dependency_between(0, 2) is True
+
 
 # ============================================================================
 # LIVE RANGE SCHEDULER TESTS
@@ -280,6 +297,19 @@ class TestLiveRangeScheduler:
         
         # Verify structure is preserved
         assert len(result) == 3
+
+    def test_labeled_directive_is_preserved(self):
+        """Scheduler must preserve inline labeled directives as directives."""
+        code = [
+            "MOV R0, 1",
+            "LBUF: DEFSTR \"hello\"",
+            "HLT",
+        ]
+
+        result = self.scheduler.schedule(code)
+
+        assert "LBUF: DEFSTR \"hello\"" in result
+        assert any(line.startswith("LBUF:") for line in result)
 
 
 # ============================================================================
@@ -459,6 +489,31 @@ class TestRegressions:
         optimizer = PeepholeOptimizer()
         result = optimizer.optimize(code)
         assert "ORG 0x0200" in result
+
+    def test_labeled_directive_not_lost_in_peephole(self):
+        """Peephole parser must keep `label: DEFSTR ...` lines intact."""
+        code = """ORG 0x0200
+        L4: DEFSTR "buffer"
+        HLT"""
+
+        optimizer = PeepholeOptimizer()
+        result = optimizer.optimize(code)
+
+        assert "L4: DEFSTR \"buffer\"" in result
+        assert "L4:" in result
+
+    def test_lowercase_directive_is_classified(self):
+        """Directive classification should be case-insensitive."""
+        code = """org 0x0200
+        l5: defstr "ok"
+        hlt"""
+
+        optimizer = PeepholeOptimizer()
+        parsed = optimizer._parse_assembly(code)
+
+        assert parsed[0].is_directive is True
+        assert parsed[1].is_directive is True
+        assert parsed[2].opcode == "hlt"
     
     def test_scheduler_no_crash_on_empty(self):
         """Test that scheduler doesn't crash on empty input."""

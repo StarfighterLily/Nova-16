@@ -62,8 +62,9 @@ class TestLiveRangeSchedulerEdges:
             "start:",
             "MOV [P0], R1",
             "JZ done",
-            "CALL func",
-            "RET",
+            "CALLZ func",
+            "LOOPZ P1, start",
+            "RETN R0",
             "HLT",
             "done:",
         ]
@@ -77,8 +78,11 @@ class TestLiveRangeSchedulerEdges:
         assert ir[3].is_jump is True
         assert ir[3].uses == {"FLAGS"}  # JZ reads flags
         assert ir[4].is_call is True
-        assert ir[5].is_call is True
+        assert ir[4].uses == {"FLAGS"}
+        assert ir[5].is_jump is True
+        assert "FLAGS" in ir[5].uses
         assert ir[6].is_call is True
+        assert ir[7].is_call is True
 
     def test_analyze_operands_tracks_flags_and_memory_operands(self):
         defines, uses = self.scheduler._analyze_operands("CMP", ["R0", "R1"])
@@ -97,6 +101,18 @@ class TestLiveRangeSchedulerEdges:
         defines, uses = self.scheduler._analyze_operands("MOV", ["R3", "[P4]"])
         assert "R3" in defines
         assert "P4" in uses
+
+        defines, uses = self.scheduler._analyze_operands("WHILE", ["R5"])
+        assert "FLAGS" in defines
+        assert uses == {"R5"}
+
+        defines, uses = self.scheduler._analyze_operands("RETN", ["R2"])
+        assert {"R0", "P0", "FLAGS"}.issubset(defines)
+        assert "R2" in uses
+
+        defines, uses = self.scheduler._analyze_operands("LOOPZ", ["P3", "loop"])
+        assert "P3" in defines
+        assert {"P3", "FLAGS"}.issubset(uses)
 
     def test_build_dependencies_sets_raw_war_and_waw_edges(self):
         code = [

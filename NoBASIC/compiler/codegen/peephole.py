@@ -452,17 +452,17 @@ class PeepholeOptimizer:
     
     def _is_unconditional_jump(self, opcode: str) -> bool:
         """Check if opcode is unconditional jump."""
-        return opcode in ['JMP', 'CALL', 'RET', 'HLT']
+        return opcode in ['JMP', 'CALL', 'RET', 'RETN', 'HLT']
     
     def _is_conditional_jump(self, opcode: str) -> bool:
         """Check if opcode is conditional jump."""
-        return opcode in ['JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO', 'JLT', 'JLE', 'JGT', 'JGE']
+        return opcode in ['JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO', 'JLT', 'JLE', 'JGT', 'JGE', 'CALLZ', 'CALLNZ', 'LOOPZ']
     
     def _modifies_flags(self, opcode: str) -> bool:
         """Check if instruction modifies flags (for dependency tracking)."""
         # Arithmetic and logic operations modify flags
         flag_modifying = ['ADD', 'SUB', 'AND', 'OR', 'XOR', 'SHL', 'SHR', 
-                         'INC', 'DEC', 'CMP', 'TEST', 'NOT', 'NEG']
+                         'INC', 'DEC', 'CMP', 'TEST', 'NOT', 'NEG', 'WHILE', 'RETN']
         return opcode in flag_modifying
     
     def _reads_flags(self, opcode: str) -> bool:
@@ -501,6 +501,7 @@ class PeepholeOptimizer:
     def _parse_assembly(self, code: str) -> List[Instruction]:
         """Parse assembly code into instruction list."""
         instructions = []
+        directive_prefixes = ('ORG', 'DEFSTR', 'DEFBYTE', 'DB', 'DW', 'DS', 'EQU')
         
         for line in code.split('\n'):
             line = line.strip()
@@ -514,9 +515,20 @@ class PeepholeOptimizer:
                 instr = Instruction('', [], line, is_label=True)
                 instructions.append(instr)
                 continue
+
+            # Handle lines with inline labels (e.g. "L1: DEFSTR \"hello\"")
+            if ':' in line:
+                _, remainder = line.split(':', 1)
+                remainder = remainder.strip()
+                if remainder:
+                    upper_remainder = remainder.upper()
+                    if upper_remainder.startswith(directive_prefixes):
+                        instr = Instruction('', [], line, is_directive=True)
+                        instructions.append(instr)
+                        continue
             
             # Handle directives
-            if line.startswith('ORG') or line.startswith('DEFSTR') or line.startswith('DEFBYTE'):
+            if line.upper().startswith(directive_prefixes):
                 instr = Instruction('', [], line, is_directive=True)
                 instructions.append(instr)
                 continue

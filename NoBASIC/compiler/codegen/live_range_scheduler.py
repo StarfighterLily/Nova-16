@@ -138,6 +138,7 @@ class LiveRangeScheduler:
     def _parse_ir(self, assembly_lines: List[str]) -> List[IRInstruction]:
         """Parse assembly into intermediate representation."""
         instructions = []
+        directive_prefixes = ('ORG', 'DEFSTR', 'DEFBYTE', 'DB', 'DW', 'DS', 'EQU')
         
         for idx, line in enumerate(assembly_lines):
             line = line.strip()
@@ -157,9 +158,25 @@ class LiveRangeScheduler:
                 )
                 instructions.append(instr)
                 continue
+
+            # Handle lines with inline labels (e.g. "L1: DEFSTR \"hello\"")
+            if ':' in line:
+                _, remainder = line.split(':', 1)
+                remainder = remainder.strip()
+                if remainder:
+                    upper_remainder = remainder.upper()
+                    if upper_remainder.startswith(directive_prefixes):
+                        instr = IRInstruction(
+                            index=idx,
+                            opcode='DIRECTIVE',
+                            operands=[],
+                            original_line=line
+                        )
+                        instructions.append(instr)
+                        continue
             
             # Handle directives
-            if line.startswith('ORG') or line.startswith('DEFSTR') or line.startswith('DEFBYTE'):
+            if line.upper().startswith(directive_prefixes):
                 instr = IRInstruction(
                     index=idx,
                     opcode='DIRECTIVE',
@@ -184,8 +201,8 @@ class LiveRangeScheduler:
             # Determine what variables are defined and used
             defines, uses = self._analyze_operands(opcode, operands)
             
-            is_jump = opcode in ['JMP', 'JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO', 'JLT', 'JLE', 'JGT', 'JGE']
-            is_call = opcode in ['CALL', 'RET', 'HLT']
+            is_jump = opcode in ['JMP', 'JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO', 'JLT', 'JLE', 'JGT', 'JGE', 'LOOPZ']
+            is_call = opcode in ['CALL', 'CALLZ', 'CALLNZ', 'RET', 'RETN', 'HLT']
             has_side_effect = opcode in SIDE_EFFECT_OPCODES or any('[' in op or ']' in op for op in operands)
             
             instr = IRInstruction(
@@ -215,9 +232,9 @@ class LiveRangeScheduler:
         
         # Track flag register dependencies
         flag_modifying = ['ADD', 'SUB', 'AND', 'OR', 'XOR', 'SHL', 'SHR',
-                         'INC', 'DEC', 'CMP', 'TEST', 'NOT', 'NEG']
+                 'INC', 'DEC', 'CMP', 'TEST', 'NOT', 'NEG', 'WHILE', 'RETN']
         flag_reading = ['JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO',
-                       'JLT', 'JLE', 'JGT', 'JGE']
+                   'JLT', 'JLE', 'JGT', 'JGE', 'CALLZ', 'CALLNZ', 'LOOPZ']
         
         if opcode in flag_modifying:
             defines.add('FLAGS')  # Virtual register for flags
@@ -261,6 +278,25 @@ class LiveRangeScheduler:
         elif opcode == 'CMP' and len(operands) >= 2:
             add_use(operands[0])
             add_use(operands[1])
+
+        # WHILE: sets flags based on operand value
+        elif opcode == 'WHILE' and operands:
+            add_use(operands[0])
+
+        # LOOPZ counter, target: decrements counter and conditionally jumps
+        elif opcode == 'LOOPZ' and len(operands) >= 1:
+            add_define(operands[0])
+            add_use(operands[0])
+
+        # RETN source: writes return registers and exits
+        elif opcode == 'RETN' and operands:
+            add_define('R0')
+            add_define('P0')
+            add_use(operands[0])
+
+        # Calls and jumps with register targets should consume target operands
+        elif opcode in ['CALL', 'CALLZ', 'CALLNZ', 'JMP', 'JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO', 'JLT', 'JLE', 'JGT', 'JGE'] and operands:
+            add_use(operands[0])
         
         # Load/Store
         elif opcode in ['PUSH', 'SREAD', 'KEYIN']:

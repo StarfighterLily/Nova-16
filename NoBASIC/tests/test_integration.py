@@ -300,6 +300,7 @@ class TestIntegration:
             
             asm_content = asm_file.read_text()
             assert "KEYIN R0" in asm_content
+            assert "WHILE" in asm_content
             assert "JZ" in asm_content  # While loop
             # ClrDraw uses layer fills
             assert "SFILL" in asm_content or "ClrDraw" in asm_content
@@ -486,7 +487,7 @@ class TestIntegration:
 
             asm_content = asm_file.read_text()
             assert "CMP" in asm_content  # Comparisons
-            assert "JZ" in asm_content   # Jumps
+            assert any(jmp in asm_content for jmp in ["JZ", "JNZ", "JLT", "JLE", "JGT", "JGE"])  # Conditional jumps
 
     def test_graphics_operations_integration_comprehensive(self):
         """Test comprehensive graphics operations integration."""
@@ -959,10 +960,10 @@ class TestIntegration:
 
             # Left edge guard (>= 16) may be folded as SHL by 4 with varying temp registers.
             assert re.search(r"shl\s+[pr]\d,\s*4", attack_section)
-            assert "jge" in attack_section
-            # Right edge guard should compare against 232 and branch with <=.
+            assert "jge" in attack_section or "jlt" in attack_section
+            # Right edge guard should compare against 232 and branch (direct or inverted lowering).
             assert "mov p2, 232" in attack_section
-            assert "jle" in attack_section
+            assert "jle" in attack_section or "jgt" in attack_section
 
     def test_game_no_struct_old_position_clear_does_not_use_p1_for_spill_addressing(self):
         """Regression: game_no_struct clear path must avoid P1 scratch clobber from spill stores."""

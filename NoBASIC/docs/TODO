@@ -1,0 +1,39 @@
+Highest-Value Optimizations
+
+Hoist loop-invariant memory loads for frequently reused vars.
+Repeated loads like MOV P0, 28672 / MOV P0, 288 and repeated TEXT address fetches inside loop body.
+Estimated gain: ~3-8% runtime in hot loops, modest code-size reduction.
+
+Implement real expression simplification pass (currently mostly placeholder).
+ExpressionSimplifier.simplify_expression currently returns original expr with fixed cost estimate.
+Add algebraic simplification + CSE-lite + constant propagation.
+Estimated gain: ~4-10% instruction reduction, ~3-8% runtime.
+
+Tighten live-range scheduler to basic-block scope only (or strict barriers).
+Current scheduling is conservative but still global enough to risk subtle ordering issues.
+Limit reordering to explicit basic blocks for safer wins.
+Estimated gain: ~2-5% runtime, lower regression risk.
+
+
+Pipeline Optimizations
+
+Add --asm-only / --no-assemble mode in nobasic_compiler.py.
+Skip assembler invocation during iteration or test loops.
+Compile-time gain: typically ~30-70% faster edit-compile cycles for codegen-only work.
+
+Add incremental compile cache keyed by source hash + flags.
+Cache token stream/AST/semantic artifacts when unchanged.
+Compile-time gain: ~40-80% on repeated runs in local iteration.
+
+Add pass-level timing and counters in verbose mode.
+Report instruction counts pre/post each pass and spill/load-store counts.
+Not direct speedup, but improves optimization ROI quickly.
+
+
+Recommended Priority Order
+
+Peephole label/directive correctness fix (unblocks safe use of existing gains).
+Direct branch lowering for comparisons/conditions.
+Spill allocator correctness fix.
+Loop-invariant load hoisting.
+Real expression simplifier + pass metrics.
