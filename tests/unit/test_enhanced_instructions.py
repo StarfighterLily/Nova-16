@@ -354,3 +354,79 @@ class TestAdvancedControlFlow:
         
         # Should have executed WHILE, then DEC, P0=0
         assert cpu.Pregisters[0] == 0
+
+
+class TestLayerOperations:
+    """Test layer operation instructions (LSWAP/LMOVE/LCOPY)."""
+
+    def test_lcopy_copies_without_clearing_source(self, cpu, memory):
+        """LCOPY should duplicate current layer to target and keep source unchanged."""
+        program = [
+            0x06, 0x04, 0xE2, 0x01,  # MOV VL, 1
+            0x3D, 0x01, 0x11,        # SFILL 0x11
+            0xB2, 0x01, 0x02,        # LCOPY 2
+            0x00                      # HLT
+        ]
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 4)
+
+        assert np.all(cpu.gfx.background_layers[0] == 0x11)
+        assert np.all(cpu.gfx.background_layers[1] == 0x11)
+
+    def test_lswap_swaps_two_layers(self, cpu, memory):
+        """LSWAP should exchange full contents of current and target layers."""
+        program = [
+            0x06, 0x04, 0xE2, 0x01,  # MOV VL, 1
+            0x3D, 0x01, 0x12,        # SFILL 0x12
+            0x06, 0x04, 0xE2, 0x02,  # MOV VL, 2
+            0x3D, 0x01, 0x34,        # SFILL 0x34
+            0x06, 0x04, 0xE2, 0x01,  # MOV VL, 1
+            0xB0, 0x01, 0x02,        # LSWAP 2
+            0x00                      # HLT
+        ]
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 7)
+
+        assert np.all(cpu.gfx.background_layers[0] == 0x34)
+        assert np.all(cpu.gfx.background_layers[1] == 0x12)
+
+    def test_lmove_moves_and_clears_current_layer(self, cpu, memory):
+        """LMOVE should move content to target and zero-fill source layer."""
+        program = [
+            0x06, 0x04, 0xE2, 0x01,  # MOV VL, 1
+            0x3D, 0x01, 0x7A,        # SFILL 0x7A
+            0xB1, 0x01, 0x03,        # LMOVE 3
+            0x00                      # HLT
+        ]
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 4)
+
+        assert np.all(cpu.gfx.background_layers[0] == 0x00)
+        assert np.all(cpu.gfx.background_layers[2] == 0x7A)
+        assert cpu.gfx.VL == 1
+
+    def test_lmove_same_layer_is_noop(self, cpu, memory):
+        """LMOVE to the current layer should not clear data."""
+        program = [
+            0x06, 0x04, 0xE2, 0x02,  # MOV VL, 2
+            0x3D, 0x01, 0x55,        # SFILL 0x55
+            0xB1, 0x01, 0x02,        # LMOVE 2
+            0x00                      # HLT
+        ]
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 4)
+
+        assert np.all(cpu.gfx.background_layers[1] == 0x55)
+
+    def test_layer_ops_invalid_target_layer_raises(self, cpu, memory):
+        """Layer ops should reject target layers outside 0..8."""
+        program = [
+            0x06, 0x04, 0xE2, 0x01,  # MOV VL, 1
+            0xB2, 0x01, 0x09,        # LCOPY 9 (invalid)
+            0x00                      # HLT
+        ]
+        memory.load_program(program)
+
+        cpu.step()  # MOV VL, 1
+        with pytest.raises(ValueError, match="Invalid target layer"):
+            cpu.step()

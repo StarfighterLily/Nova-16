@@ -274,6 +274,10 @@ class GFX:
         else:
             return new  # Default to normal
 
+    def set_blend_mode(self, mode):
+        """Set blend mode with bounds checking for instruction/API compatibility."""
+        self.blend_mode = max(0, min(4, int(mode)))
+
     def clear( self ):
         self.screen.fill( 0 )
 

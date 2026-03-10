@@ -254,6 +254,11 @@ opcodes = [
     ("FTOI",               "0xAE", 1), # Fixed to integer # implemented
     ("ITOF",               "0xAF", 1), # Integer to fixed # implemented
 
+    # Layer ops
+    ("LSWAP",              "0xB0", 1), # Switch current layer contents with specified layer # implemented
+    ("LMOVE",              "0xB1", 1), # Move current layer contents to specified layer, clear current layer # implemented
+    ("LCOPY",              "0xB2", 1), # Copy current layer contents to specified layer, keep current layer # implemented
+
     ("VC",                 "0xC8", 1), # Video Color
     ("P0:",                "0xC9", 1), # P0 high byte
     ("P1:",                "0xCA", 1), # P1 high byte

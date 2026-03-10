@@ -1932,6 +1932,95 @@ class Sfill(BaseInstruction):
         color = cpu.get_operand_value(operands[0])
         cpu.gfx.fill_layer(color)
 
+
+def _get_layer_buffer(gfx, layer_num):
+    """Return backing buffer for layer number 0-8, using layer_0 for base layer."""
+    if layer_num == 0:
+        return gfx.layer_0
+    if 1 <= layer_num <= 4:
+        return gfx.background_layers[layer_num - 1]
+    if 5 <= layer_num <= 8:
+        return gfx.sprite_layers[layer_num - 5]
+    return None
+
+
+class Lswap(BaseInstruction):
+    """LSWAP instruction - swap current layer contents with target layer."""
+    def __init__(self):
+        opcode_val = 0xB0  # LSWAP
+        super().__init__("LSWAP", opcode_val)
+
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        target_layer = cpu.get_operand_value(operands[0])
+        current_layer = int(cpu.gfx.VL)
+
+        if not (0 <= target_layer <= 8):
+            raise ValueError(f"Invalid target layer for LSWAP: {target_layer}")
+        if target_layer == current_layer:
+            return
+
+        current_buffer = _get_layer_buffer(cpu.gfx, current_layer)
+        target_buffer = _get_layer_buffer(cpu.gfx, target_layer)
+        if current_buffer is None or target_buffer is None:
+            raise ValueError(f"Invalid layer for LSWAP: current={current_layer}, target={target_layer}")
+
+        temp = current_buffer.copy()
+        current_buffer[:] = target_buffer
+        target_buffer[:] = temp
+        cpu.gfx.layers_dirty = True
+
+
+class Lmove(BaseInstruction):
+    """LMOVE instruction - move current layer contents to target, clear current layer."""
+    def __init__(self):
+        opcode_val = 0xB1  # LMOVE
+        super().__init__("LMOVE", opcode_val)
+
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        target_layer = cpu.get_operand_value(operands[0])
+        current_layer = int(cpu.gfx.VL)
+
+        if not (0 <= target_layer <= 8):
+            raise ValueError(f"Invalid target layer for LMOVE: {target_layer}")
+        if target_layer == current_layer:
+            return
+
+        current_buffer = _get_layer_buffer(cpu.gfx, current_layer)
+        target_buffer = _get_layer_buffer(cpu.gfx, target_layer)
+        if current_buffer is None or target_buffer is None:
+            raise ValueError(f"Invalid layer for LMOVE: current={current_layer}, target={target_layer}")
+
+        target_buffer[:] = current_buffer
+        current_buffer.fill(0)
+        cpu.gfx.layers_dirty = True
+
+
+class Lcopy(BaseInstruction):
+    """LCOPY instruction - copy current layer contents to target layer."""
+    def __init__(self):
+        opcode_val = 0xB2  # LCOPY
+        super().__init__("LCOPY", opcode_val)
+
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        target_layer = cpu.get_operand_value(operands[0])
+        current_layer = int(cpu.gfx.VL)
+
+        if not (0 <= target_layer <= 8):
+            raise ValueError(f"Invalid target layer for LCOPY: {target_layer}")
+        if target_layer == current_layer:
+            return
+
+        current_buffer = _get_layer_buffer(cpu.gfx, current_layer)
+        target_buffer = _get_layer_buffer(cpu.gfx, target_layer)
+        if current_buffer is None or target_buffer is None:
+            raise ValueError(f"Invalid layer for LCOPY: current={current_layer}, target={target_layer}")
+
+        target_buffer[:] = current_buffer
+        cpu.gfx.layers_dirty = True
+
 class Sline(BaseInstruction):
     """SLINE instruction - draw line from (VX,VY) to end x, end y (uses VC)"""
     def __init__(self):
@@ -3748,6 +3837,9 @@ def create_instruction_table():
         Sinv(),     # 0x3B
         Sblit(),    # 0x3C
         Sfill(),    # 0x3D
+        Lswap(),    # 0xB0
+        Lmove(),    # 0xB1
+        Lcopy(),    # 0xB2
 
         # VRAM operations
         Vread(),    # 0x3E
