@@ -1,0 +1,24 @@
+ORG 0x0200
+
+SETUP:
+    MOV VM, 1
+    XOR VX, VX
+    XOR VY, VY
+    MOV VC, 0x0F
+    MOV P0, 0x0000
+
+LOOP:
+    MOV VX, P0:
+    MOV VY, :P0
+    SWRITE VC
+    INC P0
+    CMP P0, 0xFFFF
+    JZ DONE
+    JMP LOOP
+
+DONE:
+    MOV P0, 0xFFFF
+    MOV VX, P0:
+    MOV VY, :P0
+    SWRITE VC
+    HLT
