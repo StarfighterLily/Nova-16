@@ -244,12 +244,10 @@ class Memory:
             # For non-cached regions, write directly to main memory
             self.memory[addr] = val
         
-        # Update LRU cache and mark for lazy write-back
+        # Update LRU cache for read locality.
+        # Direct-memory writes are already committed above, so we skip pending
+        # write-back tracking to avoid redundant OrderedDict/set churn.
         self._lru_cache_put(addr, val)
-        self.pending_write_back.add(addr)
-        
-        # Check if we need to do write-back
-        self._check_write_back_needed()
         
         # Invalidate instruction cache and prefetch if CPU exists (for self-modifying code)
         if invalidate_cpu_cache and hasattr(self, 'cpu') and self.cpu:
