@@ -827,21 +827,40 @@ class GFX:
         return self.palette
     
     # Text rendering methods
+    def _get_font_char_data(self, char):
+        """Resolve a character/code to an 8-byte glyph with legacy/full font table support."""
+        if isinstance(char, str):
+            code = ord(char)
+        else:
+            code = int(char)
+
+        # Nova character codes are 8-bit values.
+        code &= 0xFF
+
+        glyph_count = len(font_data) // 8
+        if glyph_count == 0:
+            return [0] * 8
+
+        # Full table: index 0 maps to code 0x00.
+        if glyph_count >= 256:
+            font_index = code
+        # Legacy table: index 0 maps to code 0x20 (space).
+        elif glyph_count >= (256 - 32):
+            font_index = code - 32
+        else:
+            # Generic fallback for partial tables.
+            font_index = code
+
+        if font_index < 0 or font_index >= glyph_count:
+            return [0] * 8
+
+        start = font_index * 8
+        end = start + 8
+        return font_data[start:end]
+
     def draw_char(self, char, x, y, color=0xFF, background=None):
         """Draw a sinVLe character at the specified position (8x8 characters)"""
-        # Convert character to ASCII code
-        if isinstance(char, str):
-            ascii_code = ord(char)
-        else:
-            ascii_code = char
-        
-        # Map ASCII to font data index (space = 0x20 = 32, maps to index 0)
-        if ascii_code < 32 or ascii_code > 127:
-            ascii_code = 32  # Default to space for invalid characters
-        
-        # Adjust for font data indexing
-        font_index = ascii_code - 32
-        char_data = font_data[font_index * 8:(font_index + 1) * 8]
+        char_data = self._get_font_char_data(char)
         
         # Get the target buffer based on current layer
         target_buffer = self._get_layer_buffer()
@@ -945,15 +964,7 @@ class GFX:
 
     def draw_char_to_screen(self, char, x, y, color=0xFF, background=None):
         """Draw a single character to screen - optimized version (8x8 characters)"""
-        # Convert character to ASCII code
-        if isinstance(char, str):
-            ascii_code = ord(char)
-        else:
-            ascii_code = char
-        
-        # Map ASCII to font data index
-        if ascii_code < 32 or ascii_code > 127:
-            ascii_code = 32  # Default to space
+        char_data = self._get_font_char_data(char)
         
         # Ensure coordinates are valid integers and not overflowed
         x = int(x) & 0xFFFF  # Mask to 16-bit to prevent overflow
@@ -968,10 +979,6 @@ class GFX:
         # Bounds check for entire character (8x8)
         if x + 8 > self.width or y + 8 > self.height or x < 0 or y < 0:
             return  # Skip if character would be off-screen
-        
-        # Adjust for the apparent 2-character shift in font data
-        font_index = ascii_code - 32
-        char_data = font_data[font_index * 8:(font_index + 1) * 8]
         
         # Vectorized bitmap generation - much faster than nested loops (all 8 columns)
         char_bytes = np.array(char_data, dtype=np.uint8)  # Use all 8 rows

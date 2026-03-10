@@ -5,6 +5,7 @@ Unit tests for nova_gfx.py - Nova-16 graphics system.
 import pytest
 import numpy as np
 import random
+import nova_gfx
 
 
 class TestGraphicsInitialization:
@@ -568,6 +569,34 @@ class TestGraphicsText:
 
         # Should have drawn something
         assert np.any(graphics.screen != 0)
+
+    def test_draw_char_full_8bit_font_range(self, graphics, monkeypatch):
+        """Full 256-glyph tables should map index 0->0x00 and 255->0xFF."""
+        full_font = [0] * (256 * 8)
+        full_font[0] = 0x80            # Glyph 0x00: leftmost pixel on row 0
+        full_font[(255 * 8)] = 0x01    # Glyph 0xFF: rightmost pixel on row 0
+        monkeypatch.setattr(nova_gfx, "font_data", full_font)
+
+        graphics.clear()
+        graphics.draw_char_to_screen(0x00, 10, 10, 200)
+        graphics.draw_char_to_screen(0xFF, 20, 10, 201)
+
+        assert graphics.screen[10, 10] == 200
+        assert graphics.screen[10, 27] == 201
+
+    def test_draw_char_legacy_font_mapping(self, graphics, monkeypatch):
+        """Legacy 224-glyph table keeps index 0 mapped to character code 32."""
+        legacy_font = [0] * (224 * 8)
+        legacy_font[0] = 0x80  # Legacy first glyph (code 32) has leftmost pixel
+        monkeypatch.setattr(nova_gfx, "font_data", legacy_font)
+
+        graphics.clear()
+        graphics.draw_char_to_screen(32, 10, 10, 210)
+        graphics.draw_char_to_screen(0, 20, 10, 211)
+
+        assert graphics.screen[10, 10] == 210
+        # Code 0 has no mapped glyph in legacy mode, so nothing should be drawn.
+        assert graphics.screen[10, 20] == 0
 
 
 class TestGraphicsFill:

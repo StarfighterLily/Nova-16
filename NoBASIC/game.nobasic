@@ -1,0 +1,157 @@
+// Define game structs
+STRUCT Player x y oldx oldy facing counter END
+
+Function clearPlayerAt(x, y)
+    Text(x, y, "O", 0x00)
+    Text(x, y + 8, "X", 0x00)
+    Text(x - 16, y + 8, "--", 0x00)
+    Text(x + 8, y + 8, "--", 0x00)
+End
+
+Function drawPlayerAt(x, y)
+    Text(x, y, "O", 0x0F)
+    Text(x, y + 8, "X", 0x0F)
+End
+
+Function attackIfPressed(key, facing, y)
+    If key = 101 Then // 'e'
+        If facing = 0 Then
+            If attackX >= 16 Then
+                Text(attackX - 16, y + 8, "--", 0x0F)
+            End
+        End
+        If facing = 1 Then
+            If attackX <= 232 Then
+                Text(attackX + 8, y + 8, "--", 0x0F)
+            End
+        End
+        Return 1
+    End
+    Return 0
+End
+
+Function moveXByKey(key, x)
+    If key = 97 Then // 'a'
+        Return x - 8
+    End
+    If key = 128 Then // right arrow
+        Return x - 8
+    End
+    If key = 100 Then // 'd'
+        Return x + 8
+    End
+    If key = 129 Then // left arrow
+        Return x + 8
+    End
+    Return x
+End
+
+Function moveYByKey(key, y)
+    If key = 115 Then // 's'
+        Return y + 8
+    End
+    If key = 131 Then // down arrow
+        Return y + 8
+    End
+    If key = 119 Then // 'w'
+        Return y - 8
+    End
+    If key = 130 Then // up arrow
+        Return y - 8
+    End
+    Return y
+End
+
+Function facingByKey(key, facing)
+    If key = 97 Then // 'a'
+        Return 0
+    End
+    If key = 128 Then // right arrow
+        Return 0
+    End
+    If key = 100 Then // 'd'
+        Return 1
+    End
+    If key = 129 Then // left arrow
+        Return 1
+    End
+    Return facing
+End
+
+Function clampX(x)
+    If x < 8 Then
+        Return 8
+    End
+    If x > 240 Then
+        Return 240
+    End
+    Return x
+End
+
+Function clampY(y)
+    If y < 8 Then
+        Return 8
+    End
+    If y > 232 Then
+        Return 232
+    End
+    Return y
+End
+
+Function clearAttackOnTimeout(counter, oldx, oldy)
+    If counter = 255 Then
+        Text(oldx - 16, oldy + 8, "--", 0x00)
+        Text(oldx + 8, oldy + 8, "--", 0x00)
+        Return 0
+    End
+    Return counter
+End
+
+// Initialize game
+SetLayer(1)
+Text(0, 0, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 0x1F)
+For a = 0 to 240 Step 8
+    Text(0, a, "X                              X", 0x1F)
+Next
+Text(0, 248, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 0x1F)
+
+// Initialize player struct
+player.x = 8
+player.y = 8
+player.oldx = 8
+player.oldy = 8
+player.facing = 0
+player.counter = 0
+attackX = 8
+
+SetLayer(5)
+While 1
+    player.oldx = player.x
+    player.oldy = player.y
+    player.counter = player.counter + 1
+
+    key = getKey()
+    attackX = player.x
+
+    attacked = attackIfPressed(key, player.facing, player.y)
+    If attacked Then
+        player.counter = 0
+    End
+
+    player.x = moveXByKey(key, player.x)
+    player.y = moveYByKey(key, player.y)
+    player.facing = facingByKey(key, player.facing)
+
+    player.x = clampX(player.x)
+    player.y = clampY(player.y)
+
+    If player.oldx <> player.x Then
+        clearPlayerAt(player.oldx, player.oldy)
+    End
+    If player.oldy <> player.y Then
+        clearPlayerAt(player.oldx, player.oldy)
+    End
+
+    drawPlayerAt(player.x, player.y)
+    player.counter = clearAttackOnTimeout(player.counter, player.oldx, player.oldy)
+End
