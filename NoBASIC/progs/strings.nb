@@ -1,6 +1,0 @@
-Input Str1
-Disp Str1
-ClrDraw
-Input("Who are you? >", Str2)
-Disp Str2
-Disp "Hello!"
