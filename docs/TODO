@@ -12,3 +12,51 @@ Consider MMX-style registers and instructions
 
 -Memory
 Consider memory banking techniques to expand beyond the 64k memory without too much effort
+
+
+-Highest-value refactors
+Replace dynamic operand dicts with compact operand structs/tuples.
+Evidence: nova_cpu.py:1629 + nova_cpu.py:1731 are large direct costs.
+Current pattern allocates many small dicts and repeatedly does string-key lookups.
+Refactor: parse once into lightweight fixed-shape objects (or small tuples), and move to integer enums for operand kind.
+Impact: high. This is one of the largest direct hot paths.
+
+Introduce fast-path execution for the most common opcodes.
+Evidence: profile opcode mix is dominated by MOV, INC, CMP, JNZ from gfxtest_profile.json.
+Refactor: in nova_cpu.py:1945, add specialized handlers for top 4-6 opcodes that avoid generic parse/get/set overhead.
+Impact: high for loop-heavy programs.
+
+Add early return in instruction-cache invalidation when cache is disabled.
+Evidence: cache disabled at nova_cpu.py:131, but invalidation still called heavily from nova_cpu.py:779 and memory writes at nova_memory.py:221.
+Refactor: first line in nova_cpu.py:1537: if not cache_enabled return.
+Impact: medium, very low risk, easy win.
+
+Stop invalidating instruction cache on non-code register writes.
+Evidence: many invalidation calls in nova_cpu.py:779 for graphics, timer, and sound registers.
+Refactor: only invalidate for writes that can modify executable memory, not device register state.
+Impact: medium to high depending on graphics/timer intensity.
+
+Gate per-cycle breakpoint and interrupt scans behind quick flags.
+Evidence: nova_cpu.py:1201 and nova_cpu.py:1147 run every cycle.
+Refactor: maintain booleans like has_hw_breakpoints and has_pending_interrupt_sources; skip scans when false.
+Impact: medium, low risk.
+
+Simplify timer path and precompute timer divisor on TS writes.
+Evidence: nova_cpu.py:1226 appears in top 20 despite modest logic.
+Refactor: compute divisor once when TS changes in nova_cpu.py:779, use branch-light update loop.
+Impact: low to medium.
+
+Reduce fetch overhead in the hottest path.
+Evidence: nova_cpu.py:1397 is a top direct cost.
+Refactor: local-bind hot attributes in nova_cpu.py:1905, and use a tight fast path when prefetch window is valid.
+Impact: medium.
+
+Memory system cleanup: remove set-to-list churn in lazy write-back.
+Evidence: nova_memory.py:104 uses set plus list copy each flush.
+Refactor: deque or small fixed ring buffer for pending writes.
+Impact: low, but cheap cleanup.
+
+Graphics micro-optimization: cached blend-enabled flag.
+Evidence: blend check is already present in nova_gfx.py:622.
+Refactor: maintain blend_enabled boolean set by nova_gfx.py:277 and alpha setter; avoid repeated dual comparison.
+Impact: low to medium.
