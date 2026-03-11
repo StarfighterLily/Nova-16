@@ -12,15 +12,3 @@ Consider MMX-style registers and instructions
 
 -Memory
 Consider memory banking techniques to expand beyond the 64k memory without too much effort
-
-
--Highest-value refactors
-Introduce fast-path execution for the most common opcodes.
-Evidence: profile opcode mix is dominated by MOV, INC, CMP, JNZ from gfxtest_profile.json.
-Refactor: in nova_cpu.py:1945, add specialized handlers for top 4-6 opcodes that avoid generic parse/get/set overhead.
-Impact: high for loop-heavy programs.
-
-Memory system cleanup: remove set-to-list churn in lazy write-back.
-Evidence: nova_memory.py:104 uses set plus list copy each flush.
-Refactor: deque or small fixed ring buffer for pending writes.
-Impact: low, but cheap cleanup.
