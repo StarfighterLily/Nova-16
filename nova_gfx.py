@@ -38,8 +38,9 @@ class GFX:
         self.layer_visibility = {i: True for i in range(9)}  # All layers visible by default
         
         # Graphics blending system
-        self.blend_mode = 0      # 0=normal, 1=add, 2=subtract, 3=multiply, 4=screen
-        self.blend_alpha = 255   # Alpha/intensity for blending (0-255)
+        self._blend_mode = 0     # 0=normal, 1=add, 2=subtract, 3=multiply, 4=screen
+        self._blend_alpha = 255  # Alpha/intensity for blending (0-255)
+        self.blend_enabled = False
         
         # Graphics optimization - batching and dirty region tracking
         self.graphics_batch_counter = 0
@@ -78,6 +79,28 @@ class GFX:
     @screen.setter
     def screen(self, value):
         self._screen = value
+
+    @property
+    def blend_mode(self):
+        return self._blend_mode
+
+    @blend_mode.setter
+    def blend_mode(self, value):
+        self._blend_mode = int(value)
+        self._update_blend_enabled()
+
+    @property
+    def blend_alpha(self):
+        return self._blend_alpha
+
+    @blend_alpha.setter
+    def blend_alpha(self, value):
+        self._blend_alpha = int(value)
+        self._update_blend_enabled()
+
+    def _update_blend_enabled(self):
+        # Cache the most common fast-path condition for per-pixel writes.
+        self.blend_enabled = not (self._blend_mode == 0 and self._blend_alpha == 255)
 
     def roll_x( self, roll_x ):
         # Roll the current layer by roll_x pixels horizontally, pixels roll over to the opposite side
@@ -277,6 +300,10 @@ class GFX:
     def set_blend_mode(self, mode):
         """Set blend mode with bounds checking for instruction/API compatibility."""
         self.blend_mode = max(0, min(4, int(mode)))
+
+    def set_blend_alpha(self, alpha):
+        """Set blend alpha with bounds checking for instruction/API compatibility."""
+        self.blend_alpha = max(0, min(255, int(alpha)))
 
     def clear( self ):
         self.screen.fill( 0 )
@@ -624,7 +651,7 @@ class GFX:
         vl = self.VL
         
         # Fast path: no blending needed (most common case)
-        if self.blend_mode == 0 and self.blend_alpha == 255:
+        if not self.blend_enabled:
             if vl == 0:
                 # Write to layer 0 and main screen directly
                 self.layer_0[y, x] = value

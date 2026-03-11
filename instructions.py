@@ -2221,6 +2221,7 @@ class Keyctrl(BaseInstruction):
         control = cpu.get_operand_value(operands[0])
         cpu.keyboard[2] = control  # Set control register
         cpu.interrupts[2] = control  # Enable keyboard interrupt
+        cpu._refresh_pending_interrupt_sources()
 
 # Serial operations
 class Serin(BaseInstruction):
@@ -2251,6 +2252,7 @@ class Serout(BaseInstruction):
         # Trigger interrupt if enabled
         if cpu.interrupts[1]:
             cpu.serial[1] |= 0x80  # Set interrupt pending
+            cpu.has_pending_interrupt_sources = True
 
 class Serstat(BaseInstruction):
     """SERSTAT instruction - check serial status"""
@@ -2274,6 +2276,7 @@ class Serctrl(BaseInstruction):
         control = cpu.get_operand_value(operands[0])
         cpu.serial[1] = (cpu.serial[1] & 0x80) | (control & 0x7F)  # Set control bits, preserve interrupt pending
         cpu.interrupts[1] = control & 0x01  # Enable serial interrupt if bit 0 set
+        cpu._refresh_pending_interrupt_sources()
 
 # Hardware debugging operations
 class Setbp(BaseInstruction):
@@ -2289,6 +2292,7 @@ class Setbp(BaseInstruction):
         if 0 <= index < 4:
             cpu.hw_breakpoints[index] = address
             cpu.hw_breakpoint_enabled[index] = True
+            cpu.has_hw_breakpoints = True
 
 class Clrbp(BaseInstruction):
     """CLRBP instruction - clear hardware breakpoint"""
@@ -2301,6 +2305,7 @@ class Clrbp(BaseInstruction):
         index = cpu.get_operand_value(operands[0])
         if 0 <= index < 4:
             cpu.hw_breakpoint_enabled[index] = False
+            cpu._refresh_hw_breakpoint_state()
 
 class Enabrk(BaseInstruction):
     """ENABRK instruction - enable hardware breakpoints"""
@@ -2312,6 +2317,7 @@ class Enabrk(BaseInstruction):
         for i in range(4):
             if cpu.hw_breakpoints[i] != 0:  # Only enable if address set
                 cpu.hw_breakpoint_enabled[i] = True
+        cpu._refresh_hw_breakpoint_state()
 
 class Disbrk(BaseInstruction):
     """DISBRK instruction - disable hardware breakpoints"""
@@ -2322,6 +2328,7 @@ class Disbrk(BaseInstruction):
     def execute(self, cpu):
         for i in range(4):
             cpu.hw_breakpoint_enabled[i] = False
+        cpu.has_hw_breakpoints = False
 
 class Enatrap(BaseInstruction):
     """ENATRAP instruction - enable single-step trap"""

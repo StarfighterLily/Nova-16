@@ -113,6 +113,10 @@ class CPU:
         self.interrupt_check_counter = 0
         self.interrupt_check_frequency = 8  # Check every 8 instructions
         self.last_interrupt_state = 0  # Cache of last interrupt state
+        self.has_pending_interrupt_sources = False  # Fast gate for interrupt scan path
+
+        # Breakpoint checking optimization
+        self.has_hw_breakpoints = False  # Fast gate for hardware breakpoint scan path
         
         # Operand parsing cache for performance optimization
         self.operand_cache = {}  # Cache parsed operands by (pc, mode_byte)
@@ -133,6 +137,7 @@ class CPU:
         # Timer optimization
         self.timer_update_counter = 0
         self.timer_update_frequency = 36  # Update timer every 36 cycles instead of every cycle; higher begins affecting timing-sensitive code
+        self.timer_speed_divisor = 1  # Cached divisor derived from TS (speed) register
         
         # Initialize instruction dispatch table
         self.instruction_table = create_instruction_table()
@@ -695,13 +700,17 @@ class CPU:
         self._flags[:] = [0] * len(self._flags)  # Use internal flag array
         self.stack = []
         self.interrupts[:] = [0] * len(self.interrupts)
+        self.has_pending_interrupt_sources = False
         self.timer[:] = [0] * len(self.timer)
         self.timer_cycles = 0
         self.timer_enabled = False
+        self.timer_update_counter = 0
+        self.timer_speed_divisor = 1
         self.serial[:] = [0] * len(self.serial)
         self.keyboard[:] = [0] * len(self.keyboard)
         self.key_buffer = []
         self.halted = False
+        self.has_hw_breakpoints = False
         self.memory.memory[:] = 0
         self.gfx.vram[:] = 0
         self.gfx.screen[:] = 0
@@ -725,6 +734,24 @@ class CPU:
         # Connect keyboard if provided
         if self.keyboard_device is not None:
             self.keyboard_device.cpu = self  # Set back-reference
+
+    def _refresh_pending_interrupt_sources(self):
+        """Refresh fast interrupt-source gate from current device and interrupt state."""
+        self.has_pending_interrupt_sources = bool(
+            (self.interrupts[2] == 1 and (self.keyboard[1] & 0x80) != 0) or
+            (self.interrupts[1] == 1 and (self.serial[1] & 0x80) != 0) or
+            self.interrupts[3] == 1 or
+            self.interrupts[4] == 1
+        )
+
+    def _refresh_hw_breakpoint_state(self):
+        """Refresh fast hardware-breakpoint gate from enabled slots."""
+        self.has_hw_breakpoints = bool(
+            self.hw_breakpoint_enabled[0] or
+            self.hw_breakpoint_enabled[1] or
+            self.hw_breakpoint_enabled[2] or
+            self.hw_breakpoint_enabled[3]
+        )
 
     def _get_operand_value( self, type, idx ):
         if type == 'R': return int( self.Rregisters[ idx ] )
@@ -796,66 +823,45 @@ class CPU:
             self.fp = int(value) & 0xFFFF
         elif type == 'V': 
             self.gfx.Vregisters[ idx ] = int(value) & 0xFF
-            # Invalidate instruction cache when graphics registers change
-            # This prevents stale cached instructions that might access graphics registers as memory
-            self.invalidate_instruction_cache()
         elif type == 'T':
             self.timer[ idx ] = int(value) & 0xFF
             # Update timer enabled state when control register (idx=2) is written
             if idx == 2:
                 self.set_timer_control(self.timer[ 2 ])
+            elif idx == 3:
+                self.set_timer_speed(self.timer[ 3 ])
         elif type == 'TT': 
             self.timer[ 0 ] = int(value) & 0xFF
-            # Invalidate instruction cache when timer counter changes
-            self.invalidate_instruction_cache()
         elif type == 'TM': 
             self.timer[ 1 ] = int(value) & 0xFF
-            # Invalidate instruction cache when timer modulo changes
-            self.invalidate_instruction_cache()
         elif type == 'TC': 
             self.timer[ 2 ] = int(value) & 0xFF
             # Update timer enabled state when control register is written
             self.set_timer_control(self.timer[ 2 ])
         elif type == 'TS': 
-            self.timer[ 3 ] = int(value) & 0xFF
-            # Invalidate instruction cache when timer speed changes
-            self.invalidate_instruction_cache()
+            self.set_timer_speed(value)
         elif type == 'VL': 
             self.gfx.VL = int(value) & 0xFF
-            # Invalidate instruction cache when graphics layer register changes
-            self.invalidate_instruction_cache()
             
         # Sound registers
         elif type == 'SA': 
             if self.sound: self.sound.update_registers(sa=int(value) & 0xFFFF)
-            # Invalidate instruction cache when sound registers change
-            self.invalidate_instruction_cache()
         elif type == 'SF': 
             if self.sound: self.sound.update_registers(sf=int(value) & 0xFF)
-            # Invalidate instruction cache when sound registers change
-            self.invalidate_instruction_cache()
         elif type == 'SV': 
             if self.sound: self.sound.update_registers(sv=int(value) & 0xFF)
-            # Invalidate instruction cache when sound registers change
-            self.invalidate_instruction_cache()
         elif type == 'SW': 
             if self.sound: self.sound.update_registers(sw=int(value) & 0xFF)
-            # Invalidate instruction cache when sound registers change
-            self.invalidate_instruction_cache()
         elif type == 'SA:':  # Sound Address high byte
             if self.sound:
                 current_sa = self.sound.get_register('SA')
                 new_sa = (current_sa & 0x00FF) | ((int(value) & 0xFF) << 8)
                 self.sound.update_registers(sa=new_sa)
-            # Invalidate instruction cache when sound registers change
-            self.invalidate_instruction_cache()
         elif type == ':SA':  # Sound Address low byte
             if self.sound:
                 current_sa = self.sound.get_register('SA')
                 new_sa = (current_sa & 0xFF00) | (int(value) & 0xFF)
                 self.sound.update_registers(sa=new_sa)
-            # Invalidate instruction cache when sound registers change
-            self.invalidate_instruction_cache()
         
         # Optimized indirect memory writes - Phase 3
         elif type == 'Rind': 
@@ -1069,6 +1075,7 @@ class CPU:
             # Trigger keyboard interrupt if enabled
             if self.interrupts[2] == 1:  # Keyboard interrupt enabled
                 self.keyboard[1] |= 0x80  # Set interrupt pending flag
+                self.has_pending_interrupt_sources = True
                 
     def read_key_from_buffer(self):
         """Read and remove the oldest key from the keyboard buffer"""
@@ -1146,6 +1153,9 @@ class CPU:
     
     def _check_pending_interrupts(self):
         """Optimized interrupt checking with batching and caching"""
+        if not self.has_pending_interrupt_sources:
+            return False
+
         # Increment counter and check if we should skip this check
         self.interrupt_check_counter += 1
         if self.interrupt_check_counter < self.interrupt_check_frequency:
@@ -1170,6 +1180,7 @@ class CPU:
         
         # Skip detailed check if state hasn't changed
         if current_state == self.last_interrupt_state and current_state == 0:
+            self.has_pending_interrupt_sources = False
             return False
             
         self.last_interrupt_state = current_state
@@ -1178,12 +1189,14 @@ class CPU:
         # Check keyboard interrupt first (most common)
         if self.interrupts[2] == 1 and (self.keyboard[1] & 0x80):
             self.keyboard[1] &= 0x7F  # Clear interrupt pending flag
+            self._refresh_pending_interrupt_sources()
             self._trigger_interrupt(2)
             return True  # Interrupt was handled
             
         # Check serial interrupt
         if self.interrupts[1] == 1 and (self.serial[1] & 0x80):
             self.serial[1] &= 0x7F  # Clear interrupt pending flag
+            self._refresh_pending_interrupt_sources()
             self._trigger_interrupt(1)
             return True
             
@@ -1196,21 +1209,31 @@ class CPU:
             # User interrupt logic would go here
             pass
             
+        self._refresh_pending_interrupt_sources()
         return False  # No interrupt handled
     
     def _check_hw_breakpoints(self):
         """Check for hardware breakpoints and single-step trap"""
+        if self._flags[0] != 1 and not self.has_hw_breakpoints:
+            return
+
         # Check hardware breakpoints
+        any_enabled = False
         for i in range(4):
-            if self.hw_breakpoint_enabled[i] and self.pc == self.hw_breakpoints[i]:
-                self._flags[3] = 1  # Set B flag
-                self._trigger_interrupt(7)  # Debug interrupt
-                return
-        
+            if self.hw_breakpoint_enabled[i]:
+                any_enabled = True
+                if self.pc == self.hw_breakpoints[i]:
+                    self._flags[3] = 1  # Set B flag
+                    self._trigger_interrupt(7)  # Debug interrupt
+                    return
+
+        if not any_enabled:
+            self.has_hw_breakpoints = False
+
         # Check single-step trap
         if self._flags[0] == 1:  # T flag set
-            self._flags[3] = 1  # Set B flag
-            self._trigger_interrupt(7)
+                self._flags[3] = 1  # Set B flag
+                self._trigger_interrupt(7)  # Debug interrupt
     
     def _check_timer_interrupt(self):
         """Check if timer interrupt should be triggered"""
@@ -1228,55 +1251,41 @@ class CPU:
         # Fast exit if timer is disabled
         if not self.timer_enabled:
             return
-            
-        # Check if we should increment timer based on speed setting
-        # Speed controls how many cycles per timer increment:
-        # Speed 0 = every cycle, 1 = every 2 cycles, 2 = every 4 cycles, etc.
-        # Use linear scaling instead of exponential for more reasonable control
-        speed_value = int(self.timer[3]) & 0xFF
-        if speed_value == 0:
-            speed_divisor = 1  # Every cycle
-        else:
-            # Linear scaling: speed 1 = 2 cycles, speed 4 = 5 cycles, speed 16 = 17 cycles, etc.
-            speed_divisor = speed_value + 1
-        
-        # For high speeds where divisor > batch frequency, don't batch to avoid missing increments
+
+        speed_divisor = self.timer_speed_divisor
         if speed_divisor > self.timer_update_frequency:
-            # Process one cycle at a time for high speeds
             self.timer_cycles += 1
-            cycles_to_process = self.timer_cycles
         else:
-            # Batch timer updates for better performance
-            self.timer_update_counter += 1
-            if self.timer_update_counter < self.timer_update_frequency:
+            counter = self.timer_update_counter + 1
+            if counter < self.timer_update_frequency:
+                self.timer_update_counter = counter
                 return
-            
-            # Reset counter and process batched cycles
-            cycles_to_process = self.timer_update_counter
             self.timer_update_counter = 0
-            
-            # Increment cycle counter by batch amount
-            self.timer_cycles += cycles_to_process
-        
-        if self.timer_cycles >= speed_divisor:
-            timer_increments = self.timer_cycles // speed_divisor
-            self.timer_cycles = self.timer_cycles % speed_divisor
-            
-            # Clamp timer increments to prevent overflow
-            # Limit to reasonable increments to avoid numpy overflow warnings
-            timer_increments = min(timer_increments, 255)
-            
-            # Increment timer counter by calculated amount (use Python int to avoid numpy overflow warnings)
-            old_timer_value = int(self.timer[0])
-            new_timer_value = (old_timer_value + int(timer_increments)) & 0xFF
-            self.timer[0] = new_timer_value
-            
-            # Check for timer interrupt after incrementing
-            # Trigger if: interrupt enabled AND modulo > 0 AND timer >= modulo
-            if (self.interrupts[0] == 1 and self.timer[1] > 0 and self.timer[0] >= self.timer[1]):
-                # Reset timer counter when interrupt is triggered
-                self.timer[0] = 0
-                self._trigger_interrupt(0)
+            self.timer_cycles += counter
+
+        timer_cycles = self.timer_cycles
+        if timer_cycles < speed_divisor:
+            return
+
+        timer_increments = timer_cycles // speed_divisor
+        self.timer_cycles = timer_cycles % speed_divisor
+
+        # Limit increments to avoid overflow warning noise in hot profiling runs.
+        timer_increments = min(timer_increments, 255)
+
+        self.timer[0] = (int(self.timer[0]) + int(timer_increments)) & 0xFF
+
+        # Trigger only when enabled and modulo threshold is crossed.
+        if (self.interrupts[0] == 1 and self.timer[1] > 0 and self.timer[0] >= self.timer[1]):
+            self.timer[0] = 0
+            self._trigger_interrupt(0)
+
+    def set_timer_speed(self, speed_value):
+        """Set timer speed register and cache its cycle divisor."""
+        speed = int(speed_value) & 0xFF
+        self.timer[3] = speed
+        # Linear scaling: TS=0 -> 1 cycle, TS=n -> n+1 cycles.
+        self.timer_speed_divisor = speed + 1
     
     def set_timer_control(self, control_value):
         """Set timer control register and update timer state"""
@@ -1291,11 +1300,8 @@ class CPU:
         # If timer is disabled, reset internal state
         if not self.timer_enabled:
             self.timer_cycles = 0
+            self.timer_update_counter = 0
             self.timer[0] = 0
-            
-        # Invalidate instruction cache when timer control changes
-        # This ensures consistent timing for timer-dependent code
-        self.invalidate_instruction_cache()
     
     def get_timer_status(self):
         """Get timer status for debugging/monitoring"""
@@ -1536,6 +1542,9 @@ class CPU:
     
     def invalidate_instruction_cache(self, start_addr=None, end_addr=None):
         """Invalidate instruction cache entries in the given address range"""
+        if not self.cache_enabled:
+            return
+
         if start_addr is None and end_addr is None:
             # Clear entire cache
             self.instruction_cache.clear()
@@ -1837,16 +1846,10 @@ class CPU:
             self.Pregisters[reg_num - 10] = value & 0xFFFF
         elif reg_num == 20:  # VX
             self.gfx.Vregisters[0] = value & 0xFF
-            # Invalidate instruction cache when graphics registers change
-            self.invalidate_instruction_cache()
         elif reg_num == 21:  # VY
             self.gfx.Vregisters[1] = value & 0xFF
-            # Invalidate instruction cache when graphics registers change
-            self.invalidate_instruction_cache()
         elif reg_num == 22:  # VC
             self.gfx.Vregisters[3] = value & 0xFF
-            # Invalidate instruction cache when graphics registers change
-            self.invalidate_instruction_cache()
         else:
             raise Exception(f"Invalid register number: {reg_num}")
     
@@ -1940,7 +1943,10 @@ class CPU:
             self.execute_and_cache(opcode)
         
         # Check for other pending interrupts (keyboard, serial, etc.)
-        self._check_pending_interrupts()
+        if not self.has_pending_interrupt_sources:
+            self._refresh_pending_interrupt_sources()
+        if self.has_pending_interrupt_sources:
+            self._check_pending_interrupts()
 
     def execute_and_cache(self, opcode):
         """Execute instruction and cache it for future use"""
