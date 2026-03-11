@@ -51,7 +51,7 @@ While 1
            facing = 1
        End
        
-       If key = 515 Then // 's'
+       If key = 115 Then // 's'
            y = y + 8
        End
        If key = 131 Then // down

@@ -1127,6 +1127,15 @@ class CodeGenerator:
         self.function_locals = {}
         self.expr_constant_values = {}
 
+        # Pre-pass: register struct declarations so function code generation
+        # can resolve member access on global struct instances.
+        for stmt in program.statements:
+            if isinstance(stmt, StructDeclarationStmt):
+                self.struct_types[stmt.name.lower()] = StructType(
+                    stmt.name,
+                    [field.lower() for field in stmt.fields],
+                )
+
         # First pass: collect function definitions and assign labels
         for stmt in program.statements:
             if isinstance(stmt, FunctionDefStmt):
