@@ -1553,7 +1553,7 @@ class CodeGenerator:
         self.generate_expression_into(stmt.layer, 'VL')
 
     def generate_srol(self, stmt: SRolStmt):
-        """Generate SROL(axis, amount) code."""
+        """Generate ScrRoll(axis, amount) code."""
         axis_reg = self.generate_expression(stmt.axis)
         amount_reg = self.generate_expression(stmt.amount)
         self.current_output.append(f"SROL {axis_reg}, {amount_reg}")
@@ -1561,7 +1561,7 @@ class CodeGenerator:
         self.smart_deallocate(amount_reg, is_last_use=True)
 
     def generate_srot(self, stmt: SRotStmt):
-        """Generate SROT(direction, amount) code."""
+        """Generate ScrRotate(direction, amount) code."""
         direction_reg = self.generate_expression(stmt.direction)
         amount_reg = self.generate_expression(stmt.amount)
         self.current_output.append(f"SROT {direction_reg}, {amount_reg}")
@@ -1569,7 +1569,7 @@ class CodeGenerator:
         self.smart_deallocate(amount_reg, is_last_use=True)
 
     def generate_sshft(self, stmt: SShftStmt):
-        """Generate SSHFT(axis, amount) code."""
+        """Generate ScrShift(axis, amount) code."""
         axis_reg = self.generate_expression(stmt.axis)
         amount_reg = self.generate_expression(stmt.amount)
         self.current_output.append(f"SSHFT {axis_reg}, {amount_reg}")
@@ -1577,7 +1577,7 @@ class CodeGenerator:
         self.smart_deallocate(amount_reg, is_last_use=True)
 
     def generate_sflip(self, stmt: SFlipStmt):
-        """Generate SFLIP(axis) code."""
+        """Generate ScrFlip(axis) code."""
         axis_reg = self.generate_expression(stmt.axis)
         self.current_output.append(f"SFLIP {axis_reg}")
         self.smart_deallocate(axis_reg, is_last_use=True)

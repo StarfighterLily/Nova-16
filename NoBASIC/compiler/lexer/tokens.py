@@ -18,10 +18,10 @@ class TokenType(Enum):
     CIRCLE = "CIRCLE"
     TEXT = "TEXT"
     SETLAYER = "SETLAYER"
-    SROL = "SROL"
-    SROT = "SROT"
-    SSHFT = "SSHFT"
-    SFLIP = "SFLIP"
+    SCRROLL = "SCRROLL"
+    SCRROTATE = "SCRROTATE"
+    SCRSHIFT = "SCRSHIFT"
+    SCRFLIP = "SCRFLIP"
     SPRITEON = "SPRITEON"
     SPRITEOFF = "SPRITEOFF"
     PLAYTONE = "PLAYTONE"
@@ -148,10 +148,10 @@ KEYWORDS = {
     "circle": TokenType.CIRCLE,
     "text": TokenType.TEXT,
     "setlayer": TokenType.SETLAYER,
-    "srol": TokenType.SROL,
-    "srot": TokenType.SROT,
-    "sshft": TokenType.SSHFT,
-    "sflip": TokenType.SFLIP,
+    "scrroll": TokenType.SCRROLL,
+    "scrrotate": TokenType.SCRROTATE,
+    "scrshift": TokenType.SCRSHIFT,
+    "scrflip": TokenType.SCRFLIP,
     "spriteon": TokenType.SPRITEON,
     "spriteoff": TokenType.SPRITEOFF,
     "playtone": TokenType.PLAYTONE,

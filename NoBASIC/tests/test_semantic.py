@@ -226,7 +226,7 @@ class TestSemanticAnalyzer:
 
     def test_screen_transform_statement_validation(self):
         """Screen transform statements should analyze expression operands."""
-        program = self.parse_and_analyze("axis = 1\namount = 4\nsrol(axis, amount)\nsrot(0, amount)\nsshft(axis, 2)\nsflip(axis)")
+        program = self.parse_and_analyze("axis = 1\namount = 4\nscrroll(axis, amount)\nscrrotate(0, amount)\nscrshift(axis, 2)\nscrflip(axis)")
         assert self.analyzer.symbol_table.get_variable_type("axis") == DataType.NUMBER
         assert self.analyzer.symbol_table.get_variable_type("amount") == DataType.NUMBER
 

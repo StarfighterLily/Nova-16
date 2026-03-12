@@ -115,28 +115,28 @@ class SetLayerStmt(Statement):
 
 @dataclass
 class SRolStmt(Statement):
-    """SROL(axis, amount) statement."""
+    """ScrRoll(axis, amount) statement."""
     axis: Expression
     amount: Expression
 
 
 @dataclass
 class SRotStmt(Statement):
-    """SROT(direction, amount) statement."""
+    """ScrRotate(direction, amount) statement."""
     direction: Expression
     amount: Expression
 
 
 @dataclass
 class SShftStmt(Statement):
-    """SSHFT(axis, amount) statement."""
+    """ScrShift(axis, amount) statement."""
     axis: Expression
     amount: Expression
 
 
 @dataclass
 class SFlipStmt(Statement):
-    """SFLIP(axis) statement."""
+    """ScrFlip(axis) statement."""
     axis: Expression
 
 

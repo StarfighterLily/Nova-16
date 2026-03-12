@@ -70,10 +70,10 @@ class TestIntegration:
         ClrDraw
         axis = 1
         amount = 4
-        Srol(axis, amount)
-        Srot(0, 45)
-        Sshft(axis, 2)
-        Sflip(axis)
+        ScrRoll(axis, amount)
+        ScrRotate(0, 45)
+        ScrShift(axis, 2)
+        ScrFlip(axis)
         Pause
         """
 

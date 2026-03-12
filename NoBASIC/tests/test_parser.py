@@ -69,7 +69,7 @@ class TestParser:
 
     def test_screen_transform_statements(self):
         """Test parsing screen transform statements."""
-        program = self.parse_source("srol(0, 5)\nsrot(1, 45)\nsshft(1, 2)\nsflip(0)")
+        program = self.parse_source("scrroll(0, 5)\nscrrotate(1, 45)\nscrshift(1, 2)\nscrflip(0)")
         assert len(program.statements) == 4
 
         srol_stmt = program.statements[0]

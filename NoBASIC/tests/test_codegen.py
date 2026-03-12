@@ -889,7 +889,7 @@ class TestCodeGenerator:
 
     def test_screen_transform_codegen(self):
         """Test code generation for screen transform statements."""
-        code = self.generate_code("srol(0, 5)\nsrot(1, 45)\nsshft(1, 2)\nsflip(0)")
+        code = self.generate_code("scrroll(0, 5)\nscrrotate(1, 45)\nscrshift(1, 2)\nscrflip(0)")
         lines = code.strip().split("\n")
         assert any("SROL" in line for line in lines)
         assert any("SROT" in line for line in lines)
@@ -898,7 +898,7 @@ class TestCodeGenerator:
 
     def test_screen_transform_codegen_with_variables(self):
         """Screen transform statements should evaluate variable expressions."""
-        code = self.generate_code("axis = 1\namount = 3\nsrol(axis, amount)\nsflip(axis)")
+        code = self.generate_code("axis = 1\namount = 3\nscrroll(axis, amount)\nscrflip(axis)")
         lines = code.strip().split("\n")
         assert any("SROL" in line for line in lines)
         assert any("SFLIP" in line for line in lines)

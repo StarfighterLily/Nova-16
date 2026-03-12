@@ -43,14 +43,14 @@ class TestLexer:
 
     def test_graphics_keywords(self):
         """Test graphics-related keywords."""
-        source = "clrdraw pxlon pxloff line circle text setlayer srol srot sshft sflip spriteon spriteoff"
+        source = "clrdraw pxlon pxloff line circle text setlayer scrroll scrrotate scrshift scrflip spriteon spriteoff"
         tokens = self.lexer.tokenize(source)
 
         expected_types = [
             TokenType.CLRDRAW, TokenType.PXLON, TokenType.PXLOFF,
             TokenType.LINE, TokenType.CIRCLE, TokenType.TEXT,
-            TokenType.SETLAYER, TokenType.SROL, TokenType.SROT,
-            TokenType.SSHFT, TokenType.SFLIP, TokenType.SPRITEON, TokenType.SPRITEOFF,
+            TokenType.SETLAYER, TokenType.SCRROLL, TokenType.SCRROTATE,
+            TokenType.SCRSHIFT, TokenType.SCRFLIP, TokenType.SPRITEON, TokenType.SPRITEOFF,
             TokenType.EOF
         ]
 
@@ -554,7 +554,7 @@ MOV R0, 1
         """Test that all keywords are case insensitive."""
         keywords = [
             "CLRDRAW", "PXLOFF", "LINE", "CIRCLE", "TEXT", "SETLAYER",
-            "SROL", "SROT", "SSHFT", "SFLIP",
+            "SCRROLL", "SCRROTATE", "SCRSHIFT", "SCRFLIP",
             "SPRITEON", "SPRITEOFF", "PLAYTONE", "PLAYWAVE", "STOPSOUND",
             "SETCHANNEL", "GETKEY", "INPUT", "DISP", "PAUSE", "IF", "THEN",
             "ELSE", "END", "FOR", "TO", "STEP", "NEXT", "WHILE", "REPEAT",

@@ -80,13 +80,13 @@ class Parser:
             return self.text_statement()
         elif token.type == TokenType.SETLAYER:
             return self.set_layer_statement()
-        elif token.type == TokenType.SROL:
+        elif token.type == TokenType.SCRROLL:
             return self.srol_statement()
-        elif token.type == TokenType.SROT:
+        elif token.type == TokenType.SCRROTATE:
             return self.srot_statement()
-        elif token.type == TokenType.SSHFT:
+        elif token.type == TokenType.SCRSHIFT:
             return self.sshft_statement()
-        elif token.type == TokenType.SFLIP:
+        elif token.type == TokenType.SCRFLIP:
             return self.sflip_statement()
         elif token.type == TokenType.SPRITEON:
             return self.sprite_on_statement()
@@ -210,9 +210,9 @@ class Parser:
         return SetLayerStmt(layer)
 
     def srol_statement(self) -> SRolStmt:
-        """Parse SROL(axis, amount)."""
-        self.advance()  # consume SROL
-        self.consume(TokenType.LPAREN, "Expected '(' after SROL")
+        """Parse ScrRoll(axis, amount)."""
+        self.advance()  # consume SCRROLL
+        self.consume(TokenType.LPAREN, "Expected '(' after ScrRoll")
         axis = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after axis")
         amount = self.expression()
@@ -220,9 +220,9 @@ class Parser:
         return SRolStmt(axis=axis, amount=amount)
 
     def srot_statement(self) -> SRotStmt:
-        """Parse SROT(direction, amount)."""
-        self.advance()  # consume SROT
-        self.consume(TokenType.LPAREN, "Expected '(' after SROT")
+        """Parse ScrRotate(direction, amount)."""
+        self.advance()  # consume SCRROTATE
+        self.consume(TokenType.LPAREN, "Expected '(' after ScrRotate")
         direction = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after direction")
         amount = self.expression()
@@ -230,9 +230,9 @@ class Parser:
         return SRotStmt(direction=direction, amount=amount)
 
     def sshft_statement(self) -> SShftStmt:
-        """Parse SSHFT(axis, amount)."""
-        self.advance()  # consume SSHFT
-        self.consume(TokenType.LPAREN, "Expected '(' after SSHFT")
+        """Parse ScrShift(axis, amount)."""
+        self.advance()  # consume SCRSHIFT
+        self.consume(TokenType.LPAREN, "Expected '(' after ScrShift")
         axis = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after axis")
         amount = self.expression()
@@ -240,9 +240,9 @@ class Parser:
         return SShftStmt(axis=axis, amount=amount)
 
     def sflip_statement(self) -> SFlipStmt:
-        """Parse SFLIP(axis)."""
-        self.advance()  # consume SFLIP
-        self.consume(TokenType.LPAREN, "Expected '(' after SFLIP")
+        """Parse ScrFlip(axis)."""
+        self.advance()  # consume SCRFLIP
+        self.consume(TokenType.LPAREN, "Expected '(' after ScrFlip")
         axis = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after axis")
         return SFlipStmt(axis=axis)
