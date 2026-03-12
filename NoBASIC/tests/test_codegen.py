@@ -426,6 +426,18 @@ class TestCodeGenerator:
         assert "RETN" in code
         assert "RET" not in lines
 
+    def test_codegen_function_params_load_as_16bit_registers(self):
+        """Function parameter loads from stack should use P registers (word loads), not R byte loads."""
+        code = self.generate_code("""
+        function add(a, b)
+            return a + b
+        end
+        x = add(2, 3)
+        """)
+
+        assert "MOV P1, [P0]" in code or "MOV P2, [P0]" in code or "MOV P3, [P0]" in code
+        assert "MOV R4, [P0]" not in code
+
     def test_user_function_codegen_allocates_local_declared_inside_if_block(self):
         """LOCAL declarations nested in IF blocks should get real stack slots."""
         code = self.generate_code("""

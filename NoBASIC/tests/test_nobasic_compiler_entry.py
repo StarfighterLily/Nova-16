@@ -3,6 +3,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 import subprocess
+from typing import Any, Dict
 
 import pytest
 
@@ -12,7 +13,7 @@ from compiler.utils.error import CompilerError
 
 def _install_pipeline_stubs(monkeypatch):
     """Install minimal lexer/parser/analyzer/generator stubs for compile tests."""
-    captured = {
+    captured: Dict[str, Any] = {
         "generator_kwargs": None,
         "generator_instance": None,
         "tokenize_args": None,
@@ -216,6 +217,137 @@ def test_compile_nobasic_handles_compiler_error(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         nobasic_compiler.compile_nobasic(str(source_file))
     assert exc.value.code == 1
+
+
+def test_compile_nobasic_expands_include_directive(tmp_path, monkeypatch):
+    captured = _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "main.nobasic"
+    include_file = tmp_path / "lib.nobasic"
+
+    include_file.write_text("x = 1\n")
+    source_file.write_text('Include "lib.nobasic"\nPause\n')
+
+    def fake_run(command, capture_output, text):
+        Path(command[2]).with_suffix(".bin").write_bytes(b"\x00")
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert captured["tokenize_args"][0] == "x = 1\nPause\n"
+    assert captured["tokenize_args"][1] == str(source_file)
+
+
+def test_compile_nobasic_reports_include_cycle(tmp_path, monkeypatch, capsys):
+    source_file = tmp_path / "main.nobasic"
+    other_file = tmp_path / "other.nobasic"
+
+    source_file.write_text('Include "other.nobasic"\nPause\n')
+    other_file.write_text('Include "main.nobasic"\n')
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert exc.value.code == 1
+    assert "Include cycle detected" in capsys.readouterr().out
+
+
+def test_compile_nobasic_does_not_expand_include_inside_asm_block(tmp_path, monkeypatch):
+    captured = _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "main.nobasic"
+    source_file.write_text('Asm\nInclude "missing.nobasic"\nEnd\nPause\n')
+
+    def fake_run(command, capture_output, text):
+        Path(command[2]).with_suffix(".bin").write_bytes(b"\x00")
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert 'Include "missing.nobasic"' in captured["tokenize_args"][0]
+
+
+def test_preprocess_source_returns_line_map_for_included_lines(tmp_path):
+    source_file = tmp_path / "main.nobasic"
+    include_file = tmp_path / "lib.nobasic"
+
+    include_file.write_text("a = 1\nb = 2\n")
+    source_file.write_text('Include "lib.nobasic"\nPause\n')
+
+    source, line_map = nobasic_compiler.preprocess_source(str(source_file))
+
+    assert source == "a = 1\nb = 2\nPause\n"
+    assert line_map[0] == (str(include_file.resolve()), 1)
+    assert line_map[1] == (str(include_file.resolve()), 2)
+    assert line_map[2] == (str(source_file.resolve()), 2)
+
+
+def test_compile_nobasic_remaps_lexer_error_to_included_file(tmp_path, monkeypatch, capsys):
+    source_file = tmp_path / "main.nobasic"
+    include_file = tmp_path / "lib.nobasic"
+
+    include_file.write_text("x = 10\ny = #\n")
+    source_file.write_text('Include "lib.nobasic"\nPause\n')
+
+    class FailingLexer:
+        def tokenize(self, source, source_file_arg):
+            raise CompilerError("Unexpected character: #", source_file_arg, 2, 5)
+
+    monkeypatch.setattr(nobasic_compiler, "Lexer", FailingLexer)
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert f"Error in {include_file.resolve()} at line 2" in output
+
+
+def test_preprocess_source_resolves_relative_to_compiler_dir(tmp_path, monkeypatch):
+    fake_nobasic_dir = tmp_path / "NoBASIC"
+    progs_dir = fake_nobasic_dir / "progs"
+    progs_dir.mkdir(parents=True)
+
+    source_file = progs_dir / "starfield.nobasic"
+    source_file.write_text("Pause\n")
+
+    monkeypatch.setattr(nobasic_compiler, "__file__", str(fake_nobasic_dir / "nobasic_compiler.py"))
+
+    source, line_map = nobasic_compiler.preprocess_source("progs/starfield.nobasic")
+
+    assert source == "Pause\n"
+    assert line_map == [(str(source_file.resolve()), 1)]
+
+
+def test_compile_nobasic_reports_missing_top_level_source_file(capsys):
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic("does_not_exist.nobasic")
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert "Source file not found" in output
+
+
+def test_compile_nobasic_include_without_trailing_newline_preserves_boundary(tmp_path, monkeypatch):
+    captured = _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "main.nobasic"
+    include_file = tmp_path / "math.nobasic"
+
+    include_file.write_text("Function Add(a, b)\n    Return a + b\nEnd")
+    source_file.write_text('Include "math.nobasic"\nDisp Add(2,3)\n')
+
+    def fake_run(command, capture_output, text):
+        Path(command[2]).with_suffix(".bin").write_bytes(b"\x00")
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    nobasic_compiler.compile_nobasic(str(source_file))
+
+    flattened = captured["tokenize_args"][0]
+    assert "End\nDisp Add(2,3)" in flattened
 
 
 def test_main_shows_usage_when_no_arguments(monkeypatch, capsys):

@@ -1,0 +1,2 @@
+Include "math.nobasic"
+Disp Add(2,3)

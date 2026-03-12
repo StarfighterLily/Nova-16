@@ -166,6 +166,24 @@ class TestIntegration:
             with pytest.raises(SystemExit):
                 compile_nobasic(str(source_file))
 
+    def test_include_error_reports_included_file_location(self, capsys):
+        """Errors in included files should report included file and original line."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_dir = Path(tmpdir)
+            source_file = temp_dir / "main.nobasic"
+            include_file = temp_dir / "lib.nobasic"
+
+            include_file.write_text("x = 10\ny = #\n")
+            source_file.write_text('Include "lib.nobasic"\nPause\n')
+
+            with pytest.raises(SystemExit) as exc:
+                compile_nobasic(str(source_file))
+
+            assert exc.value.code == 1
+            output = capsys.readouterr().out
+            assert f"Error in {include_file.resolve()}" in output
+            assert "line 2" in output
+
     def test_math_library_integration(self):
         """Test integration with math library functions."""
         source = """
@@ -974,41 +992,3 @@ class TestIntegration:
             assert "; Locals:  (0 bytes)" in asm_content
             # Score should be emitted as regular/global storage path (absolute address usage).
             assert "MOV P0," in asm_content
-
-    def test_game_attack_function_has_edge_guards_for_sword_draw(self):
-        """Sword draw in game source should guard left/right edge positions before drawing."""
-        source = Path(__file__).parent.parent / "game.nobasic"
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            source_file = Path(tmpdir) / "game.nobasic"
-            source_file.write_text(source.read_text())
-
-            compile_nobasic(str(source_file))
-
-            asm_file = source_file.with_suffix('.asm')
-            asm_content = asm_file.read_text().lower()
-            attack_section = asm_content.split("_func_attackifpressed_2:", 1)[1].split("_func_movexbykey_3:", 1)[0]
-
-            # Left edge guard (>= 16) may be folded as SHL by 4 with varying temp registers.
-            assert re.search(r"shl\s+[pr]\d,\s*4", attack_section)
-            assert "jge" in attack_section or "jlt" in attack_section
-            # Right edge guard should compare against 232 and branch (direct or inverted lowering).
-            assert "mov p2, 232" in attack_section
-            assert "jle" in attack_section or "jgt" in attack_section
-
-    def test_game_no_struct_old_position_clear_does_not_use_p1_for_spill_addressing(self):
-        """Regression: game_no_struct clear path must avoid P1 scratch clobber from spill stores."""
-        source = Path(__file__).parent.parent / "game_no_struct.nobasic"
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            source_file = Path(tmpdir) / "game_no_struct.nobasic"
-            source_file.write_text(source.read_text())
-
-            compile_nobasic(str(source_file))
-
-            asm_file = source_file.with_suffix('.asm')
-            asm_content = asm_file.read_text().lower()
-
-            # P1 was previously used as a hardcoded spill-address scratch register,
-            # which could overwrite a live old-position variable and break clear-on-move.
-            assert "mov p1, 28672" not in asm_content

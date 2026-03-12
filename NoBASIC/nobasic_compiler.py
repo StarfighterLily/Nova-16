@@ -6,7 +6,9 @@ Compiles NoBASIC source code to Nova-16 assembly and binary.
 
 import sys
 import os
+import re
 from pathlib import Path
+from typing import List, Optional, Tuple
 
 # Add the compiler directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'compiler'))
@@ -16,6 +18,154 @@ from compiler.parser.parser import Parser
 from compiler.semantic.analyzer import SemanticAnalyzer
 from compiler.codegen.generator import CodeGenerator
 from compiler.utils.error import CompilerError
+
+
+INCLUDE_PATTERN = re.compile(r'^\s*(?:#include|include)\s+"([^"]+)"\s*$', re.IGNORECASE)
+MAX_INCLUDE_DEPTH = 32
+SourceLineMap = List[Tuple[str, int]]
+
+
+def resolve_source_file_path(source_file: str) -> Path:
+    """Resolve top-level source file from cwd or NoBASIC directory."""
+    source_path = Path(source_file)
+    candidates = [source_path]
+
+    if not source_path.is_absolute():
+        compiler_dir = Path(__file__).resolve().parent
+        candidates.append(compiler_dir / source_path)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+
+    raise CompilerError(
+        f"Source file not found: {source_file}",
+        source_file,
+        1,
+        1,
+    )
+
+
+def _resolve_includes_from_file(
+    file_path: Path,
+    include_stack=None,
+    max_depth: int = MAX_INCLUDE_DEPTH,
+) -> Tuple[str, SourceLineMap]:
+    """Resolve Include directives recursively and return flattened source text + line map."""
+    if include_stack is None:
+        include_stack = []
+
+    resolved_path = file_path.resolve()
+
+    if len(include_stack) >= max_depth:
+        raise CompilerError(
+            f"Maximum include depth ({max_depth}) exceeded while processing '{resolved_path.name}'",
+            str(resolved_path),
+            1,
+            1,
+        )
+
+    if resolved_path in include_stack:
+        cycle = " -> ".join([p.name for p in include_stack] + [resolved_path.name])
+        raise CompilerError(
+            f"Include cycle detected: {cycle}",
+            str(resolved_path),
+            1,
+            1,
+        )
+
+    if not resolved_path.exists():
+        raise CompilerError(
+            f"Included file not found: {resolved_path}",
+            str(file_path),
+            1,
+            1,
+        )
+
+    try:
+        with open(resolved_path, 'r') as f:
+            source = f.read()
+    except OSError as exc:
+        raise CompilerError(f"Failed to read include file: {exc}", str(resolved_path), 1, 1)
+
+    include_stack.append(resolved_path)
+    output_lines = []
+    line_map: SourceLineMap = []
+    in_asm_block = False
+
+    try:
+        for line_num, line in enumerate(source.splitlines(keepends=True), start=1):
+            stripped = line.strip()
+            lowered = stripped.lower()
+
+            if not in_asm_block:
+                include_match = INCLUDE_PATTERN.match(line)
+                if include_match:
+                    include_target = include_match.group(1)
+                    include_path = (resolved_path.parent / include_target).resolve()
+                    if not include_path.exists():
+                        raise CompilerError(
+                            f"Included file not found: {include_target}",
+                            str(resolved_path),
+                            line_num,
+                            1,
+                        )
+                    included_source, included_map = _resolve_includes_from_file(include_path, include_stack, max_depth)
+                    output_lines.append(included_source)
+                    line_map.extend(included_map)
+                    # Preserve statement boundaries across include boundaries even when
+                    # included files omit a trailing newline.
+                    if included_source and not included_source.endswith("\n"):
+                        output_lines.append("\n")
+                        if included_map:
+                            line_map.append(included_map[-1])
+                        else:
+                            line_map.append((str(include_path), 1))
+                    continue
+
+                if lowered == "asm":
+                    in_asm_block = True
+            else:
+                if lowered == "end":
+                    in_asm_block = False
+
+            output_lines.append(line)
+            line_map.append((str(resolved_path), line_num))
+
+        return ''.join(output_lines), line_map
+    finally:
+        include_stack.pop()
+
+
+def preprocess_source(source_file: str) -> Tuple[str, SourceLineMap]:
+    """Load source file and expand include directives, returning source + line map."""
+    resolved_source_file = resolve_source_file_path(source_file)
+    return _resolve_includes_from_file(resolved_source_file)
+
+
+def _to_canonical_path(path_value: str) -> Optional[Path]:
+    """Best-effort conversion of a path string into an absolute canonical Path."""
+    if not path_value or path_value == "<stdin>":
+        return None
+    try:
+        return Path(path_value).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+
+def remap_compiler_error(error: CompilerError, source_file: str, line_map: SourceLineMap) -> CompilerError:
+    """Map flattened-source diagnostics back to original include file/line locations."""
+    if error.line <= 0 or error.line > len(line_map):
+        return error
+
+    main_file = _to_canonical_path(source_file)
+    error_file = _to_canonical_path(error.filename)
+
+    if main_file is None or error_file is None or error_file != main_file:
+        return error
+
+    mapped_file, mapped_line = line_map[error.line - 1]
+    return error.__class__(error.message, mapped_file, mapped_line, error.column)
 
 
 def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = False, 
@@ -33,10 +183,13 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         enable_peephole: Enable peephole optimizer (default: False)
         enable_live_range_scheduling: Enable live range scheduler (default: False)
     """
+    line_map: SourceLineMap = []
+    resolved_source_file: Optional[Path] = None
     try:
-        # Read source
-        with open(source_file, 'r') as f:
-            source = f.read()
+        resolved_source_file = resolve_source_file_path(source_file)
+
+        # Read source and expand include directives
+        source, line_map = _resolve_includes_from_file(resolved_source_file)
 
         if verbose:
             print(f"Compiling {source_file}...")
@@ -51,21 +204,21 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
 
         # Lexical analysis
         lexer = Lexer()
-        tokens = lexer.tokenize(source, source_file)
+        tokens = lexer.tokenize(source, str(resolved_source_file))
 
         if verbose:
             print(f"Lexical analysis complete: {len(tokens)} tokens")
 
         # Parsing
         parser = Parser()
-        ast = parser.parse(tokens, source_file)
+        ast = parser.parse(tokens, str(resolved_source_file))
 
         if verbose:
             print("Parsing complete")
 
         # Semantic analysis
         analyzer = SemanticAnalyzer()
-        analyzer.analyze(ast, source_file)
+        analyzer.analyze(ast, str(resolved_source_file))
 
         if verbose:
             print("Semantic analysis complete")
@@ -86,7 +239,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
 
         # Determine output file
         if not output_file:
-            output_file = Path(source_file).with_suffix('.asm')
+            output_file = resolved_source_file.with_suffix('.asm')
 
         # Write assembly
         with open(output_file, 'w') as f:
@@ -121,7 +274,9 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         print(f"Compilation successful: {output_file} and {binary_file}")
 
     except CompilerError as e:
-        print(f"Compilation error: {e}")
+        main_source_for_remap = str(resolved_source_file) if resolved_source_file is not None else source_file
+        mapped_error = remap_compiler_error(e, main_source_for_remap, line_map)
+        print(f"Compilation error: {mapped_error}")
         sys.exit(1)
     except Exception as e:
         import traceback

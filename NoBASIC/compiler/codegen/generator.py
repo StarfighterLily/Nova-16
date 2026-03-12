@@ -223,6 +223,31 @@ class CodeGenerator:
             self._debug_register_state()
         
         raise RuntimeError(error_msg)
+
+    def allocate_p_register(self, preferred_regs: Optional[List[str]] = None) -> str:
+        """Allocate a 16-bit P register only (never falls back to R registers)."""
+        if preferred_regs is None:
+            preferred_regs = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P0']
+
+        self.allocation_stats['total_allocations'] += 1
+
+        for reg in preferred_regs:
+            if reg not in self.register_usage:
+                continue
+            if self.register_usage[reg]:
+                continue
+
+            self.register_usage[reg] = True
+            self.auto_free_registers.add(reg)
+            self._update_allocation_stats()
+            self.mark_temp_live(reg)
+            if self.debug_allocation:
+                print(f"[ALLOC] Allocated P register {reg}")
+                self._debug_register_state()
+            return reg
+
+        self.allocation_stats['allocation_failures'] += 1
+        raise RuntimeError("Register exhaustion: No available P registers for 16-bit operation")
     
     def _update_allocation_stats(self):
         """Update statistics about register allocation."""
@@ -1540,7 +1565,7 @@ class CodeGenerator:
                     self.smart_deallocate(text_value_reg, is_last_use=True)
                 text_value_reg = temp_r_reg
             
-            string_reg = self.allocate_register("P1")  # Use P register for string address
+            string_reg = self.allocate_p_register(["P1", "P2", "P3"])  # Use P register for string address
             self.current_output.append(f"ITOS {string_reg}, {text_value_reg}")  # Convert number to string
             self.current_output.append(f"TEXT {string_reg}")  # Display the converted string
             self.deallocate_register(string_reg)
@@ -1918,7 +1943,7 @@ class CodeGenerator:
                         self.smart_deallocate(value_reg, is_last_use=True)
                     value_reg = temp_r_reg
                 
-                string_reg = self.allocate_register("P1")
+                string_reg = self.allocate_p_register(["P1", "P2", "P3"])
                 self.current_output.append(f"ITOS {string_reg}, {value_reg}")
                 self.current_output.append("MOV VX, 0")
                 self.current_output.append("MOV VC, 15")
@@ -1939,7 +1964,7 @@ class CodeGenerator:
                     self.smart_deallocate(value_reg, is_last_use=True)
                 value_reg = temp_r_reg
             
-            string_reg = self.allocate_register("P1")  # Use a P register for string address
+            string_reg = self.allocate_p_register(["P1", "P2", "P3"])  # Use a P register for string address
             self.current_output.append(f"ITOS {string_reg}, {value_reg}")  # Convert to string
             self.current_output.append("MOV VX, 0")  # Set X coordinate
             self.current_output.append("MOV VC, 15")  # Set color to white
@@ -2765,7 +2790,7 @@ class CodeGenerator:
                     # If we somehow got an R register, we need to fix it
                     if target_reg.startswith('R'):
                         self.deallocate_register(target_reg)
-                        target_reg = self.allocate_register('P1')
+                        target_reg = self.allocate_p_register(['P1', 'P2', 'P3'])
                     label = self.add_string_literal(expr.value)
                     self.current_output.append(f"MOV {target_reg}, {label}")
                     result_reg = target_reg
@@ -2823,7 +2848,7 @@ class CodeGenerator:
             # Ensure target_reg is a P register (string addresses are 16-bit)
             if target_reg.startswith('R'):
                 self.deallocate_register(target_reg)
-                target_reg = self.allocate_register('P1')
+                target_reg = self.allocate_p_register(['P1', 'P2', 'P3'])
             
             # Generate left operand
             left_result = self.generate_expression(expr.left)
@@ -3181,7 +3206,7 @@ class CodeGenerator:
                 arg_regs.append(arg_reg)
                 # Ensure 16-bit push: if arg in R register, move to P temp first
                 if arg_reg.startswith('R'):
-                    p_temp = self.allocate_register('P1') if not self.register_usage.get('P1', False) else self.allocate_register('P2')
+                    p_temp = self.allocate_p_register(['P1', 'P2', 'P3'])
                     self.current_output.append(f"MOV {p_temp}, {arg_reg}")
                     self.current_output.append(f"PUSH {p_temp}")
                     self.deallocate_register(p_temp)
@@ -4119,7 +4144,7 @@ class CodeGenerator:
             # Use P register for full 16-bit local load; fall back to target if already P
             dest_reg = target_reg
             if dest_reg.startswith('R'):
-                dest_reg = self.allocate_register('P1')
+                dest_reg = self.allocate_p_register(['P1', 'P2', 'P3'])
             self.current_output.append(f"MOV P0, FP")
             self.current_output.append(f"ADD P0, {offset}")
             self.current_output.append(f"MOV {dest_reg}, [P0]")
@@ -4140,7 +4165,7 @@ class CodeGenerator:
                     # Use P register for full 16-bit parameter load; fall back to target if already P
                     dest_reg = target_reg
                     if dest_reg.startswith('R'):
-                        dest_reg = self.allocate_register('P1')
+                        dest_reg = self.allocate_p_register(['P1', 'P2', 'P3'])
                     self.current_output.append(f"MOV P0, FP")
                     self.current_output.append(f"ADD P0, {offset}")
                     self.current_output.append(f"MOV {dest_reg}, [P0]")
