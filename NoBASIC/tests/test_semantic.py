@@ -67,7 +67,7 @@ class TestSemanticAnalyzer:
     def test_undefined_list_access(self):
         """Test error for accessing undefined list."""
         with pytest.raises(SemanticError, match="Undefined list"):
-            self.parse_and_analyze("x = L99(1)")
+            self.parse_and_analyze("x = arr[1]")
 
     def test_undefined_matrix_access(self):
         """Test error for accessing undefined matrix."""

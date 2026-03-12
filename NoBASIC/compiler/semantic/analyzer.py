@@ -383,6 +383,9 @@ class SemanticAnalyzer:
         if isinstance(expr, LiteralExpr):
             return expr.data_type
         elif isinstance(expr, VariableExpr):
+            if self._is_list_name(expr.name):
+                self.symbol_table.lists.add(expr.name)
+                return DataType.LIST
             if self.symbol_table.is_list(expr.name):
                 return DataType.LIST
             elif self.symbol_table.is_matrix(expr.name):
@@ -393,6 +396,11 @@ class SemanticAnalyzer:
                 # Undefined variables can be any type in BASIC
                 return DataType.NUMBER  # Default, but allow type coercion
         elif isinstance(expr, ListAccessExpr):
+            if not self.symbol_table.is_list(expr.list_name):
+                if self._is_list_name(expr.list_name):
+                    self.symbol_table.lists.add(expr.list_name)
+                else:
+                    raise SemanticError(f"Undefined list: {expr.list_name}", self.filename)
             if not self.symbol_table.is_list(expr.list_name):
                 raise SemanticError(f"Undefined list: {expr.list_name}", self.filename)
             index_type = self.analyze_expression(expr.index)
@@ -551,6 +559,13 @@ class SemanticAnalyzer:
             "GETKEY", "PAUSE"
         ]
 
+    def _is_list_name(self, name: str) -> bool:
+        """Return True for TI-style list identifiers (L1, L2, ...)."""
+        if not name.startswith("L"):
+            return False
+        suffix = name[1:]
+        return suffix.isdigit() and len(suffix) > 0
+
     def get_function_arg_count(self, name: str) -> int:
         """Get the expected number of arguments for a built-in function."""
         arg_counts = {
@@ -664,6 +679,8 @@ class SemanticAnalyzer:
 
     def analyze_assignable_expression(self, expr: Expression, value_type: DataType):
         """Analyze an expression that can be assigned to (left-hand side of assignment)."""
+        line = getattr(expr, "line", 0)
+        column = getattr(expr, "column", 0)
         if isinstance(expr, VariableExpr):
             # Variables are dynamically typed and implicitly global by default,
             # unless an existing local/parameter binding already exists.
@@ -694,15 +711,17 @@ class SemanticAnalyzer:
         elif isinstance(expr, ListAccessExpr):
             # Check that the list exists and index is valid
             list_name = expr.list_name
-            if not self.symbol_table.is_defined(list_name):
+            if self._is_list_name(list_name):
+                self.symbol_table.lists.add(list_name)
+            elif not self.symbol_table.is_defined(list_name):
                 # Auto-define list
                 self.symbol_table.lists.add(list_name)
             elif self.symbol_table.get_type(list_name) != DataType.LIST:
-                raise SemanticError(f"'{list_name}' is not a list", expr.line, expr.column)
+                raise SemanticError(f"'{list_name}' is not a list", self.filename, line, column)
             # Check index expression
             index_type = self.analyze_expression(expr.index)
             if index_type != DataType.NUMBER:
-                raise SemanticError("List index must be a number", expr.line, expr.column)
+                raise SemanticError("List index must be a number", self.filename, line, column)
         elif isinstance(expr, MatrixAccessExpr):
             # Check that the matrix exists and indices are valid
             matrix_name = expr.matrix_name
@@ -710,11 +729,11 @@ class SemanticAnalyzer:
                 # Auto-define matrix
                 self.symbol_table.matrices.add(matrix_name)
             elif self.symbol_table.get_type(matrix_name) != DataType.MATRIX:
-                raise SemanticError(f"'{matrix_name}' is not a matrix", expr.line, expr.column)
+                raise SemanticError(f"'{matrix_name}' is not a matrix", self.filename, line, column)
             # Check index expressions
             row_type = self.analyze_expression(expr.row)
             col_type = self.analyze_expression(expr.col)
             if row_type != DataType.NUMBER or col_type != DataType.NUMBER:
-                raise SemanticError("Matrix indices must be numbers", expr.line, expr.column)
+                raise SemanticError("Matrix indices must be numbers", self.filename, line, column)
         else:
-            raise SemanticError("Invalid assignment target", expr.line, expr.column)
+            raise SemanticError("Invalid assignment target", self.filename, line, column)

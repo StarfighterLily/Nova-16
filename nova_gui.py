@@ -45,6 +45,10 @@ class CPUController:
                     if not self.running or self.stop_event.is_set():
                         break
                     self.cpu.step()
+                    if self.cpu.halted:
+                        self.running = False
+                        self.paused.set()
+                        break
                 
                 # Only update screen if enough time has passed or forced
                 if (current_time - self.last_screen_update >= self.frame_time) or self.force_update:
@@ -363,10 +367,10 @@ def main( cpu, memory, gfx, kbd=None ):
         # Only update status text if something changed
         if (current_pc != prev_pc or current_running != prev_running or current_halted != prev_halted):
             status_text = f"PC: 0x{current_pc:04X} | "
-            if current_running:
-                status_text += "RUNNING"
-            elif current_halted:
+            if current_halted:
                 status_text += "HALTED"
+            elif current_running:
+                status_text += "RUNNING"
             else:
                 status_text += "STOPPED"
             

@@ -144,6 +144,13 @@ class CodeGenerator:
         self.expr_simplifier: Optional[ExpressionSimplifier] = None
         self.expr_constant_values: Dict[str, int] = {}
 
+        # Dynamic list runtime state
+        self.list_descriptors: Dict[str, int] = {}  # list name -> descriptor address (base, capacity)
+        self.list_heap_next_addr: Optional[int] = None  # Address storing next free list heap byte
+        self.list_heap_start = 0x7200
+        self.list_heap_end = 0xEFFF
+        self.list_runtime_required = False
+
     def allocate_register(self, preferred_reg: str = None, exclude_interfering: bool = True) -> str:
         """
         Allocate an unused register, preferring the specified register if available.
@@ -1151,6 +1158,9 @@ class CodeGenerator:
         self.function_outputs = []
         self.function_locals = {}
         self.expr_constant_values = {}
+        self.list_descriptors = {}
+        self.list_heap_next_addr = None
+        self.list_runtime_required = False
 
         # Pre-pass: register struct declarations so function code generation
         # can resolve member access on global struct instances.
@@ -1160,6 +1170,10 @@ class CodeGenerator:
                     stmt.name,
                     [field.lower() for field in stmt.fields],
                 )
+
+        # Reserve dynamic list descriptors up-front so initialization code can
+        # set deterministic base/capacity state before user code runs.
+        self._collect_dynamic_list_descriptors(program)
 
         # First pass: collect function definitions and assign labels
         for stmt in program.statements:
@@ -1203,6 +1217,9 @@ class CodeGenerator:
         self.current_output.append("MOV SP, P7")      # Initialize stack pointer at top of memory
         self.current_output.append("MOV FP, SP")      # Initialize frame pointer
 
+        # Initialize dynamic list runtime state.
+        self._emit_list_runtime_init()
+
         # Generate code for all statements (skip function definitions in main pass)
         for stmt in program.statements:
             if not isinstance(stmt, FunctionDefStmt):
@@ -1214,6 +1231,9 @@ class CodeGenerator:
         # Add function code after HLT
         for func_lines in self.function_outputs:
             self.current_output.extend(func_lines)
+
+        # Emit list allocator helper when at least one list is used.
+        self._emit_list_runtime_helper()
         
         # Add string literals
         for label, string_value in self.strings:
@@ -2046,36 +2066,77 @@ class CodeGenerator:
 
     def generate_list_access(self, expr: ListAccessExpr, target_reg: str) -> str:
         """Generate code to load from a list element."""
-        # For now, assume L1 starts at 0x1000, L2 at 0x1100, etc.
-        list_num = int(expr.list_name[1])  # L1 -> 1
-        base_addr = 0x1000 + (list_num - 1) * 0x100
-        
-        index_reg = self.generate_expression(expr.index, "R2")
-        # Address = base_addr + index * 2 (since 16-bit values)
-        self.current_output.append(f"MOV {target_reg}, {index_reg}")
-        self.current_output.append(f"MUL {target_reg}, 2")  # Multiply by 2 (word stride)
-        self.current_output.append(f"MOV P5, 0x{base_addr:04X}")
-        self.current_output.append(f"ADD {target_reg}, P5")
-        self.current_output.append(f"MOV P0, {target_reg}")
-        self.current_output.append(f"MOV {target_reg}, [P0]")
+        desc_addr = self._get_or_create_list_descriptor(expr.list_name)
+        index_reg = self.generate_expression(expr.index, "P2")
+        self.current_output.append("PUSH P1")
+        self.current_output.append("PUSH P2")
+        self.current_output.append("PUSH P3")
+        self.current_output.append("PUSH P4")
+        self.current_output.append("PUSH P5")
+        self.current_output.append("PUSH P6")
+        self.current_output.append(f"MOV P1, 0x{desc_addr:04X}")
+        if index_reg != "P2":
+            self.current_output.append(f"MOV P2, {index_reg}")
+        self.current_output.append("CALL _nb_list_elem_addr")
+        self.current_output.append("POP P6")
+        self.current_output.append("POP P5")
+        self.current_output.append("POP P4")
+        self.current_output.append("POP P3")
+        self.current_output.append("POP P2")
+        self.current_output.append("POP P1")
+        load_ok = self.new_label()
+        load_done = self.new_label()
+        self.current_output.append("CMP P0, 0")
+        self.current_output.append(f"JNZ {load_ok}")
+        self.current_output.append(f"MOV {target_reg}, 0")
+        self.current_output.append(f"JMP {load_done}")
+        self.current_output.append(f"{load_ok}:")
+        if target_reg.startswith("R"):
+            self.current_output.append("PUSH P1")
+            self.current_output.append("MOV P1, [P0]")
+            self.current_output.append(f"MOV {target_reg}, :P1")
+            self.current_output.append("POP P1")
+        else:
+            self.current_output.append(f"MOV {target_reg}, [P0]")
+        self.current_output.append(f"{load_done}:")
         return target_reg
 
     def generate_list_store(self, expr: ListAccessExpr, value_reg: str):
         """Generate code to store to a list element."""
-        list_num = int(expr.list_name[1])  # L1 -> 1
-        base_addr = 0x1000 + (list_num - 1) * 0x100
-        
-        index_reg = self.generate_expression(expr.index, "R2")
-        # Address = base_addr + index * 2
-        self.current_output.append(f"MOV P0, {index_reg}")
-        self.current_output.append("MUL P0, 2")  # Multiply by 2 (word stride)
-        self.current_output.append(f"MOV P5, 0x{base_addr:04X}")
-        self.current_output.append("ADD P0, P5")
+        desc_addr = self._get_or_create_list_descriptor(expr.list_name)
+        index_reg = self.generate_expression(expr.index, "P2")
+        self.current_output.append("PUSH P1")
+        self.current_output.append("PUSH P2")
+        self.current_output.append("PUSH P3")
+        self.current_output.append("PUSH P4")
+        self.current_output.append("PUSH P5")
+        self.current_output.append("PUSH P6")
+        self.current_output.append(f"MOV P1, 0x{desc_addr:04X}")
+        if index_reg != "P2":
+            self.current_output.append(f"MOV P2, {index_reg}")
+        self.current_output.append("CALL _nb_list_elem_addr")
+        self.current_output.append("POP P6")
+        self.current_output.append("POP P5")
+        self.current_output.append("POP P4")
+        self.current_output.append("POP P3")
+        self.current_output.append("POP P2")
+        self.current_output.append("POP P1")
+        store_ok = self.new_label()
+        store_done = self.new_label()
+        self.current_output.append("CMP P0, 0")
+        self.current_output.append(f"JNZ {store_ok}")
+        self.current_output.append(f"JMP {store_done}")
+        self.current_output.append(f"{store_ok}:")
         store_reg = value_reg
-        if store_reg.startswith('R') or store_reg in {"P0", "P5"}:
+        if store_reg.startswith('R'):
+            self.current_output.append("MOV P1, 0")
+            self.current_output.append(f"MOV :P1, {store_reg}")
+            store_reg = "P1"
+        elif store_reg in {"P0", "P5"}:
             self.current_output.append(f"MOV P1, {store_reg}")
             store_reg = "P1"
         self.current_output.append(f"MOV [P0], {store_reg}")
+        self.current_output.append(f"{store_done}:")
 
     def generate_matrix_access(self, expr: MatrixAccessExpr, target_reg: str) -> str:
         """Generate code to load from a matrix element."""
@@ -3890,241 +3951,185 @@ class CodeGenerator:
             self.current_output.append(f"MOV VX, {x1_reg}")
             self.current_output.append(f"MOV VY, {y1_reg}")
             self.current_output.append(f"SRECT {x2_reg}, {y2_reg}, {fill_reg}")
-        elif func_name in {"FILL", "SORTA", "SORTD", "SEQ", "REVERSE"}:
-            # Resolve target list base address; default to L1 if not identifiable
-            base_addr = 0x1000
+        elif func_name in {"FILL", "SORTA", "SORTD", "SEQ", "REVERSE", "SUM", "MEAN", "DIM"}:
             list_expr = expr.arguments[0] if expr.arguments else None
-            if isinstance(list_expr, VariableExpr) and list_expr.name.upper().startswith('L'):
-                try:
-                    list_num = int(list_expr.name[1:])
-                    base_addr = 0x1000 + (list_num - 1) * 0x100
-                except ValueError:
-                    pass
+            list_name = list_expr.name if isinstance(list_expr, VariableExpr) else "L1"
+            desc_addr = self._get_or_create_list_descriptor(list_name)
 
-            if func_name == "FILL":
-                # Use a P-register so 16-bit fill values (e.g., 30000) are not truncated
-                value_reg = self.generate_expression(expr.arguments[1], "P3")
-                # Keep base address in a dedicated P-register to avoid clobbering value_reg
-                base_reg = "P4" if value_reg != "P4" else ("P5" if value_reg != "P5" else "P6")
-                self.current_output.append(f"; Fill list starting at 0x{base_addr:04X}")
-                self.current_output.append(f"MOV {base_reg}, 0x{base_addr:04X}")
-                self.current_output.append("MOV R1, 0")
+            self.current_output.append(f"MOV P6, 0x{desc_addr:04X}")
+            self.current_output.append("MOV P5, [P6]")  # base
+            self.current_output.append("MOV P0, P6")
+            self.current_output.append("INC P0")
+            self.current_output.append("INC P0")
+            self.current_output.append("MOV P4, [P0]")  # capacity
+
+            if func_name == "DIM":
+                self.current_output.append(f"MOV {target_reg}, P4")
+
+            elif func_name == "SUM":
+                self.current_output.append(f"MOV {target_reg}, 0")
+                self.current_output.append("MOV P2, 0")
                 loop_label = self.new_label()
                 end_label = self.new_label()
                 self.current_output.append(f"{loop_label}:")
-                self.current_output.append("CMP R1, 100")
+                self.current_output.append("CMP P2, P4")
                 self.current_output.append(f"JGE {end_label}")
-                self.current_output.append("MOV P1, R1")
+                self.current_output.append("MOV P1, P2")
                 self.current_output.append("MUL P1, 2")
-                self.current_output.append(f"ADD P1, {base_reg}")
-                self.current_output.append(f"MOV [P1], {value_reg}")
-                self.current_output.append("INC R1")
+                self.current_output.append("ADD P1, P5")
+                self.current_output.append("MOV P3, [P1]")
+                self.current_output.append(f"ADD {target_reg}, P3")
+                self.current_output.append("INC P2")
                 self.current_output.append(f"JMP {loop_label}")
                 self.current_output.append(f"{end_label}:")
-                self.current_output.append(f"MOV {target_reg}, {base_addr}")
+
+            elif func_name == "MEAN":
+                self.current_output.append(f"MOV {target_reg}, 0")
+                mean_done = self.new_label()
+                self.current_output.append("CMP P4, 0")
+                self.current_output.append(f"JLE {mean_done}")
+                self.current_output.append("MOV P2, 0")
+                loop_label = self.new_label()
+                end_label = self.new_label()
+                self.current_output.append(f"{loop_label}:")
+                self.current_output.append("CMP P2, P4")
+                self.current_output.append(f"JGE {end_label}")
+                self.current_output.append("MOV P1, P2")
+                self.current_output.append("MUL P1, 2")
+                self.current_output.append("ADD P1, P5")
+                self.current_output.append("MOV P3, [P1]")
+                self.current_output.append(f"ADD {target_reg}, P3")
+                self.current_output.append("INC P2")
+                self.current_output.append(f"JMP {loop_label}")
+                self.current_output.append(f"{end_label}:")
+                self.current_output.append(f"DIV {target_reg}, P4")
+                self.current_output.append(f"{mean_done}:")
+
+            elif func_name == "FILL":
+                value_reg = self.generate_expression(expr.arguments[1], "P3")
+                if value_reg.startswith("R"):
+                    self.current_output.append("MOV P3, 0")
+                    self.current_output.append(f"MOV :P3, {value_reg}")
+                    value_reg = "P3"
+                self.current_output.append("MOV P2, 0")
+                loop_label = self.new_label()
+                end_label = self.new_label()
+                self.current_output.append(f"{loop_label}:")
+                self.current_output.append("CMP P2, P4")
+                self.current_output.append(f"JGE {end_label}")
+                self.current_output.append("MOV P1, P2")
+                self.current_output.append("MUL P1, 2")
+                self.current_output.append("ADD P1, P5")
+                self.current_output.append(f"MOV [P1], {value_reg}")
+                self.current_output.append("INC P2")
+                self.current_output.append(f"JMP {loop_label}")
+                self.current_output.append(f"{end_label}:")
                 if value_reg != target_reg:
                     self.smart_deallocate(value_reg, is_last_use=True)
+                self.current_output.append(f"MOV {target_reg}, P4")
+
+            elif func_name == "SEQ":
+                current_reg = self.generate_expression(expr.arguments[2], "P2")
+                end_reg = self.generate_expression(expr.arguments[3], "P3")
+                step_reg = self.generate_expression(expr.arguments[4], "P7") if len(expr.arguments) > 4 else None
+                if step_reg is None:
+                    self.current_output.append("MOV P7, 1")
+                    step_reg = "P7"
+                self.current_output.append("MOV P1, 0")  # list index
+                loop_label = self.new_label()
+                end_label = self.new_label()
+                pos_step = self.new_label()
+                do_write = self.new_label()
+                self.current_output.append(f"{loop_label}:")
+                self.current_output.append("CMP P1, P4")
+                self.current_output.append(f"JGE {end_label}")
+                self.current_output.append(f"CMP {step_reg}, 0")
+                self.current_output.append(f"JGT {pos_step}")
+                self.current_output.append(f"CMP {step_reg}, 0")
+                self.current_output.append(f"JLT {do_write}")
+                self.current_output.append(f"JMP {end_label}")
+                self.current_output.append(f"{pos_step}:")
+                self.current_output.append(f"CMP {current_reg}, {end_reg}")
+                self.current_output.append(f"JGT {end_label}")
+                self.current_output.append(f"{do_write}:")
+                self.current_output.append("MOV P0, P1")
+                self.current_output.append("MUL P0, 2")
+                self.current_output.append("ADD P0, P5")
+                self.current_output.append(f"MOV [P0], {current_reg}")
+                self.current_output.append("INC P1")
+                self.current_output.append(f"ADD {current_reg}, {step_reg}")
+                self.current_output.append(f"JMP {loop_label}")
+                self.current_output.append(f"{end_label}:")
+                self.current_output.append(f"MOV {target_reg}, P4")
+                if step_reg != "P7":
+                    self.smart_deallocate(step_reg, is_last_use=True)
 
             elif func_name in {"SORTA", "SORTD"}:
-                # Simple bubble sort (100 elements, 0-based indices)
                 ascending = func_name == "SORTA"
-                self.current_output.append(f"; Sort {'ascending' if ascending else 'descending'} list at 0x{base_addr:04X}")
-                self.current_output.append(f"MOV P0, 0x{base_addr:04X}")
+                self.current_output.append("MOV P1, 0")  # i
                 outer_label = self.new_label()
                 inner_label = self.new_label()
                 next_outer = self.new_label()
-                skip_label = self.new_label()
-                end_label = self.new_label()
-                self.current_output.append("MOV R1, 0")  # i
+                skip_swap = self.new_label()
+                done_label = self.new_label()
                 self.current_output.append(f"{outer_label}:")
-                self.current_output.append("CMP R1, 100")
-                self.current_output.append(f"JGE {end_label}")
-                self.current_output.append("MOV R2, 0")  # j
+                self.current_output.append("CMP P1, P4")
+                self.current_output.append(f"JGE {done_label}")
+                self.current_output.append("MOV P2, 0")  # j
                 self.current_output.append(f"{inner_label}:")
-                self.current_output.append("MOV R5, 99")
-                self.current_output.append("SUB R5, R1")  # limit = 99 - i
-                self.current_output.append("CMP R2, R5")
+                self.current_output.append("MOV P3, P4")
+                self.current_output.append("DEC P3")
+                self.current_output.append("SUB P3, P1")
+                self.current_output.append("CMP P2, P3")
                 self.current_output.append(f"JGE {next_outer}")
-                # Addresses for j and j+1
-                self.current_output.append("MOV P1, R2")
-                self.current_output.append("MUL P1, 2")  # Scale index to bytes
-                self.current_output.append("ADD P1, P0")
-                self.current_output.append("MOV P2, P1")
-                self.current_output.append("INC P2")
-                self.current_output.append("INC P2")
-                self.current_output.append("MOV P3, [P1]")
-                self.current_output.append("MOV P4, [P2]")
-                self.current_output.append("CMP P3, P4")
+                self.current_output.append("MOV P0, P2")
+                self.current_output.append("MUL P0, 2")
+                self.current_output.append("ADD P0, P5")
+                self.current_output.append("MOV P6, [P0]")
+                self.current_output.append("MOV P7, P0")
+                self.current_output.append("INC P7")
+                self.current_output.append("INC P7")
+                self.current_output.append("MOV P3, [P7]")
+                self.current_output.append("CMP P6, P3")
                 if ascending:
-                    self.current_output.append(f"JLE {skip_label}")
+                    self.current_output.append(f"JLE {skip_swap}")
                 else:
-                    self.current_output.append(f"JGE {skip_label}")
-                # Swap when out of order
-                self.current_output.append("MOV [P1], P4")
-                self.current_output.append("MOV [P2], P3")
-                self.current_output.append(f"{skip_label}:")
-                self.current_output.append("INC R2")
+                    self.current_output.append(f"JGE {skip_swap}")
+                self.current_output.append("MOV [P0], P3")
+                self.current_output.append("MOV [P7], P6")
+                self.current_output.append(f"{skip_swap}:")
+                self.current_output.append("INC P2")
                 self.current_output.append(f"JMP {inner_label}")
                 self.current_output.append(f"{next_outer}:")
-                self.current_output.append("INC R1")
+                self.current_output.append("INC P1")
                 self.current_output.append(f"JMP {outer_label}")
-                self.current_output.append(f"{end_label}:")
-                self.current_output.append(f"MOV {target_reg}, {base_addr}")
-
-            elif func_name == "SEQ":
-                # Generate a numeric sequence into the target list (default L1)
-                current_reg = self.generate_expression(expr.arguments[2], "P2")
-                end_reg = self.generate_expression(expr.arguments[3], "P4")
-                step_reg = None
-                if len(expr.arguments) > 4:
-                    step_reg = self.generate_expression(expr.arguments[4], "P5")
-                self.current_output.append(f"; Seq into list at 0x{base_addr:04X}")
-                self.current_output.append("MOV R1, 0")       # list index
-                loop_label = self.new_label()
-                end_label = self.new_label()
-                self.current_output.append(f"{loop_label}:")
-                self.current_output.append("CMP R1, 100")
-                self.current_output.append(f"JGE {end_label}")
-                self.current_output.append(f"CMP {current_reg}, {end_reg}")
-                self.current_output.append(f"JGT {end_label}")
-                self.current_output.append("MOV P1, R1")
-                self.current_output.append("MUL P1, 2")
-                self.current_output.append(f"MOV P0, 0x{base_addr:04X}")
-                self.current_output.append("ADD P1, P0")
-                self.current_output.append(f"MOV [P1], {current_reg}")
-                self.current_output.append("INC R1")
-                if step_reg:
-                    self.current_output.append(f"ADD {current_reg}, {step_reg}")
-                else:
-                    self.current_output.append(f"INC {current_reg}")
-                self.current_output.append(f"JMP {loop_label}")
-                self.current_output.append(f"{end_label}:")
-                self.current_output.append(f"MOV {target_reg}, {base_addr}")
-                if step_reg:
-                    self.smart_deallocate(step_reg, is_last_use=True)
+                self.current_output.append(f"{done_label}:")
+                self.current_output.append(f"MOV {target_reg}, P4")
 
             elif func_name == "REVERSE":
-                # Reverse the list in place (100 elements)
-                self.current_output.append(f"; Reverse list at 0x{base_addr:04X}")
-                self.current_output.append(f"MOV P0, 0x{base_addr:04X}")
-                self.current_output.append("MOV R1, 0")          # i
-                self.current_output.append("MOV R2, 99")         # j = size-1
-                outer_label = self.new_label()
-                end_label = self.new_label()
-                self.current_output.append(f"{outer_label}:")
-                # Stop when i >= j
-                self.current_output.append("CMP R1, R2")
-                self.current_output.append(f"JGE {end_label}")
-                # Compute addresses for i and j
-                self.current_output.append("MOV P1, R1")
-                self.current_output.append("MUL P1, 2")
-                self.current_output.append("ADD P1, P0")
-                self.current_output.append("MOV P2, R2")
-                self.current_output.append("MUL P2, 2")
-                self.current_output.append("ADD P2, P0")
-                # Swap values
-                self.current_output.append("MOV P3, [P1]")
-                self.current_output.append("MOV P4, [P2]")
-                self.current_output.append("MOV [P1], P4")
-                self.current_output.append("MOV [P2], P3")
-                # Move indices
-                self.current_output.append("INC R1")
-                self.current_output.append("DEC R2")
-                self.current_output.append(f"JMP {outer_label}")
-                self.current_output.append(f"{end_label}:")
-                self.current_output.append(f"MOV {target_reg}, {base_addr}")
-
-        elif func_name == "SUM":
-            # Sum all elements in the list
-            list_expr = expr.arguments[0]
-            if isinstance(list_expr, VariableExpr) and list_expr.name.upper().startswith('L'):
-                try:
-                    list_num = int(list_expr.name[1:])
-                    base_addr = 0x1000 + (list_num - 1) * 0x100
-                    size = 100
-                    # Initialize sum
-                    self.current_output.append(f"MOV {target_reg}, 0")
-                    self.current_output.append(f"MOV P5, 0x{base_addr:04X}")
-                    # Use R1 for index, R2 for value, P2 for address
-                    index_reg = "R1"
-                    value_reg = "R2"
-                    addr_reg = "P2"
-                    self.current_output.append(f"MOV {index_reg}, 0")
-                    loop_label = self.new_label()
-                    end_label = self.new_label()
-                    self.current_output.append(f"{loop_label}:")
-                    self.current_output.append(f"CMP {index_reg}, {size}")
-                    self.current_output.append(f"JGE {end_label}")
-                    # Calculate address
-                    self.current_output.append(f"MOV {addr_reg}, {index_reg}")
-                    self.current_output.append(f"MUL {addr_reg}, 2")
-                    self.current_output.append(f"ADD {addr_reg}, P5")
-                    # Load value
-                    self.current_output.append(f"MOV P0, {addr_reg}")
-                    self.current_output.append(f"MOV {value_reg}, [P0]")
-                    # Add to sum
-                    self.current_output.append(f"ADD {target_reg}, {value_reg}")
-                    # Increment index
-                    self.current_output.append(f"INC {index_reg}")
-                    self.current_output.append(f"JMP {loop_label}")
-                    self.current_output.append(f"{end_label}:")
-                except ValueError:
-                    self.current_output.append(f"MOV {target_reg}, 0")
-            else:
-                self.current_output.append(f"MOV {target_reg}, 0")
-        elif func_name == "MEAN":
-            # Calculate average of list elements
-            list_expr = expr.arguments[0]
-            if isinstance(list_expr, VariableExpr) and list_expr.name.upper().startswith('L'):
-                try:
-                    list_num = int(list_expr.name[1:])
-                    base_addr = 0x1000 + (list_num - 1) * 0x100
-                    size = 100
-                    # Initialize sum
-                    self.current_output.append(f"MOV {target_reg}, 0")
-                    self.current_output.append(f"MOV P5, 0x{base_addr:04X}")
-                    # Use R1 for index, R2 for value, P2 for address
-                    index_reg = "R1"
-                    value_reg = "R2"
-                    addr_reg = "P2"
-                    self.current_output.append(f"MOV {index_reg}, 0")
-                    loop_label = self.new_label()
-                    end_label = self.new_label()
-                    self.current_output.append(f"{loop_label}:")
-                    self.current_output.append(f"CMP {index_reg}, {size}")
-                    self.current_output.append(f"JGE {end_label}")
-                    # Calculate address
-                    self.current_output.append(f"MOV {addr_reg}, {index_reg}")
-                    self.current_output.append(f"MUL {addr_reg}, 2")
-                    self.current_output.append(f"ADD {addr_reg}, P5")
-                    # Load value
-                    self.current_output.append(f"MOV P0, {addr_reg}")
-                    self.current_output.append(f"MOV {value_reg}, [P0]")
-                    # Add to sum
-                    self.current_output.append(f"ADD {target_reg}, {value_reg}")
-                    # Increment index
-                    self.current_output.append(f"INC {index_reg}")
-                    self.current_output.append(f"JMP {loop_label}")
-                    self.current_output.append(f"{end_label}:")
-                    # Divide by size
-                    self.current_output.append(f"MOV R3, {size}")
-                    self.current_output.append(f"DIV {target_reg}, R3")
-                except ValueError:
-                    self.current_output.append(f"MOV {target_reg}, 0")
-            else:
-                self.current_output.append(f"MOV {target_reg}, 0")
-        elif func_name == "DIM":
-            # Return the size of the list (default 100 elements)
-            list_expr = expr.arguments[0]
-            if isinstance(list_expr, VariableExpr) and list_expr.name.upper().startswith('L'):
-                try:
-                    list_num = int(list_expr.name[1:])
-                    size = 100  # Default size per list
-                    self.current_output.append(f"MOV {target_reg}, {size}")
-                except ValueError:
-                    self.current_output.append(f"MOV {target_reg}, 0")
-            else:
-                self.current_output.append(f"MOV {target_reg}, 0")
+                self.current_output.append("MOV P1, 0")
+                self.current_output.append("MOV P2, P4")
+                self.current_output.append("DEC P2")
+                loop_label = self.new_label()
+                done_label = self.new_label()
+                self.current_output.append(f"{loop_label}:")
+                self.current_output.append("CMP P1, P2")
+                self.current_output.append(f"JGE {done_label}")
+                self.current_output.append("MOV P0, P1")
+                self.current_output.append("MUL P0, 2")
+                self.current_output.append("ADD P0, P5")
+                self.current_output.append("MOV P6, [P0]")
+                self.current_output.append("MOV P3, P2")
+                self.current_output.append("MUL P3, 2")
+                self.current_output.append("ADD P3, P5")
+                self.current_output.append("MOV P7, [P3]")
+                self.current_output.append("MOV [P0], P7")
+                self.current_output.append("MOV [P3], P6")
+                self.current_output.append("INC P1")
+                self.current_output.append("DEC P2")
+                self.current_output.append(f"JMP {loop_label}")
+                self.current_output.append(f"{done_label}:")
+                self.current_output.append(f"MOV {target_reg}, P4")
         elif func_name == "GETKEY":
             # Non-blocking: returns key code or 0 if no key available
             self.current_output.append("KEYIN R0")          # Read key (0 if empty)
@@ -4447,6 +4452,252 @@ class CodeGenerator:
             self.variable_addresses[name] = self.next_address
             self.next_address += 2  # 16-bit variables
         return self.variable_addresses[name]
+
+    def _is_list_identifier(self, name: str) -> bool:
+        """Return True for TI-style list identifiers like L1, L2, ..."""
+        if not isinstance(name, str):
+            return False
+        if not name.startswith("L"):
+            return False
+        suffix = name[1:]
+        return suffix.isdigit() and len(suffix) > 0
+
+    def _get_or_create_list_descriptor(self, list_name: str) -> int:
+        """Allocate (or return) a descriptor storing list base/capacity words."""
+        if list_name not in self.list_descriptors:
+            desc_addr = self.next_address
+            self.list_descriptors[list_name] = desc_addr
+            self.next_address += 4  # base pointer + capacity (16-bit each)
+            self.list_runtime_required = True
+        return self.list_descriptors[list_name]
+
+    def _collect_dynamic_list_descriptors(self, program: Program):
+        """Scan AST for list usage so descriptors are allocated before code emission."""
+
+        list_builtins = {"FILL", "SORTA", "SORTD", "SEQ", "REVERSE", "SUM", "MEAN", "DIM"}
+
+        def walk_expression(expr: Expression):
+            if expr is None:
+                return
+
+            if isinstance(expr, ListAccessExpr):
+                self._get_or_create_list_descriptor(expr.list_name)
+                walk_expression(expr.index)
+                return
+
+            if isinstance(expr, MatrixAccessExpr):
+                walk_expression(expr.row)
+                walk_expression(expr.col)
+                return
+
+            if isinstance(expr, MemberAccessExpr):
+                walk_expression(expr.object)
+                return
+
+            if isinstance(expr, BinaryExpr):
+                walk_expression(expr.left)
+                walk_expression(expr.right)
+                return
+
+            if isinstance(expr, UnaryExpr):
+                walk_expression(expr.expression)
+                return
+
+            if isinstance(expr, GroupingExpr):
+                walk_expression(expr.expression)
+                return
+
+            if isinstance(expr, FunctionCallExpr):
+                func_name = expr.name.upper()
+                if func_name in list_builtins and expr.arguments:
+                    first_arg = expr.arguments[0]
+                    if isinstance(first_arg, VariableExpr):
+                        # Keep compatibility with TI-style list names and also
+                        # support bracket-created list variables.
+                        self._get_or_create_list_descriptor(first_arg.name)
+                for arg in expr.arguments:
+                    walk_expression(arg)
+
+        def walk_statement(stmt: Statement):
+            if stmt is None:
+                return
+
+            if isinstance(stmt, AssignmentStmt):
+                walk_expression(stmt.variable)
+                walk_expression(stmt.expression)
+                return
+
+            if isinstance(stmt, ExpressionStmt):
+                walk_expression(stmt.expression)
+                return
+
+            if isinstance(stmt, FunctionCallStmt):
+                walk_expression(stmt.function_call)
+                return
+
+            if isinstance(stmt, IfStmt):
+                walk_expression(stmt.condition)
+                for branch_stmt in stmt.then_branch:
+                    walk_statement(branch_stmt)
+                if stmt.else_branch:
+                    for branch_stmt in stmt.else_branch:
+                        walk_statement(branch_stmt)
+                return
+
+            if isinstance(stmt, (ForStmt, WhileStmt, RepeatStmt)):
+                if isinstance(stmt, ForStmt):
+                    walk_expression(stmt.start)
+                    walk_expression(stmt.end)
+                    if stmt.step is not None:
+                        walk_expression(stmt.step)
+                elif isinstance(stmt, WhileStmt):
+                    walk_expression(stmt.condition)
+                else:
+                    walk_expression(stmt.condition)
+
+                for body_stmt in stmt.body:
+                    walk_statement(body_stmt)
+                return
+
+            if isinstance(stmt, InputStmt):
+                walk_expression(stmt.prompt)
+                return
+
+            if isinstance(stmt, DispStmt):
+                walk_expression(stmt.text)
+                return
+
+            if isinstance(stmt, ReturnStmt):
+                if stmt.value is not None:
+                    walk_expression(stmt.value)
+                return
+
+            if isinstance(stmt, FunctionDefStmt):
+                for _, default_expr in stmt.params:
+                    if default_expr is not None:
+                        walk_expression(default_expr)
+                for body_stmt in stmt.body:
+                    walk_statement(body_stmt)
+                return
+
+        for statement in program.statements:
+            walk_statement(statement)
+
+    def _emit_list_runtime_init(self):
+        """Emit startup initialization for dynamic list descriptors and heap pointer."""
+        if not self.list_descriptors:
+            return
+
+        # Shared allocator pointer cell.
+        self.list_heap_next_addr = self.get_variable_address("__NB_LIST_HEAP_NEXT")
+        self.current_output.append(f"MOV P0, 0x{self.list_heap_next_addr:04X}")
+        self.current_output.append(f"MOV P1, 0x{self.list_heap_start:04X}")
+        self.current_output.append("MOV [P0], P1")
+
+        # Zero each descriptor (base=0, capacity=0).
+        for desc_addr in self.list_descriptors.values():
+            self.current_output.append(f"MOV P0, 0x{desc_addr:04X}")
+            self.current_output.append("MOV P1, 0")
+            self.current_output.append("MOV [P0], P1")
+            self.current_output.append("INC P0")
+            self.current_output.append("INC P0")
+            self.current_output.append("MOV [P0], P1")
+
+    def _emit_list_runtime_helper(self):
+        """Emit dynamic list element-address helper used by list load/store/builtins."""
+        if not self.list_runtime_required or self.list_heap_next_addr is None:
+            return
+
+        self.current_output.append("")
+        self.current_output.append("_nb_list_elem_addr:")
+        self.current_output.append("; In:  P1=descriptor address, P2=1-based index")
+        self.current_output.append("; Out: P0=element address (or 0 on invalid index/OOM)")
+        self.current_output.append("PUSH P2")
+        self.current_output.append("CMP P2, 1")
+        self.current_output.append("JLT _nb_list_elem_addr_fail")
+        self.current_output.append("MOV P3, [P1]")
+        self.current_output.append("MOV P0, P1")
+        self.current_output.append("INC P0")
+        self.current_output.append("INC P0")
+        self.current_output.append("MOV P4, [P0]")
+        self.current_output.append("CMP P2, P4")
+        self.current_output.append("JLE _nb_list_have_capacity")
+        self.current_output.append(f"MOV P5, 0x{self.list_heap_next_addr:04X}")
+        self.current_output.append("MOV P6, [P5]")
+        self.current_output.append("MOV P0, P2")
+        self.current_output.append("MOV P2, P4")
+        self.current_output.append("CMP P2, 0")
+        self.current_output.append("JGT _nb_list_cap_from_existing")
+        self.current_output.append("MOV P2, 8")
+        self.current_output.append("JMP _nb_list_cap_ready_base")
+        self.current_output.append("_nb_list_cap_from_existing:")
+        self.current_output.append("MUL P2, 2")
+        self.current_output.append("_nb_list_cap_ready_base:")
+        self.current_output.append("CMP P2, P0")
+        self.current_output.append("JGE _nb_list_cap_ready")
+        self.current_output.append("MOV P2, P0")
+        self.current_output.append("_nb_list_cap_ready:")
+        self.current_output.append("MOV P0, P2")
+        self.current_output.append("MUL P0, 2")
+        self.current_output.append("MOV P5, P6")
+        self.current_output.append("ADD P5, P0")
+        self.current_output.append("DEC P5")
+        self.current_output.append(f"MOV P0, 0x{self.list_heap_end:04X}")
+        self.current_output.append("CMP P0, P5")
+        self.current_output.append("JC _nb_list_elem_addr_fail")
+        self.current_output.append("MOV P5, 0")
+        self.current_output.append("_nb_list_zero_loop:")
+        self.current_output.append("CMP P5, P2")
+        self.current_output.append("JGE _nb_list_zero_done")
+        self.current_output.append("MOV P0, P5")
+        self.current_output.append("MUL P0, 2")
+        self.current_output.append("ADD P0, P6")
+        self.current_output.append("MOV [P0], 0")
+        self.current_output.append("INC P5")
+        self.current_output.append("JMP _nb_list_zero_loop")
+        self.current_output.append("_nb_list_zero_done:")
+        self.current_output.append("PUSH P1")
+        self.current_output.append("CMP P4, 0")
+        self.current_output.append("JLE _nb_list_copy_done")
+        self.current_output.append("MOV P5, 0")
+        self.current_output.append("_nb_list_copy_loop:")
+        self.current_output.append("CMP P5, P4")
+        self.current_output.append("JGE _nb_list_copy_done")
+        self.current_output.append("MOV P0, P5")
+        self.current_output.append("MUL P0, 2")
+        self.current_output.append("ADD P0, P3")
+        self.current_output.append("MOV P1, [P0]")
+        self.current_output.append("MOV P0, P5")
+        self.current_output.append("MUL P0, 2")
+        self.current_output.append("ADD P0, P6")
+        self.current_output.append("MOV [P0], P1")
+        self.current_output.append("INC P5")
+        self.current_output.append("JMP _nb_list_copy_loop")
+        self.current_output.append("_nb_list_copy_done:")
+        self.current_output.append("POP P1")
+        self.current_output.append("MOV [P1], P6")
+        self.current_output.append("MOV P0, P1")
+        self.current_output.append("INC P0")
+        self.current_output.append("INC P0")
+        self.current_output.append("MOV [P0], P2")
+        self.current_output.append("MOV P0, P2")
+        self.current_output.append("MUL P0, 2")
+        self.current_output.append("ADD P0, P6")
+        self.current_output.append(f"MOV P5, 0x{self.list_heap_next_addr:04X}")
+        self.current_output.append("MOV [P5], P0")
+        self.current_output.append("MOV P3, P6")
+        self.current_output.append("MOV P4, P2")
+        self.current_output.append("_nb_list_have_capacity:")
+        self.current_output.append("POP P2")
+        self.current_output.append("MOV P0, P2")
+        self.current_output.append("DEC P0")
+        self.current_output.append("MUL P0, 2")
+        self.current_output.append("ADD P0, P3")
+        self.current_output.append("RET")
+        self.current_output.append("_nb_list_elem_addr_fail:")
+        self.current_output.append("POP P2")
+        self.current_output.append("XOR P0, P0")
+        self.current_output.append("RET")
 
     def add_string_literal(self, string_value: str) -> str:
         """Add a string literal and return its label."""
