@@ -93,15 +93,10 @@ MOV [P0], P1
 ; Load Player.counter
 MOV P0, 298
 MOV P1, [P0]
-; Preserve left operand in register across right-side evaluation
-MOV R2, P1
-MOV R3, 1
-MOV R1, R2
-ADD R1, R3
-; Free R3 (last use)
+MOV R0, P1
+ADD P1, 1
 ; Store to Player.counter
 MOV P0, 298
-MOV P1, R1
 MOV [P0], P1
 PUSH P2
 CALL _func_keycheck_2

@@ -87,7 +87,7 @@ While 1
     Player:
        Player.oldx = Player.x
        Player.oldy = Player.y
-       Player.counter = Player.counter + 1
+       Player.counter++
 
        keyCheck()
 

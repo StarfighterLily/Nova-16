@@ -1343,3 +1343,23 @@ class TestCodeGenerator:
 
         allocation_lines = [line for line in lines if "; Allocate struct" in line]
         assert len(allocation_lines) == 1
+
+    def test_struct_member_increment_decrement_codegen(self):
+        """Struct members should support pre/post ++/-- and store results back to the member."""
+        code = self.generate_code("""
+        struct Point x y end
+        p.x = 10
+        p.x++
+        y = ++p.x
+        p.x--
+        z = --p.x
+        """)
+        lines = code.strip().split("\n")
+
+        assert any("; Load p.x" in line for line in lines)
+        assert any("; Store to p.x" in line for line in lines)
+
+        add_count = sum(1 for line in lines if "ADD" in line)
+        sub_count = sum(1 for line in lines if "SUB" in line)
+        assert add_count >= 2
+        assert sub_count >= 2

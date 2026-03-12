@@ -3098,36 +3098,48 @@ class CodeGenerator:
 
     def generate_unary_expression(self, expr: UnaryExpr, target_reg: str) -> str:
         """Generate code for unary expressions, including pre/post ++/--, with immediate register freeing."""
-        # ++/-- handling on variables
+        # ++/-- handling on assignable targets
         if expr.operator in ("++", "--"):
-            # Only support simple variables for now
+            value_reg = None
+
             if isinstance(expr.expression, VariableExpr):
                 var_name = expr.expression.name
                 # Load 16-bit value into a P register
                 value_reg = self.load_variable(var_name, target_reg if target_reg.startswith('P') else 'P1')
+            elif isinstance(expr.expression, MemberAccessExpr):
+                # Struct members are 16-bit; prefer P register path used by member access helpers
+                value_reg = self.generate_member_access(expr.expression, target_reg if target_reg.startswith('P') else 'P1')
+
+            if value_reg is not None:
                 # For post, capture original in target before modification
                 if expr.is_post:
                     if target_reg != value_reg:
                         self.current_output.append(f"MOV {target_reg}, {value_reg}")
+
                 # Modify value
                 if expr.operator == "++":
                     self.current_output.append(f"ADD {value_reg}, 1")
                 else:
                     self.current_output.append(f"SUB {value_reg}, 1")
+
                 # Store back
-                self.store_variable(var_name, value_reg)
+                if isinstance(expr.expression, VariableExpr):
+                    self.store_variable(var_name, value_reg)
+                else:
+                    self.generate_member_store(expr.expression, value_reg)
+
                 # For pre, return updated value
                 if not expr.is_post:
                     if target_reg != value_reg:
                         self.current_output.append(f"MOV {target_reg}, {value_reg}")
                 return target_reg
-            else:
-                # Fallback: evaluate operand, but cannot modify non-variable here
-                operand_reg = self.generate_expression(expr.expression, target_reg)
-                if operand_reg != target_reg:
-                    self.current_output.append(f"MOV {target_reg}, {operand_reg}")
-                    self.smart_deallocate(operand_reg, is_last_use=True)
-                return target_reg
+
+            # Fallback: evaluate operand, but cannot modify non-assignable target here
+            operand_reg = self.generate_expression(expr.expression, target_reg)
+            if operand_reg != target_reg:
+                self.current_output.append(f"MOV {target_reg}, {operand_reg}")
+                self.smart_deallocate(operand_reg, is_last_use=True)
+            return target_reg
 
         # **OPTIMIZATION: Constant Folding for Unary Operations**
         if isinstance(expr.expression, LiteralExpr) and expr.expression.data_type.name == "NUMBER":
