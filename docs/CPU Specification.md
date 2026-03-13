@@ -172,8 +172,8 @@ The Nova-16 supports 8 interrupt levels with hardware prioritization:
 - 4-byte control structure: Counter, Modulo, Control, Speed
 - Programmable timer with overflow interrupt capability
 
-**Serial Interrupt (Vector 1) unimplemented**
-- Update me!
+**Serial Interrupt (Vector 1)**
+- Implemented and features a UART component - update this section with more detail.
 
 **Keyboard Interrupt (Vector 2)**
 - 4-byte control structure: Data, Status, Control, Buffer count

@@ -6,20 +6,33 @@ import nova_cpu as cpu
 import nova_memory as ram
 import nova_gfx as gpu
 import nova_sound as sound
+import nova_uart as uart
 
 
 import nova_gui as gui
 import nova_keyboard as keyboard
 import nova_memory_profiler as mem_profiler
 
-def initialize_system(enable_sound=True):
+def build_uart_config(args):
+    return uart.validate_bridge_config(
+        uart.UARTBridgeConfig(
+            mode=args.uart_bridge,
+            host=args.uart_host,
+            port=args.uart_port,
+            timeout=args.uart_timeout,
+        )
+    )
+
+
+def initialize_system(enable_sound=True, uart_config=None):
     """Initialize all Nova-16 system components with consistent state"""
     mem = ram.Memory()
     gfx = gpu.GFX()
     kbd = keyboard.NovaKeyboard()
     snd = sound.NovaSound() if enable_sound else None
+    uart_device = uart.NovaUART(host_bridge=uart.create_host_bridge(uart_config))
     
-    proc = cpu.CPU(mem, gfx, kbd, snd)
+    proc = cpu.CPU(mem, gfx, kbd, snd, uart_device=uart_device)
     
     # Ensure keyboard is properly connected
     kbd.cpu = proc
@@ -29,9 +42,9 @@ def initialize_system(enable_sound=True):
     
     return proc, mem, gfx, kbd, snd
 
-def run_headless(program_path, max_cycles=10000, enable_memory_profiling=False, profile_output=None):
+def run_headless(program_path, max_cycles=10000, enable_memory_profiling=False, profile_output=None, uart_config=None):
     """Run a program headlessly for testing"""
-    proc, mem, gfx, kbd, snd = initialize_system(enable_sound=False)
+    proc, mem, gfx, kbd, snd = initialize_system(enable_sound=False, uart_config=uart_config)
     
     # Initialize memory profiler if requested
     profiler = None
@@ -108,9 +121,10 @@ def run_headless(program_path, max_cycles=10000, enable_memory_profiling=False, 
         profiler.save_report()
         profiler.print_summary()
     
-    # Cleanup sound system
+    # Cleanup sound system and UART bridge
     if snd:
         snd.cleanup()
+    proc.uart.close_host_bridge()
     
     return proc, mem, gfx
 
@@ -121,13 +135,27 @@ def main():
     parser.add_argument('--cycles', type=int, default=10000, help='Maximum cycles to run in headless mode')
     parser.add_argument('--memory-profile', action='store_true', help='Enable memory profiling')
     parser.add_argument('--profile-output', default='memory_profile.json', help='Output file for memory profile data')
+    parser.add_argument('--uart-bridge', choices=['none', 'terminal', 'tcp'], default='none', help='UART bridge transport to attach')
+    parser.add_argument('--uart-host', default=uart.DEFAULT_TCP_HOST, help='UART TCP bridge host')
+    parser.add_argument('--uart-port', type=int, help='UART TCP bridge port')
+    parser.add_argument('--uart-timeout', type=float, default=uart.DEFAULT_TCP_TIMEOUT, help='UART bridge socket timeout in seconds')
     
     args = parser.parse_args()
+    try:
+        uart_config = build_uart_config(args)
+    except ValueError as exc:
+        parser.error(str(exc))
     
     if args.headless and args.program:
-        run_headless(args.program, args.cycles, args.memory_profile, args.profile_output)
+        try:
+            run_headless(args.program, args.cycles, args.memory_profile, args.profile_output, uart_config)
+        except OSError as exc:
+            parser.error(f'Unable to initialize UART bridge: {exc}')
     else:
-        proc, mem, gfx, kbd, snd = initialize_system(enable_sound=True)
+        try:
+            proc, mem, gfx, kbd, snd = initialize_system(enable_sound=True, uart_config=uart_config)
+        except OSError as exc:
+            parser.error(f'Unable to initialize UART bridge: {exc}')
         
         # Enable memory profiling if requested
         profiler = None
@@ -141,6 +169,7 @@ def main():
             print(f"Sound: {snd.max_channels} channels, {snd.sample_rate}Hz")
         else:
             print("Sound: Disabled")
+        print(uart.describe_bridge(uart_config))
         
         # Load program if specified
         if args.program:
@@ -150,7 +179,12 @@ def main():
             print(f"Entry point: 0x{entry_point:04X}")
         
         # Run GUI
-        gui.main(proc, mem, gfx, kbd)
+        try:
+            gui.main(proc, mem, gfx, kbd)
+        finally:
+            if snd:
+                snd.cleanup()
+            proc.uart.close_host_bridge()
 
 if __name__ == "__main__":
     main()

@@ -4,13 +4,14 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated", categor
 import pygame
 from collections import deque
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox, ttk
 import time
 
 # Keep these imports for type hinting and the __main__ block
 import nova_gfx as gpu
 import nova_cpu as cpu
 import nova_memory as mem
+import nova_uart as uart
 
 
 class CPUController:
@@ -140,9 +141,81 @@ def draw_button_cached( surface, rect, text, font, color, text_color, active, ca
     label_rect = label.get_rect( center=rect.center )
     surface.blit( label, label_rect )
 
+
+def open_uart_config_dialog(current_config):
+    selected_config = {'value': None}
+    dialog = tk.Tk()
+    dialog.title('UART Configuration')
+    dialog.resizable(False, False)
+
+    mode_var = tk.StringVar(value=current_config.mode)
+    host_var = tk.StringVar(value=current_config.host)
+    port_var = tk.StringVar(value='' if current_config.port is None else str(current_config.port))
+    timeout_var = tk.StringVar(value=str(current_config.timeout))
+
+    frame = ttk.Frame(dialog, padding=12)
+    frame.grid(row=0, column=0, sticky='nsew')
+
+    ttk.Label(frame, text='Bridge').grid(row=0, column=0, sticky='w')
+    mode_frame = ttk.Frame(frame)
+    mode_frame.grid(row=0, column=1, columnspan=2, sticky='w')
+    ttk.Radiobutton(mode_frame, text='Off', value='none', variable=mode_var).grid(row=0, column=0, padx=(0, 8))
+    ttk.Radiobutton(mode_frame, text='Terminal', value='terminal', variable=mode_var).grid(row=0, column=1, padx=(0, 8))
+    ttk.Radiobutton(mode_frame, text='TCP', value='tcp', variable=mode_var).grid(row=0, column=2)
+
+    ttk.Label(frame, text='Host').grid(row=1, column=0, sticky='w', pady=(10, 0))
+    host_entry = ttk.Entry(frame, textvariable=host_var, width=24)
+    host_entry.grid(row=1, column=1, columnspan=2, sticky='ew', pady=(10, 0))
+
+    ttk.Label(frame, text='Port').grid(row=2, column=0, sticky='w', pady=(8, 0))
+    port_entry = ttk.Entry(frame, textvariable=port_var, width=12)
+    port_entry.grid(row=2, column=1, sticky='w', pady=(8, 0))
+
+    ttk.Label(frame, text='Timeout (s)').grid(row=3, column=0, sticky='w', pady=(8, 0))
+    timeout_entry = ttk.Entry(frame, textvariable=timeout_var, width=12)
+    timeout_entry.grid(row=3, column=1, sticky='w', pady=(8, 0))
+
+    button_frame = ttk.Frame(frame)
+    button_frame.grid(row=4, column=0, columnspan=3, sticky='e', pady=(12, 0))
+
+    def sync_tcp_fields(*_args):
+        state = 'normal' if mode_var.get() == 'tcp' else 'disabled'
+        for entry in (host_entry, port_entry, timeout_entry):
+            entry.configure(state=state)
+
+    def cancel():
+        dialog.destroy()
+
+    def submit():
+        try:
+            port_value = port_var.get().strip()
+            config = uart.validate_bridge_config(
+                uart.UARTBridgeConfig(
+                    mode=mode_var.get(),
+                    host=host_var.get(),
+                    port=int(port_value) if port_value else None,
+                    timeout=float(timeout_var.get().strip() or uart.DEFAULT_TCP_TIMEOUT),
+                )
+            )
+        except ValueError as exc:
+            messagebox.showerror('UART Configuration', str(exc), parent=dialog)
+            return
+
+        selected_config['value'] = config
+        dialog.destroy()
+
+    ttk.Button(button_frame, text='Cancel', command=cancel).grid(row=0, column=0, padx=(0, 8))
+    ttk.Button(button_frame, text='Apply', command=submit).grid(row=0, column=1)
+
+    mode_var.trace_add('write', sync_tcp_fields)
+    sync_tcp_fields()
+    dialog.protocol('WM_DELETE_WINDOW', cancel)
+    dialog.mainloop()
+    return selected_config['value']
+
 def main( cpu, memory, gfx, kbd=None ):
     scale = 2
-    toolbar_height = 50
+    toolbar_height = 46
     status_height = 25  # Add status bar at bottom
     screen_width = gfx.width * scale
     screen_height = gfx.height * scale
@@ -165,28 +238,37 @@ def main( cpu, memory, gfx, kbd=None ):
     update_queue = cpu_controller.update_queue 
 
 
-    font = pygame.font.SysFont( None, 24 )
-    small_font = pygame.font.SysFont( None, 18 )
-    button_w, button_h = 75, 32
-    margin = 10
-    buttons = {
-        'Start/Pause': pygame.Rect( margin, margin, button_w + 20, button_h ),
-        'Stop': pygame.Rect( margin + button_w + 20 + margin, margin, button_w, button_h ),
-        'Reset': pygame.Rect( margin + 2 * ( button_w + margin ) + 20, margin, button_w, button_h ),
-        'Step': pygame.Rect( margin + 3 * ( button_w + margin ) + 20, margin, button_w, button_h ),
-        'Load': pygame.Rect( margin + 4 * ( button_w + margin ) + 20, margin, button_w, button_h )
-    }
+    font = pygame.font.SysFont( None, 22 )
+    small_font = pygame.font.SysFont( None, 17 )
+    button_h = 30
+    button_y = 8
+    button_gap = 6
+    button_specs = [
+        ( 'Start/Pause', 74 ),
+        ( 'Stop', 56 ),
+        ( 'Reset', 58 ),
+        ( 'Step', 52 ),
+        ( 'Load', 54 ),
+        ( 'UART', 60 ),
+    ]
+    buttons = {}
+    next_x = 8
+    for name, width in button_specs:
+        buttons[ name ] = pygame.Rect( next_x, button_y, width, button_h )
+        next_x += width + button_gap
     button_colors = {
         'Start/Pause': ( 0, 200, 0 ), 'Stop': ( 200, 0, 0 ), 'Reset': ( 0, 0, 200 ),
-        'Step': ( 200, 200, 0 ), 'Load': ( 0, 200, 200 )
+        'Step': ( 200, 200, 0 ), 'Load': ( 0, 200, 200 ), 'UART': ( 170, 110, 20 )
     }
 
     # Cache for status text to avoid re-rendering every frame
     cached_status_text = ""
     cached_status_label = None
-    prev_pc = cpu.pc
-    prev_running = cpu_controller.running
-    prev_halted = cpu.halted
+    prev_pc = None
+    prev_running = None
+    prev_halted = None
+    current_uart_config = uart.get_bridge_config( cpu.uart.host_bridge )
+    prev_uart_status = None
 
     # Cache for scaled surface
     cached_scaled_surface = None
@@ -254,6 +336,43 @@ def main( cpu, memory, gfx, kbd=None ):
             key_name = event.unicode
         return key_name
 
+    def load_binary_program():
+        root = tk.Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename(
+            filetypes=[ ( 'Binary files', '*.bin' ) ],
+            initialdir='asm'
+        )
+        root.destroy()
+        if file_path:
+            cpu_controller.stop()
+            cpu_controller.reset()
+            held_nova_keys.clear()
+            entry_point = memory.load( file_path )
+            cpu_controller.cpu.pc = entry_point
+            cpu_controller.start()
+            print(f"Loaded {file_path}")
+            print(f"Entry point: 0x{entry_point:04X}")
+
+    def configure_uart_bridge():
+        nonlocal current_uart_config
+        requested_config = open_uart_config_dialog( current_uart_config )
+        if requested_config is None:
+            return
+
+        was_running = cpu_controller.running
+        cpu_controller.stop()
+        try:
+            new_bridge = uart.create_host_bridge( requested_config )
+            cpu.uart.set_host_bridge( new_bridge )
+            current_uart_config = requested_config
+            print( uart.describe_bridge( current_uart_config ) )
+        except ( OSError, ValueError ) as exc:
+            messagebox.showerror( 'UART Configuration', f'Unable to configure UART bridge:\n{exc}' )
+        finally:
+            if was_running:
+                cpu_controller.start()
+
     running = True
     while running:
         for event in pygame.event.get():
@@ -274,22 +393,7 @@ def main( cpu, memory, gfx, kbd=None ):
                 elif event.key == pygame.K_F8:  # F8 = Step
                     cpu_controller.step()
                 elif event.key == pygame.K_F9:  # F9 = Load
-                    root = tk.Tk()
-                    root.withdraw()
-                    file_path = filedialog.askopenfilename( 
-                        filetypes=[ ( "Binary files", "*.bin" ) ],
-                        initialdir="asm"
-                    )
-                    root.destroy()
-                    if file_path:
-                        cpu_controller.stop()
-                        cpu_controller.reset()
-                        held_nova_keys.clear()
-                        entry_point = memory.load( file_path )
-                        cpu_controller.cpu.pc = entry_point
-                        cpu_controller.start()  # Auto-start after loading
-                        print(f"Loaded {file_path}")
-                        print(f"Entry point: 0x{entry_point:04X}")
+                    load_binary_program()
                 elif kbd is not None:
                     # Handle keyboard input for Nova-16
                     key_name = map_event_to_nova_key(event)
@@ -332,22 +436,9 @@ def main( cpu, memory, gfx, kbd=None ):
                         elif name == 'Step':
                             cpu_controller.step()
                         elif name == 'Load':
-                            root = tk.Tk()
-                            root.withdraw()
-                            file_path = filedialog.askopenfilename( 
-                                filetypes=[ ( "Binary files", "*.bin" ) ],
-                                initialdir="asm"
-                            )
-                            root.destroy()
-                            if file_path:
-                                cpu_controller.stop()
-                                cpu_controller.reset()
-                                held_nova_keys.clear()
-                                entry_point = memory.load( file_path )
-                                cpu_controller.cpu.pc = entry_point  # Set PC to entry point from ORG
-                                cpu_controller.start()  # Auto-start after loading
-                                print(f"Loaded {file_path}")
-                                print(f"Entry point: 0x{entry_point:04X}")
+                            load_binary_program()
+                        elif name == 'UART':
+                            configure_uart_bridge()
 
         # Synthesize key repeat while physical keys remain held.
         if kbd is not None and held_nova_keys:
@@ -394,9 +485,10 @@ def main( cpu, memory, gfx, kbd=None ):
         current_pc = cpu.pc
         current_running = cpu_controller.running
         current_halted = cpu.halted
+        current_uart_status = uart.describe_bridge( current_uart_config )
         
         # Only update status text if something changed
-        if (current_pc != prev_pc or current_running != prev_running or current_halted != prev_halted):
+        if (current_pc != prev_pc or current_running != prev_running or current_halted != prev_halted or current_uart_status != prev_uart_status):
             status_text = f"PC: 0x{current_pc:04X} | "
             if current_halted:
                 status_text += "HALTED"
@@ -405,7 +497,7 @@ def main( cpu, memory, gfx, kbd=None ):
             else:
                 status_text += "STOPPED"
             
-            status_text += " | Hotkeys: F5=Start/Pause F6=Stop F7=Reset F8=Step F9=Load"
+            status_text += f" | {current_uart_status} | Hotkeys: F5=Start/Pause F6=Stop F7=Reset F8=Step F9=Load"
             
             if status_text != cached_status_text:
                 cached_status_text = status_text
@@ -414,6 +506,7 @@ def main( cpu, memory, gfx, kbd=None ):
             prev_pc = current_pc
             prev_running = current_running
             prev_halted = current_halted
+            prev_uart_status = current_uart_status
         
         if cached_status_label:
             screen.blit( cached_status_label, ( 5, status_y + 5 ) )
@@ -427,6 +520,7 @@ def main( cpu, memory, gfx, kbd=None ):
         clock.tick( target_fps )
 
     cpu_controller.shutdown()
+    cpu.uart.close_host_bridge()
     pygame.quit()
 
 if __name__ == '__main__':

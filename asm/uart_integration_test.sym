@@ -1,0 +1,4 @@
+# Symbol table
+# Format: <symbol> <value>
+START 0x1000
+FAIL 0x102B

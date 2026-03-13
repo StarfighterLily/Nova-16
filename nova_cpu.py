@@ -2,6 +2,7 @@ import numpy as np
 import nova_memory as mem
 import nova_gfx as gpu
 import nova_sound as sound
+import nova_uart as uart
 from instructions import create_instruction_table
 import time
 import cProfile
@@ -9,7 +10,7 @@ import pstats
 from functools import wraps
 
 class CPU:
-    def __init__( self, memory, gfx, keyboard=None, sound_system=None, stack_size = 65535 ):
+    def __init__( self, memory, gfx, keyboard=None, sound_system=None, uart_device=None, stack_size = 65535 ):
         self.memory = memory
         self.gfx = gfx
         self.keyboard_device = keyboard
@@ -83,9 +84,9 @@ class CPU:
         import random
         self.rng_seed = random.randint(0, 0xFFFF)  # True random seed (0-65535)
         
-        self.serial = [0] * 2  # Serial data for the serial interrupt
-        self.serial[ 0 ] = 0 # Serial data register (S)
-        self.serial[ 1 ] = 0 # Serial control register (C)
+        self.uart = uart_device if uart_device is not None else uart.NovaUART()
+        self.serial = uart.SerialRegisterView(self.uart)  # Legacy serial register compatibility
+        self.uart.set_interrupt_callback(self._refresh_pending_interrupt_sources)
 
         self.keyboard = [0] * 4  # Keyboard data for the keyboard interrupt
         self.keyboard[ 0 ] = 0 # Keyboard data register (D) - current key code
@@ -706,7 +707,7 @@ class CPU:
         self.timer_enabled = False
         self.timer_update_counter = 0
         self.timer_speed_divisor = 1
-        self.serial[:] = [0] * len(self.serial)
+        self.uart.reset()
         self.keyboard[:] = [0] * len(self.keyboard)
         self.key_buffer = []
         self.halted = False
@@ -739,7 +740,7 @@ class CPU:
         """Refresh fast interrupt-source gate from current device and interrupt state."""
         self.has_pending_interrupt_sources = bool(
             (self.interrupts[2] == 1 and (self.keyboard[1] & 0x80) != 0) or
-            (self.interrupts[1] == 1 and (self.serial[1] & 0x80) != 0) or
+            (self.interrupts[1] == 1 and self.uart.pending_interrupt) or
             self.interrupts[3] == 1 or
             self.interrupts[4] == 1
         )
@@ -1175,7 +1176,7 @@ class CPU:
             (self.interrupts[3] << 5) |  # User1 enabled
             (self.interrupts[4] << 4) |  # User2 enabled
             ((self.keyboard[1] & 0x80) >> 3) |  # Keyboard pending
-            ((self.serial[1] & 0x80) >> 4)      # Serial pending
+            ((0x80 if self.uart.pending_interrupt else 0) >> 4)      # Serial pending
         )
         
         # Skip detailed check if state hasn't changed
@@ -1194,8 +1195,8 @@ class CPU:
             return True  # Interrupt was handled
             
         # Check serial interrupt
-        if self.interrupts[1] == 1 and (self.serial[1] & 0x80):
-            self.serial[1] &= 0x7F  # Clear interrupt pending flag
+        if self.interrupts[1] == 1 and self.uart.pending_interrupt:
+            self.uart.clear_interrupt()
             self._refresh_pending_interrupt_sources()
             self._trigger_interrupt(1)
             return True
@@ -1918,6 +1919,9 @@ class CPU:
         
         # Update timer first (so timer interrupt can happen before instruction execution)
         self.update_timer()
+
+        # Poll UART host bridge so RX data can trigger interrupts.
+        self.uart.poll_host_bridge()
         
         # Check instruction cache first
         cached_instruction = self.get_cached_instruction(self.pc)

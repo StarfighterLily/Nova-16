@@ -2232,10 +2232,8 @@ class Serin(BaseInstruction):
     
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
-        data = cpu.serial[0]  # Read from serial data register
+        data = cpu.uart.read_data()
         cpu.set_operand_value(operands[0], data)
-        # Clear data available flag after reading
-        cpu.serial[1] &= ~0x01
 
 class Serout(BaseInstruction):
     """SEROUT instruction - write serial data"""
@@ -2246,13 +2244,7 @@ class Serout(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
         data = cpu.get_operand_value(operands[0])
-        cpu.serial[0] = data  # Write to serial data register
-        # Set transmission complete flag
-        cpu.serial[1] |= 0x02
-        # Trigger interrupt if enabled
-        if cpu.interrupts[1]:
-            cpu.serial[1] |= 0x80  # Set interrupt pending
-            cpu.has_pending_interrupt_sources = True
+        cpu.uart.write_data(data)
 
 class Serstat(BaseInstruction):
     """SERSTAT instruction - check serial status"""
@@ -2262,7 +2254,7 @@ class Serstat(BaseInstruction):
     
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
-        status = cpu.serial[1] & 0x03  # Return status flags (data available, tx complete)
+        status = cpu.uart.read_status_flags()
         cpu.set_operand_value(operands[0], status)
 
 class Serctrl(BaseInstruction):
@@ -2274,7 +2266,7 @@ class Serctrl(BaseInstruction):
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
         control = cpu.get_operand_value(operands[0])
-        cpu.serial[1] = (cpu.serial[1] & 0x80) | (control & 0x7F)  # Set control bits, preserve interrupt pending
+        cpu.uart.write_control(control)
         cpu.interrupts[1] = control & 0x01  # Enable serial interrupt if bit 0 set
         cpu._refresh_pending_interrupt_sources()
 
