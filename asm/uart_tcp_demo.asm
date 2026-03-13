@@ -7,8 +7,8 @@
 ;       --uart-bridge tcp --uart-host 127.0.0.1 --uart-port 4080
 ;
 ; Behaviour:
-;   1. Initialises UART in raw, no-IRQ mode.
-;   2. Transmits a greeting banner byte-by-byte.
+;   1. Includes uart_lib.asm and initialises UART in raw, no-IRQ mode.
+;   2. Transmits a greeting banner.
 ;   3. Enters an echo loop: any byte arriving from the TCP peer
 ;      is echoed straight back.
 ;   4. Exits the echo loop when either:
@@ -21,8 +21,7 @@
 ;   bit 1 (0x02) = TX_COMPLETE   (last TX succeeded)
 ;
 ; Registers used:
-;   R0  - general scratch / byte I/O
-;   P5  - string pointer (16-bit)
+;   R0/R1 - UART library scratch / byte I/O
 ;   P6  - echo byte counter
 ;   P7  - idle iteration counter
 ; ================================================================
@@ -33,19 +32,15 @@
 ; START - entry point
 ; ----------------------------------------------------------------
 START:
-    ; Initialise UART: raw mode, interrupts disabled (control = 0x00)
-    MOV  R0, 0x00
-    SERCTRL R0
+    ; Call stack for UART helper subroutines
+    MOV  SP, 0xFFFF
+
+    ; Initialise UART: raw mode, interrupts disabled
+    CALL UART_INIT_RAW
 
     ; ---- Transmit greeting ----------------------------------------
-    MOV  P5, MSG_HELLO
-send_hello:
-    MOV  R0, [P5]        ; load byte from string
-    CMP  R0, 0           ; null terminator?
-    JZ   echo_init
-    SEROUT R0            ; send byte over UART
-    INC  P5              ; advance pointer
-    JMP  send_hello
+    MOV  P0, MSG_HELLO
+    CALL UART_WRITE_CSTR
 
 ; ----------------------------------------------------------------
 ; Echo loop - reflect every received byte back to sender
@@ -55,15 +50,13 @@ echo_init:
     MOV  P7, 0           ; idle iteration counter = 0
 
 echo_loop:
-    ; Poll UART status
-    SERSTAT R0
-    AND  R0, 0x01        ; isolate RX_AVAILABLE bit
-    CMP  R0, 0
+    ; Non-blocking read. R1=1 means byte returned in R0.
+    CALL UART_READ_NONBLOCK
+    CMP  R1, 0
     JZ   no_rx_data      ; no data this iteration
 
     ; ---- Data available: read and reflect -------------------------
-    SERIN  R0            ; read byte from RX FIFO
-    SEROUT R0            ; echo it
+    CALL UART_WRITE_BYTE ; echo R0
     MOV  P7, 0           ; reset idle counter after any received byte
     INC  P6              ; count echoed bytes
 
@@ -83,17 +76,13 @@ no_rx_data:
 ; Send farewell and halt
 ; ----------------------------------------------------------------
 send_bye:
-    MOV  P5, MSG_BYE
-bye_loop:
-    MOV  R0, [P5]
-    CMP  R0, 0
-    JZ   halt
-    SEROUT R0
-    INC  P5
-    JMP  bye_loop
+    MOV  P0, MSG_BYE
+    CALL UART_WRITE_CSTR
 
 halt:
     HLT
+
+    INCLUDE "include\uart_lib.asm"
 
 ; ================================================================
 ; String constants
