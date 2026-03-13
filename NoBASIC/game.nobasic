@@ -9,6 +9,9 @@ Player.oldy = 8
 Player.facing = 0
 Player.counter = 0
 
+// Initialize other variables
+Str1 = "--"    // Sword sprite
+
 // Initialize level
 SetLayer(1)
 Text(0, 0, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 0x1F)
@@ -17,19 +20,20 @@ For a = 8 to 240 Step 8
 Next
 Text(0, 248, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 0x1F)
 
-Str1 = "--"
+// Function definitions
+Function renderPlayer(x, y, color)
+    Text(x, y, "O", color)
+    Text(x, y + 8, "X", color)
+End
 
 Function drawPlayer()
     If Player.oldx <> Player.x Then
-        Text(Player.oldx, Player.oldy, "O", 0x00)
-        Text(Player.oldx, Player.oldy + 8, "X", 0x00)
+        renderPlayer(Player.oldx, Player.oldy, 0x00)
     End
     If Player.oldy <> Player.y Then
-        Text(Player.oldx, Player.oldy, "O", 0x00)
-        Text(Player.oldx, Player.oldy + 8, "X", 0x00)
+        renderPlayer(Player.oldx, Player.oldy, 0x00)
     End
-    Text(Player.x, Player.y, "O", 0x0F)
-    Text(Player.x, Player.y + 8, "X", 0x0F)
+    renderPlayer(Player.x, Player.y, 0x0F)
 End
 
 Function attack()
@@ -81,34 +85,37 @@ Function keyCheck()
         End
 End
 
+Function callPlayer()
+    Player.oldx = Player.x
+    Player.oldy = Player.y
+    Player.counter++
+
+    keyCheck()
+
+    If Player.x < 8 Then
+        Player.x = 8
+    End
+    If Player.x > 240 Then
+        Player.x = 240
+    End
+    If Player.y < 8 Then
+        Player.y = 8
+    End
+    If Player.y > 232 Then
+        Player.y = 232
+    End
+
+    drawPlayer()
+
+    If Player.counter = 255 Then
+        Player.counter = 0
+        Text(Player.oldx - 16, Player.oldy + 8, Str1, 0x00)
+        Text(Player.oldx + 8, Player.oldy + 8, Str1, 0x00)
+    End
+End
+
+// Main loop
 SetLayer(5)
 While 1
-
-    Player:
-       Player.oldx = Player.x
-       Player.oldy = Player.y
-       Player.counter++
-
-       keyCheck()
-
-       If Player.x < 8 Then
-           Player.x = 8
-       End
-       If Player.x > 240 Then
-           Player.x = 240
-       End
-       If Player.y < 8 Then
-           Player.y = 8
-       End
-       If Player.y > 232 Then
-            Player.y = 232
-        End
-
-        drawPlayer()
-
-        If Player.counter = 255 Then
-           Player.counter = 0
-           Text(Player.oldx - 16, Player.oldy + 8, Str1, 0x00)
-           Text(Player.oldx + 8, Player.oldy + 8, Str1, 0x00)
-       End
+    callPlayer()
 End
