@@ -1,0 +1,12 @@
+# Symbol table
+# Format: <symbol> <value>
+START 0x0400
+send_hello 0x040C
+echo_init 0x0422
+echo_loop 0x042A
+no_rx_data 0x0453
+send_bye 0x045F
+bye_loop 0x0464
+halt 0x047A
+MSG_HELLO 0x047B
+MSG_BYE 0x049C
