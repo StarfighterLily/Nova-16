@@ -194,6 +194,66 @@ def main( cpu, memory, gfx, kbd=None ):
     # Cache for button labels
     button_label_cache = {}
 
+    # Physical key repeat settings for Nova-16 input (independent of pygame global repeat)
+    key_repeat_initial_delay = 0.28
+    key_repeat_interval = 0.05
+    held_nova_keys = {}
+
+    def map_event_to_nova_key(event):
+        """Map a pygame key event to a Nova-16 key name."""
+        key_name = None
+        if event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
+            key_name = 'shift'
+        elif event.key in (pygame.K_LCTRL, pygame.K_RCTRL):
+            key_name = 'ctrl'
+        elif event.key in (pygame.K_LALT, pygame.K_RALT):
+            key_name = 'alt'
+        elif event.key == pygame.K_RETURN:
+            key_name = 'enter'
+        elif event.key == pygame.K_BACKSPACE:
+            key_name = 'backspace'
+        elif event.key == pygame.K_TAB:
+            key_name = 'tab'
+        elif event.key == pygame.K_ESCAPE:
+            key_name = 'escape'
+        elif event.key == pygame.K_LEFT:
+            key_name = 'left'
+        elif event.key == pygame.K_RIGHT:
+            key_name = 'right'
+        elif event.key == pygame.K_UP:
+            key_name = 'up'
+        elif event.key == pygame.K_DOWN:
+            key_name = 'down'
+        elif event.key == pygame.K_F1:
+            key_name = 'f1'
+        elif event.key == pygame.K_F2:
+            key_name = 'f2'
+        elif event.key == pygame.K_F3:
+            key_name = 'f3'
+        elif event.key == pygame.K_F4:
+            key_name = 'f4'
+        elif event.key == pygame.K_F10:
+            key_name = 'f10'
+        elif event.key == pygame.K_F11:
+            key_name = 'f11'
+        elif event.key == pygame.K_F12:
+            key_name = 'f12'
+        elif event.key == pygame.K_INSERT:
+            key_name = 'insert'
+        elif event.key == pygame.K_DELETE:
+            key_name = 'delete'
+        elif event.key == pygame.K_HOME:
+            key_name = 'home'
+        elif event.key == pygame.K_END:
+            key_name = 'end'
+        elif event.key == pygame.K_PAGEUP:
+            key_name = 'page_up'
+        elif event.key == pygame.K_PAGEDOWN:
+            key_name = 'page_down'
+        elif getattr(event, 'unicode', None) and len(event.unicode) == 1:
+            key_name = event.unicode
+        return key_name
+
     running = True
     while running:
         for event in pygame.event.get():
@@ -210,6 +270,7 @@ def main( cpu, memory, gfx, kbd=None ):
                     cpu_controller.stop()
                 elif event.key == pygame.K_F7:  # F7 = Reset
                     cpu_controller.reset()
+                    held_nova_keys.clear()
                 elif event.key == pygame.K_F8:  # F8 = Step
                     cpu_controller.step()
                 elif event.key == pygame.K_F9:  # F9 = Load
@@ -223,6 +284,7 @@ def main( cpu, memory, gfx, kbd=None ):
                     if file_path:
                         cpu_controller.stop()
                         cpu_controller.reset()
+                        held_nova_keys.clear()
                         entry_point = memory.load( file_path )
                         cpu_controller.cpu.pc = entry_point
                         cpu_controller.start()  # Auto-start after loading
@@ -230,63 +292,20 @@ def main( cpu, memory, gfx, kbd=None ):
                         print(f"Entry point: 0x{entry_point:04X}")
                 elif kbd is not None:
                     # Handle keyboard input for Nova-16
-                    key_name = None
-                    if event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
-                        key_name = 'shift'
-                    elif event.key in (pygame.K_LCTRL, pygame.K_RCTRL):
-                        key_name = 'ctrl'
-                    elif event.key in (pygame.K_LALT, pygame.K_RALT):
-                        key_name = 'alt'
-                    if event.key == pygame.K_RETURN:
-                        key_name = 'enter'
-                    elif event.key == pygame.K_BACKSPACE:
-                        key_name = 'backspace'
-                    elif event.key == pygame.K_TAB:
-                        key_name = 'tab'
-                    elif event.key == pygame.K_ESCAPE:
-                        key_name = 'escape'
-                    elif event.key == pygame.K_LEFT:
-                        key_name = 'left'
-                    elif event.key == pygame.K_RIGHT:
-                        key_name = 'right'
-                    elif event.key == pygame.K_UP:
-                        key_name = 'up'
-                    elif event.key == pygame.K_DOWN:
-                        key_name = 'down'
-                    elif event.key == pygame.K_F1:
-                        key_name = 'f1'
-                    elif event.key == pygame.K_F2:
-                        key_name = 'f2'
-                    elif event.key == pygame.K_F3:
-                        key_name = 'f3'
-                    elif event.key == pygame.K_F4:
-                        key_name = 'f4'
-                    elif event.key == pygame.K_F10:
-                        key_name = 'f10'
-                    elif event.key == pygame.K_F11:
-                        key_name = 'f11'
-                    elif event.key == pygame.K_F12:
-                        key_name = 'f12'
-                    elif event.key == pygame.K_INSERT:
-                        key_name = 'insert'
-                    elif event.key == pygame.K_DELETE:
-                        key_name = 'delete'
-                    elif event.key == pygame.K_HOME:
-                        key_name = 'home'
-                    elif event.key == pygame.K_END:
-                        key_name = 'end'
-                    elif event.key == pygame.K_PAGEUP:
-                        key_name = 'page_up'
-                    elif event.key == pygame.K_PAGEDOWN:
-                        key_name = 'page_down'
-                    elif event.unicode and len(event.unicode) == 1:
-                        # Handle printable characters
-                        key_name = event.unicode
+                    key_name = map_event_to_nova_key(event)
                     
                     if key_name:
-                        kbd.press_key(key_name)
+                        kbd.press_key(key_name, apply_debounce=True)
+                        if event.key not in held_nova_keys:
+                            now = time.monotonic()
+                            held_nova_keys[event.key] = {
+                                'key_name': key_name,
+                                'down_time': now,
+                                'last_repeat': now
+                            }
 
             elif event.type == pygame.KEYUP and kbd is not None:
+                held_nova_keys.pop(event.key, None)
                 # Keep modifier state synchronized with key releases.
                 if event.key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
                     kbd.release_key('shift')
@@ -309,6 +328,7 @@ def main( cpu, memory, gfx, kbd=None ):
                             cpu_controller.stop()
                         elif name == 'Reset':
                             cpu_controller.reset()
+                            held_nova_keys.clear()
                         elif name == 'Step':
                             cpu_controller.step()
                         elif name == 'Load':
@@ -322,11 +342,22 @@ def main( cpu, memory, gfx, kbd=None ):
                             if file_path:
                                 cpu_controller.stop()
                                 cpu_controller.reset()
+                                held_nova_keys.clear()
                                 entry_point = memory.load( file_path )
                                 cpu_controller.cpu.pc = entry_point  # Set PC to entry point from ORG
                                 cpu_controller.start()  # Auto-start after loading
                                 print(f"Loaded {file_path}")
                                 print(f"Entry point: 0x{entry_point:04X}")
+
+        # Synthesize key repeat while physical keys remain held.
+        if kbd is not None and held_nova_keys:
+            now = time.monotonic()
+            for state in held_nova_keys.values():
+                if state['key_name'] in ('shift', 'ctrl', 'alt', 'caps_lock'):
+                    continue
+                if (now - state['down_time']) >= key_repeat_initial_delay and (now - state['last_repeat']) >= key_repeat_interval:
+                    kbd.press_key(state['key_name'], apply_debounce=False)
+                    state['last_repeat'] = now
 
         # Update screen only when needed
         screen_updated = False

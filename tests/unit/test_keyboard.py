@@ -204,6 +204,42 @@ class TestKeyboardTyping:
         assert events[3] == ('press', 'backspace', 0x08)
 
 
+class TestKeyboardDebouncing:
+    """Test optional keyboard debounce behavior."""
+
+    def test_debounce_suppresses_rapid_duplicate_key(self, keyboard_device):
+        """Debounced duplicate key presses inside the window should be dropped."""
+        events = []
+
+        def callback(event_type, key, scan_code):
+            events.append((event_type, key, scan_code))
+
+        keyboard_device.set_event_callback(callback)
+        keyboard_device.set_debounce_window_ms(50)
+
+        keyboard_device.press_key('a', apply_debounce=True)
+        keyboard_device.press_key('a', apply_debounce=True)
+
+        assert len(events) == 1
+        assert events[0] == ('press', 'a', ord('a'))
+
+    def test_debounce_allows_key_after_window(self, keyboard_device):
+        """Debounced key presses should pass once the debounce window elapses."""
+        events = []
+
+        def callback(event_type, key, scan_code):
+            events.append((event_type, key, scan_code))
+
+        keyboard_device.set_event_callback(callback)
+        keyboard_device.set_debounce_window_ms(10)
+
+        keyboard_device.press_key('a', apply_debounce=True)
+        time.sleep(0.02)
+        keyboard_device.press_key('a', apply_debounce=True)
+
+        assert len(events) == 2
+
+
 class TestKeyboardBufferStatus:
     """Test keyboard buffer status reporting."""
 

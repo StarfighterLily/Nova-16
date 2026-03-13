@@ -14,11 +14,13 @@ Str1 = "--"    // Sword sprite
 
 // Initialize level
 SetLayer(1)
-Text(0, 0, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 0x1F)
-For a = 8 to 240 Step 8
+For a = 0 to 248 Step 4
     Text(0, a, "X                              X", 0x1F)
 Next
-Text(0, 248, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 0x1F)
+ScrRotate(0, 1)
+For a = 0 to 248 Step 4
+    Text(0, a, "X                              X", 0x1F)
+Next
 
 // Function definitions
 Function renderPlayer(x, y, color)

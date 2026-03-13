@@ -32,7 +32,7 @@ import time
 from typing import Optional, Callable, Dict
 
 class NovaKeyboard:
-    def __init__(self, cpu_ref=None):
+    def __init__(self, cpu_ref=None, debounce_ms: int = 35):
         """Initialize keyboard with optional CPU reference for direct integration"""
         self.cpu = cpu_ref
         self.key_mapping = self._create_key_mapping()
@@ -44,6 +44,9 @@ class NovaKeyboard:
             'num_lock': False
         }
         self.event_callback = None
+        # Debounce window used for physical key events to suppress chatter.
+        self.debounce_window_seconds = max(0, debounce_ms) / 1000.0
+        self._last_key_press_time = {}
         
     def _create_key_mapping(self) -> Dict[str, int]:
         """Create mapping from key names to Nova-16 scan codes"""
@@ -104,8 +107,24 @@ class NovaKeyboard:
                 
         return self.key_mapping.get(key, 0)
     
-    def press_key(self, key: str):
+    def should_debounce_key(self, key: str) -> bool:
+        """Return True if this key should be dropped due to debounce timing."""
+        if self.debounce_window_seconds <= 0:
+            return False
+
+        now = time.monotonic()
+        last_time = self._last_key_press_time.get(key)
+        if last_time is not None and (now - last_time) < self.debounce_window_seconds:
+            return True
+
+        self._last_key_press_time[key] = now
+        return False
+
+    def press_key(self, key: str, apply_debounce: bool = False):
         """Simulate a key press"""
+        if apply_debounce and self.should_debounce_key(key):
+            return
+
         # Handle modifier keys
         if key in ['shift', 'ctrl', 'alt']:
             self.modifier_state[key] = True
@@ -136,17 +155,21 @@ class NovaKeyboard:
         """Type a string by pressing keys in sequence"""
         for char in text:
             if char == '\n':
-                self.press_key('enter')
+                self.press_key('enter', apply_debounce=False)
             elif char == '\t':
-                self.press_key('tab')
+                self.press_key('tab', apply_debounce=False)
             elif char == '\b':
-                self.press_key('backspace')
+                self.press_key('backspace', apply_debounce=False)
             else:
-                self.press_key(char)
+                self.press_key(char, apply_debounce=False)
                 
     def set_event_callback(self, callback: Callable[[str, str, int], None]):
         """Set callback function for keyboard events"""
         self.event_callback = callback
+
+    def set_debounce_window_ms(self, debounce_ms: int):
+        """Update keyboard debounce window in milliseconds."""
+        self.debounce_window_seconds = max(0, debounce_ms) / 1000.0
         
     def get_buffer_status(self) -> Dict[str, int]:
         """Get keyboard buffer status from CPU"""
