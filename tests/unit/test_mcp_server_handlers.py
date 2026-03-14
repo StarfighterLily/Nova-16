@@ -109,6 +109,19 @@ def test_cpu_run_rejects_negative_cycle_count():
     assert result["error"] == "cycles must be >= 0"
 
 
+def test_load_program_clears_halted_state(tmp_path):
+    program = tmp_path / "program.bin"
+    program.write_bytes(b"\x00")
+    mcp._emulator_state["cpu"].halted = True
+    mcp._emulator_state["cycle_count"] = 99
+
+    result = json.loads(mcp._handle_load_program({"program_path": str(program)}))
+
+    assert result["status"] == "loaded"
+    assert mcp._emulator_state["cpu"].halted is False
+    assert mcp._emulator_state["cycle_count"] == 0
+
+
 def test_cpu_run_until_validates_address_and_cycle_count():
     invalid_address = json.loads(mcp._handle_cpu_run_until({"address": "bad"}))
     assert invalid_address["error"] == "address must be an integer"
@@ -322,6 +335,33 @@ def test_handle_nobasic_compile_uses_silent_in_process_assembler(tmp_path, monke
 
     assert calls == {"log": None, "trace": False}
     assert result["status"] == "compiled"
+
+
+def test_handle_nobasic_compile_auto_load_accepts_binary_path_and_clears_halt(tmp_path, monkeypatch):
+    source = tmp_path / "program.nobasic"
+    source.write_text("Pause\n", encoding="ascii")
+
+    monkeypatch.setattr(mcp, "_HAS_NOBASIC", True)
+    mcp._emulator_state["cpu"].halted = True
+    mcp._emulator_state["cycle_count"] = 7
+
+    def fake_compile(source_file, output_file, verbose, log=print, assemble_callback=None):
+        output_path = Path(output_file)
+        output_path.write_text("HLT\n", encoding="ascii")
+        output_path.with_suffix(".bin").write_bytes(b"\x00")
+
+    monkeypatch.setattr(mcp, "compile_nobasic", fake_compile)
+
+    result = json.loads(mcp._handle_nobasic_compile({
+        "source_path": str(source),
+        "auto_load": True,
+    }))
+
+    assert result["status"] == "compiled"
+    assert result["auto_loaded"] is True
+    assert "auto_load_error" not in result
+    assert mcp._emulator_state["cpu"].halted is False
+    assert mcp._emulator_state["cycle_count"] == 0
 
 
 def test_handle_call_tool_catches_system_exit_and_returns_json_error(monkeypatch):

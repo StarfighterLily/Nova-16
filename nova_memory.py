@@ -298,6 +298,7 @@ class Memory:
         """
         if not file_path:
             return 0x0000
+        file_path = str(file_path)
             
         # Clear LRU cache before loading new program
         self.lru_cache.clear()

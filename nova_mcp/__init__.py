@@ -1,0 +1,1 @@
+"""Modular Nova-16 MCP server package."""
