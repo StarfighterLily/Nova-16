@@ -15,6 +15,7 @@ import sys
 import json
 import traceback
 import contextlib
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Literal
 import base64
@@ -75,6 +76,90 @@ _emulator_state = {
     "cycle_count": 0,
     "debugger": None,
 }
+
+
+def _parse_int_arg(value: Any, name: str, *, minimum: Optional[int] = None, maximum: Optional[int] = None) -> int:
+    """Parse an integer argument with optional bounds checks."""
+    try:
+        parsed = int(value, 0) if isinstance(value, str) else int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be an integer")
+
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f"{name} must be <= {maximum}")
+    return parsed
+
+
+def _parse_register_arg(value: Any) -> tuple[str, Optional[int]]:
+    """Normalize a register argument and validate supported register names."""
+    if not isinstance(value, str):
+        raise ValueError("register must be a string")
+
+    register = value.strip().upper()
+    if register == "PC":
+        return register, None
+
+    if len(register) >= 2 and register[0] in {"R", "P"} and register[1:].isdigit():
+        index = int(register[1:])
+        if 0 <= index <= 9:
+            return register, index
+
+    raise ValueError(f"Unknown register: {register}")
+
+
+def _normalize_keyboard_key_arg(value: Any, key_mapping: Dict[str, int]) -> tuple[str, Optional[int]]:
+    """Normalize MCP keyboard input to a Nova key name or raw scan code."""
+    if not isinstance(value, str):
+        raise ValueError("key must be a string")
+
+    raw_key = value.strip()
+    if not raw_key:
+        raise ValueError("key must not be empty")
+
+    if raw_key.lower().startswith("0x"):
+        scan_code = _parse_int_arg(raw_key, "key", minimum=0, maximum=0xFF)
+        return f"0x{scan_code:02X}", scan_code
+
+    if len(raw_key) == 1:
+        return raw_key, None
+
+    normalized = raw_key.lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "return": "enter",
+        "esc": "escape",
+        "space": " ",
+        "arrowleft": "left",
+        "arrowright": "right",
+        "arrowup": "up",
+        "arrowdown": "down",
+        "left_arrow": "left",
+        "right_arrow": "right",
+        "up_arrow": "up",
+        "down_arrow": "down",
+    }
+    normalized = aliases.get(normalized, normalized)
+
+    if normalized in {"shift", "ctrl", "alt"} or normalized in key_mapping:
+        return normalized, None
+
+    raise ValueError(f"Unknown key: {raw_key}")
+
+
+def _parse_hex_bytes_arg(value: Any, name: str) -> tuple[str, bytes]:
+    """Parse a required hex string argument, allowing embedded spaces."""
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a string")
+
+    normalized = value.replace(" ", "").strip()
+    if not normalized:
+        raise ValueError(f"{name} must not be empty")
+
+    try:
+        return normalized.upper(), bytes.fromhex(normalized)
+    except ValueError as e:
+        raise ValueError(f"Invalid hex {name}: {e}") from e
 
 def cleanup_emulator():
     """Explicitly clean up emulator resources before reinitialization"""
@@ -331,9 +416,9 @@ async def handle_list_tools() -> types.ListToolsResult:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "x": {"type": "integer", "description": "X coordinate (0-319)"},
-                    "y": {"type": "integer", "description": "Y coordinate (0-199)"},
-                    "layer": {"type": "integer", "description": "Layer (0-7, default: all)"}
+                    "x": {"type": "integer", "description": "X coordinate (0-255)"},
+                    "y": {"type": "integer", "description": "Y coordinate (0-255)"},
+                    "layer": {"type": "integer", "description": "Layer (0-8, default: all)"}
                 },
                 "required": ["x", "y"]
             }
@@ -346,7 +431,7 @@ async def handle_list_tools() -> types.ListToolsResult:
                 "properties": {
                     "format": {
                         "type": "string",
-                        "enum": ["base64", "raw", "summary"],
+                        "enum": ["base64", "png", "raw", "summary"],
                         "description": "Output format (default: summary)"
                     }
                 },
@@ -384,10 +469,10 @@ async def handle_list_tools() -> types.ListToolsResult:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "x": {"type": "integer", "description": "X coordinate (0-319)"},
-                    "y": {"type": "integer", "description": "Y coordinate (0-199)"},
+                    "x": {"type": "integer", "description": "X coordinate (0-255)"},
+                    "y": {"type": "integer", "description": "Y coordinate (0-255)"},
                     "color": {"type": "integer", "description": "Color value (0-255)"},
-                    "layer": {"type": "integer", "description": "Layer (0-7, default: 0)"}
+                    "layer": {"type": "integer", "description": "Layer (0-8, default: 0)"}
                 },
                 "required": ["x", "y", "color"]
             }
@@ -400,7 +485,7 @@ async def handle_list_tools() -> types.ListToolsResult:
                 "properties": {
                     "key": {
                         "type": "string",
-                        "description": "Key code or ASCII character (e.g., 'a', 'Enter', 'Space', or hex like '0x41')"
+                        "description": "Key code or ASCII character, case-insensitive for named keys (e.g., 'a', 'Enter', 'Space', or hex like '0x41')"
                     },
                     "count": {
                         "type": "integer",
@@ -788,6 +873,12 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]):
             result_text = json.dumps({"error": f"Unknown tool: {name}"})
             
         return [TextContent(type="text", text=result_text)]
+    except SystemExit as e:
+        error_text = json.dumps({
+            "error": f"Tool exited with code {e.code}",
+            "traceback": traceback.format_exc()
+        })
+        return [TextContent(type="text", text=error_text)]
     except Exception as e:
         error_text = json.dumps({
             "error": str(e),
@@ -800,11 +891,13 @@ async def handle_call_tool(name: str, arguments: Dict[str, Any]):
 def _handle_init_emulator():
     """Initialize the emulator"""
     initialize_emulator()
+    memory = _emulator_state["memory"]
+    gfx = _emulator_state["gfx"]
     return json.dumps({
         "status": "initialized",
-        "memory_size": 65536,
-        "screen_width": 320,
-        "screen_height": 200,
+        "memory_size": memory.size,
+        "screen_width": gfx.width,
+        "screen_height": gfx.height,
         "registers": "R0-R9 (8-bit), P0-P9 (16-bit)"
     })
 
@@ -838,26 +931,44 @@ def _handle_load_program(args):
 def _handle_assemble(args):
     """Assemble assembly source to binary"""
     ensure_emulator()
-    source_path = args["source_path"]
+    source_path = Path(args["source_path"])
     output_path = args.get("output_path")
     
     # Handle relative paths
-    if not Path(source_path).is_absolute():
+    if not source_path.is_absolute():
         source_path = Path(__file__).parent / source_path
     
-    if not Path(source_path).exists():
+    if not source_path.exists():
         return json.dumps({"error": f"File not found: {source_path}"})
     
     if output_path is None:
-        output_path = str(source_path).replace(".asm", ".bin")
+        output_path = source_path.with_suffix(".bin")
     elif not Path(output_path).is_absolute():
         output_path = Path(__file__).parent / output_path
+    else:
+        output_path = Path(output_path)
     
     try:
         assembler = nova_assembler.Assembler()
         success = assembler.assemble(str(source_path))
         if not success:
             return json.dumps({"error": "Assembly failed - check syntax"})
+
+        generated_output = source_path.with_suffix(".bin")
+        generated_org = source_path.with_suffix(".org")
+        generated_sym = source_path.with_suffix(".sym")
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if generated_output.resolve() != output_path.resolve():
+            shutil.move(str(generated_output), str(output_path))
+
+        output_org = output_path.with_suffix(".org")
+        output_sym = output_path.with_suffix(".sym")
+        if generated_org.exists() and generated_org.resolve() != output_org.resolve():
+            shutil.move(str(generated_org), str(output_org))
+        if generated_sym.exists() and generated_sym.resolve() != output_sym.resolve():
+            shutil.move(str(generated_sym), str(output_sym))
+
         return json.dumps({
             "status": "assembled",
             "source": str(source_path),
@@ -873,7 +984,10 @@ def _handle_assemble(args):
 def _handle_cpu_step(args):
     """Step CPU execution"""
     ensure_emulator()
-    count = args.get("count", 1)
+    try:
+        count = _parse_int_arg(args.get("count", 1), "count", minimum=0)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
     
     cpu = _emulator_state["cpu"]
     old_pc = cpu.pc
@@ -896,7 +1010,10 @@ def _handle_cpu_step(args):
 def _handle_cpu_run(args):
     """Run CPU for specified cycles"""
     ensure_emulator()
-    cycles = args.get("cycles", 10000)
+    try:
+        cycles = _parse_int_arg(args.get("cycles", 10000), "cycles", minimum=0)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
     
     cpu = _emulator_state["cpu"]
     old_pc = cpu.pc
@@ -1061,36 +1178,42 @@ def _handle_get_cpu_state():
 def _handle_set_register(args):
     """Set CPU register"""
     ensure_emulator()
-    register = args["register"].upper()
-    value = args["value"]
+    try:
+        register, index = _parse_register_arg(args["register"])
+        value = _parse_int_arg(args["value"], "value")
+    except (KeyError, ValueError) as e:
+        return json.dumps({"error": str(e)})
     
     cpu = _emulator_state["cpu"]
     
     if register == "PC":
         cpu.pc = value & 0xFFFF
     elif register.startswith("R"):
-        idx = int(register[1])
-        cpu.Rregisters[idx] = value & 0xFF
-    elif register.startswith("P"):
-        idx = int(register[1])
-        cpu.Pregisters[idx] = value & 0xFFFF
+        cpu.Rregisters[index] = value & 0xFF
     else:
-        return json.dumps({"error": f"Unknown register: {register}"})
+        cpu.Pregisters[index] = value & 0xFFFF
     
     return json.dumps({
         "status": "set",
         "register": register,
-        "value": f"0x{value:04X}" if register.startswith("P") else f"0x{value:02X}"
+        "value": f"0x{value & 0xFFFF:04X}" if register in {"PC"} or register.startswith("P") else f"0x{value & 0xFF:02X}"
     })
 
 def _handle_read_memory(args):
     """Read from memory"""
     ensure_emulator()
-    address = args["address"]
-    size = args["size"]
-    format_type = args.get("format", "hex")
-    
     memory = _emulator_state["memory"]
+
+    try:
+        address = _parse_int_arg(args.get("address"), "address", minimum=0, maximum=memory.size - 1)
+        size = _parse_int_arg(args.get("size"), "size", minimum=0, maximum=memory.size)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
+    if address + size > memory.size:
+        return json.dumps({"error": "address + size exceeds memory bounds"})
+
+    format_type = args.get("format", "hex")
     data = [memory.read_byte(address + i) for i in range(size)]
     
     if format_type == "hex":
@@ -1108,25 +1231,38 @@ def _handle_read_memory(args):
                 word = data[i] | (data[i + 1] << 8)
                 words.append(f"0x{word:04X}")
         return json.dumps({"address": f"0x{address:04X}", "data": words})
+    else:
+        return json.dumps({"error": f"Unknown format: {format_type}"})
 
 def _handle_write_memory(args):
     """Write to memory"""
     ensure_emulator()
-    address = args["address"]
-    data_str = args["data"]
-    
     memory = _emulator_state["memory"]
+
+    try:
+        address = _parse_int_arg(args.get("address"), "address", minimum=0, maximum=memory.size - 1)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
+    data_str = args.get("data")
+    if not isinstance(data_str, str):
+        return json.dumps({"error": "data must be a string"})
     
-    if data_str.startswith("@"):
-        # ASCII string
-        data = data_str[1:].encode("ascii")
-    else:
-        # Hex string
-        data = bytes.fromhex(data_str)
+    try:
+        if data_str.startswith("@"):
+            data = data_str[1:].encode("ascii")
+        else:
+            data = bytes.fromhex(data_str)
+    except UnicodeEncodeError:
+        return json.dumps({"error": "ASCII data must contain only ASCII characters"})
+    except ValueError as e:
+        return json.dumps({"error": f"Invalid data payload: {e}"})
+
+    if address + len(data) > memory.size:
+        return json.dumps({"error": "address + data size exceeds memory bounds"})
     
     for i, byte in enumerate(data):
-        if address + i < 0x10000:
-            memory.write(address + i, byte)
+        memory.write(address + i, byte)
     
     return json.dumps({
         "status": "written",
@@ -1138,24 +1274,27 @@ def _handle_write_memory(args):
 def _handle_graphics_get_pixel(args):
     """Get pixel color"""
     ensure_emulator()
-    x = args["x"]
-    y = args["y"]
-    layer = args.get("layer")
+    try:
+        x = _parse_int_arg(args["x"], "x")
+        y = _parse_int_arg(args["y"], "y")
+        layer_value = args.get("layer")
+        layer = None if layer_value is None else _parse_int_arg(layer_value, "layer", minimum=0, maximum=8)
+    except (KeyError, ValueError) as e:
+        return json.dumps({"error": str(e)})
     
     gfx = _emulator_state["gfx"]
+    in_bounds = 0 <= x < gfx.width and 0 <= y < gfx.height
     
     if layer is not None:
         # Access layer arrays directly
         if layer == 0:
-            color = int(gfx.layer_0[y, x]) if 0 <= y < 200 and 0 <= x < 320 else 0
+            color = int(gfx.layer_0[y, x]) if in_bounds else 0
         elif 1 <= layer <= 4:
-            color = int(gfx.background_layers[layer - 1][y, x]) if 0 <= y < 200 and 0 <= x < 320 else 0
-        elif 5 <= layer <= 8:
-            color = int(gfx.sprite_layers[layer - 5][y, x]) if 0 <= y < 200 and 0 <= x < 320 else 0
+            color = int(gfx.background_layers[layer - 1][y, x]) if in_bounds else 0
         else:
-            color = 0
+            color = int(gfx.sprite_layers[layer - 5][y, x]) if in_bounds else 0
     else:
-        color = int(gfx.screen[y, x]) if 0 <= y < 200 and 0 <= x < 320 else 0
+        color = int(gfx.screen[y, x]) if in_bounds else 0
     
     return json.dumps({"x": x, "y": y, "color": color, "layer": layer})
 
@@ -1185,7 +1324,7 @@ def _handle_graphics_get_screen(args):
             "data_base64": b64,
             "encoding": "raw uint8"
         })
-    elif format_type == "base64":
+    elif format_type in {"base64", "png"}:
         # Export as PNG (grayscale palette) if PIL available
         try:
             if not _HAS_PIL:
@@ -1197,6 +1336,7 @@ def _handle_graphics_get_screen(args):
             return json.dumps({
                 "width": gfx.width,
                 "height": gfx.height,
+                "encoding": "png_base64",
                 "png_base64": b64
             })
         except Exception as e:
@@ -1207,10 +1347,13 @@ def _handle_graphics_get_screen(args):
 def _handle_graphics_set_pixel(args):
     """Set pixel color"""
     ensure_emulator()
-    x = args["x"]
-    y = args["y"]
-    color = args["color"]
-    layer = args.get("layer", 0)
+    try:
+        x = _parse_int_arg(args.get("x"), "x")
+        y = _parse_int_arg(args.get("y"), "y")
+        color = _parse_int_arg(args.get("color"), "color", minimum=0, maximum=0xFF)
+        layer = _parse_int_arg(args.get("layer", 0), "layer", minimum=0, maximum=8)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
     
     gfx = _emulator_state["gfx"]
     # Set the layer register and use the internal method
@@ -1225,20 +1368,31 @@ def _handle_graphics_set_pixel(args):
 def _handle_keyboard_inject_key(args):
     """Inject keyboard input"""
     ensure_emulator()
-    key = args["key"]
-    count = args.get("count", 1)
-    
+    kbd = _emulator_state["kbd"]
+
+    try:
+        key, scan_code = _normalize_keyboard_key_arg(args.get("key"), kbd.key_mapping)
+        count = _parse_int_arg(args.get("count", 1), "count", minimum=0)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
     kbd = _emulator_state["kbd"]
     
-    # Use press_key which accepts key strings
     for _ in range(count):
-        kbd.press_key(key)
+        if scan_code is not None:
+            _emulator_state["cpu"].add_key_to_buffer(scan_code)
+        else:
+            kbd.press_key(key)
     
-    return json.dumps({
+    response = {
         "status": "injected",
         "key": key,
         "count": count
-    })
+    }
+    if scan_code is not None:
+        response["scan_code"] = f"0x{scan_code:02X}"
+
+    return json.dumps(response)
 
 def _handle_keyboard_get_buffer():
     """Get keyboard buffer state"""
@@ -1284,9 +1438,13 @@ def _handle_graphics_export_png(args):
 
 def _handle_graphics_set_blend_mode(args):
     ensure_emulator()
-    mode = int(args["mode"])
+    try:
+        mode = _parse_int_arg(args.get("mode"), "mode", minimum=0, maximum=4)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
     gfx = _emulator_state["gfx"]
-    gfx.blend_mode = max(0, min(4, mode))
+    gfx.blend_mode = mode
     return json.dumps({"status": "blend_set", "mode": gfx.blend_mode})
 
 def _handle_sound_control(args):
@@ -1404,7 +1562,10 @@ def _handle_memory_dump(args):
 def _handle_breakpoint_set(args):
     """Set breakpoint (stored in CPU state)"""
     ensure_emulator()
-    address = args["address"]
+    try:
+        address = _parse_int_arg(args["address"], "address", minimum=0, maximum=0xFFFF)
+    except (KeyError, ValueError) as e:
+        return json.dumps({"error": str(e)})
     
     cpu = _emulator_state["cpu"]
     if not hasattr(cpu, "breakpoints"):
@@ -1430,12 +1591,13 @@ def _handle_breakpoint_clear(args):
         return json.dumps({"status": "breakpoints_cleared", "total_breakpoints": 0})
     else:
         try:
-            cpu.breakpoints.discard(int(addr))
-        except Exception:
-            pass
+            address = _parse_int_arg(addr, "address", minimum=0, maximum=0xFFFF)
+        except ValueError as e:
+            return json.dumps({"error": str(e)})
+        cpu.breakpoints.discard(address)
         return json.dumps({
             "status": "breakpoint_cleared",
-            "address": f"0x{(addr or 0):04X}",
+            "address": f"0x{address:04X}",
             "total_breakpoints": len(cpu.breakpoints)
         })
 
@@ -1448,8 +1610,12 @@ def _handle_breakpoint_list():
 def _handle_cpu_run_until(args):
     """Run until PC equals address, halt, or max cycles"""
     ensure_emulator()
-    target = int(args["address"]) & 0xFFFF
-    max_cycles = int(args.get("max_cycles", 100000))
+    try:
+        target = _parse_int_arg(args.get("address"), "address", minimum=0, maximum=0xFFFF)
+        max_cycles = _parse_int_arg(args.get("max_cycles", 100000), "max_cycles", minimum=0)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
     cpu = _emulator_state["cpu"]
     cycles = 0
     start_pc = cpu.pc
@@ -1473,15 +1639,17 @@ def _handle_cpu_run_until(args):
 def _handle_assert_memory(args):
     """Assert memory matches expected bytes"""
     ensure_emulator()
-    address = int(args["address"]) & 0xFFFF
-    expected_hex = args["expected"].strip()
-    # Normalize hex (allow spaces)
-    expected_hex = expected_hex.replace(" ", "")
-    try:
-        expected_bytes = bytes.fromhex(expected_hex)
-    except Exception as e:
-        return json.dumps({"error": f"Invalid hex: {e}"})
     memory = _emulator_state["memory"]
+
+    try:
+        address = _parse_int_arg(args.get("address"), "address", minimum=0, maximum=memory.size - 1)
+        expected_hex, expected_bytes = _parse_hex_bytes_arg(args.get("expected"), "expected")
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
+    if address + len(expected_bytes) > memory.size:
+        return json.dumps({"error": "address + expected size exceeds memory bounds"})
+
     actual = bytes(memory.read_byte(address + i) for i in range(len(expected_bytes)))
     passed = actual == expected_bytes
     diff = [
@@ -1502,17 +1670,19 @@ def _handle_assert_memory(args):
 
 def _handle_memory_search(args):
     ensure_emulator()
-    pattern_hex = args["pattern"].replace(" ", "").strip()
-    try:
-        pat = bytes.fromhex(pattern_hex)
-    except Exception as e:
-        return json.dumps({"error": f"Invalid hex pattern: {e}"})
-    start = int(args.get("start", 0)) & 0xFFFF
-    end = int(args.get("end", 0xFFFF)) & 0xFFFF
-    if end < start:
-        end = 0xFFFF
-    max_results = int(args.get("max_results", 16))
     mem = _emulator_state["memory"]
+
+    try:
+        pattern_hex, pat = _parse_hex_bytes_arg(args.get("pattern"), "pattern")
+        start = _parse_int_arg(args.get("start", 0), "start", minimum=0, maximum=mem.size - 1)
+        end = _parse_int_arg(args.get("end", mem.size - 1), "end", minimum=0, maximum=mem.size - 1)
+        max_results = _parse_int_arg(args.get("max_results", 16), "max_results", minimum=1)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
+    if end < start:
+        return json.dumps({"error": "end must be >= start"})
+
     data = bytes(int(mem.read(i)) for i in range(start, end + 1))
     matches: List[int] = []
     idx = 0
@@ -1531,19 +1701,25 @@ def _handle_memory_search(args):
 
 def _handle_run_until_memory(args):
     ensure_emulator()
-    address = int(args["address"]) & 0xFFFF
-    value_hex = args["value"].replace(" ", "").strip()
-    try:
-        expected = bytes.fromhex(value_hex)
-    except Exception as e:
-        return json.dumps({"error": f"Invalid hex value: {e}"})
-    max_cycles = int(args.get("max_cycles", 100000))
-    cpu = _emulator_state["cpu"]
     mem = _emulator_state["memory"]
+
+    try:
+        address = _parse_int_arg(args.get("address"), "address", minimum=0, maximum=mem.size - 1)
+        _, expected = _parse_hex_bytes_arg(args.get("value"), "value")
+        max_cycles = _parse_int_arg(args.get("max_cycles", 100000), "max_cycles", minimum=0)
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
+    if address + len(expected) > mem.size:
+        return json.dumps({"error": "address + value size exceeds memory bounds"})
+
+    cpu = _emulator_state["cpu"]
     cycles = 0
     start_pc = cpu.pc
+
     def read_slice(addr, n):
         return bytes(int(mem.read(addr + i)) for i in range(n))
+
     while cycles < max_cycles and not cpu.halted:
         if read_slice(address, len(expected)) == expected:
             break
@@ -1578,20 +1754,36 @@ def _handle_set_flags(args):
 def _handle_timer_control(args):
     ensure_emulator()
     cpu = _emulator_state["cpu"]
+    try:
+        parsed_values = {
+            name: _parse_int_arg(args[name], name, minimum=0, maximum=0xFFFF)
+            for name in ("TT", "TM", "TC", "TS")
+            if name in args
+        }
+    except ValueError as e:
+        return json.dumps({"error": str(e)})
+
     for name, idx in [("TT", 0), ("TM", 1), ("TC", 2), ("TS", 3)]:
-        if name in args:
-            val = int(args[name]) & 0xFFFF
-            cpu.timer[idx] = val
+        if name in parsed_values:
+            cpu.timer[idx] = parsed_values[name]
+
     return json.dumps({"status": "timer_set", "timer": {
         "TT": cpu.timer[0], "TM": cpu.timer[1], "TC": cpu.timer[2], "TS": cpu.timer[3]
     }})
 
 def _handle_keyboard_type_string(args):
     ensure_emulator()
-    text = args["text"]
+    text = args.get("text")
+    if not isinstance(text, str):
+        return json.dumps({"error": "text must be a string"})
+
+    try:
+        text.encode("ascii")
+    except UnicodeEncodeError:
+        return json.dumps({"error": "text must contain only ASCII characters"})
+
     kbd = _emulator_state["kbd"]
-    for ch in text:
-        kbd.press_key(ch)
+    kbd.type_string(text)
     return json.dumps({"status": "typed", "length": len(text)})
 
 def _handle_disassemble_program(args):
@@ -1909,36 +2101,38 @@ def _handle_nobasic_compile(args):
     if not _HAS_NOBASIC:
         return json.dumps({"error": "NoBASIC compiler not available. Check installation in NoBASIC/ directory."})
     
-    source_path = args["source_path"]
-    output_path = args.get("output_path")
+    source_path_arg = args["source_path"]
+    output_path_arg = args.get("output_path")
     verbose = args.get("verbose", False)
     auto_load = args.get("auto_load", False)
     
     # Handle relative paths
-    if not Path(source_path).is_absolute():
-        source_path = Path(__file__).parent / source_path
+    if not Path(source_path_arg).is_absolute():
+        source_path = Path(__file__).parent / source_path_arg
     else:
-        source_path = Path(source_path)
+        source_path = Path(source_path_arg)
     
     if not source_path.exists():
         return json.dumps({"error": f"Source file not found: {source_path}"})
     
-    if not str(source_path).endswith('.nobasic'):
+    if source_path.suffix.lower() != '.nobasic':
         return json.dumps({"error": "Source file must have .nobasic extension"})
     
-    if output_path is None:
-        output_path = str(source_path).replace('.nobasic', '.asm')
-    elif not Path(output_path).is_absolute():
-        output_path = Path(__file__).parent / output_path
+    if output_path_arg is None:
+        output_path = source_path.with_suffix('.asm')
+    elif not Path(output_path_arg).is_absolute():
+        output_path = Path(__file__).parent / output_path_arg
+    else:
+        output_path = Path(output_path_arg)
     
     try:
         # Compile NoBASIC to assembly
         compile_nobasic(str(source_path), str(output_path), verbose)
         
         # Binary file should be created automatically
-        binary_path = str(output_path).replace('.asm', '.bin')
+        binary_path = output_path.with_suffix('.bin')
         
-        if not Path(binary_path).exists():
+        if not binary_path.exists():
             return json.dumps({
                 "error": f"Binary file not created at {binary_path}",
                 "assembly_created": str(output_path)
@@ -1966,7 +2160,13 @@ def _handle_nobasic_compile(args):
                 result["auto_load_error"] = str(e)
         
         return json.dumps(result)
-    
+    except SystemExit as e:
+        return json.dumps({
+            "error": f"Compilation failed with exit code {e.code}",
+            "exit_code": e.code,
+            "source": str(source_path),
+            "assembly": str(output_path)
+        })
     except Exception as e:
         import traceback
         return json.dumps({
