@@ -123,6 +123,30 @@ class SymbolTable:
         """Get the struct type name for a variable."""
         return self.struct_instances.get(var_name.lower())
 
+    def get_structs_with_field(self, field_name: str) -> List[StructType]:
+        """Return all struct definitions containing the given field."""
+        field_key = field_name.lower()
+        return [struct_def for struct_def in self.structs.values() if field_key in struct_def.fields]
+
+    def infer_struct_instance_type(self, var_name: str, member: str) -> Optional[str]:
+        """Infer and cache a struct instance type from member usage when possible."""
+        existing_struct = self.get_struct_instance_type(var_name)
+        if existing_struct:
+            return existing_struct
+
+        matching_structs = self.get_structs_with_field(member)
+        if len(matching_structs) == 1:
+            struct_name = matching_structs[0].name
+            self.define_struct_instance(var_name, struct_name)
+            return struct_name
+
+        if not matching_structs and len(self.structs) == 1:
+            struct_name = next(iter(self.structs.values())).name
+            self.define_struct_instance(var_name, struct_name)
+            return struct_name
+
+        return None
+
     def is_list(self, name: str) -> bool:
         """Check if name is a list."""
         return name in self.lists
@@ -427,15 +451,9 @@ class SemanticAnalyzer:
             # Check if object is a struct instance
             if isinstance(expr.object, VariableExpr):
                 var_name = expr.object.name
-                struct_name = self.symbol_table.get_struct_instance_type(var_name)
-                
+                struct_name = self.symbol_table.infer_struct_instance_type(var_name, expr.member)
                 if not struct_name:
-                    # Auto-infer struct type if only one struct is defined
-                    if len(self.symbol_table.structs) == 1:
-                        struct_name = next(iter(self.symbol_table.structs.values())).name
-                        self.symbol_table.define_struct_instance(var_name, struct_name)
-                    else:
-                        raise SemanticError(f"Variable '{var_name}' is not a struct instance", self.filename)
+                    raise SemanticError(f"Variable '{var_name}' is not a struct instance", self.filename)
                 
                 if struct_name:
                     struct_def = self.symbol_table.get_struct(struct_name)
@@ -700,15 +718,9 @@ class SemanticAnalyzer:
             # Struct member assignment
             if isinstance(expr.object, VariableExpr):
                 var_name = expr.object.name
-                struct_name = self.symbol_table.get_struct_instance_type(var_name)
-                
+                struct_name = self.symbol_table.infer_struct_instance_type(var_name, expr.member)
                 if not struct_name:
-                    # Auto-infer struct type if only one struct is defined
-                    if len(self.symbol_table.structs) == 1:
-                        struct_name = next(iter(self.symbol_table.structs.values())).name
-                        self.symbol_table.define_struct_instance(var_name, struct_name)
-                    else:
-                        raise SemanticError(f"Variable '{var_name}' is not a struct instance", 0, 0)
+                    raise SemanticError(f"Variable '{var_name}' is not a struct instance", 0, 0)
                 
                 struct_def = self.symbol_table.get_struct(struct_name)
                 if not struct_def or expr.member.lower() not in struct_def.fields:

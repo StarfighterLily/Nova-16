@@ -2278,14 +2278,11 @@ class CodeGenerator:
                     self.current_output.append(f"MOV P1, [P0]")
                     return 'P1'
             else:
-                # Auto-allocate struct instance on first use
-                # Try to infer struct type from context (if only one struct defined)
-                if len(self.struct_types) == 1:
-                    struct_name = list(self.struct_types.keys())[0]
-                    self.allocate_struct_instance(var_name, struct_name)
-                    return self.generate_member_access(expr, target_reg)
-                else:
+                struct_name = self.infer_struct_instance_type(var_name, expr.member)
+                if struct_name is None:
                     raise RuntimeError(f"Cannot determine struct type for '{var_name}'")
+                self.allocate_struct_instance(var_name, struct_name)
+                return self.generate_member_access(expr, target_reg)
         else:
             raise RuntimeError(f"Member access only supported on variable expressions")
 
@@ -2320,16 +2317,33 @@ class CodeGenerator:
                 else:
                     self.current_output.append(f"MOV [P0], {value_reg}")
             else:
-                # Auto-allocate struct instance on first use
-                # Try to infer struct type from context (if only one struct defined)
-                if len(self.struct_types) == 1:
-                    struct_name = list(self.struct_types.keys())[0]
-                    self.allocate_struct_instance(var_name, struct_name)
-                    self.generate_member_store(expr, value_reg)
-                else:
+                struct_name = self.infer_struct_instance_type(var_name, expr.member)
+                if struct_name is None:
                     raise RuntimeError(f"Cannot determine struct type for '{var_name}'")
+                self.allocate_struct_instance(var_name, struct_name)
+                self.generate_member_store(expr, value_reg)
         else:
             raise RuntimeError(f"Member access only supported on variable expressions")
+
+    def get_struct_types_with_field(self, member_name: str) -> List[StructType]:
+        """Return all struct types that define the requested member."""
+        member_key = member_name.lower()
+        return [struct_type for struct_type in self.struct_types.values() if member_key in struct_type.fields]
+
+    def infer_struct_instance_type(self, var_name: str, member_name: str) -> Optional[str]:
+        """Infer a struct instance type from member usage when possible."""
+        var_key = var_name.lower()
+        if var_key in self.struct_instances:
+            return self.struct_instances[var_key]
+
+        matching_structs = self.get_struct_types_with_field(member_name)
+        if len(matching_structs) == 1:
+            return matching_structs[0].name
+
+        if not matching_structs and len(self.struct_types) == 1:
+            return next(iter(self.struct_types.values())).name
+
+        return None
 
     def allocate_struct_instance(self, var_name: str, struct_name: str) -> int:
         """Allocate memory for a struct instance."""

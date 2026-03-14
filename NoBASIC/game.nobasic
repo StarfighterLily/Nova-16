@@ -1,13 +1,21 @@
 // Define game structs
 STRUCT Player x y oldx oldy facing counter END
+Struct Enemy ex ey eoldx eoldy ecounter End
 
 // Initialize Player struct
-Player.x = 8
-Player.y = 8
-Player.oldx = 8
-Player.oldy = 8
-Player.facing = 0
-Player.counter = 0
+player.x = 8
+player.y = 8
+player.oldx = 8
+player.oldy = 8
+player.facing = 0
+player.counter = 0
+
+// Initialize enemy variables
+Enemy.ex = 128
+Enemy.ey = 128
+Enemy.eoldx = 128
+Enemy.eoldy = 128
+Enemy.eoldy = 0
 
 // Initialize other variables
 Str1 = "--"    // Sword sprite
@@ -28,24 +36,38 @@ Function renderPlayer(x, y, color)
     Text(x, y + 8, "X", color)
 End
 
+Function renderEnemy(x, y, color)
+    Text(x, y, "m", color)
+End
+
 Function drawPlayer()
-    If Player.oldx <> Player.x Then
-        renderPlayer(Player.oldx, Player.oldy, 0x00)
+    If player.oldx <> player.x Then
+        renderPlayer(player.oldx, player.oldy, 0x00)
     End
-    If Player.oldy <> Player.y Then
-        renderPlayer(Player.oldx, Player.oldy, 0x00)
+    If player.oldy <> player.y Then
+        renderPlayer(player.oldx, player.oldy, 0x00)
     End
-    renderPlayer(Player.x, Player.y, 0x0F)
+    renderPlayer(player.x, player.y, 0x0F)
+End
+
+Function drawEnemy()
+    If Enemy.eoldx <> Enemy.ex Then
+        renderEnemy(Enemy.eoldx, Enemy.eoldy, 0x00)
+    End
+    If Enemy.eoldy <> Enemy.ey Then
+        renderEnemy(Enemy.eoldx, Enemy.eoldy, 0x00)
+    End
+    renderEnemy(Enemy.ex, Enemy.ey, 0x0C)
 End
 
 Function attack()
-    If Player.facing = 0 Then
-        Text(Player.x - 16, Player.y + 8, Str1, 0x0F)
+    If player.facing = 0 Then
+        Text(player.x - 16, player.y + 8, Str1, 0x0F)
     End
-    If Player.facing = 1 Then
-       Text(Player.x + 8, Player.y + 8, Str1, 0x0F)
+    If player.facing = 1 Then
+       Text(player.x + 8, player.y + 8, Str1, 0x0F)
     End
-    Player.counter = 0
+    player.counter = 0
 End
 
 Function keyCheck()
@@ -55,69 +77,107 @@ Function keyCheck()
         End
 
         If key = 97 Then // 'a'
-            Player.x = Player.x - 8
-            Player.facing = 0
+            player.x = player.x - 8
+            player.facing = 0
         End
         If key = 128 Then // right
-            Player.x = Player.x - 8
-            Player.facing = 0
+            player.x = player.x - 8
+            player.facing = 0
         End
 
         If key = 100 Then // 'd'
-            Player.x = Player.x + 8
-            Player.facing = 1
+            player.x = player.x + 8
+            player.facing = 1
         End
         If key = 129 Then // left
-            Player.x = Player.x + 8
-            Player.facing = 1
+            player.x = player.x + 8
+            player.facing = 1
         End
 
         If key = 115 Then // 's'
-            Player.y = Player.y + 8
+            player.y = player.y + 8
         End
         If key = 131 Then // down
-            Player.y = Player.y + 8
+            player.y = player.y + 8
         End
 
         If key = 119 Then // 'w'
-            Player.y = Player.y - 8
+            player.y = player.y - 8
         End
         If key = 130 Then // up
-            Player.y = Player.y - 8
+            player.y = player.y - 8
         End
 End
 
 Function callPlayer()
-    Player.oldx = Player.x
-    Player.oldy = Player.y
-    Player.counter++
+    player.oldx = player.x
+    player.oldy = player.y
+    player.counter++
 
     keyCheck()
 
-    If Player.x < 8 Then
-        Player.x = 8
+    If player.x < 8 Then
+        player.x = 8
     End
-    If Player.x > 240 Then
-        Player.x = 240
+    If player.x > 240 Then
+        player.x = 240
     End
-    If Player.y < 8 Then
-        Player.y = 8
+    If player.y < 8 Then
+        player.y = 8
     End
-    If Player.y > 232 Then
-        Player.y = 232
+    If player.y > 232 Then
+        player.y = 232
     End
 
     drawPlayer()
 
-    If Player.counter = 255 Then
-        Player.counter = 0
-        Text(Player.oldx - 16, Player.oldy + 8, Str1, 0x00)
-        Text(Player.oldx + 8, Player.oldy + 8, Str1, 0x00)
+    If player.counter = 255 Then
+        player.counter = 0
+        Text(player.oldx - 16, player.oldy + 8, Str1, 0x00)
+        Text(player.oldx + 8, player.oldy + 8, Str1, 0x00)
     End
+End
+
+Function callEnemy()
+    Enemy.eoldy++
+
+    Enemy.eoldy = 0
+    Enemy.eoldx = Enemy.ex
+    Enemy.eoldy = Enemy.ey
+    direction = rndr(0, 3)
+
+    If direction = 0 Then
+        Enemy.ex = Enemy.ex - 8
+    End
+    If direction = 1 Then
+        Enemy.ex = Enemy.ex + 8
+    End
+    If direction = 2 Then
+        Enemy.ey = Enemy.ey - 8
+    End
+    If direction = 3 Then
+        Enemy.ey = Enemy.ey + 8
+    End
+
+    If Enemy.ex < 8 Then
+        Enemy.ex = 8
+    End
+    If Enemy.ex > 240 Then
+        Enemy.ex = 240
+    End
+    If Enemy.ey < 8 Then
+        Enemy.ey = 8
+    End
+    If Enemy.ey > 232 Then
+        Enemy.ey = 232
+    End
+
+    drawEnemy()
 End
 
 // Main loop
 SetLayer(5)
 While 1
+    callEnemy()
     callPlayer()
 End

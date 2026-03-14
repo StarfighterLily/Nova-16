@@ -131,6 +131,37 @@ class TestIntegration:
             asm_file = source_file.with_suffix('.asm')
             assert asm_file.exists()
 
+    def test_multiple_structs_with_unique_fields_compile_end_to_end(self):
+        """Multiple struct declarations should compile when member names uniquely identify each type."""
+        source = """
+        struct Point x y end
+        struct Size w h end
+        p.x = 12
+        s.w = 34
+        total = p.y + s.h
+        Pause
+        """
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_file = Path(tmpdir) / "multi_structs.nobasic"
+            source_file.write_text(source)
+
+            compile_nobasic(str(source_file))
+
+            asm_file = source_file.with_suffix('.asm')
+            bin_file = source_file.with_suffix('.bin')
+
+            assert asm_file.exists()
+            assert bin_file.exists()
+
+            asm_content = asm_file.read_text()
+            assert "; Allocate struct p (Point)" in asm_content
+            assert "; Allocate struct s (Size)" in asm_content
+            assert "; Store to p.x" in asm_content
+            assert "; Store to s.w" in asm_content
+            assert "; Load p.y" in asm_content
+            assert "; Load s.h" in asm_content
+
     @pytest.mark.skipif(os.name != 'nt', reason="Nova emulator is Windows-only")
     def test_execution_headless(self):
         """Test running compiled program headlessly."""

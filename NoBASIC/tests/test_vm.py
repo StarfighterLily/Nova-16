@@ -337,6 +337,29 @@ def test_vm_struct_member_assignment_errors_when_struct_inference_is_ambiguous()
         vm.run()
 
 
+def test_vm_struct_member_assignment_infers_unique_struct_with_multiple_definitions():
+    vm = run_vm(
+        """
+        struct Point x y end
+        struct Size w h end
+        p.x = 7
+        s.w = 11
+        q = p.y
+        r = s.h
+        """,
+        skip_semantic=True,
+    )
+
+    p_value = vm._get_var("p")
+    s_value = vm._get_var("s")
+    assert p_value["__struct__"] == "point"
+    assert s_value["__struct__"] == "size"
+    assert p_value["x"] == 7
+    assert s_value["w"] == 11
+    assert vm._get_var("q") == 0
+    assert vm._get_var("r") == 0
+
+
 def test_vm_struct_member_access_is_case_insensitive():
     vm = run_vm(
         """

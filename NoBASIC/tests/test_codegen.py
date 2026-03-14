@@ -1363,3 +1363,21 @@ class TestCodeGenerator:
         sub_count = sum(1 for line in lines if "SUB" in line)
         assert add_count >= 2
         assert sub_count >= 2
+
+    def test_multiple_structs_codegen_infers_unique_struct_by_member(self):
+        """Codegen should allocate the correct struct when member names uniquely identify the type."""
+        code = self.generate_code("""
+        struct Point x y end
+        struct Size w h end
+        p.x = 42
+        s.w = 7
+        total = p.y + s.h
+        """)
+        lines = code.strip().split("\n")
+
+        assert any("; Allocate struct p (Point)" in line for line in lines)
+        assert any("; Allocate struct s (Size)" in line for line in lines)
+        assert any("; Store to p.x" in line for line in lines)
+        assert any("; Store to s.w" in line for line in lines)
+        assert any("; Load p.y" in line for line in lines)
+        assert any("; Load s.h" in line for line in lines)

@@ -762,9 +762,23 @@ class TestSymbolTable:
         with pytest.raises(SemanticError, match="is not a struct instance"):
             self.parse_and_analyze("""
             struct Point x y end
-            struct Size w h end
+            struct Pixel x c end
             p.x = 1
             """)
+
+    def test_struct_member_access_infers_unique_struct_with_multiple_definitions(self):
+        """A unique field match should infer the correct struct even when several structs exist."""
+        self.parse_and_analyze("""
+        struct Point x y end
+        struct Size w h end
+        p.x = 5
+        s.w = 9
+        total = p.y + s.h
+        """)
+
+        assert self.analyzer.symbol_table.get_struct_instance_type("p") == "Point"
+        assert self.analyzer.symbol_table.get_struct_instance_type("s") == "Size"
+        assert self.analyzer.symbol_table.get_variable_type("total") == DataType.NUMBER
 
     def test_struct_member_access_is_case_insensitive(self):
         """Struct names and fields should be handled case-insensitively."""

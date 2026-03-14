@@ -697,14 +697,14 @@ class TestCPUTimer:
         cpu.timer[0] = 0   # TT
         cpu.timer[1] = 10  # TM
         cpu.timer[2] = 1   # TC: enable timer, disable interrupts
-        cpu.timer[3] = 0   # TS: speed 0
         cpu.set_timer_control(cpu.timer[2])
+        cpu.set_timer_speed(0)
         
-        # Run enough cycles to see increment (accounting for batching)
-        for _ in range(8):  # 8 calls should give at least 4 increments
+        # Timer updates are batched for performance.
+        for _ in range(cpu.timer_update_frequency):
             cpu.update_timer()
         
-        assert cpu.timer[0] >= 4  # Should have incremented
+        assert cpu.timer[0] == cpu.timer_update_frequency
 
     def test_timer_interrupt_trigger(self, cpu):
         """Test timer interrupt triggering."""
@@ -715,15 +715,15 @@ class TestCPUTimer:
         cpu.timer[0] = 0   # TT
         cpu.timer[1] = 5   # TM
         cpu.timer[2] = 3   # TC: enable timer and interrupts
-        cpu.timer[3] = 0   # TS: speed 0
         cpu.set_timer_control(cpu.timer[2])
+        cpu.set_timer_speed(0)
         
         # Enable global interrupts
         cpu.flags[5] = 1
         
         # Run until interrupt
         cycles = 0
-        while cpu.pc == 0x0000 and cycles < 20:
+        while cpu.pc == 0x0000 and cycles < cpu.timer_update_frequency:
             cpu.update_timer()
             cycles += 1
         
@@ -737,14 +737,14 @@ class TestCPUTimer:
         cpu.timer[0] = 0
         cpu.timer[1] = 10
         cpu.timer[2] = 1  # Enable timer
-        cpu.timer[3] = 1   # Speed 1
         cpu.set_timer_control(cpu.timer[2])
+        cpu.set_timer_speed(1)
         
-        # Run 4 cycles
-        for _ in range(4):
+        # A full timer batch should advance by half the batch size at speed 1.
+        for _ in range(cpu.timer_update_frequency):
             cpu.update_timer()
         
-        assert cpu.timer[0] == 2  # Should increment by 2
+        assert cpu.timer[0] == cpu.timer_update_frequency // 2
 
     def test_timer_disable_reset(self, cpu):
         """Test timer disable resets state."""
@@ -763,17 +763,17 @@ class TestCPUTimer:
         cpu.timer[0] = 0
         cpu.timer[1] = 0   # TM=0
         cpu.timer[2] = 3   # Enable
-        cpu.timer[3] = 0
         cpu.set_timer_control(cpu.timer[2])
+        cpu.set_timer_speed(0)
         cpu.flags[5] = 1
         
-        # Run many cycles
-        for _ in range(20):
+        # Run one full timer batch.
+        for _ in range(cpu.timer_update_frequency):
             cpu.update_timer()
         
         # Should not have triggered interrupt
         assert cpu.pc == 0x0000
-        assert cpu.timer[0] > 0  # Should have incremented
+        assert cpu.timer[0] == cpu.timer_update_frequency
 
 
 class TestCPUGraphicsInstructions:
@@ -2478,13 +2478,15 @@ class TestInstructionCache:
     def test_instruction_cache_initialization(self, cpu):
         """Test that instruction cache is initialized correctly."""
         assert cpu.instruction_cache == {}
-        assert cpu.instruction_cache_size == 128
+        assert cpu.instruction_cache_size == 256
         assert cpu.cache_hits == 0
         assert cpu.cache_misses == 0
-        assert cpu.cache_enabled == True
+        assert cpu.cache_enabled == False
 
     def test_instruction_cache_basic_caching(self, cpu):
         """Test basic instruction caching functionality."""
+        cpu.cache_enabled = True
+
         # Set up a simple NOP instruction
         cpu.memory.write_byte(0x1000, 0xFF)  # NOP opcode
         cpu.pc = 0x1000
@@ -2504,6 +2506,8 @@ class TestInstructionCache:
 
     def test_instruction_cache_with_operands(self, cpu):
         """Test instruction caching with operand instructions."""
+        cpu.cache_enabled = True
+
         # Set up MOV R0, 42 instruction
         cpu.memory.write_byte(0x1000, 0x06)  # MOV opcode
         cpu.memory.write_byte(0x1001, 0x04)  # Mode: register direct + immediate 8-bit
@@ -2529,6 +2533,8 @@ class TestInstructionCache:
 
     def test_instruction_cache_invalidation_on_jump(self, cpu):
         """Test that instruction cache is invalidated on jumps."""
+        cpu.cache_enabled = True
+
         # First, cache an instruction at the target location
         cpu.memory.write_byte(0x2000, 0xFF)  # NOP at target
         cpu.pc = 0x2000
@@ -2550,6 +2556,8 @@ class TestInstructionCache:
 
     def test_instruction_cache_invalidation_on_memory_write(self, cpu):
         """Test that instruction cache is invalidated when memory is written."""
+        cpu.cache_enabled = True
+
         # Cache an instruction
         cpu.memory.write_byte(0x1000, 0xFF)  # NOP
         cpu.pc = 0x1000
@@ -2565,6 +2573,8 @@ class TestInstructionCache:
 
     def test_instruction_cache_size_limit(self, cpu):
         """Test that instruction cache respects size limits."""
+        cpu.cache_enabled = True
+
         # Fill cache beyond limit
         for i in range(cpu.instruction_cache_size + 10):
             addr = 0x1000 + i * 2
@@ -2595,6 +2605,8 @@ class TestInstructionCache:
 
     def test_instruction_cache_statistics(self, cpu):
         """Test instruction cache statistics reporting."""
+        cpu.cache_enabled = True
+
         # Execute some instructions to generate stats
         cpu.memory.write_byte(0x1000, 0xFF)  # NOP
         cpu.pc = 0x1000
@@ -2607,10 +2619,12 @@ class TestInstructionCache:
         assert stats['hits'] == 1
         assert stats['misses'] == 1
         assert stats['hit_rate'] == 0.5
-        assert stats['max_size'] == 128
+        assert stats['max_size'] == 256
 
     def test_instruction_cache_loop_performance(self, cpu):
         """Test that instruction cache improves performance in loops."""
+        cpu.cache_enabled = True
+
         # Create a simple program: NOP, NOP, JMP back
         loop_start = 0x1000
 
