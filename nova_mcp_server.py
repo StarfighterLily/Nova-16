@@ -949,7 +949,7 @@ def _handle_assemble(args):
         output_path = Path(output_path)
     
     try:
-        assembler = nova_assembler.Assembler()
+        assembler = nova_assembler.Assembler(log=None, trace=False)
         success = assembler.assemble(str(source_path))
         if not success:
             return json.dumps({"error": "Assembly failed - check syntax"})
@@ -2125,9 +2125,26 @@ def _handle_nobasic_compile(args):
     else:
         output_path = Path(output_path_arg)
     
+    compiler_messages: List[str] = []
+
+    def _capture_compiler_output(message: str) -> None:
+        compiler_messages.append(message)
+
+    def _assemble_in_process(assembly_file: Path, verbose_flag: bool, emit) -> bool:
+        assembler = nova_assembler.Assembler(log=None, trace=False)
+        return bool(assembler.assemble(str(assembly_file)))
+
     try:
         # Compile NoBASIC to assembly
-        compile_nobasic(str(source_path), str(output_path), verbose)
+        compile_nobasic(
+            str(source_path),
+            str(output_path),
+            verbose,
+            log=_capture_compiler_output,
+            assemble_callback=_assemble_in_process,
+        )
+
+        compiler_output = "\n".join(compiler_messages).strip()
         
         # Binary file should be created automatically
         binary_path = output_path.with_suffix('.bin')
@@ -2144,6 +2161,9 @@ def _handle_nobasic_compile(args):
             "assembly": str(output_path),
             "binary": str(binary_path)
         }
+
+        if compiler_output and verbose:
+            result["compiler_output"] = compiler_output[:100000]
         
         # Auto-load if requested
         if auto_load:
@@ -2161,18 +2181,30 @@ def _handle_nobasic_compile(args):
         
         return json.dumps(result)
     except SystemExit as e:
-        return json.dumps({
+        result = {
             "error": f"Compilation failed with exit code {e.code}",
             "exit_code": e.code,
             "source": str(source_path),
             "assembly": str(output_path)
-        })
+        }
+
+        compiler_output = "\n".join(compiler_messages).strip()
+        if compiler_output:
+            result["compiler_output"] = compiler_output[:100000]
+
+        return json.dumps(result)
     except Exception as e:
         import traceback
-        return json.dumps({
+        result = {
             "error": f"Compilation failed: {str(e)}",
             "traceback": traceback.format_exc()
-        })
+        }
+
+        compiler_output = "\n".join(compiler_messages).strip()
+        if compiler_output:
+            result["compiler_output"] = compiler_output[:100000]
+
+        return json.dumps(result)
 
 if __name__ == "__main__":
     import asyncio

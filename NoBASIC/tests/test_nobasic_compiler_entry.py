@@ -77,6 +77,51 @@ def test_compile_nobasic_uses_default_output_and_writes_bin(tmp_path, monkeypatc
     assert "Compilation successful" in capsys.readouterr().out
 
 
+def test_compile_nobasic_supports_custom_logger_without_stdout(tmp_path, monkeypatch, capsys):
+    _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "logged.nobasic"
+    source_file.write_text("Pause\n")
+    messages = []
+
+    def fake_run(command, capture_output, text):
+        output_asm = Path(command[2])
+        output_asm.with_suffix(".bin").write_bytes(b"\x00")
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    nobasic_compiler.compile_nobasic(str(source_file), verbose=True, log=messages.append)
+
+    assert capsys.readouterr().out == ""
+    assert any(message.startswith("Compiling ") for message in messages)
+    assert any("Compilation successful" in message for message in messages)
+
+
+def test_compile_nobasic_can_use_custom_assembler_callback(tmp_path, monkeypatch):
+    _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "custom_asm.nobasic"
+    source_file.write_text("Pause\n")
+    output_file = tmp_path / "custom_asm_output.asm"
+    callback_calls = []
+
+    def fake_assemble(assembly_file, verbose, emit):
+        callback_calls.append((assembly_file, verbose))
+        assembly_file.with_suffix(".bin").write_bytes(b"\x00")
+        emit("assembled in process")
+        return True
+
+    nobasic_compiler.compile_nobasic(
+        str(source_file),
+        output_file=str(output_file),
+        assemble_callback=fake_assemble,
+        log=lambda _message: None,
+    )
+
+    assert callback_calls == [(output_file, False)]
+    assert output_file.exists()
+    assert output_file.with_suffix(".bin").exists()
+
+
 def test_compile_nobasic_passes_optimization_flags(tmp_path, monkeypatch):
     captured = _install_pipeline_stubs(monkeypatch)
     source_file = tmp_path / "opts.nobasic"

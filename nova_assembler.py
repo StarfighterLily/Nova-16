@@ -8,7 +8,7 @@ import re
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Callable, Dict, List, Tuple, Optional, Union
 from opcodes import opcodes
 
 
@@ -852,13 +852,23 @@ class CodeGenerator:
 class Assembler:
     """Main assembler class"""
 
-    def __init__(self):
+    def __init__(self, log: Optional[Callable[[str], None]] = print, trace: bool = False):
         self.instruction_set = InstructionSet()
         self.parser = Parser(self.instruction_set)
         self.code_generator = CodeGenerator(self.instruction_set)
         self.data_generator = DataGenerator(self.parser)
         self.classifier = OperandClassifier(self.instruction_set)
         self.errors = []
+        self.log = log
+        self.trace = trace
+
+    def _emit(self, message: str) -> None:
+        if self.log is not None:
+            self.log(message)
+
+    def _trace(self, message: str) -> None:
+        if self.trace:
+            self._emit(message)
 
     def first_pass(self, lines: List[AssemblyLine]) -> Dict[str, str]:
         """First pass: build symbol table"""
@@ -985,7 +995,7 @@ class Assembler:
 
                     code.extend(data_bytes)
                     location_counter += len(data_bytes)
-                    print(f"Line {line.line_num} ({line.directive}): {[f'0x{b:02X}' for b in data_bytes]}")
+                    self._trace(f"Line {line.line_num} ({line.directive}): {[f'0x{b:02X}' for b in data_bytes]}")
                 except Exception as e:
                     self.errors.append(f"Line {line.line_num}: {e}")
                 continue
@@ -998,7 +1008,7 @@ class Assembler:
                 instruction_bytes = self.code_generator.generate_instruction(line, symbol_table, location_counter)
                 code.extend(instruction_bytes)
                 location_counter += len(instruction_bytes)
-                print(f"Line {line.line_num}: {[f'0x{b:02X}' for b in instruction_bytes]}")
+                self._trace(f"Line {line.line_num}: {[f'0x{b:02X}' for b in instruction_bytes]}")
             except Exception as e:
                 self.errors.append(f"Line {line.line_num}: {e}")
                 continue
@@ -1017,18 +1027,18 @@ class Assembler:
             lines = self.parser.parse_file(filename)
 
             # First pass
-            print("First pass...")
+            self._emit("First pass...")
             symbol_table = self.first_pass(lines)
-            print(f"Symbol table: {symbol_table}")
+            self._emit(f"Symbol table: {symbol_table}")
 
             # Second pass
-            print("Second pass...")
+            self._emit("Second pass...")
             machine_code, segments = self.second_pass(lines, symbol_table)
 
             if self.errors:
-                print("Assembly failed due to errors:")
+                self._emit("Assembly failed due to errors:")
                 for error in self.errors:
-                    print(f"  {error}")
+                    self._emit(f"  {error}")
                 return False
 
             # Write output files
@@ -1045,7 +1055,7 @@ class Assembler:
                     f.write("# Format: <start_address> <length> <binary_offset>\n")
                     for start_addr, length, bin_offset in segments:
                         f.write(f"0x{start_addr:04X} {length} {bin_offset}\n")
-                print(f"ORG information written to {org_file}")
+                self._emit(f"ORG information written to {org_file}")
 
             sym_file = f"{base_name}.sym"
             with open(sym_file, 'w') as f:
@@ -1053,15 +1063,16 @@ class Assembler:
                 f.write("# Format: <symbol> <value>\n")
                 for symbol, value in symbol_table.items():
                     f.write(f"{symbol} {value}\n")
-            print(f"Symbol table written to {sym_file}")
+            self._emit(f"Symbol table written to {sym_file}")
 
-            print(f"Assembly complete: {len(machine_code)} bytes written to {output_file}")
+            self._emit(f"Assembly complete: {len(machine_code)} bytes written to {output_file}")
             return True
 
         except Exception as e:
-            print(f"Assembly failed: {e}")
+            self._emit(f"Assembly failed: {e}")
             import traceback
-            traceback.print_exc()
+            if self.log is not None:
+                self._emit(traceback.format_exc())
             return False
 
 
@@ -1072,7 +1083,7 @@ def main():
         return 1
 
     filename = sys.argv[1]
-    assembler = Assembler()
+    assembler = Assembler(log=print, trace=True)
 
     if assembler.assemble(filename):
         return 0

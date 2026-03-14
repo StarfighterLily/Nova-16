@@ -8,7 +8,7 @@ import sys
 import os
 import re
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 # Add the compiler directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'compiler'))
@@ -170,7 +170,9 @@ def remap_compiler_error(error: CompilerError, source_file: str, line_map: Sourc
 
 def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = False, 
                     enable_optimizations: bool = False, debug_optimizations: bool = False,
-                    enable_peephole: bool = False, enable_live_range_scheduling: bool = False):
+                    enable_peephole: bool = False, enable_live_range_scheduling: bool = False,
+                    log: Optional[Callable[[str], None]] = print,
+                    assemble_callback: Optional[Callable[[Path, bool, Callable[[str], None]], bool]] = None):
     """
     Compile a NoBASIC source file to Nova-16 assembly and binary.
 
@@ -182,9 +184,16 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         debug_optimizations: Enable optimization debug output (default: False)
         enable_peephole: Enable peephole optimizer (default: False)
         enable_live_range_scheduling: Enable live range scheduler (default: False)
+        log: Optional callback for compiler messages; defaults to print
+        assemble_callback: Optional callback to assemble the generated .asm file in-process
     """
     line_map: SourceLineMap = []
     resolved_source_file: Optional[Path] = None
+
+    def emit(message: str) -> None:
+        if log is not None:
+            log(message)
+
     try:
         resolved_source_file = resolve_source_file_path(source_file)
 
@@ -192,36 +201,36 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         source, line_map = _resolve_includes_from_file(resolved_source_file)
 
         if verbose:
-            print(f"Compiling {source_file}...")
+            emit(f"Compiling {source_file}...")
             if enable_optimizations:
-                print("Optimizations: ENABLED")
+                emit("Optimizations: ENABLED")
                 if enable_peephole:
-                    print("  - Peephole optimization: ENABLED")
+                    emit("  - Peephole optimization: ENABLED")
                 if enable_live_range_scheduling:
-                    print("  - Live range scheduling: ENABLED")
+                    emit("  - Live range scheduling: ENABLED")
             else:
-                print("Optimizations: DISABLED")
+                emit("Optimizations: DISABLED")
 
         # Lexical analysis
         lexer = Lexer()
         tokens = lexer.tokenize(source, str(resolved_source_file))
 
         if verbose:
-            print(f"Lexical analysis complete: {len(tokens)} tokens")
+            emit(f"Lexical analysis complete: {len(tokens)} tokens")
 
         # Parsing
         parser = Parser()
         ast = parser.parse(tokens, str(resolved_source_file))
 
         if verbose:
-            print("Parsing complete")
+            emit("Parsing complete")
 
         # Semantic analysis
         analyzer = SemanticAnalyzer()
         analyzer.analyze(ast, str(resolved_source_file))
 
         if verbose:
-            print("Semantic analysis complete")
+            emit("Semantic analysis complete")
 
         # Code generation with optimizations configuration
         generator = CodeGenerator(
@@ -235,7 +244,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         assembly = generator.generate(ast)
 
         if verbose:
-            print("Code generation complete")
+            emit("Code generation complete")
 
         # Determine output file
         if not output_file:
@@ -246,42 +255,53 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
             f.write(assembly)
 
         if verbose:
-            print(f"Assembly written to {output_file}")
+            emit(f"Assembly written to {output_file}")
 
-        # Assemble to binary using nova_assembler.py
-        assembler_path = os.path.join(os.path.dirname(__file__), '..', 'nova_assembler.py')
         binary_file = Path(output_file).with_suffix('.bin')
 
         if verbose:
-            print(f"Assembling {output_file} to {binary_file}...")
+            emit(f"Assembling {output_file} to {binary_file}...")
 
-        # Run the assembler
-        import subprocess
-        result = subprocess.run([
-            sys.executable, assembler_path, str(output_file)
-        ], capture_output=True, text=True)
+        if assemble_callback is not None:
+            assembly_succeeded = assemble_callback(Path(output_file), verbose, emit)
+            if not assembly_succeeded:
+                emit(f"Assembly failed for {output_file}")
+                sys.exit(1)
+        else:
+            # Assemble to binary using nova_assembler.py
+            assembler_path = os.path.join(os.path.dirname(__file__), '..', 'nova_assembler.py')
 
-        # Check if binary was created (assembler may output to stdout/stderr but still succeed)
+            # Run the assembler
+            import subprocess
+            result = subprocess.run([
+                sys.executable, assembler_path, str(output_file)
+            ], capture_output=True, text=True)
+
+            # Check if binary was created (assembler may output to stdout/stderr but still succeed)
+            if not binary_file.exists():
+                emit(f"Assembly failed: {result.stderr}")
+                if result.stdout:
+                    emit(f"Assembler output: {result.stdout}")
+                sys.exit(1)
+
         if not binary_file.exists():
-            print(f"Assembly failed: {result.stderr}")
-            if result.stdout:
-                print(f"Assembler output: {result.stdout}")
+            emit(f"Binary file not created at {binary_file}")
             sys.exit(1)
 
         if verbose:
-            print(f"Binary written to {binary_file}")
+            emit(f"Binary written to {binary_file}")
 
-        print(f"Compilation successful: {output_file} and {binary_file}")
+        emit(f"Compilation successful: {output_file} and {binary_file}")
 
     except CompilerError as e:
         main_source_for_remap = str(resolved_source_file) if resolved_source_file is not None else source_file
         mapped_error = remap_compiler_error(e, main_source_for_remap, line_map)
-        print(f"Compilation error: {mapped_error}")
+        emit(f"Compilation error: {mapped_error}")
         sys.exit(1)
     except Exception as e:
         import traceback
-        print(f"Unexpected error: {e}")
-        print(traceback.format_exc())
+        emit(f"Unexpected error: {e}")
+        emit(traceback.format_exc())
         sys.exit(1)
 
 

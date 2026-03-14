@@ -203,7 +203,7 @@ def test_handle_nobasic_compile_accepts_case_insensitive_extensions_and_uses_suf
 
     monkeypatch.setattr(mcp, "_HAS_NOBASIC", True)
 
-    def fake_compile(source_file, output_file, verbose):
+    def fake_compile(source_file, output_file, verbose, log=print, assemble_callback=None):
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("HLT\n", encoding="ascii")
@@ -229,7 +229,7 @@ def test_handle_nobasic_compile_returns_error_when_compiler_exits(tmp_path, monk
 
     monkeypatch.setattr(mcp, "_HAS_NOBASIC", True)
 
-    def fake_compile(source_file, output_file, verbose):
+    def fake_compile(source_file, output_file, verbose, log=print, assemble_callback=None):
         raise SystemExit(1)
 
     monkeypatch.setattr(mcp, "compile_nobasic", fake_compile)
@@ -240,6 +240,88 @@ def test_handle_nobasic_compile_returns_error_when_compiler_exits(tmp_path, monk
     assert result["exit_code"] == 1
     assert Path(result["source"]) == source
     assert Path(result["assembly"]) == source.with_suffix(".asm")
+
+
+def test_handle_nobasic_compile_captures_compiler_stdout(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "program.nobasic"
+    source.write_text("Pause\n", encoding="ascii")
+
+    monkeypatch.setattr(mcp, "_HAS_NOBASIC", True)
+
+    def fake_compile(source_file, output_file, verbose, log=print, assemble_callback=None):
+        output_path = Path(output_file)
+        output_path.write_text("HLT\n", encoding="ascii")
+        output_path.with_suffix(".bin").write_bytes(b"\x00")
+        log("compiler log line")
+
+    monkeypatch.setattr(mcp, "compile_nobasic", fake_compile)
+
+    result = json.loads(mcp._handle_nobasic_compile({
+        "source_path": str(source),
+        "verbose": True,
+    }))
+
+    assert capsys.readouterr().out == ""
+    assert result["status"] == "compiled"
+    assert result["compiler_output"] == "compiler log line"
+
+
+def test_handle_assemble_uses_silent_assembler_and_does_not_leak_stdout(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "program.asm"
+    source.write_text("ORG 0x0000\nHLT\n", encoding="ascii")
+    calls = {}
+
+    class StubAssembler:
+        def __init__(self, log=print, trace=False):
+            calls["log"] = log
+            calls["trace"] = trace
+
+        def assemble(self, filename):
+            asm_path = Path(filename)
+            asm_path.with_suffix(".bin").write_bytes(b"\x00")
+            asm_path.with_suffix(".org").write_text("# org\n", encoding="ascii")
+            asm_path.with_suffix(".sym").write_text("# sym\n", encoding="ascii")
+            return True
+
+    monkeypatch.setattr(mcp.nova_assembler, "Assembler", StubAssembler)
+
+    result = json.loads(mcp._handle_assemble({"source_path": str(source)}))
+
+    assert capsys.readouterr().out == ""
+    assert calls == {"log": None, "trace": False}
+    assert result["status"] == "assembled"
+
+
+def test_handle_nobasic_compile_uses_silent_in_process_assembler(tmp_path, monkeypatch):
+    source = tmp_path / "program.nobasic"
+    source.write_text("Pause\n", encoding="ascii")
+    calls = {}
+
+    monkeypatch.setattr(mcp, "_HAS_NOBASIC", True)
+
+    class StubAssembler:
+        def __init__(self, log=print, trace=False):
+            calls["log"] = log
+            calls["trace"] = trace
+
+        def assemble(self, filename):
+            asm_path = Path(filename)
+            asm_path.with_suffix(".bin").write_bytes(b"\x00")
+            return True
+
+    def fake_compile(source_file, output_file, verbose, log=print, assemble_callback=None):
+        output_path = Path(output_file)
+        output_path.write_text("HLT\n", encoding="ascii")
+        assert assemble_callback is not None
+        assert assemble_callback(output_path, verbose, log) is True
+
+    monkeypatch.setattr(mcp.nova_assembler, "Assembler", StubAssembler)
+    monkeypatch.setattr(mcp, "compile_nobasic", fake_compile)
+
+    result = json.loads(mcp._handle_nobasic_compile({"source_path": str(source)}))
+
+    assert calls == {"log": None, "trace": False}
+    assert result["status"] == "compiled"
 
 
 def test_handle_call_tool_catches_system_exit_and_returns_json_error(monkeypatch):
