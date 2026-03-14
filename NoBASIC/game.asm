@@ -43,34 +43,34 @@ MOV P1, R1
 MOV [P0], P1
 MOV R1, 1
 SHL R1, 7
-; Store to Enemy.ex
+; Store to enemy.ex
 MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
 MOV R1, 1
 SHL R1, 7
-; Store to Enemy.ey
+; Store to enemy.ey
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
 MOV R1, 1
 SHL R1, 7
-; Store to Enemy.eoldx
+; Store to enemy.eoldx
 MOV P0, 304
 MOV P1, R1
 MOV [P0], P1
 MOV R1, 1
 SHL R1, 7
-; Store to Enemy.eoldy
+; Store to enemy.eoldy
 MOV P0, 306
 MOV P1, R1
 MOV [P0], P1
 XOR R1, R1
-; Store to Enemy.eoldy
-MOV P0, 306
+; Store to enemy.ecounter
+MOV P0, 308
 MOV P1, R1
 MOV [P0], P1
-MOV P1, STR59
+MOV P1, STR61
 MOV P0, 310
 MOV [P0], P1
 MOV VM, 0
@@ -82,16 +82,16 @@ MOV R0, R1
 MOV R1, 1
 SHL R1, 2
 MOV P3, R1
-L61:
+L63:
 CMP P2, R0
-JGT L62
+JGT L64
 XOR VX, VX
 MOV VY, P2
 MOV VC, 31
-TEXT STR62
+TEXT STR64
 ADD P2, P3
-JMP L61
-L62:
+JMP L63
+L64:
 XOR R0, R0
 MOV R1, 1
 SROT R0, R1
@@ -104,30 +104,30 @@ MOV R0, R1
 MOV R1, 1
 SHL R1, 2
 MOV P3, R1
-L64:
+L66:
 CMP P2, R0
-JGT L65
+JGT L67
 XOR VX, VX
 MOV VY, P2
 MOV VC, 31
-TEXT STR62
+TEXT STR64
 ADD P2, P3
-JMP L64
-L65:
+JMP L66
+L67:
 MOV VM, 0
 MOV VL, 5
-L66:
+L68:
 MOV R1, 1
 WHILE R1
-JZ L67
+JZ L69
 PUSH P2
 CALL _func_callenemy_7
 POP P2
 PUSH P2
 CALL _func_callplayer_6
 POP P2
-JMP L66
-L67:
+JMP L68
+L69:
 HLT
 
 _func_renderplayer_0:
@@ -273,22 +273,22 @@ _func_drawenemy_3:
 ; Parameters: 
 ; Locals:  (0 bytes)
 ENTER 0
-; Allocate struct Enemy (Enemy) at 0x012C
-; Load Enemy.eoldx
+; Allocate struct enemy (Enemy) at 0x012C
+; Load enemy.eoldx
 MOV P0, 304
 MOV P1, [P0]
-; Load Enemy.ex
+; Load enemy.ex
 MOV P0, 300
 MOV P2, [P0]
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
 JZ L8
-; Load Enemy.eoldx
+; Load enemy.eoldx
 MOV P0, 304
 MOV P1, [P0]
 PUSH P1
-; Load Enemy.eoldy
+; Load enemy.eoldy
 MOV P0, 306
 MOV P1, [P0]
 PUSH P1
@@ -299,21 +299,21 @@ PUSH P1
 CALL _func_renderenemy_1
 ADD SP, 6
 L8:
-; Load Enemy.eoldy
+; Load enemy.eoldy
 MOV P0, 306
 MOV P1, [P0]
-; Load Enemy.ey
+; Load enemy.ey
 MOV P0, 302
 MOV P2, [P0]
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
 JZ L10
-; Load Enemy.eoldx
+; Load enemy.eoldx
 MOV P0, 304
 MOV P1, [P0]
 PUSH P1
-; Load Enemy.eoldy
+; Load enemy.eoldy
 MOV P0, 306
 MOV P1, [P0]
 PUSH P1
@@ -324,11 +324,11 @@ PUSH P1
 CALL _func_renderenemy_1
 ADD SP, 6
 L10:
-; Load Enemy.ex
+; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
 PUSH P1
-; Load Enemy.ey
+; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
 PUSH P1
@@ -809,29 +809,24 @@ _func_callenemy_7:
 ; Parameters: 
 ; Locals:  (0 bytes)
 ENTER 0
-; Load Enemy.eoldy
-MOV P0, 306
+; Load enemy.ecounter
+MOV P0, 308
 MOV P1, [P0]
 MOV R0, P1
 ADD P1, 1
-; Store to Enemy.eoldy
-MOV P0, 306
+; Store to enemy.ecounter
+MOV P0, 308
 MOV [P0], P1
-XOR R1, R1
-; Store to Enemy.eoldy
-MOV P0, 306
-MOV P1, R1
-MOV [P0], P1
-; Load Enemy.ex
+; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
-; Store to Enemy.eoldx
+; Store to enemy.eoldx
 MOV P0, 304
 MOV [P0], P1
-; Load Enemy.ey
+; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
-; Store to Enemy.eoldy
+; Store to enemy.eoldy
 MOV P0, 306
 MOV [P0], P1
 XOR R0, R0
@@ -843,14 +838,23 @@ MOV P0, 0
 MOV :P0, R1
 MOV P1, 314
 MOV [P1], P0
+; Load enemy.ecounter
+MOV P0, 308
+MOV P1, [P0]
+MOV P2, 1
+SHL P2, 6
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L44
 MOV P0, 314
 MOV P1, [P0]
 XOR P2, P2
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L44
-; Load Enemy.ex
+JNZ L46
+; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
@@ -860,29 +864,7 @@ SHL R3, 3
 MOV R1, R2
 SUB R1, R3
 ; Free R3 (last use)
-; Store to Enemy.ex
-MOV P0, 300
-MOV P1, R1
-MOV [P0], P1
-L44:
-MOV P0, 314
-MOV P1, [P0]
-MOV P2, 1
-CMP P1, P2
-; Free P1 (last use)
-; Free P2 (last use)
-JNZ L46
-; Load Enemy.ex
-MOV P0, 300
-MOV P1, [P0]
-; Preserve left operand in register across right-side evaluation
-MOV R2, P1
-MOV R3, 1
-SHL R3, 3
-MOV R1, R2
-ADD R1, R3
-; Free R3 (last use)
-; Store to Enemy.ex
+; Store to enemy.ex
 MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
@@ -890,12 +872,34 @@ L46:
 MOV P0, 314
 MOV P1, [P0]
 MOV P2, 1
-SHL P2, 1
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
 JNZ L48
-; Load Enemy.ey
+; Load enemy.ex
+MOV P0, 300
+MOV P1, [P0]
+; Preserve left operand in register across right-side evaluation
+MOV R2, P1
+MOV R3, 1
+SHL R3, 3
+MOV R1, R2
+ADD R1, R3
+; Free R3 (last use)
+; Store to enemy.ex
+MOV P0, 300
+MOV P1, R1
+MOV [P0], P1
+L48:
+MOV P0, 314
+MOV P1, [P0]
+MOV P2, 1
+SHL P2, 1
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L50
+; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
@@ -905,19 +909,19 @@ SHL R3, 3
 MOV R1, R2
 SUB R1, R3
 ; Free R3 (last use)
-; Store to Enemy.ey
+; Store to enemy.ey
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L48:
+L50:
 MOV P0, 314
 MOV P1, [P0]
 MOV P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L50
-; Load Enemy.ey
+JNZ L52
+; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
@@ -927,12 +931,12 @@ SHL R3, 3
 MOV R1, R2
 ADD R1, R3
 ; Free R3 (last use)
-; Store to Enemy.ey
+; Store to enemy.ey
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L50:
-; Load Enemy.ex
+L52:
+; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
 MOV P2, 1
@@ -940,29 +944,29 @@ SHL P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JGE L52
+JGE L54
 MOV R1, 1
 SHL R1, 3
-; Store to Enemy.ex
+; Store to enemy.ex
 MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
-L52:
-; Load Enemy.ex
+L54:
+; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
 MOV P2, 240
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JLE L54
+JLE L56
 MOV R1, 240
-; Store to Enemy.ex
+; Store to enemy.ex
 MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
-L54:
-; Load Enemy.ey
+L56:
+; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
 MOV P2, 1
@@ -970,28 +974,34 @@ SHL P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JGE L56
+JGE L58
 MOV R1, 1
 SHL R1, 3
-; Store to Enemy.ey
+; Store to enemy.ey
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L56:
-; Load Enemy.ey
+L58:
+; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
 MOV P2, 232
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JLE L58
+JLE L60
 MOV R1, 232
-; Store to Enemy.ey
+; Store to enemy.ey
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L58:
+L60:
+XOR R1, R1
+; Store to enemy.ecounter
+MOV P0, 308
+MOV P1, R1
+MOV [P0], P1
+L44:
 CALL _func_drawenemy_3
 MOV SP, FP
 POP FP
@@ -999,5 +1009,5 @@ RETN 0
 STR0: DEFSTR "O"
 STR1: DEFSTR "X"
 STR2: DEFSTR "m"
-STR59: DEFSTR "--"
-STR62: DEFSTR "X                              X"
+STR61: DEFSTR "--"
+STR64: DEFSTR "X                              X"

@@ -11,11 +11,11 @@ player.facing = 0
 player.counter = 0
 
 // Initialize enemy variables
-Enemy.ex = 128
-Enemy.ey = 128
-Enemy.eoldx = 128
-Enemy.eoldy = 128
-Enemy.eoldy = 0
+enemy.ex = 128
+enemy.ey = 128
+enemy.eoldx = 128
+enemy.eoldy = 128
+enemy.ecounter = 0
 
 // Initialize other variables
 Str1 = "--"    // Sword sprite
@@ -51,13 +51,13 @@ Function drawPlayer()
 End
 
 Function drawEnemy()
-    If Enemy.eoldx <> Enemy.ex Then
-        renderEnemy(Enemy.eoldx, Enemy.eoldy, 0x00)
+    If enemy.eoldx <> enemy.ex Then
+        renderEnemy(enemy.eoldx, enemy.eoldy, 0x00)
     End
-    If Enemy.eoldy <> Enemy.ey Then
-        renderEnemy(Enemy.eoldx, Enemy.eoldy, 0x00)
+    If enemy.eoldy <> enemy.ey Then
+        renderEnemy(enemy.eoldx, enemy.eoldy, 0x00)
     End
-    renderEnemy(Enemy.ex, Enemy.ey, 0x0C)
+    renderEnemy(enemy.ex, enemy.ey, 0x0C)
 End
 
 Function attack()
@@ -139,37 +139,38 @@ Function callPlayer()
 End
 
 Function callEnemy()
-    Enemy.eoldy++
+    enemy.ecounter++
 
-    Enemy.eoldy = 0
-    Enemy.eoldx = Enemy.ex
-    Enemy.eoldy = Enemy.ey
+    enemy.eoldx = enemy.ex
+    enemy.eoldy = enemy.ey
     direction = rndr(0, 3)
+    If enemy.ecounter = 64 Then
+        If direction = 0 Then
+            enemy.ex = enemy.ex - 8
+        End
+        If direction = 1 Then
+            enemy.ex = enemy.ex + 8
+        End
+        If direction = 2 Then
+            enemy.ey = enemy.ey - 8
+        End
+        If direction = 3 Then
+            enemy.ey = enemy.ey + 8
+        End
 
-    If direction = 0 Then
-        Enemy.ex = Enemy.ex - 8
-    End
-    If direction = 1 Then
-        Enemy.ex = Enemy.ex + 8
-    End
-    If direction = 2 Then
-        Enemy.ey = Enemy.ey - 8
-    End
-    If direction = 3 Then
-        Enemy.ey = Enemy.ey + 8
-    End
-
-    If Enemy.ex < 8 Then
-        Enemy.ex = 8
-    End
-    If Enemy.ex > 240 Then
-        Enemy.ex = 240
-    End
-    If Enemy.ey < 8 Then
-        Enemy.ey = 8
-    End
-    If Enemy.ey > 232 Then
-        Enemy.ey = 232
+        If enemy.ex < 8 Then
+            enemy.ex = 8
+        End
+        If enemy.ex > 240 Then
+            enemy.ex = 240
+        End
+        If enemy.ey < 8 Then
+            enemy.ey = 8
+        End
+        If enemy.ey > 232 Then
+            enemy.ey = 232
+        End
+        enemy.ecounter = 0
     End
 
     drawEnemy()

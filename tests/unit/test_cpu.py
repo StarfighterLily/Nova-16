@@ -186,6 +186,27 @@ class TestCPUMemoryAccess:
 class TestCPURegisterOperations:
     """Test various register operations."""
 
+    def test_rndr_small_range_does_not_cycle_sequential_low_bits(self, cpu):
+        """RNDR should not reduce to the old 0,1,2,3 low-bit cycle for small ranges."""
+        cpu.rng_seed = 1
+        cpu.Rregisters[1] = 0
+        cpu.Rregisters[2] = 3
+
+        cpu.memory.write_byte(0x0000, 0x49)  # RNDR opcode
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode byte: all register direct
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0 destination
+        cpu.memory.write_byte(0x0003, 0xE8)  # R1 minimum
+        cpu.memory.write_byte(0x0004, 0xE9)  # R2 maximum
+
+        values = []
+        for _ in range(8):
+            cpu.pc = 0
+            cpu.step()
+            values.append(cpu.Rregisters[0])
+
+        assert all(0 <= value <= 3 for value in values)
+        assert values != [0, 1, 2, 3, 0, 1, 2, 3]
+
     def test_16bit_register_operations(self, cpu):
         """Test 16-bit P register operations."""
         # MOV P0, 0x1234

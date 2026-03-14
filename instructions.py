@@ -2341,6 +2341,18 @@ class Disatrap(BaseInstruction):
         cpu._flags[0] = 0  # Clear T flag
 
 # Random operations
+def _next_random_word(cpu):
+    """Advance the CPU RNG with better low-bit mixing for ranged random ops."""
+    seed = cpu.rng_seed & 0xFFFF
+    if seed == 0:
+        seed = 0xACE1
+    seed ^= (seed << 7) & 0xFFFF
+    seed ^= seed >> 9
+    seed ^= (seed << 8) & 0xFFFF
+    cpu.rng_seed = seed & 0xFFFF
+    return cpu.rng_seed
+
+
 class Rnd(BaseInstruction):
     """RND instruction - random number"""
     def __init__(self):
@@ -2349,9 +2361,7 @@ class Rnd(BaseInstruction):
     
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
-        # Simple linear congruential generator
-        cpu.rng_seed = (cpu.rng_seed * 1103515245 + 12345) & 0xFFFF
-        random_value = cpu.rng_seed
+        random_value = _next_random_word(cpu)
         cpu.set_operand_value(operands[0], random_value)
 
 class Rndr(BaseInstruction):
@@ -2367,9 +2377,7 @@ class Rndr(BaseInstruction):
         if max_value < min_value:
             random_value = min_value
         else:
-            # Simple linear congruential generator
-            cpu.rng_seed = (cpu.rng_seed * 1103515245 + 12345) & 0xFFFF
-            random_value = min_value + (cpu.rng_seed % (max_value - min_value + 1))
+            random_value = min_value + (_next_random_word(cpu) % (max_value - min_value + 1))
         cpu.set_operand_value(operands[0], random_value)
 
 # Memory operations
