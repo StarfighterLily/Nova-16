@@ -32,6 +32,10 @@ class TokenType(Enum):
     INPUT = "INPUT"
     DISP = "DISP"
     PAUSE = "PAUSE"
+    SEROUT = "SEROUT"
+    SERIN = "SERIN"
+    SERSTAT = "SERSTAT"
+    SERCTRL = "SERCTRL"
     IF = "IF"
     THEN = "THEN"
     ELSE = "ELSE"
@@ -159,6 +163,10 @@ KEYWORDS = {
     "stopsound": TokenType.STOPSOUND,
     "setchannel": TokenType.SETCHANNEL,
     "getkey": TokenType.GETKEY,
+    "serout": TokenType.SEROUT,
+    "serin": TokenType.SERIN,
+    "serstat": TokenType.SERSTAT,
+    "serctrl": TokenType.SERCTRL,
     "input": TokenType.INPUT,
     "disp": TokenType.DISP,
     "pause": TokenType.PAUSE,

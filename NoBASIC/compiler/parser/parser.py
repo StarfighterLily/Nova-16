@@ -11,6 +11,7 @@ from .ast import (
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SRolStmt, SRotStmt, SShftStmt, SFlipStmt,
     SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
+    SerOutStmt, SerInStmt, SerStatStmt, SerCtrlStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, ExpressionStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
     AsmBlockStmt, FunctionDefStmt, ReturnStmt, LiteralExpr, VariableExpr, ListAccessExpr, 
@@ -104,6 +105,14 @@ class Parser:
         elif token.type == TokenType.GETKEY:
             self.advance()
             return GetKeyStmt()
+        elif token.type == TokenType.SEROUT:
+            return self.ser_out_statement()
+        elif token.type == TokenType.SERIN:
+            return self.ser_in_statement()
+        elif token.type == TokenType.SERSTAT:
+            return self.ser_stat_statement()
+        elif token.type == TokenType.SERCTRL:
+            return self.ser_ctrl_statement()
         elif token.type == TokenType.INPUT:
             return self.input_statement()
         elif token.type == TokenType.DISP:
@@ -298,6 +307,38 @@ class Parser:
         channel = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after channel")
         return SetChannelStmt(channel)
+
+    def ser_out_statement(self) -> SerOutStmt:
+        """Parse SerOut(value) - transmit a byte over the serial port."""
+        self.advance()  # consume SEROUT
+        self.consume(TokenType.LPAREN, "Expected '(' after SerOut")
+        value = self.expression()
+        self.consume(TokenType.RPAREN, "Expected ')' after value")
+        return SerOutStmt(value)
+
+    def ser_in_statement(self) -> SerInStmt:
+        """Parse SerIn(variable) - read a byte from the serial port into a variable."""
+        self.advance()  # consume SERIN
+        self.consume(TokenType.LPAREN, "Expected '(' after SerIn")
+        var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
+        self.consume(TokenType.RPAREN, "Expected ')' after variable")
+        return SerInStmt(var_token.lexeme)
+
+    def ser_stat_statement(self) -> SerStatStmt:
+        """Parse SerStat(variable) - read serial status bits into a variable."""
+        self.advance()  # consume SERSTAT
+        self.consume(TokenType.LPAREN, "Expected '(' after SerStat")
+        var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
+        self.consume(TokenType.RPAREN, "Expected ')' after variable")
+        return SerStatStmt(var_token.lexeme)
+
+    def ser_ctrl_statement(self) -> SerCtrlStmt:
+        """Parse SerCtrl(value) - set serial control bits."""
+        self.advance()  # consume SERCTRL
+        self.consume(TokenType.LPAREN, "Expected '(' after SerCtrl")
+        value = self.expression()
+        self.consume(TokenType.RPAREN, "Expected ')' after value")
+        return SerCtrlStmt(value)
 
     def input_statement(self) -> InputStmt:
         """Parse Input "prompt", variable or Input(prompt, variable) or Input variable"""
@@ -695,7 +736,8 @@ class Parser:
             return LiteralExpr(self.previous().literal, DataType.NUMBER)
         elif self.match(TokenType.STRING_LITERAL):
             return LiteralExpr(self.previous().literal, DataType.STRING)
-        elif self.match(TokenType.IDENTIFIER, TokenType.DIM, TokenType.GETKEY):
+        elif self.match(TokenType.IDENTIFIER, TokenType.DIM, TokenType.GETKEY,
+                        TokenType.SERIN, TokenType.SERSTAT):
             name = self.previous().lexeme
             return self.parse_identifier_or_function(name)
         # Match all built-in function tokens

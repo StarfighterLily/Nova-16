@@ -1,0 +1,12 @@
+# Symbol table
+# Format: <symbol> <value>
+L3 0x0265
+L5 0x02B1
+L11 0x02FC
+L9 0x02FC
+L7 0x02FC
+L4 0x0300
+_func_sendbyte_0 0x0301
+_func_sendbanner_1 0x031D
+STR0 0x0412
+STR1 0x041D

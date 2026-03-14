@@ -189,6 +189,30 @@ class GetKeyStmt(Statement):
 
 
 @dataclass
+class SerOutStmt(Statement):
+    """SerOut(value) statement - write a byte over the serial port (SEROUT)."""
+    value: Expression
+
+
+@dataclass
+class SerInStmt(Statement):
+    """SerIn(variable) statement - read a byte from the serial port into a variable (SERIN)."""
+    variable: str
+
+
+@dataclass
+class SerStatStmt(Statement):
+    """SerStat(variable) statement - read serial status bits into a variable (SERSTAT)."""
+    variable: str
+
+
+@dataclass
+class SerCtrlStmt(Statement):
+    """SerCtrl(value) statement - set serial control bits (SERCTRL)."""
+    value: Expression
+
+
+@dataclass
 class InputStmt(Statement):
     """Input(prompt, variable) statement."""
     prompt: Optional[Expression]

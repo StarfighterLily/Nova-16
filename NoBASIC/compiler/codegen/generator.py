@@ -21,9 +21,10 @@ from ..parser.ast import (
     LineStmt, CircleStmt, TextStmt, SetLayerStmt, SRolStmt, SRotStmt, SShftStmt, SFlipStmt,
     SpriteOnStmt, SpriteOffStmt,
     PlayToneStmt, PlayWaveStmt, StopSoundStmt, SetChannelStmt, GetKeyStmt,
+    SerOutStmt, SerInStmt, SerStatStmt, SerCtrlStmt,
     InputStmt, DispStmt, PauseStmt, FunctionCallStmt, ExpressionStmt, AssignmentStmt, IfStmt, ForStmt,
     WhileStmt, RepeatStmt, GotoStmt, LabelStmt, StructDeclarationStmt, VarDeclarationStmt,
-    AsmBlockStmt, FunctionDefStmt, ReturnStmt, LiteralExpr, VariableExpr, ListAccessExpr, 
+    AsmBlockStmt, FunctionDefStmt, ReturnStmt, LiteralExpr, VariableExpr, ListAccessExpr,
     MatrixAccessExpr, MemberAccessExpr, BinaryExpr, UnaryExpr, FunctionCallExpr, GroupingExpr, StructType, VarScope
 )
 from .optimizations import (
@@ -758,9 +759,13 @@ class CodeGenerator:
             self.collect_lifetimes_expr(stmt.volume)
         elif isinstance(stmt, SetChannelStmt):
             self.collect_lifetimes_expr(stmt.channel)
+        elif isinstance(stmt, SerOutStmt):
+            self.collect_lifetimes_expr(stmt.value)
+        elif isinstance(stmt, SerCtrlStmt):
+            self.collect_lifetimes_expr(stmt.value)
         elif isinstance(stmt, DispStmt):
             self.collect_lifetimes_expr(stmt.text)
-        # Others don't have expressions
+        # Others (SerInStmt, SerStatStmt, GetKeyStmt, etc.) have no sub-expressions
 
     def assign_registers(self):
         """
@@ -1326,6 +1331,14 @@ class CodeGenerator:
             self.generate_set_channel(stmt)
         elif isinstance(stmt, GetKeyStmt):
             self.generate_get_key()
+        elif isinstance(stmt, SerOutStmt):
+            self.generate_ser_out(stmt)
+        elif isinstance(stmt, SerInStmt):
+            self.generate_ser_in(stmt)
+        elif isinstance(stmt, SerStatStmt):
+            self.generate_ser_stat(stmt)
+        elif isinstance(stmt, SerCtrlStmt):
+            self.generate_ser_ctrl(stmt)
         elif isinstance(stmt, InputStmt):
             self.generate_input(stmt)
         elif isinstance(stmt, DispStmt):
@@ -1750,6 +1763,28 @@ class CodeGenerator:
         """Generate GetKey code - non-blocking, returns 0 if no key available."""
         # Check if key available, read it, or return 0
         self.current_output.append("KEYIN R0")    # Read key (returns 0 if buffer empty)
+
+    def generate_ser_out(self, stmt: SerOutStmt):
+        """Generate SerOut(value) - transmit a byte over the serial port (SEROUT)."""
+        val_reg = self.generate_expression(stmt.value)
+        self.current_output.append(f"SEROUT {val_reg}")
+        self.smart_deallocate(val_reg, is_last_use=True)
+
+    def generate_ser_in(self, stmt: SerInStmt):
+        """Generate SerIn(variable) - read a byte from the serial port (SERIN)."""
+        self.current_output.append(f"SERIN R0")
+        self.store_variable(stmt.variable, "R0")
+
+    def generate_ser_stat(self, stmt: SerStatStmt):
+        """Generate SerStat(variable) - read serial status bits (SERSTAT)."""
+        self.current_output.append(f"SERSTAT R0")
+        self.store_variable(stmt.variable, "R0")
+
+    def generate_ser_ctrl(self, stmt: SerCtrlStmt):
+        """Generate SerCtrl(value) - set serial control bits (SERCTRL)."""
+        val_reg = self.generate_expression(stmt.value)
+        self.current_output.append(f"SERCTRL {val_reg}")
+        self.smart_deallocate(val_reg, is_last_use=True)
 
     def generate_input(self, stmt: InputStmt):
         """Generate Input(prompt, variable) code."""
@@ -4133,6 +4168,14 @@ class CodeGenerator:
         elif func_name == "GETKEY":
             # Non-blocking: returns key code or 0 if no key available
             self.current_output.append("KEYIN R0")          # Read key (0 if empty)
+            self.current_output.append(f"MOV {target_reg}, R0")
+        elif func_name == "SERIN":
+            # Read one byte from the serial RX FIFO (0 if empty)
+            self.current_output.append("SERIN R0")
+            self.current_output.append(f"MOV {target_reg}, R0")
+        elif func_name == "SERSTAT":
+            # Read serial status flags (0x01=RX available, 0x02=TX complete)
+            self.current_output.append("SERSTAT R0")
             self.current_output.append(f"MOV {target_reg}, R0")
         elif func_name == "PAUSE":
             # Wait for key press

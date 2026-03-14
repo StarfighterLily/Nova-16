@@ -59,6 +59,10 @@ from compiler.parser.ast import (
     StopSoundStmt,
     SetChannelStmt,
     GetKeyStmt,
+    SerOutStmt,
+    SerInStmt,
+    SerStatStmt,
+    SerCtrlStmt,
     InputStmt,
     DispStmt,
     PauseStmt,
@@ -350,6 +354,28 @@ class NoBASICVM:
         if isinstance(statement, GetKeyStmt):
             key = self._read_key(blocking=True)
             self._set_var("ans", key)
+            return
+
+        if isinstance(statement, SerOutStmt):
+            value = self._to_int(self._eval_expr(statement.value)) & 0xFF
+            self.proc.uart.write_data(value)
+            return
+
+        if isinstance(statement, SerInStmt):
+            byte = self.proc.uart.read_data() & 0xFF
+            self._set_var(statement.variable, byte)
+            self._set_var("ans", byte)
+            return
+
+        if isinstance(statement, SerStatStmt):
+            status = self.proc.uart.read_status_flags() & 0xFF
+            self._set_var(statement.variable, status)
+            self._set_var("ans", status)
+            return
+
+        if isinstance(statement, SerCtrlStmt):
+            value = self._to_int(self._eval_expr(statement.value)) & 0xFF
+            self.proc.uart.write_control(value)
             return
 
         if isinstance(statement, InputStmt):
@@ -788,6 +814,14 @@ class NoBASICVM:
         if name == "getkey":
             self._check_arity(name, arguments, [0])
             return self._read_key(blocking=True)
+
+        if name == "serin":
+            self._check_arity(name, arguments, [0])
+            return self.proc.uart.read_data() & 0xFF
+
+        if name == "serstat":
+            self._check_arity(name, arguments, [0])
+            return self.proc.uart.read_status_flags() & 0xFF
 
         return None
 

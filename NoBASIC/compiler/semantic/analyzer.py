@@ -12,7 +12,8 @@ from ..parser.ast import (
     PxlOnStmt, PxlOffStmt, LineStmt, CircleStmt, TextStmt,
     SRolStmt, SRotStmt, SShftStmt, SFlipStmt,
     SetLayerStmt, SpriteOnStmt, SpriteOffStmt, PlayToneStmt,
-    PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt, DataType, StructType, VarScope
+    PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt, DataType, StructType, VarScope,
+    SerOutStmt, SerInStmt, SerStatStmt, SerCtrlStmt
 )
 
 
@@ -239,9 +240,13 @@ class SemanticAnalyzer:
         elif isinstance(stmt, (PxlOnStmt, PxlOffStmt, LineStmt, CircleStmt, TextStmt,
                       SRolStmt, SRotStmt, SShftStmt, SFlipStmt,
                               SetLayerStmt, SpriteOnStmt, SpriteOffStmt, PlayToneStmt,
-                              PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt)):
+                              PlayWaveStmt, SetChannelStmt, InputStmt, DispStmt,
+                              SerOutStmt, SerCtrlStmt)):
             # These statements have expressions that need checking
             self.analyze_graphics_sound_statement(stmt)
+        elif isinstance(stmt, (SerInStmt, SerStatStmt)):
+            # SerIn/SerStat define a variable via their operand
+            self.symbol_table.define_variable(stmt.variable, DataType.NUMBER)
         # Other statements don't need special analysis
 
     def analyze_function_def(self, stmt: FunctionDefStmt):
@@ -556,7 +561,9 @@ class SemanticAnalyzer:
             # List/Array functions
             "SUM", "MEAN", "DIM", "SORTA", "SORTD", "FILL", "SEQ", "REVERSE",
             # I/O functions
-            "GETKEY", "PAUSE"
+            "GETKEY", "PAUSE",
+            # Serial I/O functions
+            "SERIN", "SERSTAT"
         ]
 
     def _is_list_name(self, name: str) -> bool:
@@ -603,6 +610,8 @@ class SemanticAnalyzer:
             "SUM": 1, "MEAN": 1, "DIM": 1, "SORTA": 1, "SORTD": 1, "FILL": 2, "SEQ": (4, 5), "REVERSE": 1,
             # I/O functions
             "GETKEY": 0, "PAUSE": 0,
+            # Serial I/O functions
+            "SERIN": 0, "SERSTAT": 0,
             # Additional String functions
             "INSTRING": 2, "UPSTRING": 1, "LOWSTRING": 1, "LENSTRING": 1,
         }
@@ -657,6 +666,8 @@ class SemanticAnalyzer:
             "SEQ": [None, None, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER],
             # I/O functions
             "GETKEY": [], "PAUSE": [],
+            # Serial I/O functions
+            "SERIN": [], "SERSTAT": [],
             # Additional string functions
             "INSTRING": [DataType.STRING, DataType.STRING], "UPSTRING": [DataType.STRING],
             "LOWSTRING": [DataType.STRING], "LENSTRING": [DataType.STRING],

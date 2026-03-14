@@ -1,0 +1,49 @@
+// UART echo demo for NoBASIC
+// Sends a startup banner over UART, displays every received byte,
+// and forwards local keypresses as raw UART bytes.
+
+status = 0
+incoming = 0
+outgoing = 0
+
+Function sendByte(value)
+    SerOut(value)
+End
+
+Function sendBanner()
+    sendByte(85)   // U
+    sendByte(65)   // A
+    sendByte(82)   // R
+    sendByte(84)   // T
+    sendByte(32)   //  
+    sendByte(82)   // R
+    sendByte(69)   // E
+    sendByte(65)   // A
+    sendByte(68)   // D
+    sendByte(89)   // Y
+    sendByte(13)   // CR
+    sendByte(10)   // LF
+End
+
+Disp "UART ready"
+Disp "Waiting for RX"
+
+// Raw mode, interrupts disabled.
+SerCtrl(0)
+sendBanner()
+
+While 1
+    SerStat(status)
+    If (status & 1) <> 0 Then
+        SerIn(incoming)
+        Disp incoming
+    End
+    If (status & 1) = 0 Then
+        outgoing = GetKey()
+        If outgoing <> 0 Then
+            If outgoing <> 151 Then
+                SerOut(outgoing)
+            End
+        End
+    End
+End
