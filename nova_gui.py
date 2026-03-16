@@ -149,6 +149,7 @@ def open_uart_config_dialog(current_config):
     dialog.resizable(False, False)
 
     mode_var = tk.StringVar(value=current_config.mode)
+    tcp_role_var = tk.StringVar(value=current_config.tcp_role)
     host_var = tk.StringVar(value=current_config.host)
     port_var = tk.StringVar(value='' if current_config.port is None else str(current_config.port))
     timeout_var = tk.StringVar(value=str(current_config.timeout))
@@ -163,24 +164,28 @@ def open_uart_config_dialog(current_config):
     ttk.Radiobutton(mode_frame, text='Terminal', value='terminal', variable=mode_var).grid(row=0, column=1, padx=(0, 8))
     ttk.Radiobutton(mode_frame, text='TCP', value='tcp', variable=mode_var).grid(row=0, column=2)
 
-    ttk.Label(frame, text='Host').grid(row=1, column=0, sticky='w', pady=(10, 0))
+    ttk.Label(frame, text='TCP Role').grid(row=1, column=0, sticky='w', pady=(10, 0))
+    tcp_role_box = ttk.Combobox(frame, textvariable=tcp_role_var, values=('client', 'server'), state='readonly', width=10)
+    tcp_role_box.grid(row=1, column=1, sticky='w', pady=(10, 0))
+
+    ttk.Label(frame, text='Host').grid(row=2, column=0, sticky='w', pady=(8, 0))
     host_entry = ttk.Entry(frame, textvariable=host_var, width=24)
-    host_entry.grid(row=1, column=1, columnspan=2, sticky='ew', pady=(10, 0))
+    host_entry.grid(row=2, column=1, columnspan=2, sticky='ew', pady=(8, 0))
 
-    ttk.Label(frame, text='Port').grid(row=2, column=0, sticky='w', pady=(8, 0))
+    ttk.Label(frame, text='Port').grid(row=3, column=0, sticky='w', pady=(8, 0))
     port_entry = ttk.Entry(frame, textvariable=port_var, width=12)
-    port_entry.grid(row=2, column=1, sticky='w', pady=(8, 0))
+    port_entry.grid(row=3, column=1, sticky='w', pady=(8, 0))
 
-    ttk.Label(frame, text='Timeout (s)').grid(row=3, column=0, sticky='w', pady=(8, 0))
+    ttk.Label(frame, text='Timeout (s)').grid(row=4, column=0, sticky='w', pady=(8, 0))
     timeout_entry = ttk.Entry(frame, textvariable=timeout_var, width=12)
-    timeout_entry.grid(row=3, column=1, sticky='w', pady=(8, 0))
+    timeout_entry.grid(row=4, column=1, sticky='w', pady=(8, 0))
 
     button_frame = ttk.Frame(frame)
-    button_frame.grid(row=4, column=0, columnspan=3, sticky='e', pady=(12, 0))
+    button_frame.grid(row=5, column=0, columnspan=3, sticky='e', pady=(12, 0))
 
     def sync_tcp_fields(*_args):
         state = 'normal' if mode_var.get() == 'tcp' else 'disabled'
-        for entry in (host_entry, port_entry, timeout_entry):
+        for entry in (tcp_role_box, host_entry, port_entry, timeout_entry):
             entry.configure(state=state)
 
     def cancel():
@@ -192,6 +197,7 @@ def open_uart_config_dialog(current_config):
             config = uart.validate_bridge_config(
                 uart.UARTBridgeConfig(
                     mode=mode_var.get(),
+                    tcp_role=tcp_role_var.get(),
                     host=host_var.get(),
                     port=int(port_value) if port_value else None,
                     timeout=float(timeout_var.get().strip() or uart.DEFAULT_TCP_TIMEOUT),

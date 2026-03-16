@@ -1,6 +1,15 @@
 """Unit tests for nova_uart.py - Nova-16 UART device."""
 
+import socket
+import time
+
 import nova_uart as uart
+
+
+def allocate_tcp_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((uart.DEFAULT_TCP_HOST, 0))
+        return int(sock.getsockname()[1])
 
 
 class MockBridge(uart.UARTHostBridge):
@@ -121,12 +130,36 @@ class TestUARTBridgesAndProtocols:
         else:
             raise AssertionError("Expected missing TCP port to fail validation")
 
+    def test_validate_tcp_config_rejects_unknown_role(self):
+        try:
+            uart.validate_bridge_config(uart.UARTBridgeConfig(mode="tcp", tcp_role="peer", port=2323))
+        except ValueError as exc:
+            assert str(exc) == "Unsupported UART TCP role: peer"
+        else:
+            raise AssertionError("Expected invalid TCP role to fail validation")
+
     def test_describe_bridge_reports_tcp_target(self):
         config = uart.validate_bridge_config(
-            uart.UARTBridgeConfig(mode="tcp", host="example.com", port=2323, timeout=0.25)
+            uart.UARTBridgeConfig(mode="tcp", tcp_role="server", host="example.com", port=2323, timeout=0.25)
         )
 
-        assert uart.describe_bridge(config) == "UART: TCP example.com:2323"
+        assert uart.describe_bridge(config) == "UART: TCP Server example.com:2323"
+
+    def test_create_host_bridge_uses_server_role(self):
+        port = allocate_tcp_port()
+        bridge = uart.create_host_bridge(
+            uart.UARTBridgeConfig(mode="tcp", tcp_role="server", host=uart.DEFAULT_TCP_HOST, port=port)
+        )
+
+        try:
+            assert isinstance(bridge, uart.TCPServerBridge)
+            config = uart.get_bridge_config(bridge)
+            assert config.mode == "tcp"
+            assert config.tcp_role == "server"
+            assert config.port == bridge.port
+        finally:
+            if bridge is not None:
+                bridge.close()
 
     def test_raw_mode_poll_reads_bridge_bytes(self):
         bridge = MockBridge(incoming=b"AB")
@@ -168,6 +201,34 @@ class TestUARTBridgesAndProtocols:
 
         expected = device.build_frame(b"HI")
         assert bytes(bridge.sent) == expected
+
+    def test_server_and_client_bridges_exchange_bytes(self):
+        server_bridge = uart.TCPServerBridge(uart.DEFAULT_TCP_HOST, 0, timeout=0.05)
+        client_bridge = uart.TCPSocketBridge(uart.DEFAULT_TCP_HOST, server_bridge.port, timeout=0.05)
+        server_uart = uart.NovaUART(host_bridge=server_bridge)
+        client_uart = uart.NovaUART(host_bridge=client_bridge)
+
+        def wait_for_bytes(receiver):
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline:
+                if receiver.poll_host_bridge() > 0:
+                    return True
+                time.sleep(0.01)
+            return False
+
+        try:
+            client_uart.send_payload(b"AB")
+            assert wait_for_bytes(server_uart) is True
+            assert server_uart.read_data() == ord("A")
+            assert server_uart.read_data() == ord("B")
+
+            server_uart.send_payload(b"CD")
+            assert wait_for_bytes(client_uart) is True
+            assert client_uart.read_data() == ord("C")
+            assert client_uart.read_data() == ord("D")
+        finally:
+            client_uart.close_host_bridge()
+            server_uart.close_host_bridge()
 
 
 class TestSerialRegisterView:

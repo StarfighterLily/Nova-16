@@ -14,7 +14,7 @@ It provides:
   - Framed mode (start byte + length + payload + checksum).
 - Host bridge support:
   - Local terminal bridge.
-  - TCP socket bridge.
+  - TCP socket bridge in client or server mode.
 
 ## Source Layout
 
@@ -22,6 +22,7 @@ It provides:
   - `UARTHostBridge`: abstract host transport interface.
   - `LocalTerminalBridge`: stdout TX + injected RX queue.
   - `TCPSocketBridge`: remote UART bridge over TCP.
+  - `TCPServerBridge`: listening TCP UART bridge for inbound peers.
   - `SerialRegisterView`: compatibility adapter for `cpu.serial[0..1]`.
   - `NovaUART`: main UART device implementation.
 - `nova_cpu.py`
@@ -112,9 +113,25 @@ On checksum mismatch:
 
 ### TCP Socket Bridge
 
-`TCPSocketBridge(host, port, timeout=0.01)` sends/receives bytes over a non-blocking TCP connection.
+`TCPSocketBridge(host, port, timeout=0.01)` sends/receives bytes over a non-blocking TCP connection as a client.
 
-Use this for remote consoles, host tools, or file transfer protocols over UART.
+`TCPServerBridge(host, port, timeout=0.01)` binds and listens for a single remote TCP peer, allowing Nova-16 to host the UART endpoint.
+
+Use these for remote consoles, host tools, or file transfer protocols over UART. A typical two-instance setup is one Nova-16 process running TCP server mode and a second Nova-16 process running TCP client mode against the same host/port.
+
+### Shared Configuration
+
+`UARTBridgeConfig` carries the TCP role in addition to the transport mode:
+
+- `mode="tcp", tcp_role="client"`: connect to a listening peer.
+- `mode="tcp", tcp_role="server"`: listen for an inbound peer and exchange bytes once connected.
+
+CLI support:
+
+```powershell
+py -3.13 nova.py --uart-bridge tcp --uart-tcp-role server --uart-host 127.0.0.1 --uart-port 2323
+py -3.13 nova.py --uart-bridge tcp --uart-tcp-role client --uart-host 127.0.0.1 --uart-port 2323
+```
 
 ## Assembly Usage
 

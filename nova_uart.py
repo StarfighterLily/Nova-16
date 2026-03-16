@@ -19,6 +19,7 @@ class UARTBridgeConfig:
     """Serializable UART host-bridge settings shared by CLI and GUI."""
 
     mode: str = "none"
+    tcp_role: str = "client"
     host: str = DEFAULT_TCP_HOST
     port: Optional[int] = None
     timeout: float = DEFAULT_TCP_TIMEOUT
@@ -27,6 +28,7 @@ class UARTBridgeConfig:
 def validate_bridge_config(config: Optional[UARTBridgeConfig]) -> UARTBridgeConfig:
     normalized = config or UARTBridgeConfig()
     mode = str(normalized.mode).strip().lower() or "none"
+    tcp_role = str(normalized.tcp_role).strip().lower() or "client"
     host = str(normalized.host).strip() or DEFAULT_TCP_HOST
     timeout = float(normalized.timeout)
 
@@ -37,15 +39,18 @@ def validate_bridge_config(config: Optional[UARTBridgeConfig]) -> UARTBridgeConf
 
     port = normalized.port
     if mode == "tcp":
+        if tcp_role not in {"client", "server"}:
+            raise ValueError(f"Unsupported UART TCP role: {normalized.tcp_role}")
         if port is None:
             raise ValueError("UART TCP bridge requires a port")
         port = int(port)
         if port < 1 or port > 65535:
             raise ValueError("UART TCP bridge port must be between 1 and 65535")
     else:
+        tcp_role = "client"
         port = None
 
-    return UARTBridgeConfig(mode=mode, host=host, port=port, timeout=timeout)
+    return UARTBridgeConfig(mode=mode, tcp_role=tcp_role, host=host, port=port, timeout=timeout)
 
 
 def create_host_bridge(config: Optional[UARTBridgeConfig]) -> Optional["UARTHostBridge"]:
@@ -54,6 +59,8 @@ def create_host_bridge(config: Optional[UARTBridgeConfig]) -> Optional["UARTHost
         return None
     if normalized.mode == "terminal":
         return LocalTerminalBridge()
+    if normalized.tcp_role == "server":
+        return TCPServerBridge(normalized.host, normalized.port, timeout=normalized.timeout)
     return TCPSocketBridge(normalized.host, normalized.port, timeout=normalized.timeout)
 
 
@@ -63,7 +70,7 @@ def describe_bridge(config: Optional[UARTBridgeConfig]) -> str:
         return "UART: Off"
     if normalized.mode == "terminal":
         return "UART: Terminal"
-    return f"UART: TCP {normalized.host}:{normalized.port}"
+    return f"UART: TCP {normalized.tcp_role.title()} {normalized.host}:{normalized.port}"
 
 
 def get_bridge_config(host_bridge: Optional["UARTHostBridge"]) -> UARTBridgeConfig:
@@ -74,6 +81,15 @@ def get_bridge_config(host_bridge: Optional["UARTHostBridge"]) -> UARTBridgeConf
     if isinstance(host_bridge, TCPSocketBridge):
         return UARTBridgeConfig(
             mode="tcp",
+            tcp_role="client",
+            host=host_bridge.host,
+            port=host_bridge.port,
+            timeout=host_bridge.timeout,
+        )
+    if isinstance(host_bridge, TCPServerBridge):
+        return UARTBridgeConfig(
+            mode="tcp",
+            tcp_role="server",
             host=host_bridge.host,
             port=host_bridge.port,
             timeout=host_bridge.timeout,
@@ -146,6 +162,78 @@ class TCPSocketBridge(UARTHostBridge):
     def close(self) -> None:
         try:
             self._sock.close()
+        except OSError:
+            pass
+
+
+class TCPServerBridge(UARTHostBridge):
+    """TCP server bridge that listens for a single remote UART peer."""
+
+    def __init__(self, host: str, port: int, timeout: float = 0.01) -> None:
+        self.host = host
+        self.port = int(port)
+        self.timeout = float(timeout)
+        self._listen_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._listen_sock.bind((self.host, self.port))
+        self._listen_sock.listen(1)
+        self._listen_sock.setblocking(False)
+        self.port = int(self._listen_sock.getsockname()[1])
+        self._client_sock: Optional[socket.socket] = None
+
+    def _accept_client(self) -> None:
+        if self._client_sock is not None:
+            return
+        try:
+            client_sock, _address = self._listen_sock.accept()
+        except BlockingIOError:
+            return
+        client_sock.settimeout(self.timeout)
+        client_sock.setblocking(False)
+        self._client_sock = client_sock
+
+    def _close_client(self) -> None:
+        if self._client_sock is None:
+            return
+        try:
+            self._client_sock.close()
+        except OSError:
+            pass
+        self._client_sock = None
+
+    def send_bytes(self, data: bytes) -> None:
+        if not data:
+            return
+        self._accept_client()
+        if self._client_sock is None:
+            return
+        try:
+            self._client_sock.sendall(data)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            self._close_client()
+
+    def poll_rx(self) -> bytes:
+        self._accept_client()
+        if self._client_sock is None:
+            return b""
+        try:
+            payload = self._client_sock.recv(4096)
+        except BlockingIOError:
+            return b""
+        except socket.timeout:
+            return b""
+        except (ConnectionResetError, OSError):
+            self._close_client()
+            return b""
+        if payload == b"":
+            self._close_client()
+            return b""
+        return payload
+
+    def close(self) -> None:
+        self._close_client()
+        try:
+            self._listen_sock.close()
         except OSError:
             pass
 

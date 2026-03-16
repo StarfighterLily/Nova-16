@@ -17,6 +17,7 @@ def build_uart_config(args):
     return uart.validate_bridge_config(
         uart.UARTBridgeConfig(
             mode=args.uart_bridge,
+            tcp_role=args.uart_tcp_role,
             host=args.uart_host,
             port=args.uart_port,
             timeout=args.uart_timeout,
@@ -136,6 +137,7 @@ def main():
     parser.add_argument('--memory-profile', action='store_true', help='Enable memory profiling')
     parser.add_argument('--profile-output', default='memory_profile.json', help='Output file for memory profile data')
     parser.add_argument('--uart-bridge', choices=['none', 'terminal', 'tcp'], default='none', help='UART bridge transport to attach')
+    parser.add_argument('--uart-tcp-role', choices=['client', 'server'], default='client', help='UART TCP bridge role when --uart-bridge=tcp')
     parser.add_argument('--uart-host', default=uart.DEFAULT_TCP_HOST, help='UART TCP bridge host')
     parser.add_argument('--uart-port', type=int, help='UART TCP bridge port')
     parser.add_argument('--uart-timeout', type=float, default=uart.DEFAULT_TCP_TIMEOUT, help='UART bridge socket timeout in seconds')
