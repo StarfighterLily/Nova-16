@@ -248,6 +248,13 @@ class TestCodeGenerator:
         # String literals are simplified to 0
         assert any("0" in line for line in lines)
 
+    def test_disp_string_literal_preserves_escapes_in_defstr_output(self):
+        """Escaped NoBASIC strings should survive lexing and emit assembler-safe DEFSTR data."""
+        code = self.generate_code('disp("line1\\nline2\\t\\"quoted\\"\\\\end")')
+
+        assert 'DEFSTR "line1\\nline2\\t\\"quoted\\"\\\\end"' in code
+        assert code.count('DEFSTR "') >= 1
+
     def test_number_literal(self):
         """Test number literal handling."""
         code = self.generate_code("x = 42")

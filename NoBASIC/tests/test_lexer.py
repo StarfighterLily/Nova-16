@@ -260,8 +260,13 @@ class TestLexer:
 
     def test_string_escapes(self):
         """Test string literals with escape sequences."""
-        # Skip this test as escape sequences aren't implemented yet
-        pass
+        source = '"line1\\nline2\\t\\"quoted\\"\\\\end\\0"'
+        tokens = self.lexer.tokenize(source)
+
+        assert len(tokens) == 2
+        assert tokens[0].type == TokenType.STRING_LITERAL
+        assert tokens[0].literal == 'line1\nline2\t"quoted"\\end\0'
+        assert tokens[0].lexeme == source
 
     def test_multiline_strings_not_supported(self):
         """Test that multiline strings are not supported."""
@@ -277,8 +282,10 @@ class TestLexer:
 
     def test_string_with_quotes(self):
         """Test strings containing quotes."""
-        # Skip - not implemented
-        pass
+        tokens = self.lexer.tokenize('"say \\\"hello\\\""')
+        assert len(tokens) == 2
+        assert tokens[0].type == TokenType.STRING_LITERAL
+        assert tokens[0].literal == 'say "hello"'
 
     def test_comments_with_special_chars(self):
         """Test comments containing special characters."""
@@ -584,8 +591,13 @@ MOV R0, 1
 
     def test_string_escapes(self):
         """Test string literals with escape sequences."""
-        # Skip this test as escape sequences aren't implemented yet
-        pass
+        source = '"line1\\nline2\\t\\"quoted\\"\\\\end\\0"'
+        tokens = self.lexer.tokenize(source)
+
+        assert len(tokens) == 2
+        assert tokens[0].type == TokenType.STRING_LITERAL
+        assert tokens[0].literal == 'line1\nline2\t"quoted"\\end\0'
+        assert tokens[0].lexeme == source
 
     def test_multiline_strings_not_supported(self):
         """Test that multiline strings are not supported."""

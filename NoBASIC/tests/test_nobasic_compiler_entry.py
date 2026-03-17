@@ -171,6 +171,28 @@ def test_compile_nobasic_exits_if_assembler_does_not_produce_binary(tmp_path, mo
     assert "Assembler output" in output
 
 
+def test_compile_nobasic_removes_stale_binary_before_assembly(tmp_path, monkeypatch, capsys):
+    _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "stale_bin.nobasic"
+    source_file.write_text("Pause\n")
+    stale_bin = source_file.with_suffix(".bin")
+    stale_bin.write_bytes(b"stale")
+
+    def fake_run(command, capture_output, text):
+        return SimpleNamespace(stdout="assembler output", stderr="assembler error")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert exc.value.code == 1
+    assert not stale_bin.exists()
+    output = capsys.readouterr().out
+    assert "Assembly failed" in output
+    assert "Assembler output" in output
+
+
 def test_compile_nobasic_verbose_mode_prints_optimization_details(tmp_path, monkeypatch, capsys):
     captured = _install_pipeline_stubs(monkeypatch)
     source_file = tmp_path / "verbose.nobasic"

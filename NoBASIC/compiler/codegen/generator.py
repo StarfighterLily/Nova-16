@@ -1247,7 +1247,8 @@ class CodeGenerator:
                 size = int(string_value.split("__")[2])
                 self.current_output.append(f"{label}: DB " + ", ".join(["0"] * size))
             else:
-                self.current_output.append(f"{label}: DEFSTR \"{string_value}\"")
+                escaped_value = self._escape_assembly_string(string_value)
+                self.current_output.append(f"{label}: DEFSTR \"{escaped_value}\"")
 
         # **POST-GENERATION OPTIMIZATIONS**
         # Apply peephole and live range optimizations to reduce code size and improve performance
@@ -4768,6 +4769,26 @@ class CodeGenerator:
         self.label_counter += 1
         self.strings.append((label, string_value))
         return label
+
+    def _escape_assembly_string(self, string_value: str) -> str:
+        """Convert runtime strings into assembler-safe DEFSTR syntax."""
+        escaped = []
+        for char in string_value:
+            if char == '\\':
+                escaped.append('\\\\')
+            elif char == '"':
+                escaped.append('\\"')
+            elif char == '\n':
+                escaped.append('\\n')
+            elif char == '\r':
+                escaped.append('\\r')
+            elif char == '\t':
+                escaped.append('\\t')
+            elif char == '\0':
+                escaped.append('\\0')
+            else:
+                escaped.append(char)
+        return ''.join(escaped)
 
     def new_label(self) -> str:
         """Generate a new unique label."""

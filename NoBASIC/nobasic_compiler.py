@@ -168,6 +168,14 @@ def remap_compiler_error(error: CompilerError, source_file: str, line_map: Sourc
     return error.__class__(error.message, mapped_file, mapped_line, error.column)
 
 
+def _remove_stale_binary(binary_file: Path) -> None:
+    """Ensure the assembler must produce a fresh binary for the current compile."""
+    try:
+        binary_file.unlink(missing_ok=True)
+    except OSError as exc:
+        raise CompilerError(f"Failed to remove stale binary '{binary_file}': {exc}", str(binary_file), 1, 1)
+
+
 def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = False, 
                     enable_optimizations: bool = False, debug_optimizations: bool = False,
                     enable_peephole: bool = False, enable_live_range_scheduling: bool = False,
@@ -258,6 +266,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
             emit(f"Assembly written to {output_file}")
 
         binary_file = Path(output_file).with_suffix('.bin')
+        _remove_stale_binary(binary_file)
 
         if verbose:
             emit(f"Assembling {output_file} to {binary_file}...")

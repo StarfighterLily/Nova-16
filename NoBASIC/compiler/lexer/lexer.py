@@ -15,6 +15,15 @@ from .tokens import (
 class Lexer:
     """Lexical analyzer for NoBASIC source code."""
 
+    _STRING_ESCAPES = {
+        'n': '\n',
+        'r': '\r',
+        't': '\t',
+        '"': '"',
+        '\\': '\\',
+        '0': '\0',
+    }
+
     def __init__(self):
         self.source = ""
         self.filename = "<stdin>"
@@ -186,23 +195,32 @@ class Lexer:
     def string(self):
         """Scan a string literal."""
         start_line = self.line
-        start_pos = self.start_position
+        value_chars = []
 
-        while not self.is_at_end() and self.peek() != "\"":
-            if self.peek() == "\n":
+        while not self.is_at_end():
+            char = self.advance()
+
+            if char == "\"":
+                self.add_token(TokenType.STRING_LITERAL, ''.join(value_chars))
+                return
+
+            if char == "\\":
+                if self.is_at_end():
+                    raise LexerError("Unterminated string", self.filename, start_line, self.column)
+                escaped_char = self.advance()
+                value_chars.append(self._STRING_ESCAPES.get(escaped_char, escaped_char))
+                if escaped_char == "\n":
+                    self.line += 1
+                    self.column = 1
+                continue
+
+            if char == "\n":
                 self.line += 1
                 self.column = 1
-            self.advance()
 
-        if self.is_at_end():
-            raise LexerError("Unterminated string", self.filename, start_line, self.column)
+            value_chars.append(char)
 
-        # Consume the closing quote
-        self.advance()
-
-        # Extract the string value (without quotes)
-        value = self.source[start_pos + 1:self.position - 1]
-        self.add_token(TokenType.STRING_LITERAL, value)
+        raise LexerError("Unterminated string", self.filename, start_line, self.column)
 
     def asm_block(self):
         """
