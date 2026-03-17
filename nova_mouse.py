@@ -24,8 +24,8 @@ class NovaMouse:
         self.x = 0
         self.y = 0
         self.buttons = 0
-        self.control = 0x01
-        self.enabled = True
+        self.control = 0x00
+        self.enabled = False
         self.cursor_enabled = False
         self.pending_interrupt = False
         self._interrupt_callback = None
@@ -42,8 +42,8 @@ class NovaMouse:
         self.x = 0
         self.y = 0
         self.buttons = 0
-        self.control = 0x01
-        self.enabled = True
+        self.control = 0x00
+        self.enabled = False
         self.cursor_enabled = False
         self.pending_interrupt = False
         self.sync_cursor()

@@ -31,8 +31,18 @@ class TestNovaMouseDevice:
         assert cpu.mb == 0
         assert cpu.mouse.cursor_enabled is False
 
+    def test_mouse_starts_disabled_and_hidden(self, graphics):
+        mouse = nova_mouse.NovaMouse(graphics)
+
+        mouse.move_to(10, 20)
+
+        assert mouse.enabled is False
+        assert mouse.cursor_enabled is False
+        assert int(graphics.get_screen()[20, 10]) == 0x00
+
     def test_hardware_cursor_overlays_expected_4x4_pattern(self, graphics):
         mouse = nova_mouse.NovaMouse(graphics)
+        mouse.write_control(1)
         mouse.move_to(10, 20)
 
         screen = graphics.get_screen()
@@ -53,6 +63,7 @@ class TestNovaMouseDevice:
         graphics.layer_0[4, 3] = 0x22
         graphics.layers_dirty = True
 
+        mouse.write_control(1)
         mouse.move_to(3, 4)
         visible_screen = graphics.get_screen().copy()
         assert int(visible_screen[4, 3]) == 0xFF
@@ -66,6 +77,7 @@ class TestNovaMouseDevice:
         callback_states = []
         mouse.set_interrupt_callback(lambda: callback_states.append(mouse.pending_interrupt))
 
+        mouse.write_control(1)
         mouse.move_to(7, 9, from_host=True)
 
         assert mouse.pending_interrupt is True
@@ -78,6 +90,7 @@ class TestNovaMouseDevice:
 
     def test_disabled_mouse_ignores_host_events_and_hides_cursor(self, graphics):
         mouse = nova_mouse.NovaMouse(graphics)
+        mouse.write_control(1)
         mouse.move_to(3, 4)
         assert int(graphics.get_screen()[4, 3]) == 0xFF
 
