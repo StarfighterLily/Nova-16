@@ -259,6 +259,12 @@ opcodes = [
     ("LMOVE",              "0xB1", 1), # Move current layer contents to specified layer, clear current layer # implemented
     ("LCOPY",              "0xB2", 1), # Copy current layer contents to specified layer, keep current layer # implemented
 
+    # Mouse control
+    ("MOUSECTRL",          "0xB3", 1), # Enable or disable host mouse input and interrupts # implemented
+
+    ("MX",                 "0xC0", 1), # Mouse X position
+    ("MY",                 "0xC1", 1), # Mouse Y position
+    ("MB",                 "0xC2", 1), # Mouse buttons
     ("VC",                 "0xC8", 1), # Video Color
     ("P0:",                "0xC9", 1), # P0 high byte
     ("P1:",                "0xCA", 1), # P1 high byte

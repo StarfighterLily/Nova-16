@@ -47,10 +47,10 @@ The CPU maintains a 12-bit flags register with the following flags:
 | 6 | C | Carry | Set if operation produces carry/borrow |
 | 5 | I | Interrupt | Set if interrupts are enabled |
 | 4 | D | Decimal | Set if BCD arithmetic mode is enabled |
-| 3 | B | Break | Set if breakpoint is encountered | unimplemented
+| 3 | B | Break | Set if breakpoint is encountered |
 | 2 | O | Overflow | Set if signed arithmetic overflow occurs |
 | 1 | S | Sign | Set if result is negative (MSB = 1) |
-| 0 | T | Trap | Set to enable single-step mode | unimplemented
+| 0 | T | Trap | Set to enable single-step mode |
 
 ### Flag Behavior in Arithmetic Operations
 
@@ -153,8 +153,8 @@ The Nova-16 supports 8 interrupt levels with hardware prioritization:
 | 0 | 0x0100 | Highest | Timer | Timer/counter overflow |
 | 1 | 0x0104 | High | Serial | Serial I/O completion |
 | 2 | 0x0108 | Medium | Keyboard | Keyboard input available |
-| 3 | 0x010C | Low | User 1 | User-defined interrupt 1 |
-| 4 | 0x0110 | Low | User 2 | User-defined interrupt 2 |
+| 3 | 0x010C | Medium | Mouse | Mouse interrupt available |
+| 4 | 0x0110 | Low | User 1 | User-defined interrupt 1 |
 | 5 | 0x0114 | Lower | Reserved | Future expansion |
 | 6 | 0x0118 | Lower | Reserved | Future expansion |
 | 7 | 0x011C | lowest | Debug | Used for hardware breakpoints and trap mode |

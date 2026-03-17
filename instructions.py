@@ -2021,6 +2021,20 @@ class Lcopy(BaseInstruction):
         target_buffer[:] = current_buffer
         cpu.gfx.layers_dirty = True
 
+
+class Mousectrl(BaseInstruction):
+    """MOUSECTRL instruction - enable or disable host mouse input and interrupts."""
+    def __init__(self):
+        opcode_val = 0xB3  # MOUSECTRL
+        super().__init__("MOUSECTRL", opcode_val)
+
+    def execute(self, cpu):
+        operands = cpu.parse_operands(1)
+        control = cpu.get_operand_value(operands[0]) & 0xFF
+        cpu.mouse.write_control(control)
+        cpu.interrupts[3] = control & 0x01
+        cpu._refresh_pending_interrupt_sources()
+
 class Sline(BaseInstruction):
     """SLINE instruction - draw line from (VX,VY) to end x, end y (uses VC)"""
     def __init__(self):
@@ -3847,6 +3861,7 @@ def create_instruction_table():
         Lswap(),    # 0xB0
         Lmove(),    # 0xB1
         Lcopy(),    # 0xB2
+        Mousectrl(), # 0xB3
 
         # VRAM operations
         Vread(),    # 0x3E

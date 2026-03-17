@@ -12,3 +12,11 @@ Consider MMX-style registers and instructions
 
 -Memory
 Consider memory banking techniques to expand beyond the 64k memory without too much effort
+
+-Mouse
+4x4 sprite, position in 2 16-bit registers, shouldn't need anything more but the hardware. 2-button mouse to start with, then move up to many buttons and 3 wheels (hey, you never know.)
+Cursor sprite:
+1110
+1100
+1010
+0001

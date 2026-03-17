@@ -235,6 +235,7 @@ def main( cpu, memory, gfx, kbd=None ):
     surface.set_palette( [ tuple( color ) for color in gfx.get_palette() ] )
     clock = pygame.time.Clock()
     cpu_controller = CPUController( cpu, gfx, memory )
+    mouse_device = getattr(cpu, 'mouse', None)
     
     # Force initial screen update to show any existing graphics
     cpu_controller.force_screen_update()
@@ -379,6 +380,24 @@ def main( cpu, memory, gfx, kbd=None ):
             if was_running:
                 cpu_controller.start()
 
+    def map_window_to_emulator(pos):
+        x, y = pos
+        if x < 0 or x >= screen_width:
+            return None
+        if y < toolbar_height or y >= toolbar_height + screen_height:
+            return None
+        return x // scale, (y - toolbar_height) // scale
+
+    def update_mouse_position(pos):
+        if mouse_device is None:
+            return False
+        mapped = map_window_to_emulator(pos)
+        if mapped is None:
+            return False
+        mouse_device.move_to(mapped[0], mapped[1], from_host=True)
+        cpu_controller.force_screen_update()
+        return True
+
     running = True
     while running:
         for event in pygame.event.get():
@@ -423,28 +442,42 @@ def main( cpu, memory, gfx, kbd=None ):
                     kbd.release_key('ctrl')
                 elif event.key in (pygame.K_LALT, pygame.K_RALT):
                     kbd.release_key('alt')
+            elif event.type == pygame.MOUSEMOTION:
+                update_mouse_position(event.pos)
                     
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 pos = event.pos
-                for name, rect in buttons.items():
-                    if rect.collidepoint( pos ):
-                        if name == 'Start/Pause':
-                            # Toggle between start and pause
-                            if cpu_controller.running:
+                handled_toolbar_click = False
+                if event.button == 1:
+                    for name, rect in buttons.items():
+                        if rect.collidepoint( pos ):
+                            handled_toolbar_click = True
+                            if name == 'Start/Pause':
+                                if cpu_controller.running:
+                                    cpu_controller.stop()
+                                else:
+                                    cpu_controller.start()
+                            elif name == 'Stop':
                                 cpu_controller.stop()
-                            else:
-                                cpu_controller.start()
-                        elif name == 'Stop':
-                            cpu_controller.stop()
-                        elif name == 'Reset':
-                            cpu_controller.reset()
-                            held_nova_keys.clear()
-                        elif name == 'Step':
-                            cpu_controller.step()
-                        elif name == 'Load':
-                            load_binary_program()
-                        elif name == 'UART':
-                            configure_uart_bridge()
+                            elif name == 'Reset':
+                                cpu_controller.reset()
+                                held_nova_keys.clear()
+                            elif name == 'Step':
+                                cpu_controller.step()
+                            elif name == 'Load':
+                                load_binary_program()
+                            elif name == 'UART':
+                                configure_uart_bridge()
+                            break
+
+                if not handled_toolbar_click and event.button in (1, 3) and mouse_device is not None:
+                    if update_mouse_position(pos):
+                        mouse_device.set_button(event.button, True, from_host=True)
+                        cpu_controller.force_screen_update()
+            elif event.type == pygame.MOUSEBUTTONUP and event.button in (1, 3) and mouse_device is not None:
+                update_mouse_position(event.pos)
+                mouse_device.set_button(event.button, False, from_host=True)
+                cpu_controller.force_screen_update()
 
         # Synthesize key repeat while physical keys remain held.
         if kbd is not None and held_nova_keys:

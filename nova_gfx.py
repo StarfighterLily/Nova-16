@@ -68,6 +68,20 @@ class GFX:
         # Sprite rendering optimization
         self.sprites_dirty = False  # Track if sprites need re-rendering
 
+        # Hardware mouse cursor overlay
+        self.mouse_cursor_visible = False
+        self.mouse_cursor_position = (0, 0)
+        self.mouse_cursor_color = 0xFF
+        self.mouse_cursor_bitmap = np.array(
+            [
+                [1, 1, 1, 0],
+                [1, 1, 0, 0],
+                [1, 0, 1, 0],
+                [0, 0, 0, 1],
+            ],
+            dtype=np.uint8,
+        )
+
     @property
     def screen(self):
         """Lazy evaluation of final screen buffer with compositing"""
@@ -541,9 +555,40 @@ class GFX:
             if self.layer_visibility.get(layer_num, True):  # Check visibility
                 mask = layer != 0  # Non-zero pixels are opaque
                 self._screen[mask] = layer[mask]
+
+        self._composite_mouse_cursor()
         
         # Mark layers as clean
         self.layers_dirty = False
+
+    def set_mouse_cursor_state(self, x, y, visible=True, color=None, bitmap=None):
+        self.mouse_cursor_position = (int(x), int(y))
+        self.mouse_cursor_visible = bool(visible)
+        if color is not None:
+            self.mouse_cursor_color = int(color) & 0xFF
+        if bitmap is not None:
+            self.mouse_cursor_bitmap = np.array(bitmap, dtype=np.uint8)
+        self.layers_dirty = True
+
+    def _composite_mouse_cursor(self):
+        if not self.mouse_cursor_visible:
+            return
+
+        cursor_x, cursor_y = self.mouse_cursor_position
+        cursor_height, cursor_width = self.mouse_cursor_bitmap.shape
+
+        if cursor_x >= self.width or cursor_y >= self.height:
+            return
+
+        src_x_end = min(cursor_width, self.width - cursor_x)
+        src_y_end = min(cursor_height, self.height - cursor_y)
+        visible_bitmap = self.mouse_cursor_bitmap[:src_y_end, :src_x_end]
+        mask = visible_bitmap != 0
+        if not np.any(mask):
+            return
+
+        target = self._screen[cursor_y:cursor_y + src_y_end, cursor_x:cursor_x + src_x_end]
+        target[mask] = self.mouse_cursor_color
     
     def get_vram_val( self ):
         if self.Vregisters[2] == 1:

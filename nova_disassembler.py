@@ -1880,6 +1880,7 @@ def analyze_performance(bytecode, segments, opcode_map, register_map, reverse_sy
         'SEROUT': 3,
         'SERSTAT': 2,
         'SERCTRL': 3,
+        'MOUSECTRL': 3,
         'TEXT': 2,
         'BCDA': 2,
         'BCDCMP': 3,

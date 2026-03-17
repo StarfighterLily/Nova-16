@@ -1394,6 +1394,63 @@ class TestCPUSerialInstructions:
         assert (cpu.serial[1] & 0x01) != 0  # Control bit set
         assert cpu.interrupts[1] == 1  # Serial interrupt enabled
 
+    def test_mousectrl_instruction(self, cpu):
+        """Test MOUSECTRL instruction."""
+        cpu.mouse.move_to(6, 8)
+
+        cpu.memory.write_byte(0x0000, 0xB3)  # MOUSECTRL opcode
+        cpu.memory.write_byte(0x0001, 0x01)  # Mode: immediate 8-bit
+        cpu.memory.write_byte(0x0002, 0x00)  # Disable mouse
+        cpu.memory.write_byte(0x0003, 0xB3)  # MOUSECTRL opcode
+        cpu.memory.write_byte(0x0004, 0x01)  # Mode: immediate 8-bit
+        cpu.memory.write_byte(0x0005, 0x01)  # Enable mouse
+
+        cpu.pc = 0
+        cpu.step()
+
+        assert cpu.mouse.enabled is False
+        assert cpu.interrupts[3] == 0
+        assert cpu.mouse.pending_interrupt is False
+
+        cpu.step()
+
+        assert cpu.mouse.enabled is True
+        assert cpu.interrupts[3] == 1
+
+    def test_mouse_event_interrupt_triggers_vector_3(self, cpu):
+        """Host mouse events should trigger the mouse interrupt vector when enabled."""
+        cpu.interrupt_check_frequency = 1
+        cpu.flags[5] = 1
+        cpu.memory.write_word(0x010C, 0x3456)
+        cpu.memory.write_byte(0x0000, 0xFF)  # NOP
+
+        cpu.mouse.write_control(1)
+        cpu.interrupts[3] = 1
+        cpu.mouse.move_to(12, 34, from_host=True)
+
+        cpu.step()
+
+        assert cpu.pc == 0x3456
+        assert cpu.mouse.pending_interrupt is False
+        assert cpu.Pregisters[8] == 0xFFFB
+        assert cpu.memory.read_word(0xFFFB) == 0x0001
+
+    def test_disabled_mouse_event_does_not_interrupt(self, cpu):
+        """Host mouse events should be ignored while the mouse is disabled."""
+        cpu.interrupt_check_frequency = 1
+        cpu.flags[5] = 1
+        cpu.memory.write_word(0x010C, 0x3456)
+        cpu.memory.write_byte(0x0000, 0xFF)  # NOP
+
+        cpu.mouse.write_control(0)
+        cpu.interrupts[3] = 0
+        cpu.mouse.move_to(12, 34, from_host=True)
+
+        cpu.step()
+
+        assert cpu.pc == 0x0001
+        assert cpu.mouse.pending_interrupt is False
+
 
 class TestCPUMemoryOperations:
     """Test memory operations (MEMCPY, MEMSET)"""

@@ -1,6 +1,7 @@
 import numpy as np
 import nova_memory as mem
 import nova_gfx as gpu
+import nova_mouse as mouse
 import nova_sound as sound
 import nova_uart as uart
 from instructions import create_instruction_table
@@ -10,7 +11,7 @@ import pstats
 from functools import wraps
 
 class CPU:
-    def __init__( self, memory, gfx, keyboard=None, sound_system=None, uart_device=None, stack_size = 65535 ):
+    def __init__( self, memory, gfx, keyboard=None, sound_system=None, uart_device=None, mouse_device=None, stack_size = 65535 ):
         self.memory = memory
         self.gfx = gfx
         self.keyboard_device = keyboard
@@ -63,8 +64,8 @@ class CPU:
         self.interrupts[ 0 ] = 0 # Timer interrupt (T) set to 1 if the Timer interrupt is enabled
         self.interrupts[ 1 ] = 0 # Serial interrupt (S) set to 1 if the Serial interrupt is enabled
         self.interrupts[ 2 ] = 0 # Keyboard interrupt (K) set to 1 if the Keyboard interrupt is enabled
-        self.interrupts[ 3 ] = 0 # User interrupt (U1) set to 1 if the User interrupt 1 is enabled
-        self.interrupts[ 4 ] = 0 # User interrupt (U2) set to 1 if the User interrupt 2 is enabled
+        self.interrupts[ 3 ] = 0 # Mouse interrupt (M) set to 1 if mouse interrupts are enabled
+        self.interrupts[ 4 ] = 0 # User interrupt (U1) set to 1 if the User interrupt 1 is enabled
 
         # Hardware breakpoints
         self.hw_breakpoints = [0] * 4
@@ -87,6 +88,9 @@ class CPU:
         self.uart = uart_device if uart_device is not None else uart.NovaUART()
         self.serial = uart.SerialRegisterView(self.uart)  # Legacy serial register compatibility
         self.uart.set_interrupt_callback(self._refresh_pending_interrupt_sources)
+        self.mouse = mouse_device if mouse_device is not None else mouse.NovaMouse(self.gfx)
+        self.mouse.attach(gfx=self.gfx, cpu_ref=self)
+        self.mouse.set_interrupt_callback(self._refresh_pending_interrupt_sources)
 
         self.keyboard = [0] * 4  # Keyboard data for the keyboard interrupt
         self.keyboard[ 0 ] = 0 # Keyboard data register (D) - current key code
@@ -649,6 +653,33 @@ class CPU:
         if self.sound:
             self.sound.update_registers(sw=int(value) & 0xFF)
 
+    @property
+    def mx(self):
+        """MX register - Mouse X position (16-bit)."""
+        return int(self.mouse.x)
+
+    @mx.setter
+    def mx(self, value):
+        self.mouse.move_to(value, self.mouse.y)
+
+    @property
+    def my(self):
+        """MY register - Mouse Y position (16-bit)."""
+        return int(self.mouse.y)
+
+    @my.setter
+    def my(self, value):
+        self.mouse.move_to(self.mouse.x, value)
+
+    @property
+    def mb(self):
+        """MB register - Mouse buttons/status (8-bit)."""
+        return int(self.mouse.buttons) & 0xFF
+
+    @mb.setter
+    def mb(self, value):
+        self.mouse.set_buttons(value)
+
     # ========================================
     # BULK OPERATIONS - Maintain numpy efficiency
     # ========================================
@@ -723,6 +754,7 @@ class CPU:
         if self.sound:
             self.sound.sstop()  # Stop all sounds
             self.sound.update_registers(sa=0, sf=0, sv=0, sw=0)  # Reset sound registers
+        self.mouse.reset()
         
         # Rebuild register lookup table 
         self._register_lookup = self._build_register_lookup_table()
@@ -735,13 +767,15 @@ class CPU:
         # Connect keyboard if provided
         if self.keyboard_device is not None:
             self.keyboard_device.cpu = self  # Set back-reference
+        self.mouse.attach(gfx=self.gfx, cpu_ref=self)
+        self.mouse.set_interrupt_callback(self._refresh_pending_interrupt_sources)
 
     def _refresh_pending_interrupt_sources(self):
         """Refresh fast interrupt-source gate from current device and interrupt state."""
         self.has_pending_interrupt_sources = bool(
             (self.interrupts[2] == 1 and (self.keyboard[1] & 0x80) != 0) or
             (self.interrupts[1] == 1 and self.uart.pending_interrupt) or
-            self.interrupts[3] == 1 or
+            (self.interrupts[3] == 1 and self.mouse.pending_interrupt) or
             self.interrupts[4] == 1
         )
 
@@ -768,6 +802,9 @@ class CPU:
         if type == 'TC': return int( self.timer[ 2 ] )  # Timer Control
         if type == 'TS': return int( self.timer[ 3 ] )  # Timer Speed
         if type == 'VL': return int( self.gfx.VL )  # Graphics Layer register
+        if type == 'MX': return int( self.mouse.x )
+        if type == 'MY': return int( self.mouse.y )
+        if type == 'MB': return int( self.mouse.buttons ) & 0xFF
         
         # Sound registers
         if type == 'SA': 
@@ -843,6 +880,12 @@ class CPU:
             self.set_timer_speed(value)
         elif type == 'VL': 
             self.gfx.VL = int(value) & 0xFF
+        elif type == 'MX':
+            self.mouse.move_to(value, self.mouse.y)
+        elif type == 'MY':
+            self.mouse.move_to(self.mouse.x, value)
+        elif type == 'MB':
+            self.mouse.set_buttons(value)
             
         # Sound registers
         elif type == 'SA': 
@@ -1173,10 +1216,11 @@ class CPU:
         current_state = (
             (self.interrupts[1] << 7) |  # Serial enabled
             (self.interrupts[2] << 6) |  # Keyboard enabled  
-            (self.interrupts[3] << 5) |  # User1 enabled
-            (self.interrupts[4] << 4) |  # User2 enabled
+            (self.interrupts[3] << 5) |  # Mouse enabled
+            (self.interrupts[4] << 4) |  # User1 enabled
             ((self.keyboard[1] & 0x80) >> 3) |  # Keyboard pending
-            ((0x80 if self.uart.pending_interrupt else 0) >> 4)      # Serial pending
+            ((0x80 if self.uart.pending_interrupt else 0) >> 4) |  # Serial pending
+            ((0x80 if self.mouse.pending_interrupt else 0) >> 5)  # Mouse pending
         )
         
         # Skip detailed check if state hasn't changed
@@ -1200,13 +1244,16 @@ class CPU:
             self._refresh_pending_interrupt_sources()
             self._trigger_interrupt(1)
             return True
+
+        # Check mouse interrupt
+        if self.interrupts[3] == 1 and self.mouse.pending_interrupt:
+            self.mouse.clear_interrupt()
+            self._refresh_pending_interrupt_sources()
+            self._trigger_interrupt(3)
+            return True
             
         # Check user interrupts
-        if self.interrupts[3] == 1:  # User interrupt 1
-            # User interrupt logic would go here
-            pass
-            
-        if self.interrupts[4] == 1:  # User interrupt 2
+        if self.interrupts[4] == 1:  # User interrupt 1
             # User interrupt logic would go here
             pass
             
@@ -1319,6 +1366,11 @@ class CPU:
     def _build_register_lookup_table(self):
         """Build optimized lookup table for register access - O(1) performance"""
         lookup = {}
+
+        # Mouse registers
+        lookup[0xC0] = (0, 'MX')  # Mouse X
+        lookup[0xC1] = (0, 'MY')  # Mouse Y
+        lookup[0xC2] = (0, 'MB')  # Mouse buttons
         
         # Sound registers
         lookup[0xDD] = (0, 'SA')  # Sound Address
