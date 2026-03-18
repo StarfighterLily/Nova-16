@@ -25,6 +25,7 @@ from compiler.utils.error import CodeGenError, CompilerError
 INCLUDE_PATTERN = re.compile(r'^\s*(?:#include|include)\s+"([^"]+)"\s*$', re.IGNORECASE)
 MAX_INCLUDE_DEPTH = 32
 SourceLineMap = List[Tuple[str, int]]
+IncludeOrigin = Optional[Tuple[Path, int]]
 
 
 @dataclass
@@ -77,6 +78,7 @@ def resolve_source_file_path(source_file: str) -> Path:
     """Resolve top-level source file from cwd or NoBASIC directory."""
     source_path = Path(source_file)
     candidates = [source_path]
+    first_non_file_candidate: Optional[Path] = None
 
     if not source_path.is_absolute():
         compiler_dir = Path(__file__).resolve().parent
@@ -84,7 +86,19 @@ def resolve_source_file_path(source_file: str) -> Path:
 
     for candidate in candidates:
         if candidate.exists():
-            return candidate.resolve()
+            resolved_candidate = candidate.resolve()
+            if candidate.is_file():
+                return resolved_candidate
+            if first_non_file_candidate is None:
+                first_non_file_candidate = resolved_candidate
+
+    if first_non_file_candidate is not None:
+        raise CompilerError(
+            f"Source path is not a file: {first_non_file_candidate}",
+            str(first_non_file_candidate),
+            1,
+            1,
+        )
 
     raise CompilerError(
         f"Source file not found: {source_file}",
@@ -94,10 +108,20 @@ def resolve_source_file_path(source_file: str) -> Path:
     )
 
 
+def _include_error_location(resolved_path: Path, include_origin: IncludeOrigin) -> Tuple[str, int]:
+    """Return the most actionable file/line for include-resolution diagnostics."""
+    if include_origin is None:
+        return str(resolved_path), 1
+
+    origin_path, origin_line = include_origin
+    return str(origin_path.resolve()), origin_line
+
+
 def _resolve_includes_from_file(
     file_path: Path,
     include_stack=None,
     max_depth: int = MAX_INCLUDE_DEPTH,
+    include_origin: IncludeOrigin = None,
 ) -> Tuple[str, SourceLineMap]:
     """Resolve Include directives recursively and return flattened source text + line map."""
     if include_stack is None:
@@ -106,27 +130,39 @@ def _resolve_includes_from_file(
     resolved_path = file_path.resolve()
 
     if len(include_stack) >= max_depth:
+        error_file, error_line = _include_error_location(resolved_path, include_origin)
         raise CompilerError(
             f"Maximum include depth ({max_depth}) exceeded while processing '{resolved_path.name}'",
-            str(resolved_path),
-            1,
+            error_file,
+            error_line,
             1,
         )
 
     if resolved_path in include_stack:
         cycle = " -> ".join([p.name for p in include_stack] + [resolved_path.name])
+        error_file, error_line = _include_error_location(resolved_path, include_origin)
         raise CompilerError(
             f"Include cycle detected: {cycle}",
-            str(resolved_path),
-            1,
+            error_file,
+            error_line,
             1,
         )
 
     if not resolved_path.exists():
+        error_file, error_line = _include_error_location(resolved_path, include_origin)
         raise CompilerError(
             f"Included file not found: {resolved_path}",
-            str(file_path),
+            error_file,
+            error_line,
             1,
+        )
+
+    if not resolved_path.is_file():
+        error_file, error_line = _include_error_location(resolved_path, include_origin)
+        raise CompilerError(
+            f"Included path is not a file: {resolved_path}",
+            error_file,
+            error_line,
             1,
         )
 
@@ -134,7 +170,8 @@ def _resolve_includes_from_file(
         with open(resolved_path, 'r') as f:
             source = f.read()
     except OSError as exc:
-        raise CompilerError(f"Failed to read include file: {exc}", str(resolved_path), 1, 1)
+        error_file, error_line = _include_error_location(resolved_path, include_origin)
+        raise CompilerError(f"Failed to read include file: {exc}", error_file, error_line, 1)
 
     include_stack.append(resolved_path)
     output_lines = []
@@ -151,14 +188,12 @@ def _resolve_includes_from_file(
                 if include_match:
                     include_target = include_match.group(1)
                     include_path = (resolved_path.parent / include_target).resolve()
-                    if not include_path.exists():
-                        raise CompilerError(
-                            f"Included file not found: {include_target}",
-                            str(resolved_path),
-                            line_num,
-                            1,
-                        )
-                    included_source, included_map = _resolve_includes_from_file(include_path, include_stack, max_depth)
+                    included_source, included_map = _resolve_includes_from_file(
+                        include_path,
+                        include_stack,
+                        max_depth,
+                        include_origin=(resolved_path, line_num),
+                    )
                     output_lines.append(included_source)
                     line_map.extend(included_map)
                     # Preserve statement boundaries across include boundaries even when
@@ -289,7 +324,23 @@ def _prepare_output_file_path(output_file: Optional[str], resolved_source_file: 
             1,
         )
 
+    if output_path.exists() and output_path.is_dir():
+        raise CompilerError(
+            f"Output path is a directory, expected .asm file: {output_path}",
+            str(output_path),
+            1,
+            1,
+        )
+
     parent_dir = output_path.parent
+    if parent_dir and parent_dir.exists() and not parent_dir.is_dir():
+        raise CompilerError(
+            f"Output directory is not a directory: {parent_dir}",
+            str(output_path),
+            1,
+            1,
+        )
+
     if parent_dir and not parent_dir.exists():
         try:
             parent_dir.mkdir(parents=True, exist_ok=True)
@@ -386,7 +437,11 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
             emit(f"Assembling {output_path} to {binary_file}...")
 
         if assemble_callback is not None:
-            assembly_succeeded = assemble_callback(output_path, verbose, emit)
+            try:
+                assembly_succeeded = assemble_callback(output_path, verbose, emit)
+            except Exception as exc:
+                emit(f"Assembly failed for {output_path}: {exc}")
+                sys.exit(1)
             if not assembly_succeeded:
                 emit(f"Assembly failed for {output_path}")
                 sys.exit(1)

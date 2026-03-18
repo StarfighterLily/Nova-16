@@ -418,6 +418,22 @@ def test_compile_nobasic_reports_include_cycle(tmp_path, monkeypatch, capsys):
     assert "Include cycle detected" in capsys.readouterr().out
 
 
+def test_compile_nobasic_reports_include_cycle_at_recursive_include_site(tmp_path, capsys):
+    source_file = tmp_path / "main.nobasic"
+    other_file = tmp_path / "other.nobasic"
+
+    source_file.write_text('Pause\nInclude "other.nobasic"\n')
+    other_file.write_text('Pause\nInclude "main.nobasic"\n')
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert f"Error in {other_file.resolve()} at line 2" in output
+    assert "Include cycle detected: main.nobasic -> other.nobasic -> main.nobasic" in output
+
+
 def test_compile_nobasic_does_not_expand_include_inside_asm_block(tmp_path, monkeypatch):
     captured = _install_pipeline_stubs(monkeypatch)
     source_file = tmp_path / "main.nobasic"
@@ -563,6 +579,83 @@ def test_compile_nobasic_reports_missing_top_level_source_file(capsys):
     assert "Source file not found" in output
 
 
+def test_compile_nobasic_rejects_directory_source_path(tmp_path, capsys):
+    source_dir = tmp_path / "program.nobasic"
+    source_dir.mkdir()
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_dir))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert f"Source path is not a file: {source_dir.resolve()}" in output
+
+
+def test_compile_nobasic_reports_directory_include_target(tmp_path, capsys):
+    source_file = tmp_path / "main.nobasic"
+    include_dir = tmp_path / "lib.nobasic"
+    include_dir.mkdir()
+    source_file.write_text('Include "lib.nobasic"\nPause\n')
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert f"Error in {source_file.resolve()} at line 1, column 1" in output
+    assert f"Included path is not a file: {include_dir.resolve()}" in output
+
+
+def test_compile_nobasic_rejects_output_directory_with_asm_suffix(tmp_path, monkeypatch, capsys):
+    _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "program.nobasic"
+    source_file.write_text("Pause\n")
+    output_dir = tmp_path / "artifacts.asm"
+    output_dir.mkdir()
+    assembler_called = False
+
+    def fake_run(command, capture_output, text):
+        nonlocal assembler_called
+        assembler_called = True
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file), output_file=str(output_dir))
+
+    assert exc.value.code == 1
+    assert assembler_called is False
+    output = capsys.readouterr().out
+    assert f"Output path is a directory, expected .asm file: {output_dir}" in output
+
+
+def test_compile_nobasic_rejects_output_path_when_parent_is_file(tmp_path, monkeypatch, capsys):
+    _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "program.nobasic"
+    source_file.write_text("Pause\n")
+    parent_file = tmp_path / "artifacts"
+    parent_file.write_text("not a directory\n")
+    output_file = parent_file / "program.asm"
+    assembler_called = False
+
+    def fake_run(command, capture_output, text):
+        nonlocal assembler_called
+        assembler_called = True
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file), output_file=str(output_file))
+
+    assert exc.value.code == 1
+    assert assembler_called is False
+    output = capsys.readouterr().out
+    assert f"Output directory is not a directory: {parent_file}" in output
+    assert "Unexpected error" not in output
+
+
 def test_compile_nobasic_include_without_trailing_newline_preserves_boundary(tmp_path, monkeypatch):
     captured = _install_pipeline_stubs(monkeypatch)
     source_file = tmp_path / "main.nobasic"
@@ -581,6 +674,39 @@ def test_compile_nobasic_include_without_trailing_newline_preserves_boundary(tmp
 
     flattened = captured["tokenize_args"][0]
     assert "End\nDisp Add(2,3)" in flattened
+
+
+def test_resolve_includes_reports_recursive_failures_at_include_site(tmp_path, monkeypatch):
+    source_file = tmp_path / "main.nobasic"
+    first_include = tmp_path / "first.nobasic"
+    second_include = tmp_path / "second.nobasic"
+
+    source_file.write_text('Pause\nInclude "first.nobasic"\n')
+    first_include.write_text('Pause\nInclude "second.nobasic"\n')
+    second_include.write_text('Pause\n')
+
+    with pytest.raises(CompilerError) as depth_error:
+        nobasic_compiler._resolve_includes_from_file(source_file, max_depth=2)
+
+    assert depth_error.value.filename == str(first_include.resolve())
+    assert depth_error.value.line == 2
+    assert "Maximum include depth (2) exceeded" in depth_error.value.message
+
+    original_open = open
+
+    def failing_open(path, *args, **kwargs):
+        if Path(path).resolve() == second_include.resolve():
+            raise OSError("permission denied")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", failing_open)
+
+    with pytest.raises(CompilerError) as read_error:
+        nobasic_compiler._resolve_includes_from_file(source_file)
+
+    assert read_error.value.filename == str(first_include.resolve())
+    assert read_error.value.line == 2
+    assert "Failed to read include file: permission denied" in read_error.value.message
 
 
 def test_main_shows_usage_when_no_arguments(monkeypatch, capsys):

@@ -318,7 +318,11 @@ def main():
     profiler = NoBASICProfiler(str(resolved_source_file))
 
     # Run profiling
-    profiler.profile_compilation()
+    try:
+        profiler.profile_compilation()
+    except CompilerError as error:
+        print(f"Profiling error: {error}")
+        return 1
 
     # Generate and print report
     report = profiler.generate_report()
