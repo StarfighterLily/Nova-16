@@ -300,7 +300,7 @@ def generate_with_error_remapping(generator: Any, ast: Any, source_file: str, li
         raise remap_compiler_error(normalized, source_file, line_map) from error
     except CompilerError as error:
         raise remap_compiler_error(error, source_file, line_map) from error
-    except RuntimeError as error:
+    except Exception as error:
         raise CodeGenError(str(error), source_file, 1, 1) from error
 
 
@@ -352,7 +352,7 @@ def _prepare_output_file_path(output_file: Optional[str], resolved_source_file: 
 
 def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = False, 
                     enable_optimizations: bool = True, debug_optimizations: bool = False,
-                    enable_peephole: bool = False, enable_live_range_scheduling: bool = False,
+                    enable_peephole: bool = True, enable_live_range_scheduling: bool = True,
                     log: Optional[Callable[[str], None]] = print,
                     assemble_callback: Optional[Callable[[Path, bool, Callable[[str], None]], bool]] = None):
     """
@@ -364,8 +364,8 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         verbose: Enable verbose output
         enable_optimizations: Enable compiler optimizations (default: True)
         debug_optimizations: Enable optimization debug output (default: False)
-        enable_peephole: Enable peephole optimizer (default: False)
-        enable_live_range_scheduling: Enable live range scheduler (default: False)
+        enable_peephole: Enable peephole optimizer (default: True)
+        enable_live_range_scheduling: Enable live range scheduler (default: True)
         log: Optional callback for compiler messages; defaults to print
         assemble_callback: Optional callback to assemble the generated .asm file in-process
     """
@@ -505,9 +505,9 @@ def main():
         print("  --verbose                  Enable verbose output")
         print("  --enable-optimizations     Enable compiler optimizations (default: enabled)")
         print("  --disable-optimizations    Disable compiler optimizations")
-        print("  --enable-peephole          Enable peephole optimizer (default: disabled)")
+        print("  --enable-peephole          Enable peephole optimizer (default: enabled)")
         print("  --disable-peephole         Disable peephole optimizer")
-        print("  --enable-live-range        Enable live range scheduling (default: disabled)")
+        print("  --enable-live-range        Enable live range scheduling (default: enabled)")
         print("  --disable-live-range       Disable live range scheduling")
         print("  --debug-optimizations      Enable optimization debug output")
         sys.exit(1)
@@ -517,8 +517,8 @@ def main():
     verbose = False
     enable_optimizations = True
     debug_optimizations = False
-    enable_peephole = False
-    enable_live_range_scheduling = False
+    enable_peephole = True
+    enable_live_range_scheduling = True
 
     # Parse command line arguments
     i = 2

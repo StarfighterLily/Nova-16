@@ -173,6 +173,10 @@ class TestPeepholeOptimizer:
         lines = [l for l in result.split('\n') if l.strip()]
         assert len(lines) <= 2
 
+    def test_call_is_not_treated_as_terminal_jump(self):
+        """Calls return, so dead-code elimination must not treat CALL like JMP/RET."""
+        assert self.optimizer._is_unconditional_jump("CALL") is False
+
     def test_new_control_flow_opcodes_classification(self):
         """CALLZ/CALLNZ/LOOPZ should be treated as conditional control-flow ops."""
         assert self.optimizer._is_conditional_jump("CALLZ") is True
@@ -189,6 +193,51 @@ class TestPeepholeOptimizer:
 
         self.optimizer.instructions = self.optimizer._parse_assembly(code)
         assert self.optimizer._has_flag_dependency_between(0, 2) is True
+
+    def test_indirect_memory_store_is_not_elided(self):
+        """Indirect stores back compiler-managed state and must not disappear."""
+        code = """MOV P0, 292
+        MOV P1, R1
+        MOV [P0], P1
+        MOV R1, 1"""
+
+        result = self.optimizer.optimize(code)
+
+        assert "MOV P0, 292" in result
+        assert "MOV R1, 1" in result
+        assert "MOV [P0], P1" in result
+
+    def test_indirect_store_followed_by_reload_is_preserved(self):
+        """Key/state stores often reload through a different pointer register."""
+        code = """MOV P1, 312
+        MOV [P1], P0
+        MOV P0, 312
+        MOV P1, [P0]"""
+
+        result = self.optimizer.optimize(code)
+
+        assert "MOV [P1], P0" in result
+        assert "MOV P1, [P0]" in result
+
+    def test_load_store_optimization_skips_memory_destination(self):
+        """MOV temp; MOV [addr], temp must remain intact for 16-bit state writes."""
+        code = """MOV P1, R1
+        MOV [P0], P1"""
+
+        result = self.optimizer.optimize(code)
+
+        assert "MOV P1, R1" in result
+        assert "MOV [P0], P1" in result
+
+    def test_register_chain_skips_mixed_width_registers(self):
+        """Cross-family rewrites like P1<-R1; P0<-P1 must not collapse to P0<-R1."""
+        code = """MOV P1, R1
+        MOV P0, P1"""
+
+        result = self.optimizer.optimize(code)
+
+        assert "MOV P1, R1" in result
+        assert "MOV P0, P1" in result
 
 
 # ============================================================================
@@ -501,6 +550,19 @@ class TestRegressions:
 
         assert "L4: DEFSTR \"buffer\"" in result
         assert "L4:" in result
+
+    def test_halt_does_not_delete_following_labeled_directive(self):
+        """Dead-code elimination must preserve string/data directives after HLT."""
+        code = """MOV P0, STR0
+        HLT
+        STR0: DEFSTR "hello"""
+
+        optimizer = PeepholeOptimizer()
+        result = optimizer.optimize(code)
+
+        assert "MOV P0, STR0" in result
+        assert "HLT" in result
+        assert "STR0: DEFSTR \"hello" in result
 
     def test_lowercase_directive_is_classified(self):
         """Directive classification should be case-insensitive."""

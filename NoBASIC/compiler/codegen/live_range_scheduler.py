@@ -33,6 +33,8 @@ SIDE_EFFECT_OPCODES = {
     'SREAD', 'SWRITE', 'SPLAY', 'TEXT', 'CHAR', 'SBLEND', 'SROL', 'SROT', 'SSHFT',
     'SFLIP', 'SBLIT', 'SFILL', 'SLINE', 'SRECT', 'SCIRC', 'SINV', 'VREAD', 'VWRITE',
     'VBLIT', 'SPBLIT', 'SPBLITALL',
+    # Serial IO
+    'SEROUT', 'SERCTRL', 'SERIN', 'SERSTAT',
     # Input / stack
     'KEYIN', 'KEYSTAT', 'PUSH', 'POP',
     # Randomness (order-sensitive PRNG state)
@@ -143,8 +145,20 @@ class LiveRangeScheduler:
         for idx, line in enumerate(assembly_lines):
             line = line.strip()
             
-            # Skip empty lines and comments
-            if not line or line.startswith(';'):
+            # Skip empty lines
+            if not line:
+                continue
+
+            # Preserve comments and treat them as barriers.
+            if line.startswith(';'):
+                instr = IRInstruction(
+                    index=idx,
+                    opcode='DIRECTIVE',
+                    operands=[],
+                    has_side_effect=True,
+                    original_line=line
+                )
+                instructions.append(instr)
                 continue
             
             # Handle labels
@@ -170,6 +184,7 @@ class LiveRangeScheduler:
                             index=idx,
                             opcode='DIRECTIVE',
                             operands=[],
+                            has_side_effect=True,
                             original_line=line
                         )
                         instructions.append(instr)
@@ -181,6 +196,7 @@ class LiveRangeScheduler:
                     index=idx,
                     opcode='DIRECTIVE',
                     operands=[],
+                    has_side_effect=True,
                     original_line=line
                 )
                 instructions.append(instr)
@@ -299,10 +315,10 @@ class LiveRangeScheduler:
             add_use(operands[0])
         
         # Load/Store
-        elif opcode in ['PUSH', 'SREAD', 'KEYIN']:
+        elif opcode in ['PUSH', 'SREAD', 'KEYIN', 'KEYSTAT', 'SERIN', 'SERSTAT']:
             if operands:
                 add_define(operands[0])
-        elif opcode in ['POP', 'SWRITE', 'SPLAY']:
+        elif opcode in ['POP', 'SWRITE', 'SPLAY', 'SEROUT', 'SERCTRL']:
             if operands:
                 add_use(operands[0])
         

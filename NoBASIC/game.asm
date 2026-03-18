@@ -129,7 +129,6 @@ POP P2
 JMP L68
 L69:
 HLT
-
 _func_renderplayer_0:
 ; Function: renderplayer
 ; Parameters: x, y, color
@@ -171,7 +170,6 @@ TEXT STR1
 MOV SP, FP
 POP FP
 RETN 0
-
 _func_renderenemy_1:
 ; Function: renderenemy
 ; Parameters: x, y, color
@@ -193,10 +191,9 @@ TEXT STR2
 MOV SP, FP
 POP FP
 RETN 0
-
 _func_drawplayer_2:
 ; Function: drawplayer
-; Parameters: 
+; Parameters:
 ; Locals:  (0 bytes)
 ENTER 0
 ; Allocate struct player (Player) at 0x0120
@@ -258,8 +255,7 @@ PUSH P1
 MOV P0, 290
 MOV P1, [P0]
 PUSH P1
-MOV R3, 15
-MOV P1, R3
+MOV P1, 15
 PUSH P1
 ; Free R3 (last use)
 CALL _func_renderplayer_0
@@ -267,10 +263,9 @@ ADD SP, 6
 MOV SP, FP
 POP FP
 RETN 0
-
 _func_drawenemy_3:
 ; Function: drawenemy
-; Parameters: 
+; Parameters:
 ; Locals:  (0 bytes)
 ENTER 0
 ; Allocate struct enemy (Enemy) at 0x012C
@@ -332,8 +327,7 @@ PUSH P1
 MOV P0, 302
 MOV P1, [P0]
 PUSH P1
-MOV R3, 12
-MOV P1, R3
+MOV P1, 12
 PUSH P1
 ; Free R3 (last use)
 CALL _func_renderenemy_1
@@ -341,10 +335,9 @@ ADD SP, 6
 MOV SP, FP
 POP FP
 RETN 0
-
 _func_attack_4:
 ; Function: attack
-; Parameters: 
+; Parameters:
 ; Locals:  (0 bytes)
 ENTER 0
 ; Load player.facing
@@ -425,10 +418,9 @@ MOV [P0], P1
 MOV SP, FP
 POP FP
 RETN 0
-
 _func_keycheck_5:
 ; Function: keycheck
-; Parameters: 
+; Parameters:
 ; Locals:  (0 bytes)
 ENTER 0
 KEYIN R0
@@ -646,10 +638,9 @@ L32:
 MOV SP, FP
 POP FP
 RETN 0
-
 _func_callplayer_6:
 ; Function: callplayer
-; Parameters: 
+; Parameters:
 ; Locals:  (0 bytes)
 ENTER 0
 ; Load player.x
@@ -803,10 +794,9 @@ L42:
 MOV SP, FP
 POP FP
 RETN 0
-
 _func_callenemy_7:
 ; Function: callenemy
-; Parameters: 
+; Parameters:
 ; Locals:  (0 bytes)
 ENTER 0
 ; Load enemy.ecounter

@@ -157,11 +157,6 @@ class PeepholeOptimizer:
         if result:
             return result
         
-        # Pattern 8: Eliminate dead stores
-        result = self._pattern_dead_store(index)
-        if result:
-            return result
-        
         return None, 0
     
     def _pattern_redundant_mov(self, index: int) -> Optional[Tuple[List[Instruction], int]]:
@@ -259,7 +254,7 @@ class PeepholeOptimizer:
             return None
         
         # Check if next is not a label (dead code)
-        if next_instr.is_label:
+        if next_instr.is_label or next_instr.is_directive:
             return None
         
         # Remove the dead instruction
@@ -283,8 +278,19 @@ class PeepholeOptimizer:
         # Load into A, store from A
         if load.operands[0] != store.operands[1]:
             return None
+
+        # Do not rewrite stores to memory or across register-width classes.
+        if '[' in store.operands[0] or ']' in store.operands[0]:
+            return None
         
         temp_reg = load.operands[0]
+        if not self._is_copy_propagation_safe_register(temp_reg):
+            return None
+
+        source_reg = self._normalize_register_name(load.operands[1])
+        dest_reg = self._normalize_register_name(store.operands[0])
+        if source_reg and dest_reg and not self._same_register_family(source_reg, dest_reg):
+            return None
         
         # Check if temp_reg not used elsewhere nearby
         if self._is_register_used(temp_reg, index + 2, min(index + 5, len(self.instructions))):
@@ -363,10 +369,21 @@ class PeepholeOptimizer:
         # move2: C <- A
         if move1.operands[0] != move2.operands[1]:
             return None
+
+        if '[' in move2.operands[0] or ']' in move2.operands[0]:
+            return None
         
         temp_reg = move1.operands[0]
         source = move1.operands[1]
         dest = move2.operands[0]
+
+        if not self._is_copy_propagation_safe_register(temp_reg):
+            return None
+
+        source_reg = self._normalize_register_name(source)
+        dest_reg = self._normalize_register_name(dest)
+        if source_reg and dest_reg and not self._same_register_family(source_reg, dest_reg):
+            return None
         
         # Check temp_reg not used elsewhere
         if self._is_register_used(temp_reg, index + 2, min(index + 5, len(self.instructions))):
@@ -382,30 +399,40 @@ class PeepholeOptimizer:
         Eliminate dead stores: MOV addr, A when addr is not used
         (Conservative: only remove if obvious)
         """
-        instr = self.instructions[index]
-        
-        if not instr.matches('MOV', 2):
-            return None
-        
-        # Only consider stores to memory addresses (contain '[' or hex patterns)
-        dest = instr.operands[0]
-        if not (dest.startswith('[') or dest.startswith('0x')):
-            return None
-        
-        # Check if destination is never read
-        if self._is_address_used(dest, index + 1, min(index + 10, len(self.instructions))):
-            return None
-        
-        # Check if not followed by conditional jump (could affect flags)
-        if index + 1 < len(self.instructions):
-            next_instr = self.instructions[index + 1]
-            if self._is_conditional_jump(next_instr.opcode):
-                return None
-        
-        self.optimizations_applied["dead_store"] += 1
-        return [], 1
+        # Disabled: without alias analysis this removes real variable, struct,
+        # and hardware/state writes. Indirect stores like MOV [P0], P1 are
+        # heavily used by generated NoBASIC code and cannot be proven dead here.
+        return None
     
     # Helper methods
+
+    def _normalize_register_name(self, operand: str) -> str:
+        """Return a normalized register name, or an empty string for non-register operands."""
+        cleaned = operand.strip().strip('[]')
+        if cleaned.endswith(':'):
+            cleaned = cleaned[:-1]
+        if cleaned.startswith(':'):
+            cleaned = cleaned[1:]
+        cleaned = cleaned.upper()
+        return cleaned if re.fullmatch(r'R[0-9]|P[0-7]|SP|FP|VX|VY|VM|VL|VC|SA|SF|SV|SW|TT|TM|TC|TS', cleaned) else ''
+
+    def _same_register_family(self, left: str, right: str) -> bool:
+        """Require copy propagation to stay within compatible register families."""
+        if not left or not right:
+            return False
+        if left.startswith('R') and right.startswith('R'):
+            return True
+        if left.startswith('P') and right.startswith('P'):
+            return True
+        special = {'SP', 'FP', 'VX', 'VY', 'VM', 'VL', 'VC', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS'}
+        return left in special and right in special and left == right
+
+    def _is_copy_propagation_safe_register(self, reg: str) -> bool:
+        """Only propagate through general-purpose registers, never architectural state."""
+        reg = reg.strip().upper()
+        if reg in {'SP', 'FP', 'P7', 'VX', 'VY', 'VM', 'VL', 'VC', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS'}:
+            return False
+        return bool(re.fullmatch(r'R[0-9]|P[0-6]', reg))
     
     def _is_register_used(self, reg: str, start: int, end: int) -> bool:
         """Check if register is used (read) in instruction range."""
@@ -452,7 +479,7 @@ class PeepholeOptimizer:
     
     def _is_unconditional_jump(self, opcode: str) -> bool:
         """Check if opcode is unconditional jump."""
-        return opcode in ['JMP', 'CALL', 'RET', 'RETN', 'HLT']
+        return opcode in ['JMP', 'RET', 'RETN', 'HLT']
     
     def _is_conditional_jump(self, opcode: str) -> bool:
         """Check if opcode is conditional jump."""
@@ -506,8 +533,14 @@ class PeepholeOptimizer:
         for line in code.split('\n'):
             line = line.strip()
             
-            # Skip empty lines and comments
-            if not line or line.startswith(';'):
+            # Skip empty lines
+            if not line:
+                continue
+
+            # Preserve comments as non-optimizable directive lines.
+            if line.startswith(';'):
+                instr = Instruction('', [], line, is_directive=True)
+                instructions.append(instr)
                 continue
             
             # Handle labels

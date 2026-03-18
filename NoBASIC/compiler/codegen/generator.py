@@ -38,9 +38,10 @@ class CodeGenerator:
     """Code generator for NoBASIC to Nova-16 assembly."""
 
     DATA_REGION_START = 0x0120
+    LIVE_RANGE_SCHEDULER_MAX_LINES = 512
 
     def __init__(self, debug_allocation: bool = False, enable_optimizations: bool = True,
-                 enable_peephole: bool = False, enable_live_range_scheduling: bool = False):
+                 enable_peephole: bool = True, enable_live_range_scheduling: bool = True):
         self.output: List[str] = []
         self.label_counter = 0
         self.variable_addresses: Dict[str, int] = {}
@@ -1315,18 +1316,24 @@ class CodeGenerator:
         # **POST-GENERATION OPTIMIZATIONS**
         # Apply peephole and live range optimizations to reduce code size and improve performance
         assembly_output = "\n".join(self.output)
+        assembly_lines = assembly_output.splitlines()
         
         if self.enable_optimizations and self.enable_live_range_scheduling:
-            # Run live range scheduler prior to peephole to improve register pressure
-            from .live_range_scheduler import LiveRangeScheduler
-            scheduler = LiveRangeScheduler(debug=self.debug_allocation)
-            scheduled_lines = scheduler.schedule(assembly_output.splitlines(), self.live_ranges)
-            assembly_output = "\n".join(scheduled_lines)
-            if self.debug_allocation:
-                print("[CODEGEN] Live range scheduling applied")
-                print(f"[CODEGEN] Scheduled instructions: {len(scheduled_lines)} lines")
+            if len(assembly_lines) <= self.LIVE_RANGE_SCHEDULER_MAX_LINES:
+                # Run live range scheduler prior to peephole to improve register pressure.
+                from .live_range_scheduler import LiveRangeScheduler
+                scheduler = LiveRangeScheduler(debug=self.debug_allocation)
+                scheduled_lines = scheduler.schedule(assembly_lines, self.live_ranges)
+                assembly_output = "\n".join(scheduled_lines)
+                if self.debug_allocation:
+                    print("[CODEGEN] Live range scheduling applied")
+                    print(f"[CODEGEN] Scheduled instructions: {len(scheduled_lines)} lines")
+            elif self.debug_allocation:
+                print(
+                    f"[CODEGEN] Skipping live range scheduling for {len(assembly_lines)} lines "
+                    f"(threshold {self.LIVE_RANGE_SCHEDULER_MAX_LINES})"
+                )
         
-        # Peephole remains opt-in; keep disabled by default
         if self.enable_optimizations and self.enable_peephole:
             from .peephole import PeepholeOptimizer
             peephole_opt = PeepholeOptimizer(debug=self.debug_allocation)

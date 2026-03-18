@@ -173,8 +173,8 @@ def test_compile_nobasic_defaults_to_enabled_optimizations_and_creates_output_di
     assert captured["generator_kwargs"] == {
         "debug_allocation": False,
         "enable_optimizations": True,
-        "enable_peephole": False,
-        "enable_live_range_scheduling": False,
+        "enable_peephole": True,
+        "enable_live_range_scheduling": True,
     }
     assert output_file.parent.is_dir()
     assert output_file.exists()
@@ -382,6 +382,49 @@ def test_compile_nobasic_handles_compiler_error(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         nobasic_compiler.compile_nobasic(str(source_file))
     assert exc.value.code == 1
+
+
+def test_compile_nobasic_remaps_non_compiler_codegen_failures_from_includes(tmp_path, monkeypatch, capsys):
+    source_file = tmp_path / "main.nobasic"
+    include_file = tmp_path / "lib.nobasic"
+    include_file.write_text("value = 1\n")
+    source_file.write_text('Include "lib.nobasic"\nPause\n')
+
+    class StubLexer:
+        def tokenize(self, source, source_file):
+            return ["TOKENS"]
+
+    class StubParser:
+        def parse(self, tokens, source_file):
+            return "AST"
+
+    class StubAnalyzer:
+        def analyze(self, ast, source_file):
+            return None
+
+    class FailingGenerator:
+        def __init__(self, **_kwargs):
+            self.opt_config = {}
+
+        def generate(self, ast):
+            raise TypeError("unsupported assignment target")
+
+    monkeypatch.setattr(nobasic_compiler, "Lexer", StubLexer)
+    monkeypatch.setattr(nobasic_compiler, "Parser", StubParser)
+    monkeypatch.setattr(nobasic_compiler, "SemanticAnalyzer", StubAnalyzer)
+    monkeypatch.setattr(nobasic_compiler, "CodeGenerator", FailingGenerator)
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert (
+        f"Compilation error: Error in {include_file.resolve()} at line 1, column 1: unsupported assignment target"
+        in output
+    )
+    assert "Unexpected error" not in output
+    assert "Traceback" not in output
 
 
 def test_compile_nobasic_expands_include_directive(tmp_path, monkeypatch):
@@ -829,9 +872,71 @@ def test_main_honors_flag_ordering_and_debug_invariant(
         False,
         expected_enable_optimizations,
         expected_debug_optimizations,
-        False,
-        False,
+        True,
+        True,
     )
+
+
+def test_compile_nobasic_defaults_match_explicitly_enabled_post_generation_optimizations(tmp_path, monkeypatch):
+    source_file = tmp_path / "default_opts.nobasic"
+    source_file.write_text("Pause\n")
+    captured_calls = []
+
+    class StubGenerator:
+        def __init__(self, **kwargs):
+            captured_calls.append(kwargs)
+            self.opt_config = {}
+
+        def generate(self, ast):
+            assert ast == "AST"
+            return "HLT\n"
+
+    class StubLexer:
+        def tokenize(self, source, source_file):
+            return ["TOKENS"]
+
+    class StubParser:
+        def parse(self, tokens, source_file):
+            return "AST"
+
+    class StubAnalyzer:
+        def analyze(self, ast, source_file):
+            return None
+
+    def fake_run(command, capture_output, text):
+        Path(command[2]).with_suffix(".bin").write_bytes(b"\x00")
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(nobasic_compiler, "Lexer", StubLexer)
+    monkeypatch.setattr(nobasic_compiler, "Parser", StubParser)
+    monkeypatch.setattr(nobasic_compiler, "SemanticAnalyzer", StubAnalyzer)
+    monkeypatch.setattr(nobasic_compiler, "CodeGenerator", StubGenerator)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    nobasic_compiler.compile_nobasic(str(source_file), log=lambda _message: None)
+    nobasic_compiler.compile_nobasic(
+        str(source_file),
+        output_file=str(tmp_path / "explicit.asm"),
+        enable_optimizations=True,
+        enable_peephole=True,
+        enable_live_range_scheduling=True,
+        log=lambda _message: None,
+    )
+
+    assert captured_calls == [
+        {
+            "debug_allocation": False,
+            "enable_optimizations": True,
+            "enable_peephole": True,
+            "enable_live_range_scheduling": True,
+        },
+        {
+            "debug_allocation": False,
+            "enable_optimizations": True,
+            "enable_peephole": True,
+            "enable_live_range_scheduling": True,
+        },
+    ]
 
 
 def test_main_supports_legacy_positional_output(monkeypatch, tmp_path):

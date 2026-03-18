@@ -71,18 +71,20 @@ class TestLiveRangeSchedulerEdges:
 
         ir = self.scheduler._parse_ir(lines)
 
-        assert all(not inst.original_line.startswith(";") for inst in ir)
         assert ir[0].opcode == "DIRECTIVE"
-        assert ir[1].is_label is True
-        assert ir[2].has_side_effect is True  # memory write via []
-        assert ir[3].is_jump is True
-        assert ir[3].uses == {"FLAGS"}  # JZ reads flags
-        assert ir[4].is_call is True
-        assert ir[4].uses == {"FLAGS"}
-        assert ir[5].is_jump is True
-        assert "FLAGS" in ir[5].uses
-        assert ir[6].is_call is True
+        assert ir[0].has_side_effect is True
+        assert ir[1].opcode == "DIRECTIVE"
+        assert ir[1].has_side_effect is True
+        assert ir[2].is_label is True
+        assert ir[3].has_side_effect is True  # memory write via []
+        assert ir[4].is_jump is True
+        assert ir[4].uses == {"FLAGS"}  # JZ reads flags
+        assert ir[5].is_call is True
+        assert ir[5].uses == {"FLAGS"}
+        assert ir[6].is_jump is True
+        assert "FLAGS" in ir[6].uses
         assert ir[7].is_call is True
+        assert ir[8].is_call is True
 
     def test_analyze_operands_tracks_flags_and_memory_operands(self):
         defines, uses = self.scheduler._analyze_operands("CMP", ["R0", "R1"])
