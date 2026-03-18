@@ -7,8 +7,9 @@ Compiles NoBASIC source code to Nova-16 assembly and binary.
 import sys
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 # Add the compiler directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'compiler'))
@@ -23,6 +24,23 @@ from compiler.utils.error import CompilerError
 INCLUDE_PATTERN = re.compile(r'^\s*(?:#include|include)\s+"([^"]+)"\s*$', re.IGNORECASE)
 MAX_INCLUDE_DEPTH = 32
 SourceLineMap = List[Tuple[str, int]]
+
+
+@dataclass
+class FrontendPipelineResult:
+    """Artifacts produced by the shared NoBASIC frontend pipeline."""
+
+    resolved_source_file: Path
+    source: str
+    line_map: SourceLineMap
+    tokens: List[Any]
+    ast: Any
+    analyzer: SemanticAnalyzer
+
+
+def _is_legacy_output_file_arg(arg: str) -> bool:
+    """Return True when a positional CLI argument looks like an assembly output path."""
+    return Path(arg).suffix.lower() == '.asm'
 
 
 def resolve_source_file_path(source_file: str) -> Path:
@@ -143,6 +161,42 @@ def preprocess_source(source_file: str) -> Tuple[str, SourceLineMap]:
     return _resolve_includes_from_file(resolved_source_file)
 
 
+def run_frontend_pipeline(
+    source_file: str,
+    lexer_factory: Optional[Callable[[], Any]] = None,
+    parser_factory: Optional[Callable[[], Any]] = None,
+    analyzer_factory: Optional[Callable[[], SemanticAnalyzer]] = None,
+) -> FrontendPipelineResult:
+    """Run include preprocessing, lexing, parsing, and semantic analysis."""
+    lexer_factory = lexer_factory or Lexer
+    parser_factory = parser_factory or Parser
+    analyzer_factory = analyzer_factory or SemanticAnalyzer
+
+    resolved_source_file = resolve_source_file_path(source_file)
+    source, line_map = _resolve_includes_from_file(resolved_source_file)
+
+    try:
+        lexer = lexer_factory()
+        tokens = lexer.tokenize(source, str(resolved_source_file))
+
+        parser = parser_factory()
+        ast = parser.parse(tokens, str(resolved_source_file))
+
+        analyzer = analyzer_factory()
+        analyzer.analyze(ast, str(resolved_source_file))
+    except CompilerError as error:
+        raise remap_compiler_error(error, str(resolved_source_file), line_map) from error
+
+    return FrontendPipelineResult(
+        resolved_source_file=resolved_source_file,
+        source=source,
+        line_map=line_map,
+        tokens=tokens,
+        ast=ast,
+        analyzer=analyzer,
+    )
+
+
 def _to_canonical_path(path_value: str) -> Optional[Path]:
     """Best-effort conversion of a path string into an absolute canonical Path."""
     if not path_value or path_value == "<stdin>":
@@ -203,10 +257,9 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
             log(message)
 
     try:
-        resolved_source_file = resolve_source_file_path(source_file)
-
-        # Read source and expand include directives
-        source, line_map = _resolve_includes_from_file(resolved_source_file)
+        pipeline = run_frontend_pipeline(source_file)
+        resolved_source_file = pipeline.resolved_source_file
+        line_map = pipeline.line_map
 
         if verbose:
             emit(f"Compiling {source_file}...")
@@ -219,23 +272,11 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
             else:
                 emit("Optimizations: DISABLED")
 
-        # Lexical analysis
-        lexer = Lexer()
-        tokens = lexer.tokenize(source, str(resolved_source_file))
-
         if verbose:
-            emit(f"Lexical analysis complete: {len(tokens)} tokens")
-
-        # Parsing
-        parser = Parser()
-        ast = parser.parse(tokens, str(resolved_source_file))
+            emit(f"Lexical analysis complete: {len(pipeline.tokens)} tokens")
 
         if verbose:
             emit("Parsing complete")
-
-        # Semantic analysis
-        analyzer = SemanticAnalyzer()
-        analyzer.analyze(ast, str(resolved_source_file))
 
         if verbose:
             emit("Semantic analysis complete")
@@ -249,7 +290,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         )
         if debug_optimizations:
             generator.opt_config['debug_optimizations'] = True
-        assembly = generator.generate(ast)
+        assembly = generator.generate(pipeline.ast)
 
         if verbose:
             emit("Code generation complete")
@@ -368,7 +409,7 @@ def main():
             else:
                 print("Error: --output requires an argument")
                 sys.exit(1)
-        elif arg.endswith('.asm'):
+        elif _is_legacy_output_file_arg(arg):
             # Legacy support for positional output file
             output_file = arg
         else:

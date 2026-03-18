@@ -52,6 +52,20 @@ class Parser:
 
         return Program(statements)
 
+    def _mark_node(self, node, token: Optional[Token] = None, source_node=None):
+        """Attach best-effort source coordinates to an AST node."""
+        if source_node is not None and hasattr(source_node, "line"):
+            node.line = source_node.line
+            node.column = getattr(source_node, "column", 0)
+            return node
+
+        anchor = token
+        if anchor is None:
+            anchor = self.previous() if self.current > 0 else self.peek()
+        node.line = anchor.line
+        node.column = anchor.column
+        return node
+
     def statement(self) -> Statement:
         """Parse a statement."""
         token = self.peek()
@@ -379,21 +393,21 @@ class Parser:
         variable = self.assignable_expression()
         if isinstance(variable, FunctionCallExpr) and not self.check(TokenType.EQUAL):
             # This is actually a function call statement
-            return FunctionCallStmt(variable)
+            return self._mark_node(FunctionCallStmt(variable), source_node=variable)
         elif isinstance(variable, UnaryExpr) and variable.operator in ("++", "--"):
             # This is an increment/decrement expression statement
-            return ExpressionStmt(variable)
+            return self._mark_node(ExpressionStmt(variable), source_node=variable)
         elif not self.check(TokenType.EQUAL):
             # Invalid statement - expected assignment or valid expression
             raise self.error("Expected '=' after variable or valid statement")
         else:
             self.consume(TokenType.EQUAL, "Expected '=' after variable")
             expression = self.expression()
-            return AssignmentStmt(variable, expression)
+            return self._mark_node(AssignmentStmt(variable, expression), source_node=variable)
 
     def if_statement(self, consume_end: bool = True) -> IfStmt:
         """Parse If condition Then statements [Else [If] statements] [End]"""
-        self.advance()  # consume IF
+        if_token = self.advance()  # consume IF
         condition = self.expression()
         self.consume(TokenType.THEN, "Expected 'Then' after condition")
 
@@ -414,11 +428,11 @@ class Parser:
 
         if consume_end:
             self.consume(TokenType.END, "Expected 'End' after if statement")
-        return IfStmt(condition, then_branch, else_branch)
+        return self._mark_node(IfStmt(condition, then_branch, else_branch), token=if_token)
 
     def for_statement(self) -> ForStmt:
         """Parse For variable = start To end [Step step] statements Next"""
-        self.advance()  # consume FOR
+        for_token = self.advance()  # consume FOR
         var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
         variable = var_token.lexeme
         self.consume(TokenType.EQUAL, "Expected '=' after variable")
@@ -440,11 +454,11 @@ class Parser:
             pass
         else:
             raise self.error("Expected 'Next' or 'End' after for body")
-        return ForStmt(variable, start, end, step, body)
+        return self._mark_node(ForStmt(variable, start, end, step, body), token=for_token)
 
     def while_statement(self) -> WhileStmt:
         """Parse While condition statements End"""
-        self.advance()  # consume WHILE
+        while_token = self.advance()  # consume WHILE
         condition = self.expression()
 
         body = []
@@ -452,11 +466,11 @@ class Parser:
             body.append(self.statement())
 
         self.consume(TokenType.END, "Expected 'End' after while body")
-        return WhileStmt(condition, body)
+        return self._mark_node(WhileStmt(condition, body), token=while_token)
 
     def repeat_statement(self) -> RepeatStmt:
         """Parse Repeat statements Until condition"""
-        self.advance()  # consume REPEAT
+        repeat_token = self.advance()  # consume REPEAT
 
         body = []
         while not self.check(TokenType.UNTIL):
@@ -464,25 +478,25 @@ class Parser:
 
         self.consume(TokenType.UNTIL, "Expected 'Until' after repeat body")
         condition = self.expression()
-        return RepeatStmt(body, condition)
+        return self._mark_node(RepeatStmt(body, condition), token=repeat_token)
 
     def goto_statement(self) -> GotoStmt:
         """Parse Goto label"""
-        self.advance()  # consume GOTO
+        goto_token = self.advance()  # consume GOTO
         label_token = self.consume(TokenType.IDENTIFIER, "Expected label name")
         label = label_token.lexeme
-        return GotoStmt(label)
+        return self._mark_node(GotoStmt(label), token=goto_token)
 
     def label_statement(self) -> LabelStmt:
         """Parse identifier:"""
         label_token = self.consume(TokenType.IDENTIFIER, "Expected label name")
         label = label_token.lexeme
         self.consume(TokenType.COLON, "Expected ':' after label")
-        return LabelStmt(label)
+        return self._mark_node(LabelStmt(label), token=label_token)
 
     def struct_declaration(self) -> StructDeclarationStmt:
         """Parse STRUCT name field1 field2 ... END"""
-        self.consume(TokenType.STRUCT, "Expected 'STRUCT'")
+        struct_token = self.consume(TokenType.STRUCT, "Expected 'STRUCT'")
         name_token = self.consume(TokenType.IDENTIFIER, "Expected struct name")
         name = name_token.lexeme
         
@@ -500,11 +514,11 @@ class Parser:
         if len(fields) == 0:
             raise self.error(f"Struct '{name}' must have at least one field")
         
-        return StructDeclarationStmt(name, fields)
+        return self._mark_node(StructDeclarationStmt(name, fields), token=struct_token)
 
     def var_declaration_statement(self, scope: VarScope) -> VarDeclarationStmt:
         """Parse GLOBAL/LOCAL variable [, variable, ...]"""
-        self.advance()  # consume GLOBAL or LOCAL
+        scope_token = self.advance()  # consume GLOBAL or LOCAL
         
         variables = []
         # Parse first variable
@@ -516,7 +530,7 @@ class Parser:
             var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
             variables.append(var_token.lexeme)
         
-        return VarDeclarationStmt(scope, variables)
+        return self._mark_node(VarDeclarationStmt(scope, variables), token=scope_token)
 
     def asm_block_statement(self) -> AsmBlockStmt:
         """
@@ -546,7 +560,7 @@ class Parser:
         while self.match(TokenType.OR):
             operator = "or"
             right = self.logical_and()
-            expr = BinaryExpr(expr, operator, right)
+            expr = self._mark_node(BinaryExpr(expr, operator, right), source_node=expr)
 
         return expr
 
@@ -557,7 +571,7 @@ class Parser:
         while self.match(TokenType.AND):
             operator = "and"
             right = self.bitwise_or()
-            expr = BinaryExpr(expr, operator, right)
+            expr = self._mark_node(BinaryExpr(expr, operator, right), source_node=expr)
 
         return expr
 
@@ -568,7 +582,7 @@ class Parser:
         while self.match(TokenType.BITWISE_OR):
             operator = "|"
             right = self.bitwise_and()
-            expr = BinaryExpr(expr, operator, right)
+            expr = self._mark_node(BinaryExpr(expr, operator, right), source_node=expr)
 
         return expr
 
@@ -579,7 +593,7 @@ class Parser:
         while self.match(TokenType.BITWISE_AND):
             operator = "&"
             right = self.equality()
-            expr = BinaryExpr(expr, operator, right)
+            expr = self._mark_node(BinaryExpr(expr, operator, right), source_node=expr)
 
         return expr
 
@@ -590,7 +604,7 @@ class Parser:
         while self.match(TokenType.EQUAL, TokenType.NOT_EQUAL):
             operator = self.previous().lexeme
             right = self.comparison()
-            expr = BinaryExpr(expr, operator, right)
+            expr = self._mark_node(BinaryExpr(expr, operator, right), source_node=expr)
 
         return expr
 
@@ -601,7 +615,7 @@ class Parser:
         while self.match(TokenType.LESS, TokenType.LESS_EQUAL, TokenType.GREATER, TokenType.GREATER_EQUAL):
             operator = self.previous().lexeme
             right = self.term()
-            expr = BinaryExpr(expr, operator, right)
+            expr = self._mark_node(BinaryExpr(expr, operator, right), source_node=expr)
 
         return expr
 
@@ -612,7 +626,7 @@ class Parser:
         while self.match(TokenType.PLUS, TokenType.MINUS):
             operator = self.previous().lexeme
             right = self.shift()
-            expr = BinaryExpr(expr, operator, right)
+            expr = self._mark_node(BinaryExpr(expr, operator, right), source_node=expr)
 
         return expr
 
@@ -623,7 +637,7 @@ class Parser:
         while self.match(TokenType.SHIFT_LEFT, TokenType.SHIFT_RIGHT):
             operator = self.previous().lexeme
             right = self.factor()
-            expr = BinaryExpr(expr, operator, right)
+            expr = self._mark_node(BinaryExpr(expr, operator, right), source_node=expr)
 
         return expr
 
@@ -634,7 +648,7 @@ class Parser:
         while self.match(TokenType.MULTIPLY, TokenType.DIVIDE):
             operator = self.previous().lexeme
             right = self.power()
-            expr = BinaryExpr(expr, operator, right)
+            expr = self._mark_node(BinaryExpr(expr, operator, right), source_node=expr)
 
         return expr
 
@@ -645,7 +659,7 @@ class Parser:
         if self.match(TokenType.POWER):
             operator = "^"
             right = self.power()
-            expr = BinaryExpr(expr, operator, right)
+            expr = self._mark_node(BinaryExpr(expr, operator, right), source_node=expr)
 
         return expr
 
@@ -653,16 +667,19 @@ class Parser:
         """Parse unary expressions, including prefix ++/--."""
         # Prefix increment/decrement: '++x' or '--x'
         if self.match(TokenType.INCREMENT):
+            operator_token = self.previous()
             expr = self.unary()
-            return UnaryExpr("++", expr, is_post=False)
+            return self._mark_node(UnaryExpr("++", expr, is_post=False), token=operator_token)
         if self.match(TokenType.DECREMENT):
+            operator_token = self.previous()
             expr = self.unary()
-            return UnaryExpr("--", expr, is_post=False)
+            return self._mark_node(UnaryExpr("--", expr, is_post=False), token=operator_token)
         # Existing unary operators
         if self.match(TokenType.MINUS, TokenType.NOT):
-            operator = self.previous().lexeme
+            operator_token = self.previous()
+            operator = operator_token.lexeme
             expr = self.unary()
-            return UnaryExpr(operator, expr)
+            return self._mark_node(UnaryExpr(operator, expr), token=operator_token)
 
         return self.call()
 
@@ -673,7 +690,7 @@ class Parser:
         # Handle member access (obj.field)
         while self.match(TokenType.DOT):
             member_token = self.consume(TokenType.IDENTIFIER, "Expected member name after '.'")
-            expr = MemberAccessExpr(expr, member_token.lexeme)
+            expr = self._mark_node(MemberAccessExpr(expr, member_token.lexeme), source_node=expr)
 
         if self.match(TokenType.LPAREN):
             # Check if this is list or matrix access (TI-83/84 style)
@@ -682,14 +699,14 @@ class Parser:
                     # List access: L1(1)
                     index = self.expression()
                     self.consume(TokenType.RPAREN, "Expected ')' after list index")
-                    return ListAccessExpr(expr.name, index)
+                    return self._mark_node(ListAccessExpr(expr.name, index), source_node=expr)
                 elif self.is_matrix_name(expr.name):
                     # Matrix access: MatA(1,2)
                     row = self.expression()
                     self.consume(TokenType.COMMA, "Expected ',' after row index")
                     col = self.expression()
                     self.consume(TokenType.RPAREN, "Expected ')' after matrix indices")
-                    return MatrixAccessExpr(expr.name, row, col)
+                    return self._mark_node(MatrixAccessExpr(expr.name, row, col), source_node=expr)
                 else:
                     # Function call
                     arguments = []
@@ -698,7 +715,7 @@ class Parser:
                         while self.match(TokenType.COMMA):
                             arguments.append(self.expression())
                     self.consume(TokenType.RPAREN, "Expected ')' after arguments")
-                    return FunctionCallExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), arguments)
+                    return self._mark_node(FunctionCallExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), arguments), source_node=expr)
             else:
                 # Function call on expression
                 arguments = []
@@ -707,7 +724,7 @@ class Parser:
                     while self.match(TokenType.COMMA):
                         arguments.append(self.expression())
                 self.consume(TokenType.RPAREN, "Expected ')' after arguments")
-                return FunctionCallExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), arguments)
+                return self._mark_node(FunctionCallExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), arguments), source_node=expr)
         elif self.match(TokenType.LBRACKET):
             # Array access
             indices = []
@@ -716,26 +733,26 @@ class Parser:
                 # Matrix access: mat[row, col]
                 indices.append(self.expression())
                 self.consume(TokenType.RBRACKET, "Expected ']' after matrix indices")
-                return MatrixAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0], indices[1])
+                return self._mark_node(MatrixAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0], indices[1]), source_node=expr)
             else:
                 # List access: arr[index]
                 self.consume(TokenType.RBRACKET, "Expected ']' after array index")
-                return ListAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0])
+                return self._mark_node(ListAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0]), source_node=expr)
 
         # Postfix increment/decrement: 'x++' or 'x--'
         if self.match(TokenType.INCREMENT):
-            return UnaryExpr("++", expr, is_post=True)
+            return self._mark_node(UnaryExpr("++", expr, is_post=True), source_node=expr)
         if self.match(TokenType.DECREMENT):
-            return UnaryExpr("--", expr, is_post=True)
+            return self._mark_node(UnaryExpr("--", expr, is_post=True), source_node=expr)
 
         return expr
 
     def primary(self) -> Expression:
         """Parse primary expressions."""
         if self.match(TokenType.NUMBER_LITERAL):
-            return LiteralExpr(self.previous().literal, DataType.NUMBER)
+            return self._mark_node(LiteralExpr(self.previous().literal, DataType.NUMBER))
         elif self.match(TokenType.STRING_LITERAL):
-            return LiteralExpr(self.previous().literal, DataType.STRING)
+            return self._mark_node(LiteralExpr(self.previous().literal, DataType.STRING))
         elif self.match(TokenType.IDENTIFIER, TokenType.DIM, TokenType.GETKEY,
                         TokenType.SERIN, TokenType.SERSTAT):
             name = self.previous().lexeme
@@ -744,11 +761,12 @@ class Parser:
         elif self._is_function_token(self.peek().type):
             token = self.advance()
             name = token.lexeme
-            return VariableExpr(name)
+            return self._mark_node(VariableExpr(name), token=token)
         elif self.match(TokenType.LPAREN):
+            lparen_token = self.previous()
             expr = self.expression()
             self.consume(TokenType.RPAREN, "Expected ')' after expression")
-            return GroupingExpr(expr)
+            return self._mark_node(GroupingExpr(expr), token=lparen_token)
 
         raise self.error("Expected expression")
 
@@ -808,7 +826,7 @@ class Parser:
 
     def parse_identifier_or_function(self, name: str) -> Expression:
         """Parse identifier - just return variable expression."""
-        return VariableExpr(name)
+        return self._mark_node(VariableExpr(name))
 
     def assignable_expression(self) -> Expression:
         """Parse expressions that can be assigned to (variables, list/matrix access, member access)."""
@@ -817,7 +835,7 @@ class Parser:
         # Handle member access (obj.field)
         while self.match(TokenType.DOT):
             member_token = self.consume(TokenType.IDENTIFIER, "Expected member name after '.'")
-            expr = MemberAccessExpr(expr, member_token.lexeme)
+            expr = self._mark_node(MemberAccessExpr(expr, member_token.lexeme), source_node=expr)
 
         if self.match(TokenType.LPAREN):
             # Check if this is list or matrix access (TI-83/84 style)
@@ -826,14 +844,14 @@ class Parser:
                     # List access: L1(1)
                     index = self.expression()
                     self.consume(TokenType.RPAREN, "Expected ')' after list index")
-                    return ListAccessExpr(expr.name, index)
+                    return self._mark_node(ListAccessExpr(expr.name, index), source_node=expr)
                 elif self.is_matrix_name(expr.name):
                     # Matrix access: MatA(1,2)
                     row = self.expression()
                     self.consume(TokenType.COMMA, "Expected ',' after row index")
                     col = self.expression()
                     self.consume(TokenType.RPAREN, "Expected ')' after matrix indices")
-                    return MatrixAccessExpr(expr.name, row, col)
+                    return self._mark_node(MatrixAccessExpr(expr.name, row, col), source_node=expr)
                 else:
                     # Function call - not assignable
                     arguments = []
@@ -842,7 +860,7 @@ class Parser:
                         while self.match(TokenType.COMMA):
                             arguments.append(self.expression())
                     self.consume(TokenType.RPAREN, "Expected ')' after arguments")
-                    return FunctionCallExpr(expr.name, arguments)
+                    return self._mark_node(FunctionCallExpr(expr.name, arguments), source_node=expr)
             else:
                 # Function call on expression - not assignable
                 arguments = []
@@ -851,7 +869,7 @@ class Parser:
                     while self.match(TokenType.COMMA):
                         arguments.append(self.expression())
                 self.consume(TokenType.RPAREN, "Expected ')' after arguments")
-                return FunctionCallExpr(str(expr), arguments)
+                return self._mark_node(FunctionCallExpr(str(expr), arguments), source_node=expr)
 
         # Check for array access with brackets: arr[index] or mat[row, col]
         if self.match(TokenType.LBRACKET):
@@ -860,17 +878,17 @@ class Parser:
                 # Matrix access: mat[row, col]
                 indices.append(self.expression())
                 self.consume(TokenType.RBRACKET, "Expected ']' after matrix indices")
-                return MatrixAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0], indices[1])
+                return self._mark_node(MatrixAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0], indices[1]), source_node=expr)
             else:
                 # List access: arr[index]
                 self.consume(TokenType.RBRACKET, "Expected ']' after array index")
-                return ListAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0])
+                return self._mark_node(ListAccessExpr(expr.name if isinstance(expr, VariableExpr) else str(expr), indices[0]), source_node=expr)
 
         return expr
 
     def function_definition(self) -> FunctionDefStmt:
         """Parse Function Name(param1 [= default], param2 [= default], ...) ... End"""
-        self.consume(TokenType.FUNCTION, "Expected 'Function'")
+        function_token = self.consume(TokenType.FUNCTION, "Expected 'Function'")
         
         name_token = self.consume(TokenType.IDENTIFIER, "Expected function name")
         name = name_token.lexeme.lower()
@@ -902,11 +920,11 @@ class Parser:
         
         self.consume(TokenType.END, "Expected 'End' to close function definition")
         
-        return FunctionDefStmt(name, params, body)
+        return self._mark_node(FunctionDefStmt(name, params, body), token=function_token)
 
     def return_statement(self) -> ReturnStmt:
         """Parse Return [expression]"""
-        self.advance()  # consume RETURN
+        return_token = self.advance()  # consume RETURN
         
         # Check if there's a value to return
         value = None
@@ -920,7 +938,7 @@ class Parser:
             if next_token.type not in [TokenType.END, TokenType.ELSE, TokenType.NEXT]:
                 value = self.expression()
         
-        return ReturnStmt(value)
+        return self._mark_node(ReturnStmt(value), token=return_token)
 
     # Helper methods
     def advance(self) -> Token:

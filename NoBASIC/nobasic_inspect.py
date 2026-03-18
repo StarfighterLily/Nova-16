@@ -18,6 +18,7 @@ from compiler.parser.parser import Parser
 from compiler.semantic.analyzer import SemanticAnalyzer
 from compiler.codegen.generator import CodeGenerator
 from compiler.utils.error import CompilerError
+from nobasic_compiler import run_frontend_pipeline
 
 
 class NoBASICInspector:
@@ -35,26 +36,21 @@ class NoBASICInspector:
         results = {}
 
         try:
-            # Read source
-            with open(self.source_file, 'r') as f:
-                source = f.read()
+            pipeline = run_frontend_pipeline(
+                self.source_file,
+                lexer_factory=Lexer,
+                parser_factory=Parser,
+                analyzer_factory=SemanticAnalyzer,
+            )
+            self.analyzer = pipeline.analyzer
 
-            results['source'] = source
-
-            # Lexical analysis
-            tokens = self.lexer.tokenize(source, self.source_file)
-            results['tokens'] = [str(token) for token in tokens]
-
-            # Parsing
-            ast = self.parser.parse(tokens, self.source_file)
-            results['ast'] = self._ast_to_dict(ast)
-
-            # Semantic analysis
-            self.analyzer.analyze(ast, self.source_file)
+            results['source'] = pipeline.source
+            results['tokens'] = [str(token) for token in pipeline.tokens]
+            results['ast'] = self._ast_to_dict(pipeline.ast)
             results['symbols'] = self._symbols_to_dict()
 
             # Code generation
-            assembly = self.generator.generate(ast)
+            assembly = self.generator.generate(pipeline.ast)
             results['assembly'] = assembly
 
             if output_dir:

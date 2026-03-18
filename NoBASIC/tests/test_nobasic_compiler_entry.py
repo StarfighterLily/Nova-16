@@ -372,6 +372,36 @@ def test_compile_nobasic_remaps_lexer_error_to_included_file(tmp_path, monkeypat
     assert f"Error in {include_file.resolve()} at line 2" in output
 
 
+@pytest.mark.parametrize(
+    ("included_source", "expected_line", "expected_message"),
+    [
+        ("x = sin()\n", 1, "Wrong number of arguments for function 'sin': expected 1, got 0"),
+        ("x = unknown_func(1)\n", 1, "Undefined function 'unknown_func'"),
+        ("struct Point x y end\nq = p.z\n", 2, "Struct 'Point' has no field 'z'"),
+    ],
+)
+def test_compile_nobasic_remaps_semantic_error_to_included_file(
+    tmp_path,
+    capsys,
+    included_source,
+    expected_line,
+    expected_message,
+):
+    source_file = tmp_path / "main.nobasic"
+    include_file = tmp_path / "lib.nobasic"
+
+    include_file.write_text(included_source)
+    source_file.write_text('Include "lib.nobasic"\nPause\n')
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert f"Error in {include_file.resolve()} at line {expected_line}" in output
+    assert expected_message in output
+
+
 def test_preprocess_source_resolves_relative_to_compiler_dir(tmp_path, monkeypatch):
     fake_nobasic_dir = tmp_path / "NoBASIC"
     progs_dir = fake_nobasic_dir / "progs"
@@ -517,6 +547,46 @@ def test_main_supports_legacy_positional_output(monkeypatch, tmp_path):
 
     nobasic_compiler.main()
     assert called["args"][1] == str(output_file)
+
+
+def test_main_supports_case_insensitive_legacy_positional_output(monkeypatch, tmp_path):
+    source_file = tmp_path / "sample.NoBasic"
+    source_file.write_text("Pause\n")
+    output_file = tmp_path / "LEGACY_OUTPUT.ASM"
+    called = {}
+
+    def fake_compile(*args):
+        called["args"] = args
+
+    monkeypatch.setattr(nobasic_compiler, "compile_nobasic", fake_compile)
+    monkeypatch.setattr(
+        nobasic_compiler.sys,
+        "argv",
+        ["nobasic_compiler.py", str(source_file), str(output_file)],
+    )
+
+    nobasic_compiler.main()
+
+    assert called["args"][0] == str(source_file)
+    assert called["args"][1] == str(output_file)
+
+
+def test_main_rejects_non_asm_positional_output(monkeypatch, tmp_path, capsys):
+    source_file = tmp_path / "sample.nobasic"
+    source_file.write_text("Pause\n")
+    bogus_output = tmp_path / "legacy.asm.bak"
+
+    monkeypatch.setattr(
+        nobasic_compiler.sys,
+        "argv",
+        ["nobasic_compiler.py", str(source_file), str(bogus_output)],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.main()
+
+    assert exc.value.code == 1
+    assert f"Unknown option: {bogus_output}" in capsys.readouterr().out
 
 
 def test_main_fails_for_unknown_option(monkeypatch, tmp_path, capsys):

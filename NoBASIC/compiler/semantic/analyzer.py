@@ -191,6 +191,12 @@ class SemanticAnalyzer:
         self.functions: Dict[str, FunctionDefStmt] = {}  # function_name -> definition
         self.current_function: Optional[str] = None  # Currently analyzing function (or None for global)
 
+    def _semantic_error(self, message: str, node=None) -> SemanticError:
+        """Create a semantic error using any available AST source coordinates."""
+        line = getattr(node, "line", 0)
+        column = getattr(node, "column", 0)
+        return SemanticError(message, self.filename, line, column)
+
     def analyze(self, program: Program, filename: str = "<stdin>"):
         """
         Analyze the program semantically.
@@ -221,7 +227,7 @@ class SemanticAnalyzer:
             if isinstance(stmt, FunctionDefStmt):
                 func_key = stmt.name.lower()
                 if func_key in self.functions:
-                    raise SemanticError(f"Function '{stmt.name}' already defined", 0, 0)
+                    raise self._semantic_error(f"Function '{stmt.name}' already defined", stmt)
                 self.functions[func_key] = stmt
 
         # Second pass: analyze all statements
@@ -301,7 +307,7 @@ class SemanticAnalyzer:
     def analyze_return(self, stmt: ReturnStmt):
         """Analyze a return statement."""
         if self.current_function is None:
-            raise SemanticError("Return outside of function", 0, 0)
+            raise self._semantic_error("Return outside of function", stmt)
         
         if stmt.value:
             self.analyze_expression(stmt.value)
@@ -355,24 +361,26 @@ class SemanticAnalyzer:
     def analyze_goto(self, stmt: GotoStmt):
         """Analyze a goto statement."""
         # Defer checking until all labels are collected
-        self.pending_gotos.append((stmt.label, 0, 0))
+        self.pending_gotos.append((stmt.label, getattr(stmt, "line", 0), getattr(stmt, "column", 0)))
 
     def analyze_label(self, stmt: LabelStmt):
         """Analyze a label statement."""
+        if self.symbol_table.is_label_defined(stmt.label):
+            raise self._semantic_error("Label already defined", stmt)
         self.symbol_table.define_label(stmt.label)
 
     def analyze_struct_declaration(self, stmt: StructDeclarationStmt):
         """Analyze a struct declaration."""
         # Check if struct name is already defined
         if self.symbol_table.is_struct(stmt.name):
-            raise SemanticError(f"Struct '{stmt.name}' is already defined", 0, 0)
+            raise self._semantic_error(f"Struct '{stmt.name}' is already defined", stmt)
         
         # Check for duplicate field names
         field_set = set()
         for field in stmt.fields:
             field_key = field.lower()
             if field_key in field_set:
-                raise SemanticError(f"Duplicate field '{field}' in struct '{stmt.name}'", 0, 0)
+                raise self._semantic_error(f"Duplicate field '{field}' in struct '{stmt.name}'", stmt)
             field_set.add(field_key)
         
         # Define the struct
@@ -380,16 +388,22 @@ class SemanticAnalyzer:
 
     def analyze_var_declaration(self, stmt: VarDeclarationStmt):
         """Analyze a variable declaration (GLOBAL/LOCAL)."""
+        if stmt.scope == VarScope.LOCAL and self.symbol_table.is_in_global_scope():
+            raise self._semantic_error(
+                f"Cannot declare LOCAL variable '{stmt.variables[0]}' in global scope",
+                stmt,
+            )
+
         for var_name in stmt.variables:
             # Check if variable is already explicitly declared in current scope
             if stmt.scope == VarScope.LOCAL and not self.symbol_table.is_in_global_scope():
                 current_scope = self.symbol_table.scopes[-1]
                 if var_name in current_scope.explicit_declarations:
-                    raise SemanticError(f"Variable '{var_name}' already declared in this scope", 0, 0)
+                    raise self._semantic_error(f"Variable '{var_name}' already declared in this scope", stmt)
             elif stmt.scope == VarScope.GLOBAL:
                 global_scope = self.symbol_table.scopes[0]
                 if var_name in global_scope.explicit_declarations:
-                    raise SemanticError(f"Variable '{var_name}' already declared as global", 0, 0)
+                    raise self._semantic_error(f"Variable '{var_name}' already declared as global", stmt)
             
             # Define the variable in appropriate scope
             self.symbol_table.define_variable(var_name, DataType.NUMBER, stmt.scope)
@@ -429,20 +443,20 @@ class SemanticAnalyzer:
                 if self._is_list_name(expr.list_name):
                     self.symbol_table.lists.add(expr.list_name)
                 else:
-                    raise SemanticError(f"Undefined list: {expr.list_name}", self.filename)
+                    raise self._semantic_error(f"Undefined list: {expr.list_name}", expr)
             if not self.symbol_table.is_list(expr.list_name):
-                raise SemanticError(f"Undefined list: {expr.list_name}", self.filename)
+                raise self._semantic_error(f"Undefined list: {expr.list_name}", expr)
             index_type = self.analyze_expression(expr.index)
             if index_type != DataType.NUMBER:
-                raise SemanticError(f"List index must be numeric", self.filename)
+                raise self._semantic_error("List index must be numeric", expr)
             return DataType.NUMBER
         elif isinstance(expr, MatrixAccessExpr):
             if not self.symbol_table.is_matrix(expr.matrix_name):
-                raise SemanticError(f"Undefined matrix: {expr.matrix_name}", self.filename)
+                raise self._semantic_error(f"Undefined matrix: {expr.matrix_name}", expr)
             row_type = self.analyze_expression(expr.row)
             col_type = self.analyze_expression(expr.col)
             if row_type != DataType.NUMBER or col_type != DataType.NUMBER:
-                raise SemanticError(f"Matrix indices must be numeric", self.filename)
+                raise self._semantic_error("Matrix indices must be numeric", expr)
             return DataType.NUMBER
         elif isinstance(expr, MemberAccessExpr):
             # Analyze struct member access
@@ -453,18 +467,18 @@ class SemanticAnalyzer:
                 var_name = expr.object.name
                 struct_name = self.symbol_table.infer_struct_instance_type(var_name, expr.member)
                 if not struct_name:
-                    raise SemanticError(f"Variable '{var_name}' is not a struct instance", self.filename)
+                    raise self._semantic_error(f"Variable '{var_name}' is not a struct instance", expr)
                 
                 if struct_name:
                     struct_def = self.symbol_table.get_struct(struct_name)
                     if struct_def and expr.member.lower() in struct_def.fields:
                         return DataType.NUMBER  # All struct fields are 16-bit numbers
                     else:
-                        raise SemanticError(f"Struct '{struct_name}' has no field '{expr.member}'", self.filename)
+                        raise self._semantic_error(f"Struct '{struct_name}' has no field '{expr.member}'", expr)
                 else:
-                    raise SemanticError(f"Variable '{var_name}' is not a struct instance", self.filename)
+                    raise self._semantic_error(f"Variable '{var_name}' is not a struct instance", expr)
             else:
-                raise SemanticError(f"Cannot access member of non-struct expression", self.filename)
+                raise self._semantic_error("Cannot access member of non-struct expression", expr)
         elif isinstance(expr, BinaryExpr):
             left_type = self.analyze_expression(expr.left)
             right_type = self.analyze_expression(expr.right)
@@ -474,7 +488,7 @@ class SemanticAnalyzer:
                     # Allow string concatenation with + (TI-BASIC style)
                     return DataType.STRING
                 elif left_type == DataType.STRING or right_type == DataType.STRING:
-                    raise SemanticError(f"Cannot perform arithmetic on strings", self.filename)
+                    raise self._semantic_error("Cannot perform arithmetic on strings", expr)
                 return DataType.NUMBER
             elif expr.operator in ['=', '<>', '<', '>', '<=', '>=']:
                 return DataType.NUMBER  # Comparison results
@@ -494,7 +508,7 @@ class SemanticAnalyzer:
                     self.analyze_expression(target)
                     return DataType.NUMBER
                 else:
-                    raise SemanticError("Increment/decrement requires an assignable target", 0, 0)
+                    raise self._semantic_error("Increment/decrement requires an assignable target", expr)
             return self.analyze_expression(expr.expression)
         elif isinstance(expr, FunctionCallExpr):
             # Check if function is user-defined first
@@ -508,9 +522,9 @@ class SemanticAnalyzer:
                 max_args = len(param_specs)
                 
                 if not (min_args <= len(expr.arguments) <= max_args):
-                    raise SemanticError(
+                    raise self._semantic_error(
                         f"Wrong number of arguments for function '{expr.name}': expected {min_args}-{max_args}, got {len(expr.arguments)}", 
-                        self.filename
+                        expr
                     )
                 # Analyze provided argument expressions
                 for arg in expr.arguments:
@@ -521,18 +535,21 @@ class SemanticAnalyzer:
             # Check if function is built-in
             func_name = expr.name.upper()
             if not self.is_builtin_function(func_name):
-                raise SemanticError(f"Undefined function '{expr.name}'", self.filename)
+                raise self._semantic_error(f"Undefined function '{expr.name}'", expr)
             # Check argument count
             expected_args = self.get_function_arg_count(func_name)
             if expected_args is not None:
                 if isinstance(expected_args, (list, tuple, set)):
                     if len(expr.arguments) not in expected_args:
-                        raise SemanticError(
+                        raise self._semantic_error(
                             f"Wrong number of arguments for function '{expr.name}': expected {list(expected_args)}, got {len(expr.arguments)}",
-                            self.filename
+                            expr
                         )
                 elif len(expr.arguments) != expected_args:
-                    raise SemanticError(f"Wrong number of arguments for function '{expr.name}': expected {expected_args}, got {len(expr.arguments)}", self.filename)
+                    raise self._semantic_error(
+                        f"Wrong number of arguments for function '{expr.name}': expected {expected_args}, got {len(expr.arguments)}",
+                        expr,
+                    )
             # Check argument types
             expected_types = self.get_function_arg_types(func_name)
             for i, arg in enumerate(expr.arguments):
@@ -541,7 +558,10 @@ class SemanticAnalyzer:
                     expected_type = expected_types[i]
                     # Allow type coercion in BASIC: NUMBER can be used where STRING is expected
                     if arg_type != expected_type and not (arg_type == DataType.NUMBER and expected_type == DataType.STRING):
-                        raise SemanticError(f"Invalid argument type for function '{expr.name}': argument {i+1} expected {expected_types[i].value}, got {arg_type.value}", self.filename)
+                        raise self._semantic_error(
+                            f"Invalid argument type for function '{expr.name}': argument {i+1} expected {expected_types[i].value}, got {arg_type.value}",
+                            expr,
+                        )
             # Built-in functions return numbers unless specified
             return self.get_function_return_type(func_name)
         elif isinstance(expr, GroupingExpr):
@@ -720,17 +740,17 @@ class SemanticAnalyzer:
                 var_name = expr.object.name
                 struct_name = self.symbol_table.infer_struct_instance_type(var_name, expr.member)
                 if not struct_name:
-                    raise SemanticError(f"Variable '{var_name}' is not a struct instance", 0, 0)
+                    raise self._semantic_error(f"Variable '{var_name}' is not a struct instance", expr)
                 
                 struct_def = self.symbol_table.get_struct(struct_name)
                 if not struct_def or expr.member.lower() not in struct_def.fields:
-                    raise SemanticError(f"Struct '{struct_name}' has no field '{expr.member}'", 0, 0)
+                    raise self._semantic_error(f"Struct '{struct_name}' has no field '{expr.member}'", expr)
                 
                 # Struct fields must be numbers
                 if value_type != DataType.NUMBER:
-                    raise SemanticError(f"Struct fields can only hold numeric values", 0, 0)
+                    raise self._semantic_error("Struct fields can only hold numeric values", expr)
             else:
-                raise SemanticError(f"Cannot assign to member of non-struct expression", 0, 0)
+                raise self._semantic_error("Cannot assign to member of non-struct expression", expr)
         elif isinstance(expr, ListAccessExpr):
             # Check that the list exists and index is valid
             list_name = expr.list_name

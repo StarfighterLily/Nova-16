@@ -17,7 +17,9 @@ from compiler.parser.parser import Parser
 from compiler.semantic.analyzer import SemanticAnalyzer
 from compiler.codegen.generator import CodeGenerator
 from compiler.utils.error import CompilerError
+from compiler.parser.ast import DataType
 from compiler.parser.ast import VariableExpr, LiteralExpr
+from nobasic_compiler import preprocess_source, remap_compiler_error, resolve_source_file_path
 
 # Add Nova-16 emulator imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -82,29 +84,43 @@ class NoBASICDebugger:
         with open(self.source_file, 'r') as f:
             return f.readlines()
 
+    def _symbol_type_name(self, symbol_info: Any) -> str:
+        """Return a user-facing symbol type string for analyzer/debug output."""
+        if isinstance(symbol_info, dict):
+            symbol_info = symbol_info.get('type')
+        if isinstance(symbol_info, DataType):
+            return symbol_info.value.upper()
+        if symbol_info is None:
+            return 'unknown'
+        return str(symbol_info)
+
     def parse_program(self):
         """Parse the NoBASIC program."""
+        line_map = []
+        resolved_source_file = None
+
         try:
-            with open(self.source_file, 'r') as f:
-                source = f.read()
+            resolved_source_file = resolve_source_file_path(self.source_file)
+            source, line_map = preprocess_source(str(resolved_source_file))
 
             print(f"Parsing {self.source_file}...")
 
             # Lexical analysis
-            self.tokens = self.lexer.tokenize(source, self.source_file)
+            self.tokens = self.lexer.tokenize(source, str(resolved_source_file))
             print(f"Lexical analysis complete: {len(self.tokens)} tokens")
 
             # Parsing
-            self.ast = self.parser.parse(self.tokens, self.source_file)
+            self.ast = self.parser.parse(self.tokens, str(resolved_source_file))
             print("Parsing complete")
 
             # Semantic analysis
-            self.analyzer.analyze(self.ast, self.source_file)
+            self.analyzer.analyze(self.ast, str(resolved_source_file))
             self.symbols = self.analyzer.symbol_table.variables.copy()
             print("Semantic analysis complete")
 
         except CompilerError as e:
-            print(f"Error: {e}")
+            main_source_for_remap = str(resolved_source_file) if resolved_source_file is not None else self.source_file
+            print(f"Error: {remap_compiler_error(e, main_source_for_remap, line_map)}")
             return False
         return True
 
@@ -159,7 +175,7 @@ class NoBASICDebugger:
         print("Symbol Table:")
         print("-" * 40)
         for name, info in self.symbols.items():
-            var_type = info.get('type', 'unknown')
+            var_type = self._symbol_type_name(info)
             print(f"{name}: {var_type}")
 
     def generate_code(self) -> str:
@@ -549,8 +565,7 @@ NoBASIC Debugger Commands:
         print("-" * 40)
         for var in sorted(self.watch_variables):
             if var in self.symbols:
-                info = self.symbols[var]
-                var_type = info.get('type', 'unknown')
+                var_type = self._symbol_type_name(self.symbols[var])
                 print(f"{var}: {var_type}")
             else:
                 print(f"{var}: <undefined>")
@@ -750,7 +765,7 @@ NoBASIC Debugger Commands:
             if var_name in self.variable_addresses:
                 addr = self.variable_addresses[var_name]
                 value = self.mem.read_word(addr)
-                var_type = self.symbols.get(var_name, {}).get('type', 'unknown')
+                var_type = self._symbol_type_name(self.symbols.get(var_name))
                 print(f"{var_name:12} = {value:5} (0x{value:04X}) [{var_type:8}] @ 0x{addr:04X}")
             else:
                 print(f"{var_name:12} = <not allocated>")

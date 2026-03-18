@@ -20,6 +20,9 @@ from compiler.lexer.lexer import Lexer
 from compiler.parser.parser import Parser
 from compiler.semantic.analyzer import SemanticAnalyzer
 from compiler.codegen.generator import CodeGenerator
+from compiler.parser.ast import DataType
+from compiler.utils.error import CompilerError
+from nobasic_compiler import preprocess_source, remap_compiler_error, resolve_source_file_path
 
 
 class NoBASICProfiler:
@@ -48,25 +51,34 @@ class NoBASICProfiler:
         print(f"Profiling compilation of {self.source_file}...")
 
         start_total = time.time()
+        line_map = []
+        resolved_source_file = None
 
-        # Profile parsing
-        start_parse = time.time()
-        tokens = self.lexer.tokenize(open(self.source_file).read(), self.source_file)
-        self.ast = self.parser.parse(tokens, self.source_file)
-        self.parsing_time = time.time() - start_parse
+        try:
+            resolved_source_file = resolve_source_file_path(self.source_file)
 
-        # Profile semantic analysis
-        start_semantic = time.time()
-        self.analyzer.analyze(self.ast, self.source_file)
-        self.symbols = self.analyzer.symbol_table.variables.copy()
-        self.semantic_time = time.time() - start_semantic
+            # Profile parsing
+            start_parse = time.time()
+            source, line_map = preprocess_source(str(resolved_source_file))
+            tokens = self.lexer.tokenize(source, str(resolved_source_file))
+            self.ast = self.parser.parse(tokens, str(resolved_source_file))
+            self.parsing_time = time.time() - start_parse
 
-        # Profile code generation
-        start_codegen = time.time()
-        self.assembly_code = self.generator.generate(self.ast)
-        self.codegen_time = time.time() - start_codegen
+            # Profile semantic analysis
+            start_semantic = time.time()
+            self.analyzer.analyze(self.ast, str(resolved_source_file))
+            self.symbols = self.analyzer.symbol_table.variables.copy()
+            self.semantic_time = time.time() - start_semantic
 
-        self.total_time = time.time() - start_total
+            # Profile code generation
+            start_codegen = time.time()
+            self.assembly_code = self.generator.generate(self.ast)
+            self.codegen_time = time.time() - start_codegen
+
+            self.total_time = time.time() - start_total
+        except CompilerError as error:
+            main_source_for_remap = str(resolved_source_file) if resolved_source_file is not None else self.source_file
+            raise remap_compiler_error(error, main_source_for_remap, line_map) from error
 
         return {
             'parsing_time': self.parsing_time,
@@ -77,6 +89,17 @@ class NoBASICProfiler:
             'symbol_count': len(self.symbols),
             'assembly_lines': len(self.assembly_code.split('\n'))
         }
+
+    def _symbol_matches_type(self, symbol_info: Any, expected_type: DataType) -> bool:
+        """Return True when a stored symbol entry represents the requested type."""
+        if isinstance(symbol_info, dict):
+            symbol_info = symbol_info.get('type')
+        if isinstance(symbol_info, DataType):
+            return symbol_info == expected_type
+        if symbol_info is None:
+            return False
+        normalized = str(symbol_info).strip().lower()
+        return normalized in {expected_type.value, f"datatype.{expected_type.name.lower()}"}
 
     def analyze_code_complexity(self) -> Dict[str, Any]:
         """Analyze code complexity metrics."""
@@ -159,8 +182,8 @@ class NoBASICProfiler:
 
         memory_info = {
             'total_variables': len(self.symbols),
-            'number_variables': sum(1 for info in self.symbols.values() if info.get('type') == 'NUMBER'),
-            'string_variables': sum(1 for info in self.symbols.values() if info.get('type') == 'STRING'),
+            'number_variables': sum(1 for info in self.symbols.values() if self._symbol_matches_type(info, DataType.NUMBER)),
+            'string_variables': sum(1 for info in self.symbols.values() if self._symbol_matches_type(info, DataType.STRING)),
             'estimated_memory_bytes': len(self.symbols) * 2  # 16-bit variables
         }
 
