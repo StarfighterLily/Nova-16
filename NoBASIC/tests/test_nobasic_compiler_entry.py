@@ -434,6 +434,22 @@ def test_compile_nobasic_does_not_expand_include_inside_asm_block(tmp_path, monk
     assert 'Include "missing.nobasic"' in captured["tokenize_args"][0]
 
 
+def test_compile_nobasic_does_not_expand_include_inside_commented_asm_block(tmp_path, monkeypatch):
+    captured = _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "main.nobasic"
+    source_file.write_text('Asm // raw assembly follows\nInclude "missing.nobasic"\nEnd // back to NoBASIC\nPause\n')
+
+    def fake_run(command, capture_output, text):
+        Path(command[2]).with_suffix(".bin").write_bytes(b"\x00")
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert 'Include "missing.nobasic"' in captured["tokenize_args"][0]
+
+
 def test_preprocess_source_returns_line_map_for_included_lines(tmp_path):
     source_file = tmp_path / "main.nobasic"
     include_file = tmp_path / "lib.nobasic"
@@ -447,6 +463,28 @@ def test_preprocess_source_returns_line_map_for_included_lines(tmp_path):
     assert line_map[0] == (str(include_file.resolve()), 1)
     assert line_map[1] == (str(include_file.resolve()), 2)
     assert line_map[2] == (str(source_file.resolve()), 2)
+
+
+def test_preprocess_source_expands_include_with_trailing_comment(tmp_path):
+    source_file = tmp_path / "main.nobasic"
+    include_file = tmp_path / "lib.nobasic"
+
+    include_file.write_text("a = 1\n")
+    source_file.write_text('Include "lib.nobasic" // shared helpers\nPause\n')
+
+    source, line_map = nobasic_compiler.preprocess_source(str(source_file))
+
+    assert source == "a = 1\nPause\n"
+    assert line_map == [
+        (str(include_file.resolve()), 1),
+        (str(source_file.resolve()), 2),
+    ]
+
+
+def test_strip_line_comment_preserves_double_slash_inside_string_literal():
+    line = 'Include "dir//lib.nobasic" // trailing comment\n'
+
+    assert nobasic_compiler._strip_line_comment(line) == 'Include "dir//lib.nobasic" '
 
 
 def test_compile_nobasic_remaps_lexer_error_to_included_file(tmp_path, monkeypatch, capsys):

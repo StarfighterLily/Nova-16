@@ -31,10 +31,13 @@ from .optimizations import (
     RegisterColoringPass, HotSpillAnalyzer, RegisterPressureMonitor,
     DynamicSpillAllocator, ExpressionSimplifier, get_optimization_config
 )
+from ..utils.error import CodeGenError
 
 
 class CodeGenerator:
     """Code generator for NoBASIC to Nova-16 assembly."""
+
+    DATA_REGION_START = 0x0120
 
     def __init__(self, debug_allocation: bool = False, enable_optimizations: bool = True,
                  enable_peephole: bool = False, enable_live_range_scheduling: bool = False):
@@ -151,6 +154,83 @@ class CodeGenerator:
         self.list_heap_start = 0x7200
         self.list_heap_end = 0xEFFF
         self.list_runtime_required = False
+
+    def _fresh_register_usage(self) -> Dict[str, bool]:
+        """Return a clean register allocation map for a new codegen run."""
+        return {
+            'R0': False, 'R1': False, 'R2': False, 'R3': False, 'R4': False,
+            'R5': False, 'R6': False, 'R7': False, 'R8': False, 'R9': False,
+            'P0': False, 'P1': False, 'P2': False, 'P3': False, 'P4': False,
+            'P5': False, 'P6': False, 'P7': False, 'SP': False, 'FP': False,
+            'VX': False, 'VY': False, 'VM': False, 'VL': False, 'VC': False,
+            'SA': False, 'SF': False, 'SV': False, 'SW': False,
+            'TT': False, 'TM': False, 'TC': False, 'TS': False
+        }
+
+    def _reset_generation_state(self) -> None:
+        """Clear all per-run state so a generator instance can be safely reused."""
+        self.output = []
+        self.current_output = self.output
+        self.label_counter = 0
+        self.variable_addresses = {}
+        self.next_address = self.DATA_REGION_START
+        self.strings = []
+        self.loop_nesting_level = 0
+        self.variable_access_counts = Counter()
+        self.next_spill_address = self.spill_base_address
+        self.spill_slots = {}
+        self.hot_spills = {}
+        self.register_usage = self._fresh_register_usage()
+        self.live_ranges = {}
+        self.live_at_point = {}
+        self.program_counter = 0
+        self.interference_graph = {}
+        self.register_pressure = {}
+        self.max_register_pressure = 0
+        self.var_reg = {}
+        self.var_lifetime = {}
+        self.statement_counter = 0
+        self.var_register_hints = {}
+        self.struct_types = {}
+        self.struct_bases = {}
+        self.struct_instances = {}
+        self.functions = {}
+        self.function_labels = {}
+        self.function_counter = 0
+        self.current_function = None
+        self.function_outputs = []
+        self.function_locals = {}
+        self.auto_free_registers = set()
+        self.allocation_stats = {
+            'total_allocations': 0,
+            'total_deallocations': 0,
+            'allocation_failures': 0,
+            'max_simultaneous_allocated': 0
+        }
+        self.graph_coloring = None
+        self.hot_spill_analyzer = None
+        self.pressure_monitor = None
+        self.spill_allocator = None
+        self.expr_simplifier = None
+        self.expr_constant_values = {}
+        self.list_descriptors = {}
+        self.list_heap_next_addr = None
+        self.list_runtime_required = False
+
+    def _reserve_data_memory(self, byte_count: int, purpose: str) -> int:
+        """Reserve bytes from the low-memory data region without overlapping spill storage."""
+        start_addr = self.next_address
+        end_addr = start_addr + byte_count
+        if end_addr > self.spill_base_address:
+            remaining = max(0, self.spill_base_address - start_addr)
+            raise CodeGenError(
+                f"Data memory overflow while allocating {purpose}: "
+                f"requested {byte_count} bytes at 0x{start_addr:04X}, "
+                f"but spill storage starts at 0x{self.spill_base_address:04X} "
+                f"({remaining} bytes remaining)"
+            )
+        self.next_address = end_addr
+        return start_addr
 
     def allocate_register(self, preferred_reg: str = None, exclude_interfering: bool = True) -> str:
         """
@@ -1147,25 +1227,7 @@ class CodeGenerator:
         Returns:
             Generated assembly code as a string
         """
-        self.output = []
-        self.current_output = self.output
-        self.label_counter = 0
-        self.variable_addresses = {}
-        self.next_address = 0x0120
-        self.var_reg = {}
-        self.var_lifetime = {}
-        self.statement_counter = 0
-        self.var_register_hints = {}
-        self.functions = {}
-        self.function_labels = {}
-        self.function_counter = 0
-        self.current_function = None
-        self.function_outputs = []
-        self.function_locals = {}
-        self.expr_constant_values = {}
-        self.list_descriptors = {}
-        self.list_heap_next_addr = None
-        self.list_runtime_required = False
+        self._reset_generation_state()
 
         # Pre-pass: register struct declarations so function code generation
         # can resolve member access on global struct instances.
@@ -2357,10 +2419,9 @@ class CodeGenerator:
         struct_def = self.struct_types[struct_key]
         field_count = len(struct_def.fields)
         
-        base_addr = self.next_address
+        base_addr = self._reserve_data_memory(field_count * 2, f"struct '{var_name}' ({struct_def.name})")
         self.struct_bases[var_key] = base_addr
         self.struct_instances[var_key] = struct_key
-        self.next_address += field_count * 2  # 2 bytes per field
         
         self.current_output.append(f"; Allocate struct {var_name} ({struct_def.name}) at 0x{base_addr:04X}")
         return base_addr
@@ -2983,8 +3044,7 @@ class CodeGenerator:
             
             try:
                 # Allocate temporary buffer for result (use next_address space)
-                buffer_addr = self.next_address
-                self.next_address += 256  # Reserve 256 bytes for concatenated string
+                buffer_addr = self._reserve_data_memory(256, "string concatenation buffer")
                 
                 # Copy left string to buffer
                 self.current_output.append(f"MOV P0, {buffer_addr}")  # Destination
@@ -4507,8 +4567,7 @@ class CodeGenerator:
             raise TypeError(f"Expected string or VariableExpr, got {type(variable)}")
 
         if name not in self.variable_addresses:
-            self.variable_addresses[name] = self.next_address
-            self.next_address += 2  # 16-bit variables
+            self.variable_addresses[name] = self._reserve_data_memory(2, f"variable '{name}'")
         return self.variable_addresses[name]
 
     def _is_list_identifier(self, name: str) -> bool:
@@ -4523,9 +4582,8 @@ class CodeGenerator:
     def _get_or_create_list_descriptor(self, list_name: str) -> int:
         """Allocate (or return) a descriptor storing list base/capacity words."""
         if list_name not in self.list_descriptors:
-            desc_addr = self.next_address
+            desc_addr = self._reserve_data_memory(4, f"list descriptor '{list_name}'")
             self.list_descriptors[list_name] = desc_addr
-            self.next_address += 4  # base pointer + capacity (16-bit each)
             self.list_runtime_required = True
         return self.list_descriptors[list_name]
 

@@ -19,7 +19,7 @@ from compiler.codegen.generator import CodeGenerator
 from compiler.utils.error import CompilerError
 from compiler.parser.ast import DataType
 from compiler.parser.ast import VariableExpr, LiteralExpr
-from nobasic_compiler import resolve_source_file_path, run_frontend_pipeline
+from nobasic_compiler import generate_with_error_remapping, resolve_source_file_path, run_frontend_pipeline
 
 # Add Nova-16 emulator imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -46,6 +46,8 @@ class NoBASICDebugger:
         self.tokens: list = []
         self.ast = None
         self.symbols: Dict[str, Any] = {}
+        self.line_map: List[tuple[str, int]] = []
+        self.resolved_source_file = Path(self.source_file)
 
         # Current state
         self.current_line = 0
@@ -110,6 +112,8 @@ class NoBASICDebugger:
             print(f"Lexical analysis complete: {len(self.tokens)} tokens")
 
             self.ast = pipeline.ast
+            self.line_map = pipeline.line_map
+            self.resolved_source_file = pipeline.resolved_source_file
             print("Parsing complete")
 
             self.analyzer = pipeline.analyzer
@@ -181,7 +185,9 @@ class NoBASICDebugger:
             print("No AST available. Run 'parse' first.")
             return ""
 
-        return self.generator.generate(self.ast)
+        source_file = str(self.resolved_source_file)
+        line_map = self.line_map or [(source_file, 1)]
+        return generate_with_error_remapping(self.generator, self.ast, source_file, line_map)
 
     def show_assembly(self):
         """Display generated assembly."""
@@ -228,7 +234,7 @@ class NoBASICDebugger:
             
         try:
             # Generate assembly code
-            assembly_code = self.generator.generate(self.ast)
+            assembly_code = self.generate_code()
             
             # Save assembly to temporary file
             temp_asm_file = self.source_file + ".debug.asm"

@@ -129,6 +129,8 @@ def test_debugger_parse_program_uses_shared_pipeline(tmp_path, monkeypatch, caps
     assert debugger.ast is ast
     assert debugger.analyzer is analyzer
     assert debugger.symbols == {"value": "NUMBER"}
+    assert debugger.line_map == [(str(source_file.resolve()), 1)]
+    assert debugger.resolved_source_file == source_file.resolve()
     output = capsys.readouterr().out
     assert "Lexical analysis complete: 2 tokens" in output
     assert "Semantic analysis complete" in output
@@ -152,3 +154,55 @@ def test_debugger_parse_program_reports_pipeline_errors(tmp_path, monkeypatch, c
 
     assert debugger.parse_program() is False
     assert f"Error: Error in {include_file.resolve()} at line 1, column 1: unexpected token" in capsys.readouterr().out
+
+
+def test_debugger_generate_code_uses_shared_codegen_wrapper(tmp_path, monkeypatch):
+    source_file = tmp_path / "program.nobasic"
+    source_file.write_text("Pause\n")
+    debugger = nobasic_debugger.NoBASICDebugger(str(source_file))
+    debugger.ast = _DummyNode(kind="Program")
+    debugger.line_map = [(str(source_file.resolve()), 1)]
+    debugger.resolved_source_file = source_file.resolve()
+
+    captured = {}
+
+    def fake_generate_with_error_remapping(generator, ast, source_path, line_map):
+        captured["args"] = (generator, ast, source_path, line_map)
+        return "ORG 0x0000\nHLT\n"
+
+    monkeypatch.setattr(nobasic_debugger, "generate_with_error_remapping", fake_generate_with_error_remapping)
+
+    assembly = debugger.generate_code()
+
+    assert assembly == "ORG 0x0000\nHLT\n"
+    assert captured["args"] == (
+        debugger.generator,
+        debugger.ast,
+        str(source_file.resolve()),
+        [(str(source_file.resolve()), 1)],
+    )
+
+
+def test_debugger_compile_and_load_program_reports_codegen_errors(tmp_path, monkeypatch, capsys):
+    source_file = tmp_path / "program.nobasic"
+    include_file = tmp_path / "lib.nobasic"
+    source_file.write_text('Include "lib.nobasic"\n')
+    include_file.write_text("Pause\n")
+
+    debugger = nobasic_debugger.NoBASICDebugger(str(source_file))
+    debugger.ast = _DummyNode(kind="Program")
+    debugger.line_map = [(str(include_file.resolve()), 1)]
+    debugger.resolved_source_file = source_file.resolve()
+
+    monkeypatch.setattr(debugger, "initialize_emulator", lambda: True)
+
+    def fake_generate_with_error_remapping(generator, ast, source_path, line_map):
+        raise CompilerError("debugger codegen failed", str(include_file.resolve()), 1, 7)
+
+    monkeypatch.setattr(nobasic_debugger, "generate_with_error_remapping", fake_generate_with_error_remapping)
+
+    assert debugger.compile_and_load_program() is False
+    assert (
+        f"Failed to compile and load program: Error in {include_file.resolve()} at line 1, column 7: debugger codegen failed"
+        in capsys.readouterr().out
+    )

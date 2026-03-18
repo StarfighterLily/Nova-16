@@ -19,7 +19,7 @@ from compiler.lexer.lexer import Lexer
 from compiler.parser.parser import Parser
 from compiler.semantic.analyzer import SemanticAnalyzer
 from compiler.codegen.generator import CodeGenerator
-from compiler.utils.error import CompilerError
+from compiler.utils.error import CodeGenError, CompilerError
 
 
 INCLUDE_PATTERN = re.compile(r'^\s*(?:#include|include)\s+"([^"]+)"\s*$', re.IGNORECASE)
@@ -42,6 +42,35 @@ class FrontendPipelineResult:
 def _is_legacy_output_file_arg(arg: str) -> bool:
     """Return True when a positional CLI argument looks like an assembly output path."""
     return Path(arg).suffix.lower() == '.asm'
+
+
+def _strip_line_comment(line: str) -> str:
+    """Remove trailing // comments while preserving quoted strings."""
+    in_string = False
+    escaped = False
+
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+
+        if char == '\\' and in_string:
+            escaped = True
+            continue
+
+        if char == '"':
+            in_string = not in_string
+            continue
+
+        if not in_string and char == '/' and index + 1 < len(line) and line[index + 1] == '/':
+            return line[:index]
+
+    return line
+
+
+def _normalized_directive_line(line: str) -> str:
+    """Return a trimmed directive line with trailing comments removed."""
+    return _strip_line_comment(line).strip()
 
 
 def resolve_source_file_path(source_file: str) -> Path:
@@ -114,11 +143,11 @@ def _resolve_includes_from_file(
 
     try:
         for line_num, line in enumerate(source.splitlines(keepends=True), start=1):
-            stripped = line.strip()
-            lowered = stripped.lower()
+            normalized = _normalized_directive_line(line)
+            lowered = normalized.lower()
 
             if not in_asm_block:
-                include_match = INCLUDE_PATTERN.match(line)
+                include_match = INCLUDE_PATTERN.match(normalized)
                 if include_match:
                     include_target = include_match.group(1)
                     include_path = (resolved_path.parent / include_target).resolve()
@@ -227,8 +256,17 @@ def generate_with_error_remapping(generator: Any, ast: Any, source_file: str, li
     """Run code generation while mapping include-expanded diagnostics back to the source file."""
     try:
         return generator.generate(ast)
+    except CodeGenError as error:
+        line = error.line if error.line > 0 else 1
+        column = error.column if error.column > 0 else 1
+        normalized = error
+        if error.filename == "<stdin>":
+            normalized = CodeGenError(error.message, source_file, line, column)
+        raise remap_compiler_error(normalized, source_file, line_map) from error
     except CompilerError as error:
         raise remap_compiler_error(error, source_file, line_map) from error
+    except RuntimeError as error:
+        raise CodeGenError(str(error), source_file, 1, 1) from error
 
 
 def _remove_stale_binary(binary_file: Path) -> None:
