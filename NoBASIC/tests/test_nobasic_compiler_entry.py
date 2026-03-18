@@ -153,6 +153,63 @@ def test_compile_nobasic_passes_optimization_flags(tmp_path, monkeypatch):
     assert output_file.with_suffix(".bin").exists()
 
 
+def test_compile_nobasic_defaults_to_enabled_optimizations_and_creates_output_dirs(tmp_path, monkeypatch):
+    captured = _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "nested_output.nobasic"
+    source_file.write_text("Pause\n")
+    output_file = tmp_path / "build" / "artifacts" / "program.asm"
+    assembler_calls = []
+
+    def fake_run(command, capture_output, text):
+        assembler_calls.append(command)
+        output_asm = Path(command[2])
+        output_asm.with_suffix(".bin").write_bytes(b"\x00")
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    nobasic_compiler.compile_nobasic(str(source_file), output_file=str(output_file))
+
+    assert captured["generator_kwargs"] == {
+        "debug_allocation": False,
+        "enable_optimizations": True,
+        "enable_peephole": False,
+        "enable_live_range_scheduling": False,
+    }
+    assert output_file.parent.is_dir()
+    assert output_file.exists()
+    assert output_file.with_suffix(".bin").exists()
+    assert len(assembler_calls) == 1
+    command = assembler_calls[0]
+    assert Path(command[0]).resolve() == Path(nobasic_compiler.sys.executable).resolve()
+    assert Path(command[1]).resolve() == Path(nobasic_compiler.__file__).resolve().parent.parent / "nova_assembler.py"
+    assert Path(command[2]).resolve() == output_file.resolve()
+
+
+def test_compile_nobasic_rejects_non_asm_output_path_before_assembly(tmp_path, monkeypatch, capsys):
+    _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "bad_output.nobasic"
+    source_file.write_text("Pause\n")
+    output_file = tmp_path / "bad_output.bin"
+    assembler_called = False
+
+    def fake_run(command, capture_output, text):
+        nonlocal assembler_called
+        assembler_called = True
+        return SimpleNamespace(stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file), output_file=str(output_file))
+
+    assert exc.value.code == 1
+    assert assembler_called is False
+    output = capsys.readouterr().out
+    assert f"Output file must have .asm extension: {output_file}" in output
+    assert output_file.exists() is False
+
+
 def test_compile_nobasic_exits_if_assembler_does_not_produce_binary(tmp_path, monkeypatch, capsys):
     _install_pipeline_stubs(monkeypatch)
     source_file = tmp_path / "fail_bin.nobasic"
@@ -169,6 +226,47 @@ def test_compile_nobasic_exits_if_assembler_does_not_produce_binary(tmp_path, mo
     output = capsys.readouterr().out
     assert "Assembly failed" in output
     assert "Assembler output" in output
+
+
+def test_compile_nobasic_exits_if_assembler_returns_nonzero_even_with_binary(tmp_path, monkeypatch, capsys):
+    _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "assembler_exit.nobasic"
+    source_file.write_text("Pause\n")
+
+    def fake_run(command, capture_output, text):
+        output_asm = Path(command[2])
+        output_asm.with_suffix(".bin").write_bytes(b"\x00")
+        return SimpleNamespace(returncode=7, stdout="assembler stdout", stderr="assembler stderr")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert "Assembly failed with exit code 7" in output
+    assert "Assembler stderr: assembler stderr" in output
+    assert "Assembler output: assembler stdout" in output
+
+
+def test_compile_nobasic_reports_assembler_launch_failure(tmp_path, monkeypatch, capsys):
+    _install_pipeline_stubs(monkeypatch)
+    source_file = tmp_path / "missing_assembler.nobasic"
+    source_file.write_text("Pause\n")
+
+    def fake_run(command, capture_output, text):
+        raise FileNotFoundError("assembler missing")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.compile_nobasic(str(source_file))
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert "Assembly failed: could not execute assembler" in output
+    assert "assembler missing" in output
 
 
 def test_compile_nobasic_removes_stale_binary_before_assembly(tmp_path, monkeypatch, capsys):
@@ -529,6 +627,49 @@ def test_main_parses_disable_flags_and_calls_compile(monkeypatch, tmp_path):
     )
 
 
+@pytest.mark.parametrize(
+    ("extra_args", "expected_enable_optimizations", "expected_debug_optimizations"),
+    [
+        (["--debug-optimizations", "--disable-optimizations"], True, True),
+        (["--disable-optimizations", "--debug-optimizations"], True, True),
+        (["--disable-optimizations", "--enable-optimizations"], True, False),
+        (["--enable-optimizations", "--disable-optimizations"], False, False),
+    ],
+)
+def test_main_honors_flag_ordering_and_debug_invariant(
+    monkeypatch,
+    tmp_path,
+    extra_args,
+    expected_enable_optimizations,
+    expected_debug_optimizations,
+):
+    source_file = tmp_path / "sample_flags.nobasic"
+    source_file.write_text("Pause\n")
+    called = {}
+
+    def fake_compile(*args):
+        called["args"] = args
+
+    monkeypatch.setattr(nobasic_compiler, "compile_nobasic", fake_compile)
+    monkeypatch.setattr(
+        nobasic_compiler.sys,
+        "argv",
+        ["nobasic_compiler.py", str(source_file), *extra_args],
+    )
+
+    nobasic_compiler.main()
+
+    assert called["args"] == (
+        str(source_file),
+        None,
+        False,
+        expected_enable_optimizations,
+        expected_debug_optimizations,
+        False,
+        False,
+    )
+
+
 def test_main_supports_legacy_positional_output(monkeypatch, tmp_path):
     source_file = tmp_path / "sample.nobasic"
     source_file.write_text("Pause\n")
@@ -617,3 +758,44 @@ def test_main_fails_when_output_flag_missing_argument(monkeypatch, tmp_path, cap
         nobasic_compiler.main()
     assert exc.value.code == 1
     assert "--output requires an argument" in capsys.readouterr().out
+
+
+def test_main_accepts_case_insensitive_asm_output_flag(monkeypatch, tmp_path):
+    source_file = tmp_path / "sample.nobasic"
+    source_file.write_text("Pause\n")
+    output_file = tmp_path / "CUSTOM_OUTPUT.ASM"
+    called = {}
+
+    def fake_compile(*args):
+        called["args"] = args
+
+    monkeypatch.setattr(nobasic_compiler, "compile_nobasic", fake_compile)
+    monkeypatch.setattr(
+        nobasic_compiler.sys,
+        "argv",
+        ["nobasic_compiler.py", str(source_file), "--output", str(output_file)],
+    )
+
+    nobasic_compiler.main()
+
+    assert called["args"][0] == str(source_file)
+    assert called["args"][1] == str(output_file)
+
+
+def test_main_rejects_non_asm_output_flag(monkeypatch, tmp_path, capsys):
+    source_file = tmp_path / "sample.nobasic"
+    source_file.write_text("Pause\n")
+    output_file = tmp_path / "sample.bin"
+
+    monkeypatch.setattr(
+        nobasic_compiler.sys,
+        "argv",
+        ["nobasic_compiler.py", str(source_file), "--output", str(output_file)],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        nobasic_compiler.main()
+
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert f"Output file must have .asm extension: {output_file}" in output

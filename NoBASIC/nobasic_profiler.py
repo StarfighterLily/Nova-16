@@ -10,7 +10,7 @@ import time
 import cProfile
 import pstats
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, Iterable, List, Any
 import io
 
 # Add the compiler directory to the path
@@ -22,7 +22,12 @@ from compiler.semantic.analyzer import SemanticAnalyzer
 from compiler.codegen.generator import CodeGenerator
 from compiler.parser.ast import DataType
 from compiler.utils.error import CompilerError
-from nobasic_compiler import preprocess_source, remap_compiler_error, resolve_source_file_path
+from nobasic_compiler import (
+    generate_with_error_remapping,
+    remap_compiler_error,
+    resolve_source_file_path,
+    run_frontend_pipeline,
+)
 
 
 class NoBASICProfiler:
@@ -51,28 +56,39 @@ class NoBASICProfiler:
         print(f"Profiling compilation of {self.source_file}...")
 
         start_total = time.time()
+        tokens: List[Any] = []
         line_map = []
         resolved_source_file = None
 
         try:
-            resolved_source_file = resolve_source_file_path(self.source_file)
-
             # Profile parsing
             start_parse = time.time()
-            source, line_map = preprocess_source(str(resolved_source_file))
-            tokens = self.lexer.tokenize(source, str(resolved_source_file))
-            self.ast = self.parser.parse(tokens, str(resolved_source_file))
+            pipeline = run_frontend_pipeline(
+                self.source_file,
+                lexer_factory=Lexer,
+                parser_factory=Parser,
+                analyzer_factory=SemanticAnalyzer,
+            )
+            resolved_source_file = pipeline.resolved_source_file
+            line_map = pipeline.line_map
+            tokens = pipeline.tokens
+            self.ast = pipeline.ast
+            self.analyzer = pipeline.analyzer
             self.parsing_time = time.time() - start_parse
 
             # Profile semantic analysis
             start_semantic = time.time()
-            self.analyzer.analyze(self.ast, str(resolved_source_file))
             self.symbols = self.analyzer.symbol_table.variables.copy()
             self.semantic_time = time.time() - start_semantic
 
             # Profile code generation
             start_codegen = time.time()
-            self.assembly_code = self.generator.generate(self.ast)
+            self.assembly_code = generate_with_error_remapping(
+                self.generator,
+                self.ast,
+                str(resolved_source_file),
+                line_map,
+            )
             self.codegen_time = time.time() - start_codegen
 
             self.total_time = time.time() - start_total
@@ -149,30 +165,31 @@ class NoBASICProfiler:
         if node_type == 'FunctionCallExpr':
             complexity['functions'] += 1
 
-        # Recursively analyze children
-        if hasattr(node, 'statements') and node.statements:
-            for stmt in node.statements:
-                self._analyze_ast_complexity(stmt, depth + 1, complexity)
-        elif hasattr(node, 'then_branch') and node.then_branch:
-            for stmt in node.then_branch:
-                self._analyze_ast_complexity(stmt, depth + 1, complexity)
-        elif hasattr(node, 'else_branch') and node.else_branch:
-            for stmt in node.else_branch:
-                self._analyze_ast_complexity(stmt, depth + 1, complexity)
-        elif hasattr(node, 'body') and node.body:
-            for stmt in node.body:
-                self._analyze_ast_complexity(stmt, depth + 1, complexity)
-        elif hasattr(node, 'left'):
-            self._analyze_ast_complexity(node.left, depth, complexity)
-        elif hasattr(node, 'right'):
-            self._analyze_ast_complexity(node.right, depth, complexity)
-        elif hasattr(node, 'expression'):
-            self._analyze_ast_complexity(node.expression, depth, complexity)
-        elif hasattr(node, 'arguments') and node.arguments:
-            for arg in node.arguments:
-                self._analyze_ast_complexity(arg, depth, complexity)
+        # Recursively analyze all child containers instead of stopping at the
+        # first matching attribute. Expression nodes frequently contain more
+        # than one child branch.
+        for branch_name in ('statements', 'then_branch', 'else_branch', 'body', 'arguments'):
+            for child in self._iter_child_sequence(node, branch_name):
+                child_depth = depth + 1 if branch_name != 'arguments' else depth
+                self._analyze_ast_complexity(child, child_depth, complexity)
+
+        for child_name in ('left', 'right', 'expression', 'condition', 'value', 'target', 'start', 'end', 'step'):
+            child = getattr(node, child_name, None)
+            if self._is_ast_node(child):
+                self._analyze_ast_complexity(child, depth, complexity)
 
         return complexity
+
+    def _iter_child_sequence(self, node, attribute_name: str) -> Iterable[Any]:
+        """Yield AST child nodes from a list-valued attribute when present."""
+        children = getattr(node, attribute_name, None)
+        if not children:
+            return ()
+        return tuple(child for child in children if self._is_ast_node(child))
+
+    def _is_ast_node(self, value: Any) -> bool:
+        """Return True for objects that look like AST nodes rather than primitives."""
+        return value is not None and hasattr(value, '__dict__')
 
     def analyze_memory_usage(self) -> Dict[str, Any]:
         """Analyze memory usage patterns."""
@@ -204,10 +221,10 @@ class NoBASICProfiler:
         # Performance metrics
         report.append("PERFORMANCE METRICS:")
         report.append("-" * 30)
-        report.append(".4f")
-        report.append(".4f")
-        report.append(".4f")
-        report.append(".4f")
+        report.append(f"Parsing Time: {self.parsing_time:.4f}s")
+        report.append(f"Semantic Analysis Time: {self.semantic_time:.4f}s")
+        report.append(f"Code Generation Time: {self.codegen_time:.4f}s")
+        report.append(f"Total Time: {self.total_time:.4f}s")
         report.append("")
 
         # Code metrics
@@ -282,16 +299,23 @@ class NoBASICProfiler:
 
 def main():
     """Main entry point."""
-    if len(sys.argv) != 2:
-        print("Usage: python nobasic_profiler.py <file.nobasic>")
+    if len(sys.argv) not in {2, 3}:
+        print("Usage: python nobasic_profiler.py <file.nobasic> [--detailed]")
         return 1
 
     source_file = sys.argv[1]
-    if not Path(source_file).exists():
+    detailed = len(sys.argv) == 3 and sys.argv[2] == '--detailed'
+    if len(sys.argv) == 3 and not detailed:
+        print(f"Unknown option: {sys.argv[2]}")
+        return 1
+
+    try:
+        resolved_source_file = resolve_source_file_path(source_file)
+    except CompilerError:
         print(f"File not found: {source_file}")
         return 1
 
-    profiler = NoBASICProfiler(source_file)
+    profiler = NoBASICProfiler(str(resolved_source_file))
 
     # Run profiling
     profiler.profile_compilation()
@@ -301,7 +325,7 @@ def main():
     print(report)
 
     # Option for detailed profiling
-    if len(sys.argv) > 2 and sys.argv[2] == '--detailed':
+    if detailed:
         profiler.profile_with_cprofile()
 
     return 0

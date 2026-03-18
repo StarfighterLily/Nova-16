@@ -19,7 +19,7 @@ from compiler.codegen.generator import CodeGenerator
 from compiler.utils.error import CompilerError
 from compiler.parser.ast import DataType
 from compiler.parser.ast import VariableExpr, LiteralExpr
-from nobasic_compiler import preprocess_source, remap_compiler_error, resolve_source_file_path
+from nobasic_compiler import resolve_source_file_path, run_frontend_pipeline
 
 # Add Nova-16 emulator imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -35,7 +35,7 @@ class NoBASICDebugger:
     """Interactive debugger for NoBASIC programs."""
 
     def __init__(self, source_file: str):
-        self.source_file = source_file
+        self.source_file = str(resolve_source_file_path(source_file))
         self.source_lines = self._read_source()
         self.lexer = Lexer()
         self.parser = Parser()
@@ -96,31 +96,28 @@ class NoBASICDebugger:
 
     def parse_program(self):
         """Parse the NoBASIC program."""
-        line_map = []
-        resolved_source_file = None
-
         try:
-            resolved_source_file = resolve_source_file_path(self.source_file)
-            source, line_map = preprocess_source(str(resolved_source_file))
+            pipeline = run_frontend_pipeline(
+                self.source_file,
+                lexer_factory=Lexer,
+                parser_factory=Parser,
+                analyzer_factory=SemanticAnalyzer,
+            )
 
             print(f"Parsing {self.source_file}...")
 
-            # Lexical analysis
-            self.tokens = self.lexer.tokenize(source, str(resolved_source_file))
+            self.tokens = pipeline.tokens
             print(f"Lexical analysis complete: {len(self.tokens)} tokens")
 
-            # Parsing
-            self.ast = self.parser.parse(self.tokens, str(resolved_source_file))
+            self.ast = pipeline.ast
             print("Parsing complete")
 
-            # Semantic analysis
-            self.analyzer.analyze(self.ast, str(resolved_source_file))
+            self.analyzer = pipeline.analyzer
             self.symbols = self.analyzer.symbol_table.variables.copy()
             print("Semantic analysis complete")
 
         except CompilerError as e:
-            main_source_for_remap = str(resolved_source_file) if resolved_source_file is not None else self.source_file
-            print(f"Error: {remap_compiler_error(e, main_source_for_remap, line_map)}")
+            print(f"Error: {e}")
             return False
         return True
 

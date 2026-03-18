@@ -18,14 +18,14 @@ from compiler.parser.parser import Parser
 from compiler.semantic.analyzer import SemanticAnalyzer
 from compiler.codegen.generator import CodeGenerator
 from compiler.utils.error import CompilerError
-from nobasic_compiler import run_frontend_pipeline
+from nobasic_compiler import generate_with_error_remapping, resolve_source_file_path, run_frontend_pipeline
 
 
 class NoBASICInspector:
     """Tools for inspecting NoBASIC programs."""
 
     def __init__(self, source_file: str):
-        self.source_file = source_file
+        self.source_file = str(resolve_source_file_path(source_file))
         self.lexer = Lexer()
         self.parser = Parser()
         self.analyzer = SemanticAnalyzer()
@@ -50,7 +50,12 @@ class NoBASICInspector:
             results['symbols'] = self._symbols_to_dict()
 
             # Code generation
-            assembly = self.generator.generate(pipeline.ast)
+            assembly = generate_with_error_remapping(
+                self.generator,
+                pipeline.ast,
+                str(pipeline.resolved_source_file),
+                pipeline.line_map,
+            )
             results['assembly'] = assembly
 
             if output_dir:
@@ -177,11 +182,13 @@ def main():
     source_file = sys.argv[1]
     output_dir = sys.argv[2] if len(sys.argv) > 2 else None
 
-    if not Path(source_file).exists():
+    try:
+        resolved_source_file = resolve_source_file_path(source_file)
+    except CompilerError:
         print(f"File not found: {source_file}")
         return 1
 
-    inspector = NoBASICInspector(source_file)
+    inspector = NoBASICInspector(str(resolved_source_file))
     success = inspector.inspect_all(output_dir)
 
     return 0 if success else 1

@@ -7,6 +7,7 @@ Compiles NoBASIC source code to Nova-16 assembly and binary.
 import sys
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
@@ -222,6 +223,14 @@ def remap_compiler_error(error: CompilerError, source_file: str, line_map: Sourc
     return error.__class__(error.message, mapped_file, mapped_line, error.column)
 
 
+def generate_with_error_remapping(generator: Any, ast: Any, source_file: str, line_map: SourceLineMap) -> str:
+    """Run code generation while mapping include-expanded diagnostics back to the source file."""
+    try:
+        return generator.generate(ast)
+    except CompilerError as error:
+        raise remap_compiler_error(error, source_file, line_map) from error
+
+
 def _remove_stale_binary(binary_file: Path) -> None:
     """Ensure the assembler must produce a fresh binary for the current compile."""
     try:
@@ -230,8 +239,30 @@ def _remove_stale_binary(binary_file: Path) -> None:
         raise CompilerError(f"Failed to remove stale binary '{binary_file}': {exc}", str(binary_file), 1, 1)
 
 
+def _prepare_output_file_path(output_file: Optional[str], resolved_source_file: Path) -> Path:
+    """Resolve the assembly output path and create its parent directory when needed."""
+    output_path = resolved_source_file.with_suffix('.asm') if output_file is None else Path(output_file)
+
+    if output_path.suffix.lower() != '.asm':
+        raise CompilerError(
+            f"Output file must have .asm extension: {output_path}",
+            str(output_path),
+            1,
+            1,
+        )
+
+    parent_dir = output_path.parent
+    if parent_dir and not parent_dir.exists():
+        try:
+            parent_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise CompilerError(f"Failed to create output directory '{parent_dir}': {exc}", str(output_path), 1, 1)
+
+    return output_path
+
+
 def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = False, 
-                    enable_optimizations: bool = False, debug_optimizations: bool = False,
+                    enable_optimizations: bool = True, debug_optimizations: bool = False,
                     enable_peephole: bool = False, enable_live_range_scheduling: bool = False,
                     log: Optional[Callable[[str], None]] = print,
                     assemble_callback: Optional[Callable[[Path, bool, Callable[[str], None]], bool]] = None):
@@ -242,7 +273,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         source_file: Path to the .nobasic source file
         output_file: Path to the output .asm file (optional)
         verbose: Enable verbose output
-        enable_optimizations: Enable compiler optimizations (default: False)
+        enable_optimizations: Enable compiler optimizations (default: True)
         debug_optimizations: Enable optimization debug output (default: False)
         enable_peephole: Enable peephole optimizer (default: False)
         enable_live_range_scheduling: Enable live range scheduler (default: False)
@@ -290,42 +321,58 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         )
         if debug_optimizations:
             generator.opt_config['debug_optimizations'] = True
-        assembly = generator.generate(pipeline.ast)
+        assembly = generate_with_error_remapping(
+            generator,
+            pipeline.ast,
+            str(resolved_source_file),
+            line_map,
+        )
 
         if verbose:
             emit("Code generation complete")
 
-        # Determine output file
-        if not output_file:
-            output_file = resolved_source_file.with_suffix('.asm')
+        # Determine output file and ensure the destination exists.
+        output_path = _prepare_output_file_path(output_file, resolved_source_file)
 
         # Write assembly
-        with open(output_file, 'w') as f:
+        with open(output_path, 'w') as f:
             f.write(assembly)
 
         if verbose:
-            emit(f"Assembly written to {output_file}")
+            emit(f"Assembly written to {output_path}")
 
-        binary_file = Path(output_file).with_suffix('.bin')
+        binary_file = output_path.with_suffix('.bin')
         _remove_stale_binary(binary_file)
 
         if verbose:
-            emit(f"Assembling {output_file} to {binary_file}...")
+            emit(f"Assembling {output_path} to {binary_file}...")
 
         if assemble_callback is not None:
-            assembly_succeeded = assemble_callback(Path(output_file), verbose, emit)
+            assembly_succeeded = assemble_callback(output_path, verbose, emit)
             if not assembly_succeeded:
-                emit(f"Assembly failed for {output_file}")
+                emit(f"Assembly failed for {output_path}")
                 sys.exit(1)
         else:
             # Assemble to binary using nova_assembler.py
             assembler_path = os.path.join(os.path.dirname(__file__), '..', 'nova_assembler.py')
 
             # Run the assembler
-            import subprocess
-            result = subprocess.run([
-                sys.executable, assembler_path, str(output_file)
-            ], capture_output=True, text=True)
+            try:
+                result = subprocess.run([
+                    sys.executable, assembler_path, str(output_path)
+                ], capture_output=True, text=True)
+            except OSError as exc:
+                emit(f"Assembly failed: could not execute assembler '{assembler_path}': {exc}")
+                sys.exit(1)
+
+            return_code = getattr(result, 'returncode', 0)
+            if return_code != 0:
+                emit(f"Assembly failed with exit code {return_code}")
+                if result.stderr:
+                    emit(f"Assembler stderr: {result.stderr}")
+                if result.stdout:
+                    emit(f"Assembler output: {result.stdout}")
+                sys.exit(1)
 
             # Check if binary was created (assembler may output to stdout/stderr but still succeed)
             if not binary_file.exists():
@@ -341,7 +388,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         if verbose:
             emit(f"Binary written to {binary_file}")
 
-        emit(f"Compilation successful: {output_file} and {binary_file}")
+        emit(f"Compilation successful: {output_path} and {binary_file}")
 
     except CompilerError as e:
         main_source_for_remap = str(resolved_source_file) if resolved_source_file is not None else source_file
@@ -417,6 +464,9 @@ def main():
             sys.exit(1)
         
         i += 1
+
+    if debug_optimizations:
+        enable_optimizations = True
 
     compile_nobasic(source_file, output_file, verbose, enable_optimizations, debug_optimizations,
                     enable_peephole, enable_live_range_scheduling)
