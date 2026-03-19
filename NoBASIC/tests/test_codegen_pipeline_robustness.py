@@ -195,3 +195,47 @@ def test_large_program_skips_live_range_scheduler_cutoff(monkeypatch):
 
     assert output.count("KEYSTAT R0") == 200
     assert output.strip().endswith("HLT")
+
+
+def test_live_range_scheduler_budget_allows_small_program():
+    generator = CodeGenerator()
+    generator.live_ranges = {"a": (1, 2), "b": (2, 3)}
+
+    should_schedule, reason = generator._should_run_live_range_scheduler([
+        "MOV R0, 1",
+        "HLT",
+    ])
+
+    assert should_schedule is True
+    assert "within budget" in reason
+
+
+def test_live_range_scheduler_budget_skips_high_work_estimate():
+    generator = CodeGenerator()
+    generator.live_ranges = {f"v{i}": (i, i + 1) for i in range(128)}
+
+    should_schedule, reason = generator._should_run_live_range_scheduler([
+        "MOV R0, 1"
+    ] * 193)
+
+    assert should_schedule is False
+    assert "work estimate" in reason
+    assert "193 lines x 128 live ranges" in reason
+
+
+def test_generate_skips_live_range_scheduler_when_work_budget_exceeded(monkeypatch):
+    source = "\n".join([f"v{i} = {i}" for i in range(12)])
+    program = _analyze_program(source)
+
+    def fail_schedule(self, assembly_lines, variable_lifetimes=None):
+        raise AssertionError("live range scheduler should have been skipped for excessive work estimate")
+
+    monkeypatch.setattr(LiveRangeScheduler, "schedule", fail_schedule)
+
+    generator = CodeGenerator(enable_peephole=False, enable_live_range_scheduling=True)
+    generator.LIVE_RANGE_SCHEDULER_MAX_WORK = 1
+
+    output = generator.generate(program)
+
+    assert "ORG 0x0200" in output
+    assert output.strip().endswith("HLT")

@@ -38,7 +38,8 @@ class CodeGenerator:
     """Code generator for NoBASIC to Nova-16 assembly."""
 
     DATA_REGION_START = 0x0120
-    LIVE_RANGE_SCHEDULER_MAX_LINES = 512
+    LIVE_RANGE_SCHEDULER_MAX_LINES = 384
+    LIVE_RANGE_SCHEDULER_MAX_WORK = 24576
 
     def __init__(self, debug_allocation: bool = False, enable_optimizations: bool = True,
                  enable_peephole: bool = True, enable_live_range_scheduling: bool = True):
@@ -232,6 +233,30 @@ class CodeGenerator:
             )
         self.next_address = end_addr
         return start_addr
+
+    def _should_run_live_range_scheduler(self, assembly_lines: List[str]) -> Tuple[bool, str]:
+        """Return whether live-range scheduling is worth its compile-time cost."""
+        line_count = len(assembly_lines)
+        live_range_count = len(self.live_ranges)
+        work_estimate = line_count * max(1, live_range_count)
+
+        if line_count > self.LIVE_RANGE_SCHEDULER_MAX_LINES:
+            return (
+                False,
+                f"line count {line_count} exceeds threshold {self.LIVE_RANGE_SCHEDULER_MAX_LINES}",
+            )
+
+        if work_estimate > self.LIVE_RANGE_SCHEDULER_MAX_WORK:
+            return (
+                False,
+                f"work estimate {work_estimate} exceeds threshold {self.LIVE_RANGE_SCHEDULER_MAX_WORK} "
+                f"({line_count} lines x {live_range_count} live ranges)",
+            )
+
+        return (
+            True,
+            f"within budget ({line_count} lines, {live_range_count} live ranges, work {work_estimate})",
+        )
 
     def allocate_register(self, preferred_reg: str = None, exclude_interfering: bool = True) -> str:
         """
@@ -1319,7 +1344,8 @@ class CodeGenerator:
         assembly_lines = assembly_output.splitlines()
         
         if self.enable_optimizations and self.enable_live_range_scheduling:
-            if len(assembly_lines) <= self.LIVE_RANGE_SCHEDULER_MAX_LINES:
+            should_schedule, schedule_reason = self._should_run_live_range_scheduler(assembly_lines)
+            if should_schedule:
                 # Run live range scheduler prior to peephole to improve register pressure.
                 from .live_range_scheduler import LiveRangeScheduler
                 scheduler = LiveRangeScheduler(debug=self.debug_allocation)
@@ -1329,10 +1355,7 @@ class CodeGenerator:
                     print("[CODEGEN] Live range scheduling applied")
                     print(f"[CODEGEN] Scheduled instructions: {len(scheduled_lines)} lines")
             elif self.debug_allocation:
-                print(
-                    f"[CODEGEN] Skipping live range scheduling for {len(assembly_lines)} lines "
-                    f"(threshold {self.LIVE_RANGE_SCHEDULER_MAX_LINES})"
-                )
+                print(f"[CODEGEN] Skipping live range scheduling: {schedule_reason}")
         
         if self.enable_optimizations and self.enable_peephole:
             from .peephole import PeepholeOptimizer

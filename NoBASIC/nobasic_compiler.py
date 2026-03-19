@@ -7,10 +7,12 @@ Compiles NoBASIC source code to Nova-16 assembly and binary.
 import sys
 import os
 import re
+import importlib
 import subprocess
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Add the compiler directory to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'compiler'))
@@ -26,6 +28,7 @@ INCLUDE_PATTERN = re.compile(r'^\s*(?:#include|include)\s+"([^"]+)"\s*$', re.IGN
 MAX_INCLUDE_DEPTH = 32
 SourceLineMap = List[Tuple[str, int]]
 IncludeOrigin = Optional[Tuple[Path, int]]
+ResolvedIncludeCache = Dict[Path, Tuple[str, SourceLineMap]]
 
 
 @dataclass
@@ -122,10 +125,13 @@ def _resolve_includes_from_file(
     include_stack=None,
     max_depth: int = MAX_INCLUDE_DEPTH,
     include_origin: IncludeOrigin = None,
+    resolved_cache: Optional[ResolvedIncludeCache] = None,
 ) -> Tuple[str, SourceLineMap]:
     """Resolve Include directives recursively and return flattened source text + line map."""
     if include_stack is None:
         include_stack = []
+    if resolved_cache is None:
+        resolved_cache = {}
 
     resolved_path = file_path.resolve()
 
@@ -147,6 +153,11 @@ def _resolve_includes_from_file(
             error_line,
             1,
         )
+
+    cached_result = resolved_cache.get(resolved_path)
+    if cached_result is not None:
+        cached_source, cached_line_map = cached_result
+        return cached_source, list(cached_line_map)
 
     if not resolved_path.exists():
         error_file, error_line = _include_error_location(resolved_path, include_origin)
@@ -193,6 +204,7 @@ def _resolve_includes_from_file(
                         include_stack,
                         max_depth,
                         include_origin=(resolved_path, line_num),
+                        resolved_cache=resolved_cache,
                     )
                     output_lines.append(included_source)
                     line_map.extend(included_map)
@@ -215,7 +227,9 @@ def _resolve_includes_from_file(
             output_lines.append(line)
             line_map.append((str(resolved_path), line_num))
 
-        return ''.join(output_lines), line_map
+        flattened_source = ''.join(output_lines)
+        resolved_cache[resolved_path] = (flattened_source, list(line_map))
+        return flattened_source, line_map
     finally:
         include_stack.pop()
 
@@ -302,6 +316,110 @@ def generate_with_error_remapping(generator: Any, ast: Any, source_file: str, li
         raise remap_compiler_error(error, source_file, line_map) from error
     except Exception as error:
         raise CodeGenError(str(error), source_file, 1, 1) from error
+
+
+@lru_cache(maxsize=1)
+def _get_nova_assembler_module() -> Any:
+    """Import and cache the Nova assembler module from the repository root."""
+    repo_root = Path(__file__).resolve().parent.parent
+    repo_root_str = str(repo_root)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
+    return importlib.import_module("nova_assembler")
+
+
+class InProcessAssemblerUnavailableError(RuntimeError):
+    """Raised when the in-process assembler cannot be loaded and subprocess fallback should be used."""
+
+
+def _assemble_in_process(output_path: Path, verbose: bool, emit: Callable[[str], None]) -> bool:
+    """Assemble using the in-process Nova assembler, buffering logs unless verbose."""
+    assembler_messages: List[str] = []
+    try:
+        assembler_module = _get_nova_assembler_module()
+        assembler_factory = assembler_module.Assembler
+    except (ImportError, ModuleNotFoundError, AttributeError) as exc:
+        raise InProcessAssemblerUnavailableError(str(exc)) from exc
+
+    log_callback = emit if verbose else assembler_messages.append
+
+    try:
+        assembler = assembler_factory(
+            log=log_callback,
+            trace=verbose,
+        )
+        succeeded = bool(assembler.assemble(str(output_path)))
+    except Exception as exc:
+        if not verbose:
+            for message in assembler_messages:
+                emit(message)
+        emit(f"Assembly failed for {output_path}: {exc}")
+        sys.exit(1)
+
+    if not succeeded and not verbose:
+        for message in assembler_messages:
+            emit(message)
+    return succeeded
+
+
+def _assemble_with_subprocess(output_path: Path, binary_file: Path, emit: Callable[[str], None]) -> None:
+    """Fallback assembly path that invokes the standalone assembler process."""
+    assembler_path = os.path.join(os.path.dirname(__file__), '..', 'nova_assembler.py')
+
+    try:
+        result = subprocess.run([
+            sys.executable, assembler_path, str(output_path)
+        ], capture_output=True, text=True)
+    except OSError as exc:
+        emit(f"Assembly failed: could not execute assembler '{assembler_path}': {exc}")
+        sys.exit(1)
+
+    return_code = getattr(result, 'returncode', 0)
+    if return_code != 0:
+        emit(f"Assembly failed with exit code {return_code}")
+        if result.stderr:
+            emit(f"Assembler stderr: {result.stderr}")
+        if result.stdout:
+            emit(f"Assembler output: {result.stdout}")
+        sys.exit(1)
+
+    if not binary_file.exists():
+        emit(f"Assembly failed: {result.stderr}")
+        if result.stdout:
+            emit(f"Assembler output: {result.stdout}")
+        sys.exit(1)
+
+
+def _assemble_output(
+    output_path: Path,
+    binary_file: Path,
+    verbose: bool,
+    emit: Callable[[str], None],
+    assemble_callback: Optional[Callable[[Path, bool, Callable[[str], None]], bool]] = None,
+) -> None:
+    """Assemble generated output using the provided callback, fast path, or subprocess fallback."""
+    if assemble_callback is not None:
+        try:
+            assembly_succeeded = assemble_callback(output_path, verbose, emit)
+        except Exception as exc:
+            emit(f"Assembly failed for {output_path}: {exc}")
+            sys.exit(1)
+        if not assembly_succeeded:
+            emit(f"Assembly failed for {output_path}")
+            sys.exit(1)
+        return
+
+    try:
+        assembly_succeeded = _assemble_in_process(output_path, verbose, emit)
+    except InProcessAssemblerUnavailableError as exc:
+        if verbose:
+            emit(f"In-process assembler unavailable, falling back to subprocess: {exc}")
+        _assemble_with_subprocess(output_path, binary_file, emit)
+        return
+
+    if not assembly_succeeded:
+        emit(f"Assembly failed for {output_path}")
+        sys.exit(1)
 
 
 def _remove_stale_binary(binary_file: Path) -> None:
@@ -436,43 +554,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         if verbose:
             emit(f"Assembling {output_path} to {binary_file}...")
 
-        if assemble_callback is not None:
-            try:
-                assembly_succeeded = assemble_callback(output_path, verbose, emit)
-            except Exception as exc:
-                emit(f"Assembly failed for {output_path}: {exc}")
-                sys.exit(1)
-            if not assembly_succeeded:
-                emit(f"Assembly failed for {output_path}")
-                sys.exit(1)
-        else:
-            # Assemble to binary using nova_assembler.py
-            assembler_path = os.path.join(os.path.dirname(__file__), '..', 'nova_assembler.py')
-
-            # Run the assembler
-            try:
-                result = subprocess.run([
-                    sys.executable, assembler_path, str(output_path)
-                ], capture_output=True, text=True)
-            except OSError as exc:
-                emit(f"Assembly failed: could not execute assembler '{assembler_path}': {exc}")
-                sys.exit(1)
-
-            return_code = getattr(result, 'returncode', 0)
-            if return_code != 0:
-                emit(f"Assembly failed with exit code {return_code}")
-                if result.stderr:
-                    emit(f"Assembler stderr: {result.stderr}")
-                if result.stdout:
-                    emit(f"Assembler output: {result.stdout}")
-                sys.exit(1)
-
-            # Check if binary was created (assembler may output to stdout/stderr but still succeed)
-            if not binary_file.exists():
-                emit(f"Assembly failed: {result.stderr}")
-                if result.stdout:
-                    emit(f"Assembler output: {result.stdout}")
-                sys.exit(1)
+        _assemble_output(output_path, binary_file, verbose, emit, assemble_callback)
 
         if not binary_file.exists():
             emit(f"Binary file not created at {binary_file}")

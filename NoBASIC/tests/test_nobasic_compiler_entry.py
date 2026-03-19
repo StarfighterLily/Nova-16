@@ -60,17 +60,39 @@ def _install_pipeline_stubs(monkeypatch):
     return captured
 
 
+def _install_in_process_assembler_stub(monkeypatch, *, success=True, messages=None):
+    """Install a stub in-process assembler module for compile path tests."""
+    calls: Dict[str, Any] = {}
+    buffered_messages = list(messages or [])
+
+    class StubAssembler:
+        def __init__(self, log=print, trace=False):
+            calls["log"] = log
+            calls["trace"] = trace
+
+        def assemble(self, filename):
+            output_asm = Path(filename)
+            calls["filename"] = output_asm
+            for message in buffered_messages:
+                if calls["log"] is not None:
+                    calls["log"](message)
+            if success:
+                output_asm.with_suffix(".bin").write_bytes(b"\x00")
+            return success
+
+    monkeypatch.setattr(
+        nobasic_compiler,
+        "_get_nova_assembler_module",
+        lambda: SimpleNamespace(Assembler=StubAssembler),
+    )
+    return calls
+
+
 def test_compile_nobasic_uses_default_output_and_writes_bin(tmp_path, monkeypatch, capsys):
     captured = _install_pipeline_stubs(monkeypatch)
     source_file = tmp_path / "program.nobasic"
     source_file.write_text("Pause\n")
-
-    def fake_run(command, capture_output, text):
-        output_asm = Path(command[2])
-        output_asm.with_suffix(".bin").write_bytes(b"\x00")
-        return SimpleNamespace(stdout="ok", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    _install_in_process_assembler_stub(monkeypatch)
 
     nobasic_compiler.compile_nobasic(str(source_file))
 
@@ -90,13 +112,7 @@ def test_compile_nobasic_supports_custom_logger_without_stdout(tmp_path, monkeyp
     source_file = tmp_path / "logged.nobasic"
     source_file.write_text("Pause\n")
     messages = []
-
-    def fake_run(command, capture_output, text):
-        output_asm = Path(command[2])
-        output_asm.with_suffix(".bin").write_bytes(b"\x00")
-        return SimpleNamespace(stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    _install_in_process_assembler_stub(monkeypatch)
 
     nobasic_compiler.compile_nobasic(str(source_file), verbose=True, log=messages.append)
 
@@ -135,12 +151,7 @@ def test_compile_nobasic_passes_optimization_flags(tmp_path, monkeypatch):
     source_file = tmp_path / "opts.nobasic"
     source_file.write_text("Pause\n")
     output_file = tmp_path / "custom_output.asm"
-
-    def fake_run(command, capture_output, text):
-        Path(command[2]).with_suffix(".bin").write_bytes(b"\x00")
-        return SimpleNamespace(stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    _install_in_process_assembler_stub(monkeypatch)
 
     nobasic_compiler.compile_nobasic(
         str(source_file),
@@ -166,15 +177,7 @@ def test_compile_nobasic_defaults_to_enabled_optimizations_and_creates_output_di
     source_file = tmp_path / "nested_output.nobasic"
     source_file.write_text("Pause\n")
     output_file = tmp_path / "build" / "artifacts" / "program.asm"
-    assembler_calls = []
-
-    def fake_run(command, capture_output, text):
-        assembler_calls.append(command)
-        output_asm = Path(command[2])
-        output_asm.with_suffix(".bin").write_bytes(b"\x00")
-        return SimpleNamespace(stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    calls = _install_in_process_assembler_stub(monkeypatch)
 
     nobasic_compiler.compile_nobasic(str(source_file), output_file=str(output_file))
 
@@ -187,11 +190,8 @@ def test_compile_nobasic_defaults_to_enabled_optimizations_and_creates_output_di
     assert output_file.parent.is_dir()
     assert output_file.exists()
     assert output_file.with_suffix(".bin").exists()
-    assert len(assembler_calls) == 1
-    command = assembler_calls[0]
-    assert Path(command[0]).resolve() == Path(nobasic_compiler.sys.executable).resolve()
-    assert Path(command[1]).resolve() == Path(nobasic_compiler.__file__).resolve().parent.parent / "nova_assembler.py"
-    assert Path(command[2]).resolve() == output_file.resolve()
+    assert calls["trace"] is False
+    assert Path(calls["filename"]).resolve() == output_file.resolve()
 
 
 def test_compile_nobasic_rejects_non_asm_output_path_before_assembly(tmp_path, monkeypatch, capsys):
@@ -222,24 +222,23 @@ def test_compile_nobasic_exits_if_assembler_does_not_produce_binary(tmp_path, mo
     _install_pipeline_stubs(monkeypatch)
     source_file = tmp_path / "fail_bin.nobasic"
     source_file.write_text("Pause\n")
-
-    def fake_run(command, capture_output, text):
-        return SimpleNamespace(stdout="assembler output", stderr="assembler error")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    _install_in_process_assembler_stub(monkeypatch, success=False, messages=["assembler error", "assembler output"])
 
     with pytest.raises(SystemExit) as exc:
         nobasic_compiler.compile_nobasic(str(source_file))
     assert exc.value.code == 1
     output = capsys.readouterr().out
-    assert "Assembly failed" in output
-    assert "Assembler output" in output
+    assert f"Assembly failed for {source_file.with_suffix('.asm')}" in output
+    assert "assembler error" in output
+    assert "assembler output" in output
 
 
 def test_compile_nobasic_exits_if_assembler_returns_nonzero_even_with_binary(tmp_path, monkeypatch, capsys):
     _install_pipeline_stubs(monkeypatch)
     source_file = tmp_path / "assembler_exit.nobasic"
     source_file.write_text("Pause\n")
+
+    monkeypatch.setattr(nobasic_compiler, "_get_nova_assembler_module", lambda: (_ for _ in ()).throw(ImportError("no module")))
 
     def fake_run(command, capture_output, text):
         output_asm = Path(command[2])
@@ -263,6 +262,8 @@ def test_compile_nobasic_reports_assembler_launch_failure(tmp_path, monkeypatch,
     source_file = tmp_path / "missing_assembler.nobasic"
     source_file.write_text("Pause\n")
 
+    monkeypatch.setattr(nobasic_compiler, "_get_nova_assembler_module", lambda: (_ for _ in ()).throw(ImportError("no module")))
+
     def fake_run(command, capture_output, text):
         raise FileNotFoundError("assembler missing")
 
@@ -284,6 +285,8 @@ def test_compile_nobasic_removes_stale_binary_before_assembly(tmp_path, monkeypa
     stale_bin = source_file.with_suffix(".bin")
     stale_bin.write_bytes(b"stale")
 
+    monkeypatch.setattr(nobasic_compiler, "_get_nova_assembler_module", lambda: (_ for _ in ()).throw(ImportError("no module")))
+
     def fake_run(command, capture_output, text):
         return SimpleNamespace(stdout="assembler output", stderr="assembler error")
 
@@ -303,13 +306,7 @@ def test_compile_nobasic_verbose_mode_prints_optimization_details(tmp_path, monk
     captured = _install_pipeline_stubs(monkeypatch)
     source_file = tmp_path / "verbose.nobasic"
     source_file.write_text("Pause\n")
-
-    def fake_run(command, capture_output, text):
-        output_asm = Path(command[2])
-        output_asm.with_suffix(".bin").write_bytes(b"\x00")
-        return SimpleNamespace(stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    calls = _install_in_process_assembler_stub(monkeypatch, messages=["assembler ok"])
 
     nobasic_compiler.compile_nobasic(
         str(source_file),
@@ -327,20 +324,16 @@ def test_compile_nobasic_verbose_mode_prints_optimization_details(tmp_path, monk
     assert "Peephole optimization: ENABLED" in output
     assert "Live range scheduling: ENABLED" in output
     assert "Code generation complete" in output
+    assert "assembler ok" in output
     assert "Binary written to" in output
+    assert calls["trace"] is True
 
 
 def test_compile_nobasic_verbose_mode_reports_optimizations_disabled(tmp_path, monkeypatch, capsys):
     _install_pipeline_stubs(monkeypatch)
     source_file = tmp_path / "verbose_disabled.nobasic"
     source_file.write_text("Pause\n")
-
-    def fake_run(command, capture_output, text):
-        output_asm = Path(command[2])
-        output_asm.with_suffix(".bin").write_bytes(b"\x00")
-        return SimpleNamespace(stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    _install_in_process_assembler_stub(monkeypatch)
 
     nobasic_compiler.compile_nobasic(
         str(source_file),
@@ -573,6 +566,42 @@ def test_preprocess_source_expands_include_with_trailing_comment(tmp_path):
         (str(include_file.resolve()), 1),
         (str(source_file.resolve()), 2),
     ]
+
+
+def test_preprocess_source_caches_repeated_nested_includes_per_run(tmp_path, monkeypatch):
+    source_file = tmp_path / "main.nobasic"
+    first_include = tmp_path / "first.nobasic"
+    second_include = tmp_path / "second.nobasic"
+    shared_include = tmp_path / "shared.nobasic"
+
+    source_file.write_text('Include "first.nobasic"\nInclude "second.nobasic"\n')
+    first_include.write_text('Include "shared.nobasic"\na = 1\n')
+    second_include.write_text('Include "shared.nobasic"\nb = 2\n')
+    shared_include.write_text('shared = 42\n')
+
+    original_open = open
+    open_counts = {}
+
+    def counting_open(path, *args, **kwargs):
+        resolved_path = Path(path).resolve()
+        open_counts[resolved_path] = open_counts.get(resolved_path, 0) + 1
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", counting_open)
+
+    source, line_map = nobasic_compiler.preprocess_source(str(source_file))
+
+    assert source == "shared = 42\na = 1\nshared = 42\nb = 2\n"
+    assert line_map == [
+        (str(shared_include.resolve()), 1),
+        (str(first_include.resolve()), 2),
+        (str(shared_include.resolve()), 1),
+        (str(second_include.resolve()), 2),
+    ]
+    assert open_counts[source_file.resolve()] == 1
+    assert open_counts[first_include.resolve()] == 1
+    assert open_counts[second_include.resolve()] == 1
+    assert open_counts[shared_include.resolve()] == 1
 
 
 def test_strip_line_comment_preserves_double_slash_inside_string_literal():
