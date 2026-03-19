@@ -2265,9 +2265,9 @@ class CodeGenerator:
         # Calculate offset: row * 10 + col (10 columns per row)
         # offset = row * 20 (for 16-bit elements) + col * 2
         self.current_output.append(f"MOV P3, {row_reg}")
-        self.current_output.append(f"MUL P3, 20")  # 10 cols * 2 bytes per element
+        self._emit_scale_register("P3", 20, scratch_reg="P4")  # 10 cols * 2 bytes per element
         self.current_output.append(f"MOV P4, {col_reg}")
-        self.current_output.append(f"MUL P4, 2")   # 2 bytes per element
+        self._emit_scale_register("P4", 2)   # 2 bytes per element
         self.current_output.append(f"ADD P3, P4")  # Total offset
         self.current_output.append(f"MOV P4, 0x{base_addr:04X}")
         self.current_output.append(f"ADD P4, P3")  # Address = base + offset
@@ -2297,9 +2297,9 @@ class CodeGenerator:
         
         # Calculate offset: row * 10 + col (10 columns per row)
         self.current_output.append(f"MOV P3, {row_reg}")
-        self.current_output.append(f"MUL P3, 20")  # 10 cols * 2 bytes per element
+        self._emit_scale_register("P3", 20, scratch_reg="P4")  # 10 cols * 2 bytes per element
         self.current_output.append(f"MOV P4, {col_reg}")
-        self.current_output.append(f"MUL P4, 2")   # 2 bytes per element
+        self._emit_scale_register("P4", 2)   # 2 bytes per element
         self.current_output.append(f"ADD P3, P4")  # Total offset
         self.current_output.append(f"MOV P4, 0x{base_addr:04X}")
         self.current_output.append(f"ADD P4, P3")  # Address = base + offset
@@ -2827,6 +2827,70 @@ class CodeGenerator:
             return int(value)
         return value
 
+    def _extract_numeric_literal_value(self, expr: Expression) -> Optional[int]:
+        """Return a normalized numeric literal value, or None for non-literals."""
+        if not isinstance(expr, LiteralExpr) or expr.data_type.name != "NUMBER":
+            return None
+        value = self._normalize_numeric_literal(expr.value)
+        return value if isinstance(value, int) else None
+
+    def _try_generate_strength_reduced_multiply(self, expr: BinaryExpr, target_reg: str) -> Optional[str]:
+        """Lower multiplies by powers of two to shifts when it is semantics-safe."""
+        if expr.operator != "*":
+            return None
+
+        left_literal = self._extract_numeric_literal_value(expr.left)
+        right_literal = self._extract_numeric_literal_value(expr.right)
+
+        if left_literal is None and right_literal is None:
+            return None
+
+        if right_literal is not None:
+            factor = right_literal
+            value_expr = expr.left
+        else:
+            factor = left_literal
+            value_expr = expr.right
+
+        if factor is None or factor <= 1 or (factor & (factor - 1)) != 0:
+            return None
+
+        value_reg = self.generate_expression(value_expr)
+        if value_reg != target_reg:
+            self.current_output.append(f"MOV {target_reg}, {value_reg}")
+        self.current_output.append(f"SHL {target_reg}, {factor.bit_length() - 1}")
+
+        if value_reg != target_reg:
+            self.smart_deallocate(value_reg, is_last_use=True)
+
+        return target_reg
+
+    def _emit_scale_register(self, reg: str, factor: int, scratch_reg: Optional[str] = None) -> None:
+        """Scale a register by a small positive constant using shifts when profitable."""
+        if factor == 0:
+            self.current_output.append(f"XOR {reg}, {reg}")
+            return
+
+        if factor == 1:
+            return
+
+        if factor > 0 and (factor & (factor - 1)) == 0:
+            self.current_output.append(f"SHL {reg}, {factor.bit_length() - 1}")
+            return
+
+        bit_positions = [bit for bit in range(factor.bit_length()) if factor & (1 << bit)]
+        if scratch_reg and scratch_reg != reg and len(bit_positions) == 2:
+            high_bit = bit_positions[-1]
+            low_bit = bit_positions[0]
+            self.current_output.append(f"MOV {scratch_reg}, {reg}")
+            self.current_output.append(f"SHL {reg}, {high_bit}")
+            if low_bit > 0:
+                self.current_output.append(f"SHL {scratch_reg}, {low_bit}")
+            self.current_output.append(f"ADD {reg}, {scratch_reg}")
+            return
+
+        self.current_output.append(f"MUL {reg}, {factor}")
+
     def generate_expression_into(self, expr: Expression, target_reg: str):
         """
         Generate an expression directly into a target register (hardware or general).
@@ -3016,6 +3080,10 @@ class CodeGenerator:
                 self.current_output.append(f"; Constant folded: {expr.left.value} {expr.operator} {expr.right.value} = {folded_value}")
                 self.current_output.append(f"MOV {target_reg}, {folded_emit_value}")
                 return target_reg
+
+        strength_reduced_result = self._try_generate_strength_reduced_multiply(expr, target_reg)
+        if strength_reduced_result is not None:
+            return strength_reduced_result
         
         # Check if this is string concatenation using our helper
         is_string_concat = False
@@ -3222,6 +3290,19 @@ class CodeGenerator:
             self.current_output.append(f"RCR {target_reg}, {right_result}")
         elif expr.operator == "<" or expr.operator == ">" or expr.operator == "=" or expr.operator == "<>" or expr.operator == "<=" or expr.operator == ">=":
             # Use CMP for comparisons and set target_reg based on result
+            if expr.operator in {"=", "<>"}:
+                self.current_output.append(f"XOR {target_reg}, {target_reg}")
+                self.current_output.append(f"CMP {left_result}, {right_result}")
+                predicated_move = "MOVZ" if expr.operator == "=" else "MOVNZ"
+                self.current_output.append(f"{predicated_move} {target_reg}, 1")
+
+                self.smart_deallocate(left_result, is_last_use=True)
+                self.smart_deallocate(right_result, is_last_use=True)
+
+                if left_preserved_reg:
+                    self.deallocate_register(left_preserved_reg)
+                return target_reg
+
             self.current_output.append(f"CMP {left_result}, {right_result}")
             
             # Free registers immediately after comparison
@@ -4092,7 +4173,7 @@ class CodeGenerator:
                 self.current_output.append("CMP P2, P4")
                 self.current_output.append(f"JGE {end_label}")
                 self.current_output.append("MOV P1, P2")
-                self.current_output.append("MUL P1, 2")
+                self._emit_scale_register("P1", 2)
                 self.current_output.append("ADD P1, P5")
                 self.current_output.append("MOV P3, [P1]")
                 self.current_output.append(f"ADD {target_reg}, P3")
@@ -4112,7 +4193,7 @@ class CodeGenerator:
                 self.current_output.append("CMP P2, P4")
                 self.current_output.append(f"JGE {end_label}")
                 self.current_output.append("MOV P1, P2")
-                self.current_output.append("MUL P1, 2")
+                self._emit_scale_register("P1", 2)
                 self.current_output.append("ADD P1, P5")
                 self.current_output.append("MOV P3, [P1]")
                 self.current_output.append(f"ADD {target_reg}, P3")
@@ -4135,7 +4216,7 @@ class CodeGenerator:
                 self.current_output.append("CMP P2, P4")
                 self.current_output.append(f"JGE {end_label}")
                 self.current_output.append("MOV P1, P2")
-                self.current_output.append("MUL P1, 2")
+                self._emit_scale_register("P1", 2)
                 self.current_output.append("ADD P1, P5")
                 self.current_output.append(f"MOV [P1], {value_reg}")
                 self.current_output.append("INC P2")
@@ -4170,7 +4251,7 @@ class CodeGenerator:
                 self.current_output.append(f"JGT {end_label}")
                 self.current_output.append(f"{do_write}:")
                 self.current_output.append("MOV P0, P1")
-                self.current_output.append("MUL P0, 2")
+                self._emit_scale_register("P0", 2)
                 self.current_output.append("ADD P0, P5")
                 self.current_output.append(f"MOV [P0], {current_reg}")
                 self.current_output.append("INC P1")
@@ -4200,7 +4281,7 @@ class CodeGenerator:
                 self.current_output.append("CMP P2, P3")
                 self.current_output.append(f"JGE {next_outer}")
                 self.current_output.append("MOV P0, P2")
-                self.current_output.append("MUL P0, 2")
+                self._emit_scale_register("P0", 2)
                 self.current_output.append("ADD P0, P5")
                 self.current_output.append("MOV P6, [P0]")
                 self.current_output.append("MOV P7, P0")
@@ -4233,11 +4314,11 @@ class CodeGenerator:
                 self.current_output.append("CMP P1, P2")
                 self.current_output.append(f"JGE {done_label}")
                 self.current_output.append("MOV P0, P1")
-                self.current_output.append("MUL P0, 2")
+                self._emit_scale_register("P0", 2)
                 self.current_output.append("ADD P0, P5")
                 self.current_output.append("MOV P6, [P0]")
                 self.current_output.append("MOV P3, P2")
-                self.current_output.append("MUL P3, 2")
+                self._emit_scale_register("P3", 2)
                 self.current_output.append("ADD P3, P5")
                 self.current_output.append("MOV P7, [P3]")
                 self.current_output.append("MOV [P0], P7")
@@ -4754,14 +4835,14 @@ class CodeGenerator:
         self.current_output.append("MOV P2, 8")
         self.current_output.append("JMP _nb_list_cap_ready_base")
         self.current_output.append("_nb_list_cap_from_existing:")
-        self.current_output.append("MUL P2, 2")
+        self._emit_scale_register("P2", 2)
         self.current_output.append("_nb_list_cap_ready_base:")
         self.current_output.append("CMP P2, P0")
         self.current_output.append("JGE _nb_list_cap_ready")
         self.current_output.append("MOV P2, P0")
         self.current_output.append("_nb_list_cap_ready:")
         self.current_output.append("MOV P0, P2")
-        self.current_output.append("MUL P0, 2")
+        self._emit_scale_register("P0", 2)
         self.current_output.append("MOV P5, P6")
         self.current_output.append("ADD P5, P0")
         self.current_output.append("DEC P5")
@@ -4773,7 +4854,7 @@ class CodeGenerator:
         self.current_output.append("CMP P5, P2")
         self.current_output.append("JGE _nb_list_zero_done")
         self.current_output.append("MOV P0, P5")
-        self.current_output.append("MUL P0, 2")
+        self._emit_scale_register("P0", 2)
         self.current_output.append("ADD P0, P6")
         self.current_output.append("MOV [P0], 0")
         self.current_output.append("INC P5")
@@ -4787,11 +4868,11 @@ class CodeGenerator:
         self.current_output.append("CMP P5, P4")
         self.current_output.append("JGE _nb_list_copy_done")
         self.current_output.append("MOV P0, P5")
-        self.current_output.append("MUL P0, 2")
+        self._emit_scale_register("P0", 2)
         self.current_output.append("ADD P0, P3")
         self.current_output.append("MOV P1, [P0]")
         self.current_output.append("MOV P0, P5")
-        self.current_output.append("MUL P0, 2")
+        self._emit_scale_register("P0", 2)
         self.current_output.append("ADD P0, P6")
         self.current_output.append("MOV [P0], P1")
         self.current_output.append("INC P5")
@@ -4804,7 +4885,7 @@ class CodeGenerator:
         self.current_output.append("INC P0")
         self.current_output.append("MOV [P0], P2")
         self.current_output.append("MOV P0, P2")
-        self.current_output.append("MUL P0, 2")
+        self._emit_scale_register("P0", 2)
         self.current_output.append("ADD P0, P6")
         self.current_output.append(f"MOV P5, 0x{self.list_heap_next_addr:04X}")
         self.current_output.append("MOV [P5], P0")
@@ -4814,7 +4895,7 @@ class CodeGenerator:
         self.current_output.append("POP P2")
         self.current_output.append("MOV P0, P2")
         self.current_output.append("DEC P0")
-        self.current_output.append("MUL P0, 2")
+        self._emit_scale_register("P0", 2)
         self.current_output.append("ADD P0, P3")
         self.current_output.append("RET")
         self.current_output.append("_nb_list_elem_addr_fail:")
