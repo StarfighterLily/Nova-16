@@ -254,6 +254,10 @@ opcodes = [
     ("FTOI",               "0xAE", 1), # Fixed to integer # implemented
     ("ITOF",               "0xAF", 1), # Integer to fixed # implemented
 
+    # Real-time clock registers
+    ("C0",                 "0xBE", 1), # RTC seconds low word (epoch 2018-07-17 UTC)
+    ("C1",                 "0xBF", 1), # RTC seconds high word (epoch 2018-07-17 UTC)
+
     # Layer ops
     ("LSWAP",              "0xB0", 1), # Switch current layer contents with specified layer # implemented
     ("LMOVE",              "0xB1", 1), # Move current layer contents to specified layer, clear current layer # implemented

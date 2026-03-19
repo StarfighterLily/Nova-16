@@ -24,7 +24,7 @@ from collections import defaultdict
 REGISTER_NAMES = {
     'R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9',
     'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'SP', 'FP',
-    'VX', 'VY', 'VM', 'VL', 'VC', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS'
+    'VX', 'VY', 'VM', 'VL', 'VC', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS', 'C0', 'C1'
 }
 
 # Opcodes that have observable side effects beyond register writes (IO/memory)

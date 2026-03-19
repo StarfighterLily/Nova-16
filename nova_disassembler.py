@@ -13,7 +13,7 @@ def create_reverse_maps():
     register_map = {}
     
     # A set of all register mnemonics for quick checking
-    reg_mnemonics = { f"R{i}" for i in range(10) } | { f"P{i}" for i in range(10) } | { "VM", "VX", "VY" } | { "VL", "TT", "TM", "TC", "TS", "SF", "SV", "SW", "SA" }
+    reg_mnemonics = { f"R{i}" for i in range(10) } | { f"P{i}" for i in range(10) } | { "VM", "VX", "VY", "VC" } | { "VL", "TT", "TM", "TC", "TS", "SF", "SV", "SW", "SA", "C0", "C1", "MX", "MY", "MB" }
 
     for mnemonic, opcode_str, size in opcodes:
         opcode_val = int( opcode_str, 16 )
@@ -254,6 +254,10 @@ def disassemble_instruction_new(bytecode, pc, opcode_map, register_map):
             return "VM"
         elif reg_num == 0xE2:
             return "VL"
+        elif reg_num == 0xBE:
+            return "C0"
+        elif reg_num == 0xBF:
+            return "C1"
         elif reg_num == 0xC8:
             return "VC"
         elif reg_num == 0xE3:

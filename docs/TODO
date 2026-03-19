@@ -12,3 +12,6 @@ Consider MMX-style registers and instructions
 
 -Memory
 Consider memory banking techniques to expand beyond the 64k memory without too much effort
+
+-instructions/registers
+Real Time Clock - C0, C1: 2 16-bit register seconds counter. Epoch: July 17, 2018 (creation of the first prototype 0 codename: STaRBox)

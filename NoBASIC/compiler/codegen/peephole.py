@@ -414,7 +414,7 @@ class PeepholeOptimizer:
         if cleaned.startswith(':'):
             cleaned = cleaned[1:]
         cleaned = cleaned.upper()
-        return cleaned if re.fullmatch(r'R[0-9]|P[0-7]|SP|FP|VX|VY|VM|VL|VC|SA|SF|SV|SW|TT|TM|TC|TS', cleaned) else ''
+        return cleaned if re.fullmatch(r'R[0-9]|P[0-7]|SP|FP|VX|VY|VM|VL|VC|SA|SF|SV|SW|TT|TM|TC|TS|C0|C1', cleaned) else ''
 
     def _same_register_family(self, left: str, right: str) -> bool:
         """Require copy propagation to stay within compatible register families."""
@@ -424,13 +424,13 @@ class PeepholeOptimizer:
             return True
         if left.startswith('P') and right.startswith('P'):
             return True
-        special = {'SP', 'FP', 'VX', 'VY', 'VM', 'VL', 'VC', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS'}
+        special = {'SP', 'FP', 'VX', 'VY', 'VM', 'VL', 'VC', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS', 'C0', 'C1'}
         return left in special and right in special and left == right
 
     def _is_copy_propagation_safe_register(self, reg: str) -> bool:
         """Only propagate through general-purpose registers, never architectural state."""
         reg = reg.strip().upper()
-        if reg in {'SP', 'FP', 'P7', 'VX', 'VY', 'VM', 'VL', 'VC', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS'}:
+        if reg in {'SP', 'FP', 'P7', 'VX', 'VY', 'VM', 'VL', 'VC', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS', 'C0', 'C1'}:
             return False
         return bool(re.fullmatch(r'R[0-9]|P[0-6]', reg))
     

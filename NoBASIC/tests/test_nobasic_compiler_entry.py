@@ -3,12 +3,19 @@
 from pathlib import Path
 from types import SimpleNamespace
 import subprocess
+import sys
 from typing import Any, Dict
 
 import pytest
 
 import nobasic_compiler
 from compiler.utils.error import CompilerError
+
+REPO_ROOT = Path(nobasic_compiler.__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from nova_assembler import Assembler
 
 
 def _install_pipeline_stubs(monkeypatch):
@@ -507,6 +514,33 @@ def test_compile_nobasic_does_not_expand_include_inside_commented_asm_block(tmp_
     nobasic_compiler.compile_nobasic(str(source_file))
 
     assert 'Include "missing.nobasic"' in captured["tokenize_args"][0]
+
+
+def test_compile_nobasic_inline_asm_rtc_registers_round_trip_to_binary(tmp_path):
+    source_file = tmp_path / "rtc_inline.nobasic"
+    output_file = tmp_path / "rtc_inline.asm"
+    source_file.write_text("Asm\nMOV P0, C0\nMOV P1, C1\nHLT\nEnd\n")
+
+    def assemble_callback(assembly_file, verbose, emit):
+        assembler = Assembler()
+        success = assembler.assemble(str(assembly_file))
+        emit(f"assembled={success}")
+        return success
+
+    nobasic_compiler.compile_nobasic(
+        str(source_file),
+        output_file=str(output_file),
+        assemble_callback=assemble_callback,
+        log=lambda _message: None,
+    )
+
+    asm_text = output_file.read_text(encoding='ascii')
+    assert "MOV P0, C0" in asm_text
+    assert "MOV P1, C1" in asm_text
+
+    binary = output_file.with_suffix('.bin').read_bytes()
+    assert 0xBE in binary
+    assert 0xBF in binary
 
 
 def test_preprocess_source_returns_line_map_for_included_lines(tmp_path):

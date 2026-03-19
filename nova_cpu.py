@@ -8,9 +8,12 @@ from instructions import create_instruction_table
 import time
 import cProfile
 import pstats
+from datetime import datetime, timezone
 from functools import wraps
 
 class CPU:
+    RTC_EPOCH_UNIX = int(datetime(2018, 7, 17, tzinfo=timezone.utc).timestamp())
+
     def __init__( self, memory, gfx, keyboard=None, sound_system=None, uart_device=None, mouse_device=None, stack_size = 65535 ):
         self.memory = memory
         self.gfx = gfx
@@ -84,6 +87,7 @@ class CPU:
         # Random number generator seed - initialized with system entropy for true randomness
         import random
         self.rng_seed = random.randint(0, 0xFFFF)  # True random seed (0-65535)
+        self.rtc_time_source = time.time
         
         self.uart = uart_device if uart_device is not None else uart.NovaUART()
         self.serial = uart.SerialRegisterView(self.uart)  # Legacy serial register compatibility
@@ -680,6 +684,32 @@ class CPU:
     def mb(self, value):
         self.mouse.set_buttons(value)
 
+    @property
+    def rtc_seconds(self):
+        """Seconds elapsed since the Nova-16 RTC epoch, clamped to 32 bits."""
+        elapsed = int(self.rtc_time_source()) - self.RTC_EPOCH_UNIX
+        return max(0, elapsed) & 0xFFFFFFFF
+
+    @property
+    def c0(self):
+        """C0 register - low 16 bits of the RTC seconds counter."""
+        return self.rtc_seconds & 0xFFFF
+
+    @c0.setter
+    def c0(self, value):
+        # RTC registers are read-only hardware state.
+        return
+
+    @property
+    def c1(self):
+        """C1 register - high 16 bits of the RTC seconds counter."""
+        return (self.rtc_seconds >> 16) & 0xFFFF
+
+    @c1.setter
+    def c1(self, value):
+        # RTC registers are read-only hardware state.
+        return
+
     # ========================================
     # BULK OPERATIONS - Maintain numpy efficiency
     # ========================================
@@ -801,6 +831,8 @@ class CPU:
         if type == 'TM': return int( self.timer[ 1 ] )  # Timer Modulo
         if type == 'TC': return int( self.timer[ 2 ] )  # Timer Control
         if type == 'TS': return int( self.timer[ 3 ] )  # Timer Speed
+        if type == 'C0': return int( self.c0 )
+        if type == 'C1': return int( self.c1 )
         if type == 'VL': return int( self.gfx.VL )  # Graphics Layer register
         if type == 'MX': return int( self.mouse.x )
         if type == 'MY': return int( self.mouse.y )
@@ -878,6 +910,10 @@ class CPU:
             self.set_timer_control(self.timer[ 2 ])
         elif type == 'TS': 
             self.set_timer_speed(value)
+        elif type == 'C0':
+            return
+        elif type == 'C1':
+            return
         elif type == 'VL': 
             self.gfx.VL = int(value) & 0xFF
         elif type == 'MX':
@@ -1366,6 +1402,10 @@ class CPU:
     def _build_register_lookup_table(self):
         """Build optimized lookup table for register access - O(1) performance"""
         lookup = {}
+
+        # Real-time clock registers
+        lookup[0xBE] = (0, 'C0')  # RTC seconds low word
+        lookup[0xBF] = (0, 'C1')  # RTC seconds high word
 
         # Mouse registers
         lookup[0xC0] = (0, 'MX')  # Mouse X
