@@ -1404,13 +1404,13 @@ class CPU:
         lookup = {}
 
         # Real-time clock registers
-        lookup[0xBE] = (0, 'C0')  # RTC seconds low word
-        lookup[0xBF] = (0, 'C1')  # RTC seconds high word
+        lookup[0xC3] = (0, 'C0')  # RTC seconds low word
+        lookup[0xC4] = (0, 'C1')  # RTC seconds high word
 
         # Mouse registers
-        lookup[0xC0] = (0, 'MX')  # Mouse X
-        lookup[0xC1] = (0, 'MY')  # Mouse Y
-        lookup[0xC2] = (0, 'MB')  # Mouse buttons
+        lookup[0xC5] = (0, 'MX')  # Mouse X
+        lookup[0xC6] = (0, 'MY')  # Mouse Y
+        lookup[0xC7] = (0, 'MB')  # Mouse buttons
         
         # Sound registers
         lookup[0xDD] = (0, 'SA')  # Sound Address

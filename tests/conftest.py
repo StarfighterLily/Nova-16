@@ -16,6 +16,10 @@ import nova_cpu as cpu_mod
 import nova_gfx as gpu
 import nova_sound as sound
 import nova_keyboard as keyboard
+from opcodes import opcodes as opcode_definitions
+
+
+OPCODE_VALUES = {name: int(value, 16) for name, value, _ in opcode_definitions}
 
 
 def pytest_configure(config):
@@ -120,3 +124,8 @@ def assert_register_equals(cpu, register, expected_value):
         raise ValueError(f"Unknown register: {register}")
     
     assert actual == expected_value, f"Register {register} mismatch: expected {expected_value}, got {actual}"
+
+
+def opcode_value(name):
+    """Return the current opcode/register encoding for a mnemonic from opcodes.py."""
+    return OPCODE_VALUES[name]

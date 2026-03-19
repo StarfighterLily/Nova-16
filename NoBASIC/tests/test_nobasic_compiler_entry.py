@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from nova_assembler import Assembler
+from tests.conftest import opcode_value
 
 
 def _install_pipeline_stubs(monkeypatch):
@@ -539,8 +540,8 @@ def test_compile_nobasic_inline_asm_rtc_registers_round_trip_to_binary(tmp_path)
     assert "MOV P1, C1" in asm_text
 
     binary = output_file.with_suffix('.bin').read_bytes()
-    assert 0xBE in binary
-    assert 0xBF in binary
+    assert opcode_value('C0') in binary
+    assert opcode_value('C1') in binary
 
 
 def test_preprocess_source_returns_line_map_for_included_lines(tmp_path):

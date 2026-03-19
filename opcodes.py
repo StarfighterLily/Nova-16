@@ -254,10 +254,6 @@ opcodes = [
     ("FTOI",               "0xAE", 1), # Fixed to integer # implemented
     ("ITOF",               "0xAF", 1), # Integer to fixed # implemented
 
-    # Real-time clock registers
-    ("C0",                 "0xBE", 1), # RTC seconds low word (epoch 2018-07-17 UTC)
-    ("C1",                 "0xBF", 1), # RTC seconds high word (epoch 2018-07-17 UTC)
-
     # Layer ops
     ("LSWAP",              "0xB0", 1), # Switch current layer contents with specified layer # implemented
     ("LMOVE",              "0xB1", 1), # Move current layer contents to specified layer, clear current layer # implemented
@@ -266,11 +262,11 @@ opcodes = [
     # Mouse control
     ("MOUSECTRL",          "0xB3", 1), # Enable or disable host mouse input and interrupts # implemented
 
-    ("C0",                 "0xBE", 1), # RTC seconds low word (epoch 2018-07-17 UTC)
-    ("C1",                 "0xBF", 1), # RTC seconds high word (epoch 2018-07-17 UTC)
-    ("MX",                 "0xC0", 1), # Mouse X position
-    ("MY",                 "0xC1", 1), # Mouse Y position
-    ("MB",                 "0xC2", 1), # Mouse buttons
+    ("C0",                 "0xC3", 1), # RTC seconds low word (epoch 2018-07-17 UTC)
+    ("C1",                 "0xC4", 1), # RTC seconds high word (epoch 2018-07-17 UTC)
+    ("MX",                 "0xC5", 1), # Mouse X position
+    ("MY",                 "0xC6", 1), # Mouse Y position
+    ("MB",                 "0xC7", 1), # Mouse buttons
     ("VC",                 "0xC8", 1), # Video Color
     ("P0:",                "0xC9", 1), # P0 high byte
     ("P1:",                "0xCA", 1), # P1 high byte

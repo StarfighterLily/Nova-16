@@ -1,12 +1,13 @@
 import nova_mouse
 from nova_assembler import Assembler
+from tests.conftest import opcode_value
 
 
 class TestNovaMouseDevice:
     def test_mouse_registers_round_trip_through_cpu_operands(self, cpu):
-        assert cpu.reg_index(0xC0) == (0, 'MX')
-        assert cpu.reg_index(0xC1) == (0, 'MY')
-        assert cpu.reg_index(0xC2) == (0, 'MB')
+        assert cpu.reg_index(opcode_value('MX')) == (0, 'MX')
+        assert cpu.reg_index(opcode_value('MY')) == (0, 'MY')
+        assert cpu.reg_index(opcode_value('MB')) == (0, 'MB')
 
         cpu._set_operand_value('MX', 0, 0x1234)
         cpu._set_operand_value('MY', 0, 0x00FE)
@@ -123,7 +124,7 @@ def test_assembler_accepts_mouse_control_and_register_operands(tmp_path):
     assert assembler.assemble(str(source)) is True
 
     binary = source.with_suffix('.bin').read_bytes()
-    assert 0xB3 in binary
-    assert 0xC0 in binary
-    assert 0xC1 in binary
-    assert 0xC2 in binary
+    assert opcode_value('MOUSECTRL') in binary
+    assert opcode_value('MX') in binary
+    assert opcode_value('MY') in binary
+    assert opcode_value('MB') in binary

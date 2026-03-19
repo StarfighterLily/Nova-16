@@ -374,17 +374,21 @@ class TestCPUErrorHandling:
 
     def test_invalid_opcodes(self, cpu):
         """Test handling of invalid opcodes."""
-        # Test truly invalid opcodes (not in instruction table)
-        invalid_opcodes = [0xB7, 0xC0]  # FE is VY (valid register instruction)
+        # Future-proof by removing known opcodes from the dispatch table instead of
+        # depending on permanent gaps in the opcode space.
+        invalid_opcodes = [0xFF, 0x06]
 
         for opcode in invalid_opcodes:
+            instruction = cpu.instruction_table.pop(opcode)
             cpu.memory.write_byte(0, opcode)
             cpu.pc = 0
             cpu.halted = False
 
-            # Should raise exception for unknown opcode
-            with pytest.raises(Exception, match="Unknown opcode"):
-                cpu.step()
+            try:
+                with pytest.raises(Exception, match="Unknown opcode"):
+                    cpu.step()
+            finally:
+                cpu.instruction_table[opcode] = instruction
 
     def test_register_bounds(self, cpu):
         """Test register access bounds."""
@@ -1823,13 +1827,15 @@ class TestCPUEdgeCases:
         # This test depends on whether DIV is implemented
         # For now, test that invalid operations are handled
 
-        # Test with invalid opcode
-        cpu.memory.write_byte(0x0000, 0xB7)  # Invalid opcode
+        instruction = cpu.instruction_table.pop(0xFF)
+        cpu.memory.write_byte(0x0000, 0xFF)
         cpu.pc = 0
 
-        # Should raise exception for unknown opcode
-        with pytest.raises(Exception):
-            cpu.step()
+        try:
+            with pytest.raises(Exception, match="Unknown opcode"):
+                cpu.step()
+        finally:
+            cpu.instruction_table[0xFF] = instruction
 
     def test_jump_boundary_conditions(self, cpu):
         """Test jump instructions at memory boundaries."""
