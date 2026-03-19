@@ -598,6 +598,53 @@ class TestGraphicsText:
         # Code 0 has no mapped glyph in legacy mode, so nothing should be drawn.
         assert graphics.screen[10, 20] == 0
 
+    def test_draw_char_to_screen_clips_partial_glyphs(self, graphics, monkeypatch):
+        """Partially visible glyphs should be clipped instead of dropped."""
+        full_font = [0] * (256 * 8)
+        glyph_start = 0x41 * 8
+        full_font[glyph_start:glyph_start + 8] = [0xFF] * 8
+        monkeypatch.setattr(nova_gfx, "font_data", full_font)
+
+        graphics.clear()
+        graphics.draw_char_to_screen(0x41, -2, 4, 222)
+        graphics.draw_char_to_screen(0x41, 254, 254, 223)
+
+        assert np.all(graphics.screen[4:12, 0:6] == 222)
+        assert np.all(graphics.screen[254:256, 254:256] == 223)
+
+    def test_draw_string_to_screen_handles_extended_bytes_and_controls(self, graphics, monkeypatch):
+        """Byte-oriented strings should honor extended glyphs plus tab/newline/carriage-return controls."""
+        full_font = [0] * (256 * 8)
+        for code in (0x80, 0x81, 0x82):
+            full_font[code * 8] = 0x80
+        full_font[0x83 * 8] = 0x01
+        monkeypatch.setattr(nova_gfx, "font_data", full_font)
+
+        graphics.clear()
+        graphics.draw_string_to_screen(bytes([0x80, 0x09, 0x81, 0x0A, 0x82, 0x0D, 0x83]), 8, 8, 224)
+
+        assert graphics.screen[8, 8] == 224
+        assert graphics.screen[8, 48] == 224
+        assert graphics.screen[16, 0] == 224
+        assert graphics.screen[16, 7] == 224
+
+    def test_draw_text_reads_extended_byte_strings_from_memory(self, graphics, memory, monkeypatch):
+        """draw_text should preserve raw 8-bit bytes from memory instead of rebuilding Unicode text."""
+        full_font = [0] * (256 * 8)
+        full_font[0x80 * 8] = 0x80
+        full_font[0xFF * 8] = 0x80
+        monkeypatch.setattr(nova_gfx, "font_data", full_font)
+
+        memory.write_byte(0x2000, 0x80)
+        memory.write_byte(0x2001, 0xFF)
+        memory.write_byte(0x2002, 0x00)
+
+        final_x, final_y = graphics.draw_text(12, 20, 230, 0x2000, memory)
+
+        assert graphics.screen[20, 12] == 230
+        assert graphics.screen[20, 20] == 230
+        assert (final_x, final_y) == (28, 20)
+
 
 class TestGraphicsFill:
     """Test fill operations."""

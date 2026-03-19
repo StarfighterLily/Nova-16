@@ -47,7 +47,7 @@ The Nova Enhanced Font System provides comprehensive tools for creating, editing
 
 ### Extended Character Support
 - **Full ASCII range**: 0-255 character codes
-- **Unicode support**: Box drawing, mathematical symbols, arrows
+- **Extended byte-range glyphs**: Box drawing, mathematical symbols, arrows, and other symbols can be assigned to byte slots `0x80-0xFF`
 - **Special characters**: Playing card suits, emoji-style faces
 - **Accented letters**: Common European character sets
 
@@ -127,15 +127,16 @@ The enhanced font system is fully compatible with the Nova CPU:
 ### Font Data Format
 - **8x8 pixel characters**: Each character is 8 bytes (one per row)
 - **Bit format**: MSB is leftmost pixel, LSB is rightmost
-- **Character mapping**: ASCII codes map directly to array indices
+- **Character mapping**: Nova character codes are 8-bit values and map directly to array indices in a full 256-glyph table
 
 ### Usage in Nova Graphics
 ```python
 # The nova_gfx.py system can use the enhanced fonts
-from nova_gfx import NovaGraphics
+from nova_gfx import GFX
 from enhanced_font import font_data_extended
 
 # Draw character with enhanced font
+gfx = GFX()
 gfx.draw_char('A', x=10, y=20, color=0xFF)
 gfx.draw_string("Hello World!", x=0, y=0, color=0xFF)
 ```
@@ -148,23 +149,18 @@ gfx.draw_string("Hello World!", x=0, y=0, color=0xFF)
 ## Character Code Ranges
 
 ### Standard ASCII
-- **0-31**: Control characters
+- **0-31**: Control-byte glyph slots. In text layout, `0x09`, `0x0A`, and `0x0D` are handled as tab, newline, and carriage return.
 - **32-126**: Printable ASCII (space through tilde)
 - **127**: DEL character
 
 ### Extended ASCII
-- **128-255**: Extended character set including:
-  - Latin accented letters (À, Á, Ç, etc.)
-  - Currency symbols (£, ¥, ¤)
-  - Mathematical symbols (±, ×, ÷)
-  - Box drawing and block characters
+- **128-255**: Extended byte range available to the active font table
+- The exact visual meaning of these slots is font-dependent; the runtime treats them as raw glyph indices, not as a standardized code page
 
-### Unicode Support
-The system supports Unicode character codes for special symbols:
-- **0x2500-0x257F**: Box drawing
-- **0x2580-0x259F**: Block elements  
-- **0x2190-0x21FF**: Arrows
-- **0x2660-0x26FF**: Miscellaneous symbols
+### Host-Side String Inputs
+- Host tools may call `draw_char` and `draw_string` with Python strings or raw bytes
+- The renderer ultimately converts those inputs to Nova 8-bit character codes before glyph lookup
+- Python characters above `0xFF` do not map to Nova glyph slots directly and fall back to `'?'` in the host-side API
 
 ## Tips for Font Creation
 

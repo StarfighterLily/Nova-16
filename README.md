@@ -251,7 +251,7 @@ start_mcp_server.bat
 ```
 
 ### Font System
-Custom bitmap font renderer with support for ASCII characters. Font data can be edited using the font maker tool in the `font maker/` directory.
+Custom bitmap font renderer with support for the full 8-bit character range (`0x00-0xFF`). `TEXT` reads null-terminated byte strings from memory, treating `0x09` as tab, `0x0A` as newline, and `0x0D` as carriage return; all other byte values render through the active font table. Font data can be edited using the font maker tool in the `font maker/` directory.
 
 ### Test Suite
 Comprehensive test suite using pytest:

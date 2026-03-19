@@ -327,10 +327,10 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 ## Text Operations
 - **CHAR** (0x41): 1 operand - Draw character
   - Operands: char_code
-  - Side Effects: Draws character at VX,VY, advances VX
+  - Side Effects: Uses the low 8 bits of `char_code`, draws the glyph at VX,VY, advances VX by 8 pixels
 - **TEXT** (0x42): 1 operand - Draw text
   - Operands: str_addr
-  - Side Effects: Draws null-terminated string at VX,VY
+  - Side Effects: Reads a null-terminated byte string from memory, interprets `0x09` as tab, `0x0A` as newline, `0x0D` as carriage return, draws all other bytes as glyph codes, updates VX/VY to the final cursor position
 
 ## Keyboard Operations
 - **KEYIN** (0x43): 1 operand - Read key

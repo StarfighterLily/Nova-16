@@ -81,6 +81,8 @@ class GFX:
             ],
             dtype=np.uint8,
         )
+        self._font_bit_positions = np.array([0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01], dtype=np.uint8)
+        self._replacement_char_code = ord('?')
 
     @property
     def screen(self):
@@ -903,15 +905,95 @@ class GFX:
         return self.palette
     
     # Text rendering methods
+    def _coerce_char_code(self, char):
+        """Convert Python text/int inputs into a single Nova 8-bit character code."""
+        if isinstance(char, str):
+            if not char:
+                return 0
+            code = ord(char[0])
+            if code > 0xFF:
+                return self._replacement_char_code
+            return code
+
+        return int(char) & 0xFF
+
+    def _iterate_text_codes(self, text):
+        """Yield Nova character codes from strings, bytes, or iterables of character values."""
+        if text is None:
+            return
+
+        if isinstance(text, str):
+            for char in text:
+                yield self._coerce_char_code(char)
+            return
+
+        if isinstance(text, (bytes, bytearray, memoryview)):
+            for value in bytes(text):
+                yield int(value)
+            return
+
+        try:
+            iterator = iter(text)
+        except TypeError:
+            yield self._coerce_char_code(text)
+            return
+
+        for item in iterator:
+            if isinstance(item, str) and len(item) > 1:
+                for char in item:
+                    yield self._coerce_char_code(char)
+            else:
+                yield self._coerce_char_code(item)
+
+    def _normalize_screen_coordinate(self, value):
+        """Interpret incoming coordinates using the screen-facing signed 16-bit behavior."""
+        value = int(value) & 0xFFFF
+        if value > 32767:
+            value -= 65536
+        return value
+
+    def _get_visible_char_region(self, x, y):
+        """Return destination/source slices for the visible part of an 8x8 glyph."""
+        dest_x0 = max(0, int(x))
+        dest_y0 = max(0, int(y))
+        dest_x1 = min(self.width, int(x) + 8)
+        dest_y1 = min(self.height, int(y) + 8)
+
+        if dest_x0 >= dest_x1 or dest_y0 >= dest_y1:
+            return None
+
+        src_x0 = dest_x0 - int(x)
+        src_y0 = dest_y0 - int(y)
+        src_x1 = src_x0 + (dest_x1 - dest_x0)
+        src_y1 = src_y0 + (dest_y1 - dest_y0)
+
+        return dest_x0, dest_y0, dest_x1, dest_y1, src_x0, src_y0, src_x1, src_y1
+
+    def _render_char_matrix(self, char_data):
+        """Build an 8x8 boolean bitmap for a glyph."""
+        char_bytes = np.asarray(char_data, dtype=np.uint8)
+        return (char_bytes[:, np.newaxis] & self._font_bit_positions) != 0
+
+    def _write_char_bitmap(self, target_buffer, char_matrix, x, y, color, background):
+        """Blit a glyph matrix into the provided buffer with clipping."""
+        visible_region = self._get_visible_char_region(x, y)
+        if visible_region is None:
+            return False
+
+        dest_x0, dest_y0, dest_x1, dest_y1, src_x0, src_y0, src_x1, src_y1 = visible_region
+        visible_matrix = char_matrix[src_y0:src_y1, src_x0:src_x1]
+        target_slice = target_buffer[dest_y0:dest_y1, dest_x0:dest_x1]
+
+        if background is None:
+            target_slice[visible_matrix] = color
+        else:
+            target_slice[:, :] = np.where(visible_matrix, color, background)
+
+        return True
+
     def _get_font_char_data(self, char):
         """Resolve a character/code to an 8-byte glyph with legacy/full font table support."""
-        if isinstance(char, str):
-            code = ord(char)
-        else:
-            code = int(char)
-
-        # Nova character codes are 8-bit values.
-        code &= 0xFF
+        code = self._coerce_char_code(char)
 
         glyph_count = len(font_data) // 8
         if glyph_count == 0:
@@ -937,67 +1019,37 @@ class GFX:
     def draw_char(self, char, x, y, color=0xFF, background=None):
         """Draw a sinVLe character at the specified position (8x8 characters)"""
         char_data = self._get_font_char_data(char)
+        char_matrix = self._render_char_matrix(char_data)
         
         # Get the target buffer based on current layer
         target_buffer = self._get_layer_buffer()
-        
-        # Draw the character pixel by pixel to the appropriate layer (8x8 characters)
-        for row in range(8):  # Use all 8 rows
-            byte_data = char_data[row]
-            for col in range(8):  # Use 8 columns for 8-pixel wide characters
-                pixel_x = x + col
-                pixel_y = y + row
-                
-                # Bounds check
-                if 0 <= pixel_x < self.width and 0 <= pixel_y < self.height:
-                    # Check if pixel should be set (bit 7 is leftmost pixel)
-                    if byte_data & (0x80 >> col):
-                        # Foreground pixel
-                        target_buffer[pixel_y, pixel_x] = color
-                    elif background is not None:
-                        # Background pixel
-                        target_buffer[pixel_y, pixel_x] = background
+        if not self._write_char_bitmap(target_buffer, char_matrix, x, y, color, background):
+            return
         
         # Mark layers as dirty if drawing to a non-main layer
         if self.VL != 0:
             self.layers_dirty = True
         else:
-            # For main layer (VL=0), update screen directly since it's both the layer and the final output
-            if background is None:
-                # Only update foreground pixels on screen
-                for row in range(8):
-                    byte_data = char_data[row]
-                    for col in range(8):
-                        pixel_x = x + col
-                        pixel_y = y + row
-                        if 0 <= pixel_x < self.width and 0 <= pixel_y < self.height:
-                            if byte_data & (0x80 >> col):
-                                self.screen[pixel_y, pixel_x] = color
-            else:
-                # Update entire character area on screen
-                char_matrix = np.zeros((8, 8), dtype=bool)
-                for row in range(8):
-                    byte_data = char_data[row]
-                    for col in range(8):
-                        char_matrix[row, col] = (byte_data & (0x80 >> col)) != 0
-                char_bitmap = np.where(char_matrix, color, background)
-                self.screen[y:y+8, x:x+8] = char_bitmap
+            self._write_char_bitmap(self.screen, char_matrix, x, y, color, background)
     
     def draw_string(self, text, x, y, color=0xFF, background=None, char_spacing=8):
         """Draw a string at the specified position (8x8 characters)"""
         current_x = x
         
-        for char in text:
-            if char == '\n':
+        for char_code in self._iterate_text_codes(text):
+            if char_code == 0x0A:
                 # Handle newline
                 current_x = 0  # Reset to left margin, not original x
                 y += 8  # Move down by character height (8 pixels)
-            elif char == '\t':
+            elif char_code == 0x0D:
+                # Handle carriage return
+                current_x = 0
+            elif char_code == 0x09:
                 # Handle tab (4 characters)
                 current_x += char_spacing * 4
             else:
                 # Draw the character
-                self.draw_char(char, current_x, y, color, background)
+                self.draw_char(char_code, current_x, y, color, background)
                 current_x += char_spacing
                 
                 # Wrap to next line if we exceed screen width
@@ -1010,26 +1062,22 @@ class GFX:
     def draw_string_to_screen(self, text, x, y, color=0xFF, background=None, char_spacing=8):
         """Draw a string to screen instead of VRAM (8x8 characters)"""
         # Ensure coordinates are valid integers and not overflowed
-        x = int(x) & 0xFFFF  # Mask to 16-bit to prevent overflow
-        y = int(y) & 0xFFFF  # Mask to 16-bit to prevent overflow
-        
-        # Handle overflow values that appear valid but are actually negative
-        if x > 32767:  # Treat as negative due to overflow
-            x = x - 65536
-        if y > 32767:  # Treat as negative due to overflow  
-            y = y - 65536
+        x = self._normalize_screen_coordinate(x)
+        y = self._normalize_screen_coordinate(y)
             
         current_x = x
         
-        for char in text:
-            if char == '\n':
+        for char_code in self._iterate_text_codes(text):
+            if char_code == 0x0A:
                 current_x = 0  # Reset to left margin
                 y += 8  # Move down by character height (8 pixels)
-            elif char == '\t':
+            elif char_code == 0x0D:
+                current_x = 0
+            elif char_code == 0x09:
                 current_x += char_spacing * 4
             else:
                 # Draw character to screen
-                self.draw_char_to_screen(char, current_x, y, color, background)
+                self.draw_char_to_screen(char_code, current_x, y, color, background)
                 current_x += char_spacing
                 
                 if current_x + char_spacing > self.width:
@@ -1041,62 +1089,22 @@ class GFX:
     def draw_char_to_screen(self, char, x, y, color=0xFF, background=None):
         """Draw a single character to screen - optimized version (8x8 characters)"""
         char_data = self._get_font_char_data(char)
+        char_matrix = self._render_char_matrix(char_data)
         
         # Ensure coordinates are valid integers and not overflowed
-        x = int(x) & 0xFFFF  # Mask to 16-bit to prevent overflow
-        y = int(y) & 0xFFFF  # Mask to 16-bit to prevent overflow
-        
-        # Additional bounds check for overflow values that appear valid but are actually negative
-        if x > 32767:  # Treat as negative due to overflow
-            x = x - 65536
-        if y > 32767:  # Treat as negative due to overflow  
-            y = y - 65536
-        
-        # Bounds check for entire character (8x8)
-        if x + 8 > self.width or y + 8 > self.height or x < 0 or y < 0:
-            return  # Skip if character would be off-screen
-        
-        # Vectorized bitmap generation - much faster than nested loops (all 8 columns)
-        char_bytes = np.array(char_data, dtype=np.uint8)  # Use all 8 rows
-        
-        # Create bit mask matrix using numpy broadcasting (all 8 bits)
-        bit_positions = np.array([0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01], dtype=np.uint8)  # All 8 bits
-        char_matrix = (char_bytes[:, np.newaxis] & bit_positions) != 0
-        
-        # Apply colors vectorized
-        char_bitmap = np.where(char_matrix, color, 0 if background is None else background)
+        x = self._normalize_screen_coordinate(x)
+        y = self._normalize_screen_coordinate(y)
         
         # Get the target buffer based on current layer
         target_buffer = self._get_layer_buffer()
-        
-        # Copy character to the appropriate buffer (only non-transparent pixels if background is None)
-        if background is None:
-            # Only draw foreground pixels, leave background transparent
-            mask = char_matrix
-            target_buffer[y:y+8, x:x+8][mask] = color  # 8 rows, 8 columns
-        else:
-            # Draw entire character bitmap
-            target_buffer[y:y+8, x:x+8] = char_bitmap  # 8 rows, 8 columns
-        
-        # Blit the entire character at once
-        if background is not None:
-            # Full character replacement
-            target_buffer[y:y+8, x:x+8] = char_bitmap  # 8 rows, 5 columns
-        else:
-            # Only draw foreground pixels
-            mask = char_bitmap != 0
-            target_buffer[y:y+8, x:x+8][mask] = char_bitmap[mask]  # 8 rows, 8 columns
+        if not self._write_char_bitmap(target_buffer, char_matrix, x, y, color, background):
+            return
         
         # Mark layers as dirty if drawing to a non-main layer
         if self.VL != 0:
             self.layers_dirty = True
         else:
-            # For main layer, update screen directly
-            if background is None:
-                mask = char_matrix
-                self.screen[y:y+8, x:x+8][mask] = color
-            else:
-                self.screen[y:y+8, x:x+8] = char_bitmap
+            self._write_char_bitmap(self.screen, char_matrix, x, y, color, background)
     
     def _get_layer_buffer(self):
         """Get the numpy array for the current layer specified by VL register"""
@@ -1114,15 +1122,16 @@ class GFX:
         # Convert coordinates to int to prevent numpy overflow warnings
         x = int(x)
         y = int(y)
-        text = ""
         addr = text_addr
-        while True:
-            byte = memory.read(addr, 1)[0]
+        text_bytes = []
+        max_address = getattr(memory, 'size', 65536)
+        while addr < max_address:
+            byte = int(memory.read(addr, 1)[0])
             if byte == 0:
                 break
-            text += chr(byte)
+            text_bytes.append(byte)
             addr += 1
-        return self.draw_string(text, x, y, color)
+        return self.draw_string(text_bytes, x, y, color)
     
     # ========================================
     # SPRITE SYSTEM IMPLEMENTATION

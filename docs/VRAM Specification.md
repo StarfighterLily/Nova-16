@@ -133,16 +133,24 @@ CYAN        EQU 0x6F    ; Bright cyan
 ## Text Rendering System
 
 ### Font Specifications
-- **Character Set**: ASCII characters 32-127 (printable characters)
+- **Character Set**: Full 8-bit character space (0x00-0xFF)
 - **Font Size**: 8×8 pixels per character
 - **Encoding**: 1-bit per pixel (foreground/background)
 - **Storage**: Bitmap data stored as 8 bytes per character
 
 #### Text Features
 - **Automatic wrapping**: Text wraps to next line at screen edge
-- **Special characters**: Support for newline (\n) and tab (\t)
+- **Byte-oriented rendering**: `CHAR` and `TEXT` consume raw 8-bit character codes
+- **Special characters**: `0x09` tab, `0x0A` newline, `0x0D` carriage return
 - **Color control**: Foreground and optional background colors
 - **Spacing control**: Configurable character spacing
+
+#### Text Semantics
+- **Glyph lookup**: Character code `n` uses glyph slot `n` when a full 256-character font table is present
+- **Legacy compatibility**: Older 224-glyph tables still map glyph slot `0` to character code `0x20`
+- **Memory strings**: `TEXT` reads bytes from memory until a `0x00` terminator is encountered
+- **Screen edges**: Partially visible characters are clipped to the viewport instead of being dropped entirely
+- **Control bytes**: Only tab, newline, and carriage return have layout meaning; all other byte values render their glyphs directly
 
 ### Font Character Map
 ```
@@ -150,6 +158,8 @@ CYAN        EQU 0x6F    ; Bright cyan
 @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_
 `abcdefghijklmnopqrstuvwxyz{|}~
 ```
+
+Printable ASCII remains the primary human-readable subset, but the renderer can also draw byte values `0x00-0x1F`, `0x7F`, and `0x80-0xFF` when glyphs exist in the active font table.
 
 ## Performance Optimization
 
