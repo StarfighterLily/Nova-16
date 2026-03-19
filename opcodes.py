@@ -266,6 +266,8 @@ opcodes = [
     # Mouse control
     ("MOUSECTRL",          "0xB3", 1), # Enable or disable host mouse input and interrupts # implemented
 
+    ("C0",                 "0xBE", 1), # RTC seconds low word (epoch 2018-07-17 UTC)
+    ("C1",                 "0xBF", 1), # RTC seconds high word (epoch 2018-07-17 UTC)
     ("MX",                 "0xC0", 1), # Mouse X position
     ("MY",                 "0xC1", 1), # Mouse Y position
     ("MB",                 "0xC2", 1), # Mouse buttons
