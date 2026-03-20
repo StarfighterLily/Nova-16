@@ -773,7 +773,7 @@ class CPU:
         self.key_buffer = []
         self.halted = False
         self.has_hw_breakpoints = False
-        self.memory.memory[:] = 0
+        self.memory.reset()
         self.gfx.vram[:] = 0
         self.gfx.screen[:] = 0
         self.gfx.flags[:] = 0
@@ -1605,8 +1605,8 @@ class CPU:
 
     def fetch_bytes(self, count):
         """Optimized multi-byte fetch returning list of ints"""
-        result = [int(self.memory.memory[self.pc + i]) for i in range(count)]
-        self.pc += count
+        result = [self.memory.read_byte((self.pc + i) & 0xFFFF) for i in range(count)]
+        self.pc = (self.pc + count) & 0xFFFF
         return result
 
     # ========================================

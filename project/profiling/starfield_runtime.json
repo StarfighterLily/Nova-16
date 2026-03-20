@@ -1,0 +1,34 @@
+{
+  "execution_time": 3.651186466217041,
+  "cycles_executed": 500000,
+  "cycles_per_second": 136941.78717693518,
+  "timestamp": 1773989057.2829475,
+  "program": null,
+  "cpu_profile": {
+    "total_cycles": 500000,
+    "instructions_executed": 500000,
+    "opcode_counts": {
+      "4": 1,
+      "6": 4388,
+      "72": 1408,
+      "51": 1408,
+      "7": 1408,
+      "73": 1408,
+      "46": 1408,
+      "41": 1408,
+      "52": 144,
+      "2": 48,
+      "66": 2,
+      "30": 486969
+    },
+    "method_times": {},
+    "memory_accesses": 1000055,
+    "start_time": 1773989053.631613,
+    "instruction_start_times": {},
+    "cycle_start_time": 1773989053.6317635,
+    "operand_parses": 499951,
+    "operand_values": 502908
+  },
+  "cpu_report_text": "=== CPU Profiling Report ===\nTotal execution time: 3.6513 seconds\nInstructions executed: 500000\nMemory accesses: 1000055\nOperand parses: 499951\nOperand value gets: 502908\nAverage IPS: 136935.97\n\nTop 10 instructions by frequency:\n  JMP: 486969 (97.4%)\n  MOV: 4388 (0.9%)\n  RND: 1408 (0.3%)\n  SWRITE: 1408 (0.3%)\n  ADD: 1408 (0.3%)\n  RNDR: 1408 (0.3%)\n  CMP: 1408 (0.3%)\n  JGE: 1408 (0.3%)\n  SROL: 144 (0.0%)\n  IRET: 48 (0.0%)",
+  "instructions_per_second": 136941.78717693518
+}

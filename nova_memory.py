@@ -28,10 +28,6 @@ class Memory:
         self.lru_cache = OrderedDict()  # {address: value}
         self.lru_cache_max_size = 512  # Cache up to 512 recently accessed bytes
         
-        # Cache write-back optimization
-        self.write_back_batch_size = 16  # Batch write operations
-        self.pending_write_back = set()  # Addresses that need write-back
-        
         # Cache statistics for performance monitoring
         self.cache_hits = 0
         self.cache_misses = 0
@@ -99,7 +95,29 @@ class Memory:
         
         # Clear LRU cache since memory content has changed
         self.lru_cache.clear()
-        self.pending_write_back.clear()
+
+    def _finalize_loader_updates(self, ranges):
+        """Restore cache and CPU coherence after loaders write directly to backing memory."""
+        self._sync_caches_after_load()
+
+        if not ranges:
+            return
+
+        if self.gfx_system:
+            touches_sprite_region = any(
+                length > 0 and start < 0xF100 and start + length > 0xF000
+                for start, length in ranges
+            )
+            if touches_sprite_region:
+                self.gfx_system.sprites_dirty = True
+
+        if hasattr(self, 'cpu') and self.cpu:
+            for start, length in ranges:
+                if length <= 0:
+                    continue
+                end = min(int(start) + int(length) - 1, self.size - 1)
+                self.cpu.invalidate_instruction_cache(int(start), end)
+            self.cpu.invalidate_prefetch()
 
     def _refresh_caches_for_range(self, address, length):
         """Refresh cache views for a direct memory update range."""
@@ -158,18 +176,6 @@ class Memory:
         if self.interrupt_vector_dirty:
             self.memory[0x100:0x120] = self.interrupt_vector_cache
             self.interrupt_vector_dirty = False
-        
-        # Write back pending LRU cache entries
-        for addr in list(self.pending_write_back):
-            if addr in self.lru_cache:
-                self.memory[addr] = self.lru_cache[addr]
-        
-        self.pending_write_back.clear()
-    
-    def _check_write_back_needed(self):
-        """Check if write-back is needed based on batch size"""
-        if len(self.pending_write_back) >= self.write_back_batch_size:
-            self._lazy_write_back()
     
     def flush_cache(self):
         """Force write-back of all dirty cache lines"""
@@ -178,6 +184,24 @@ class Memory:
     def ensure_memory_consistency(self):
         """Ensure memory consistency by flushing all caches before critical operations"""
         self.flush_cache()
+
+    def reset(self):
+        """Clear backing memory and cache state without changing component wiring."""
+        self.memory.fill(0)
+        self.zero_page_cache.fill(0)
+        self.zero_page_dirty = False
+        self.interrupt_vector_cache.fill(0)
+        self.interrupt_vector_dirty = False
+        self.lru_cache.clear()
+        self.cache_hits = 0
+        self.cache_misses = 0
+
+        if self.gfx_system:
+            self.gfx_system.sprites_dirty = True
+
+        if hasattr(self, 'cpu') and self.cpu:
+            self.cpu.invalidate_instruction_cache()
+            self.cpu.invalidate_prefetch()
 
     def write( self, address, value, bytes=1 ):
         # Check bounds
@@ -280,20 +304,18 @@ class Memory:
         if 0 <= addr <= 0xFF:
             self.zero_page_cache[addr] = val
             self.zero_page_dirty = True
-        
+
         # Update interrupt vector cache (0x0100-0x011F) - lazy write-back
         elif 0x100 <= addr <= 0x11F:
             self.interrupt_vector_cache[addr - 0x100] = val
             self.interrupt_vector_dirty = True
-        
+
         else:
             # For non-cached regions, write directly to main memory
             self.memory[addr] = val
-        
-        # Update LRU cache for read locality.
-        # Direct-memory writes are already committed above, so we skip pending
-        # write-back tracking to avoid redundant OrderedDict/set churn.
-        self._lru_cache_put(addr, val)
+
+            # Only non-cached regions benefit from LRU reuse.
+            self._lru_cache_put(addr, val)
         
         # Invalidate instruction cache and prefetch if CPU exists (for self-modifying code)
         if invalidate_cpu_cache and hasattr(self, 'cpu') and self.cpu:
@@ -323,13 +345,19 @@ class Memory:
     
     def read_bytes_direct(self, address, count):
         """Optimized multi-byte read returning list of ints"""
+        address = int(address)
+        count = int(count)
+        if address < 0:
+            raise IndexError(f"Read address out of bounds: {address}")
+        if count < 0:
+            raise ValueError(f"Read count must be non-negative: {count}")
         if address + count > self.size:
             raise IndexError(f"Read beyond memory bounds: {address + count} > {self.size}")
         
         # Ensure cache consistency for direct reads
         self.flush_cache()
         
-        return [int(self.memory[address + i]) for i in range(count)]
+        return self.memory[address:address + count].tolist()
 
     def dump( self ):
         self.flush_cache()
@@ -367,8 +395,7 @@ class Memory:
             if load_size:
                 self.memory[:load_size] = np.frombuffer(data[:load_size], dtype=np.uint8)
         
-        # Sync caches after loading
-        self._sync_caches_after_load()
+        self._finalize_loader_updates([(0, load_size)] if load_size else [])
         
         return 0x0000
     
@@ -389,6 +416,7 @@ class Memory:
         
         entry_point = 0x0000
         first_segment = True
+        loaded_ranges = []
         
         # Read the ORG segment information
         with open(org_file_path, 'r', encoding='utf-8') as org_file:
@@ -422,6 +450,7 @@ class Memory:
                     segment_data = bin_data[bin_offset:bin_offset + length]
                     if length:
                         self.memory[start_addr:start_addr + length] = np.frombuffer(segment_data, dtype=np.uint8)
+                        loaded_ranges.append((start_addr, length))
                     
                     print(f"Loaded {length} bytes at 0x{start_addr:04X} from binary offset {bin_offset}")
                     
@@ -430,8 +459,7 @@ class Memory:
                 except Exception as e:
                     raise ValueError(f"Unexpected error loading segment from line {line_num}: {e}")
         
-        # Sync caches after loading
-        self._sync_caches_after_load()
+        self._finalize_loader_updates(loaded_ranges)
         
         return entry_point
 
@@ -491,9 +519,8 @@ class Memory:
         load_size = min(len(program_data), self.size - address)
         if load_size:
             self.memory[address:address + load_size] = np.frombuffer(program_data[:load_size], dtype=np.uint8)
-        
-        # Sync caches after loading
-        self._sync_caches_after_load()
+
+        self._finalize_loader_updates([(address, load_size)] if load_size else [])
         
         return address
 
@@ -509,7 +536,7 @@ class Memory:
             'cache_hit_rate': hit_rate,
             'zero_page_dirty': self.zero_page_dirty,
             'interrupt_vector_dirty': self.interrupt_vector_dirty,
-            'pending_write_back_count': len(self.pending_write_back),
+            'pending_write_back_count': 0,
             'lru_cache_size': len(self.lru_cache)
         }
 

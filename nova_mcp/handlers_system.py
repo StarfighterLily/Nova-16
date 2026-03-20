@@ -180,14 +180,7 @@ def handle_cpu_reset(*, ensure_emulator, state) -> str:
 def handle_clear_memory(*, ensure_emulator, state) -> str:
     ensure_emulator()
     mem = state["memory"]
-    mem.memory.fill(0)
-    mem.zero_page_cache.fill(0)
-    mem.zero_page_dirty = False
-    mem.interrupt_vector_cache.fill(0)
-    mem.interrupt_vector_dirty = False
-    mem.lru_cache.clear()
-    mem.cache_hits = 0
-    mem.cache_misses = 0
+    mem.reset()
     return json.dumps({"status": "memory cleared", "size": mem.size, "bytes_cleared": mem.size})
 
 
@@ -205,14 +198,7 @@ def handle_full_reset(*, ensure_emulator, state) -> str:
         cpu.flags[index] = 0
 
     mem = state["memory"]
-    mem.memory.fill(0)
-    mem.zero_page_cache.fill(0)
-    mem.zero_page_dirty = False
-    mem.interrupt_vector_cache.fill(0)
-    mem.interrupt_vector_dirty = False
-    mem.lru_cache.clear()
-    mem.cache_hits = 0
-    mem.cache_misses = 0
+    mem.reset()
 
     gfx = state["gfx"]
     gfx._screen.fill(0)
