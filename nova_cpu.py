@@ -762,6 +762,8 @@ class CPU:
         self._flags[:] = [0] * len(self._flags)  # Use internal flag array
         self.stack = []
         self.interrupts[:] = [0] * len(self.interrupts)
+        self.interrupt_check_counter = 0
+        self.last_interrupt_state = 0
         self.has_pending_interrupt_sources = False
         self.timer[:] = [0] * len(self.timer)
         self.timer_cycles = 0
@@ -793,6 +795,7 @@ class CPU:
         self.instruction_cache.clear()
         self.operand_cache.clear()
         self.register_cache.clear()
+        self.invalidate_prefetch()
 
         # Connect keyboard if provided
         if self.keyboard_device is not None:
@@ -1373,6 +1376,7 @@ class CPU:
     
     def set_timer_control(self, control_value):
         """Set timer control register and update timer state"""
+        was_enabled = self.timer_enabled
         self.timer[2] = control_value & 0xFF
         
         # Bit 0: Timer enable
@@ -1383,6 +1387,10 @@ class CPU:
         
         # If timer is disabled, reset internal state
         if not self.timer_enabled:
+            self.timer_cycles = 0
+            self.timer_update_counter = 0
+            self.timer[0] = 0
+        elif not was_enabled:
             self.timer_cycles = 0
             self.timer_update_counter = 0
             self.timer[0] = 0
@@ -1499,10 +1507,8 @@ class CPU:
             self.profile_data['memory_accesses'] += 1
         
         # Enable prefetch optimization
-        if (self.prefetch_valid and 
-            self.pc >= self.prefetch_pc and 
-            self.pc < self.prefetch_pc + 64):
-            offset = self.pc - self.prefetch_pc
+        offset = self._get_prefetch_offset(self.pc)
+        if offset is not None:
             value = self.prefetch_buffer[offset]
             self.pc = (self.pc + 1) & 0xFFFF
             return int(value)
@@ -1511,10 +1517,8 @@ class CPU:
         if not self.prefetch_valid:
             self._fill_prefetch_buffer()
             # Try prefetch again
-            if (self.prefetch_valid and 
-                self.pc >= self.prefetch_pc and 
-                self.pc < self.prefetch_pc + 64):
-                offset = self.pc - self.prefetch_pc
+            offset = self._get_prefetch_offset(self.pc)
+            if offset is not None:
                 value = self.prefetch_buffer[offset]
                 self.pc = (self.pc + 1) & 0xFFFF
                 return int(value)
@@ -1558,15 +1562,36 @@ class CPU:
     def invalidate_prefetch(self):
         """Invalidate prefetch buffer when PC changes unexpectedly (jumps, branches, etc.)"""
         self.prefetch_valid = False
+
+    def _get_prefetch_offset(self, address):
+        """Return the prefetch-buffer offset for an address, accounting for wraparound."""
+        if not self.prefetch_valid:
+            return None
+
+        offset = (int(address) - int(self.prefetch_pc)) & 0xFFFF
+        if offset < len(self.prefetch_buffer):
+            return offset
+
+        return None
+
+    def _prefetch_overlaps(self, address, size):
+        """Return True when a write overlaps any byte in the active prefetch window."""
+        if not self.prefetch_valid or size <= 0:
+            return False
+
+        base_address = int(address) & 0xFFFF
+        for byte_offset in range(size):
+            if self._get_prefetch_offset((base_address + byte_offset) & 0xFFFF) is not None:
+                return True
+
+        return False
         
     def write_memory(self, address, value, bytes=1):
         """Write to memory and invalidate prefetch buffer if necessary"""
         self.memory.write(address, value, bytes)
         
         # Invalidate prefetch buffer if writing to area that might be prefetched
-        if (self.prefetch_valid and 
-            address < self.prefetch_pc + 16 and 
-            address + bytes > self.prefetch_pc):
+        if self._prefetch_overlaps(address, bytes):
             self.prefetch_valid = False
             
         # Invalidate instruction cache if writing to cached instruction area
@@ -1577,9 +1602,7 @@ class CPU:
         self.memory.write_byte(address, value)
         
         # Invalidate prefetch buffer if writing to area that might be prefetched
-        if (self.prefetch_valid and 
-            address < self.prefetch_pc + 16 and 
-            address + 1 > self.prefetch_pc):
+        if self._prefetch_overlaps(address, 1):
             self.prefetch_valid = False
             
         # Invalidate instruction cache if writing to cached instruction area
@@ -1588,13 +1611,11 @@ class CPU:
     def fetch_word(self):
         """Optimized 16-bit fetch with prefetching (big-endian for Nova-16)"""
         # Check if we can fetch both bytes from prefetch buffer
-        if (self.prefetch_valid and 
-            self.pc >= self.prefetch_pc and 
-            self.pc + 1 < self.prefetch_pc + 64):
-            offset = self.pc - self.prefetch_pc
+        offset = self._get_prefetch_offset(self.pc)
+        if offset is not None and offset + 1 < len(self.prefetch_buffer):
             high = self.prefetch_buffer[offset]
             low = self.prefetch_buffer[offset + 1]
-            self.pc += 2
+            self.pc = (self.pc + 2) & 0xFFFF
             return (int(high) << 8) | int(low)
         
         # Use individual byte fetches with prefetching
