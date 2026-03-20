@@ -211,3 +211,53 @@ class TestCPUTimerControl:
         assert cpu.timer[0] == 0
         assert cpu.timer_cycles == 0
         assert cpu.timer_update_counter == 0
+
+
+class TestCPUInterruptRefreshFastPath:
+    def test_step_skips_interrupt_refresh_when_no_async_sources_enabled(self, cpu):
+        cpu.memory.write_byte(0x0000, 0xFF)
+
+        refresh_calls = 0
+        original_refresh = cpu._refresh_pending_interrupt_sources
+
+        def tracked_refresh():
+            nonlocal refresh_calls
+            refresh_calls += 1
+            return original_refresh()
+
+        cpu._refresh_pending_interrupt_sources = tracked_refresh
+
+        cpu.step()
+
+        assert refresh_calls == 0
+        assert cpu.pc == 0x0001
+
+    def test_step_refreshes_when_direct_interrupt_enable_exposes_pending_uart(self, cpu):
+        cpu.interrupt_check_frequency = 1
+        cpu.flags[5] = 1
+        cpu.memory.write_word(0x0104, 0x3456)
+        cpu.memory.write_byte(0x0000, 0xFF)
+
+        refresh_calls = 0
+        original_refresh = cpu._refresh_pending_interrupt_sources
+
+        def tracked_refresh():
+            nonlocal refresh_calls
+            refresh_calls += 1
+            return original_refresh()
+
+        cpu._refresh_pending_interrupt_sources = tracked_refresh
+
+        cpu.uart.write_control(0x01)
+        cpu.uart.write_data(0x7A)
+
+        assert cpu.has_pending_interrupt_sources is False
+
+        cpu.interrupts[1] = 1
+        cpu.step()
+
+        assert refresh_calls >= 1
+        assert cpu.pc == 0x3456
+        assert cpu.uart.pending_interrupt is False
+        assert cpu.Pregisters[8] == 0xFFFB
+        assert cpu.memory.read_word(0xFFFB) == 0x0001

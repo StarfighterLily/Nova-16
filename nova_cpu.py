@@ -812,6 +812,15 @@ class CPU:
             self.interrupts[4] == 1
         )
 
+    def _has_enabled_async_interrupt_sources(self):
+        """Return True when step() must rescan device-backed interrupt sources."""
+        return bool(
+            self.interrupts[1] or
+            self.interrupts[2] or
+            self.interrupts[3] or
+            self.interrupts[4]
+        )
+
     def _refresh_hw_breakpoint_state(self):
         """Refresh fast hardware-breakpoint gate from enabled slots."""
         self.has_hw_breakpoints = bool(
@@ -2057,11 +2066,13 @@ class CPU:
             opcode = self.fetch_byte()  # Use optimized fetch for single byte opcodes
             self.execute_and_cache(opcode)
         
-        # Check for other pending interrupts (keyboard, serial, etc.)
-        if not self.has_pending_interrupt_sources:
-            self._refresh_pending_interrupt_sources()
+        # Refresh only when async interrupt sources are enabled but the fast gate is stale.
         if self.has_pending_interrupt_sources:
             self._check_pending_interrupts()
+        elif self._has_enabled_async_interrupt_sources():
+            self._refresh_pending_interrupt_sources()
+            if self.has_pending_interrupt_sources:
+                self._check_pending_interrupts()
 
     def execute_and_cache(self, opcode):
         """Execute instruction and cache it for future use"""
