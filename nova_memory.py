@@ -100,6 +100,52 @@ class Memory:
         # Clear LRU cache since memory content has changed
         self.lru_cache.clear()
         self.pending_write_back.clear()
+
+    def _refresh_caches_for_range(self, address, length):
+        """Refresh cache views for a direct memory update range."""
+        if length <= 0:
+            return
+
+        start = int(address)
+        end = min(start + int(length), self.size)
+
+        if start < 0 or start > self.size:
+            raise IndexError(f"Address out of bounds: {start}")
+
+        if start < 0x100 and end > 0:
+            zp_start = max(start, 0)
+            zp_end = min(end, 0x100)
+            self.zero_page_cache[zp_start:zp_end] = self.memory[zp_start:zp_end]
+            self.zero_page_dirty = False
+
+        if start < 0x120 and end > 0x100:
+            iv_start = max(start, 0x100)
+            iv_end = min(end, 0x120)
+            cache_start = iv_start - 0x100
+            cache_end = iv_end - 0x100
+            self.interrupt_vector_cache[cache_start:cache_end] = self.memory[iv_start:iv_end]
+            self.interrupt_vector_dirty = False
+
+        if self.lru_cache:
+            stale_addresses = [cached_addr for cached_addr in self.lru_cache.keys() if start <= cached_addr < end]
+            for cached_addr in stale_addresses:
+                del self.lru_cache[cached_addr]
+
+    def _finalize_direct_memory_update(self, address, length):
+        """Restore coherence after a direct main-memory update."""
+        if length <= 0:
+            return
+
+        start = int(address)
+        end = start + int(length)
+        self._refresh_caches_for_range(start, length)
+
+        if 0xF000 < end and 0xF100 > start and self.gfx_system:
+            self.gfx_system.sprites_dirty = True
+
+        if hasattr(self, 'cpu') and self.cpu:
+            self.cpu.invalidate_instruction_cache(start, min(end - 1, self.size - 1))
+            self.cpu.invalidate_prefetch()
     
     def _lazy_write_back(self):
         """Perform lazy write-back of dirty cache lines to main memory"""
@@ -286,6 +332,7 @@ class Memory:
         return [int(self.memory[address + i]) for i in range(count)]
 
     def dump( self ):
+        self.flush_cache()
         for i in range( 0, self.size, 16 ):
             hex_bytes = ' '.join( f"{byte:02X}" for byte in self.memory[i:i+16] )
             print( f"{i:04X}: {hex_bytes}" )
@@ -317,9 +364,8 @@ class Memory:
             data = file.read()
             # Determine how much data to load to avoid buffer overflows
             load_size = min( len( data ), self.size )
-            # Convert bytes to numpy array and copy to memory
-            for i in range(load_size):
-                self.memory[i] = data[i]
+            if load_size:
+                self.memory[:load_size] = np.frombuffer(data[:load_size], dtype=np.uint8)
         
         # Sync caches after loading
         self._sync_caches_after_load()
@@ -374,9 +420,8 @@ class Memory:
                     
                     # Load this segment
                     segment_data = bin_data[bin_offset:bin_offset + length]
-                    # Use a more reliable method to copy the data
-                    for i in range(length):
-                        self.memory[start_addr + i] = segment_data[i]
+                    if length:
+                        self.memory[start_addr:start_addr + length] = np.frombuffer(segment_data, dtype=np.uint8)
                     
                     print(f"Loaded {length} bytes at 0x{start_addr:04X} from binary offset {bin_offset}")
                     
@@ -403,6 +448,7 @@ class Memory:
             root.destroy()
         if not file_path:
             return
+        self.flush_cache()
         with open( file_path, 'wb' ) as file:
             file.write( bytes( self.memory ) )
 
@@ -415,10 +461,18 @@ class Memory:
             # If it's a string, assume it's a file path
             with open(binary_data, 'rb') as f:
                 binary_data = f.read()
+
+        address = int(address)
+        if address < 0 or address > self.size:
+            raise IndexError(f"Load address out of bounds: {address}")
+
+        self.flush_cache()
         
         # Ensure we don't overflow memory
         load_size = min(len(binary_data), self.size - address)
-        self.memory[address:address + load_size] = binary_data[:load_size]
+        if load_size:
+            self.memory[address:address + load_size] = np.frombuffer(binary_data[:load_size], dtype=np.uint8)
+            self._finalize_direct_memory_update(address, load_size)
         return address
 
     def load_program(self, program_data, address=0x0000):
@@ -428,10 +482,15 @@ class Memory:
         """
         if isinstance(program_data, list):
             program_data = bytes(program_data)
+
+        address = int(address)
+        if address < 0 or address > self.size:
+            raise IndexError(f"Load address out of bounds: {address}")
         
         # Ensure we don't overflow memory
         load_size = min(len(program_data), self.size - address)
-        self.memory[address:address + load_size] = np.frombuffer(program_data[:load_size], dtype=np.uint8)
+        if load_size:
+            self.memory[address:address + load_size] = np.frombuffer(program_data[:load_size], dtype=np.uint8)
         
         # Sync caches after loading
         self._sync_caches_after_load()
@@ -456,7 +515,14 @@ class Memory:
 
     def write_bytes_direct(self, address, data):
         """Write multiple bytes directly to memory"""
-        if address + len(data) > self.size:
+        address = int(address)
+        if address < 0 or address + len(data) > self.size:
             raise IndexError(f"Write beyond memory bounds: {address + len(data)} > {self.size}")
-        for i, byte in enumerate(data):
-            self.memory[address + i] = byte & 0xFF
+        if not data:
+            return
+
+        self.flush_cache()
+
+        byte_array = np.fromiter(((int(byte) & 0xFF) for byte in data), dtype=np.uint8, count=len(data))
+        self.memory[address:address + len(data)] = byte_array
+        self._finalize_direct_memory_update(address, len(data))

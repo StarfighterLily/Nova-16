@@ -87,6 +87,27 @@ class TestGraphicsPixelOperations:
 class TestGraphicsBlending:
     """Test graphics blending operations."""
 
+    @staticmethod
+    def _reference_blend(mode, existing, new, alpha):
+        existing = max(0, min(255, int(existing)))
+        new = max(0, min(255, int(new)))
+        alpha = max(0, min(255, int(alpha)))
+
+        if mode == 0:
+            return new
+        if mode == 1:
+            return min(255, existing + ((new * alpha + 127) // 255))
+        if mode == 2:
+            return max(0, existing - ((new * alpha + 127) // 255))
+        if mode == 3:
+            return min(255, ((existing * new * alpha) + 32512) // 65025)
+        if mode == 4:
+            inv_existing = 255 - existing
+            inv_new = 255 - new
+            return min(255, max(0, 255 - (((inv_existing * inv_new * alpha) + 32512) // 65025)))
+
+        return new
+
     def test_blend_pixel_normal(self, graphics):
         """Test normal blending mode."""
         graphics.blend_mode = 0  # Normal
@@ -117,6 +138,44 @@ class TestGraphicsBlending:
         expected = min(255, (200 * 100 * 0.5) / 255)  # (20000 * 0.5) / 255 ≈ 39
         assert result == int(expected)
 
+    @pytest.mark.parametrize(
+        ("mode", "existing", "new", "alpha"),
+        [
+            (0, 12, 200, 255),
+            (1, 240, 30, 255),
+            (1, 100, 50, 128),
+            (2, 10, 50, 255),
+            (2, 100, 30, 128),
+            (3, 255, 255, 255),
+            (3, 255, 1, 255),
+            (3, 200, 100, 128),
+            (3, 0, 255, 255),
+            (4, 0, 0, 255),
+            (4, 255, 0, 255),
+            (4, 0, 255, 255),
+            (4, 128, 128, 255),
+            (4, 255, 255, 255),
+        ],
+    )
+    def test_blend_pixel_matches_integer_reference(self, graphics, mode, existing, new, alpha):
+        """Blend output should match the integer math used by the graphics pipeline."""
+        graphics.blend_mode = mode
+        graphics.blend_alpha = alpha
+
+        assert graphics.blend_pixel(existing, new) == self._reference_blend(mode, existing, new, alpha)
+
+    def test_blend_pixel_full_scale_modes_preserve_peak_intensity(self, graphics):
+        """Multiply and screen modes should preserve 0/255 endpoints at full alpha."""
+        graphics.blend_mode = 3
+        graphics.blend_alpha = 255
+        assert graphics.blend_pixel(255, 255) == 255
+        assert graphics.blend_pixel(255, 1) == 1
+
+        graphics.blend_mode = 4
+        assert graphics.blend_pixel(255, 255) == 255
+        assert graphics.blend_pixel(0, 0) == 0
+        assert graphics.blend_pixel(255, 0) == 255
+
 
 class TestGraphicsLayers:
     """Test graphics layer operations."""
@@ -141,6 +200,81 @@ class TestGraphicsLayers:
         assert graphics.current_layer == 5
         assert graphics.VL == 5
 
+    def test_copy_layer_to_base_layer_survives_recomposite(self, graphics):
+        """Copying into layer 0 should update the backing store used by compositing."""
+        graphics.background_layers[0][12, 34] = 77
+
+        graphics.copy_layer(1, 0)
+        graphics.set_layer_visibility(1, False)
+
+        assert graphics.screen[12, 34] == 77
+
+    def test_clear_layer_zero_survives_recomposite(self, graphics):
+        """Clearing layer 0 should clear the backing store, not only the composited surface."""
+        graphics.layer_0[8, 9] = 55
+        graphics.composite_layers()
+
+        graphics.clear_layer(0)
+        graphics.layers_dirty = True
+
+        assert graphics.screen[8, 9] == 0
+
+    def test_composite_layers_skips_empty_visible_layers(self, graphics, monkeypatch):
+        """Visible but empty layers should be skipped during compositing."""
+        graphics.layer_0[0, 0] = 10
+        graphics.background_layers[1][3, 4] = 80
+        graphics.sprite_layers[1][5, 6] = 120
+
+        original = graphics._composite_opaque_layer
+        composed_layers = []
+
+        def spy(layer):
+            if layer is graphics.background_layers[0]:
+                composed_layers.append(1)
+            elif layer is graphics.background_layers[1]:
+                composed_layers.append(2)
+            elif layer is graphics.sprite_layers[0]:
+                composed_layers.append(5)
+            elif layer is graphics.sprite_layers[1]:
+                composed_layers.append(6)
+            return original(layer)
+
+        monkeypatch.setattr(graphics, "_composite_opaque_layer", spy)
+
+        graphics.composite_layers()
+
+        assert composed_layers == [2, 6]
+        assert graphics.screen[0, 0] == 10
+        assert graphics.screen[3, 4] == 80
+        assert graphics.screen[5, 6] == 120
+
+    def test_composite_layers_ignores_hidden_non_empty_layers(self, graphics, monkeypatch):
+        """Hidden layers should remain skipped even when they contain visible pixels."""
+        graphics.background_layers[0][9, 9] = 33
+        graphics.background_layers[1][9, 9] = 66
+        graphics.sprite_layers[0][9, 9] = 99
+        graphics.set_layer_visibility(1, False)
+        graphics.set_layer_visibility(5, False)
+
+        original = graphics._composite_opaque_layer
+        composed_layers = []
+
+        def spy(layer):
+            if layer is graphics.background_layers[0]:
+                composed_layers.append(1)
+            elif layer is graphics.background_layers[1]:
+                composed_layers.append(2)
+            elif layer is graphics.sprite_layers[0]:
+                composed_layers.append(5)
+            return original(layer)
+
+        monkeypatch.setattr(graphics, "_composite_opaque_layer", spy)
+
+        graphics.composite_layers()
+
+        assert composed_layers == [2]
+        assert graphics.screen[9, 9] == 66
+
 
 class TestGraphicsClear:
     """Test graphics clear operations."""
@@ -155,6 +289,16 @@ class TestGraphicsClear:
 
         # All pixels should be 0
         assert np.all(graphics.screen == 0)
+
+    def test_clear_screen_clears_layer_zero_backing_store(self, graphics):
+        """Clearing the screen should survive a later recomposite from layer 0."""
+        graphics.layer_0[10, 20] = 100
+        graphics.composite_layers()
+
+        graphics.clear()
+        graphics.layers_dirty = True
+
+        assert graphics.screen[10, 20] == 0
 
 
 class TestGraphicsVRAM:
@@ -191,9 +335,122 @@ class TestGraphicsVRAM:
         assert graphics.screen[1, 0] == 200
         assert graphics.screen[1, 1] == 250
 
+    def test_vram_to_screen_blit_survives_recomposite(self, graphics):
+        """VRAM blits should update the base layer so a later recomposite preserves them."""
+        graphics.vram[4, 5] = 123
+
+        graphics.VRAMtoScreen()
+        graphics.layers_dirty = True
+
+        assert graphics.screen[4, 5] == 123
+        assert graphics.layer_0[4, 5] == 123
+
+    def test_vram_to_screen_immediate_path_clears_pending_flag(self, graphics):
+        """Immediate VRAM blits should not leave a stale batched transfer behind."""
+        graphics.graphics_batch_frequency = 4
+        graphics.vram[1, 2] = 77
+
+        graphics.VRAMtoScreen()
+
+        assert graphics.pending_vram_to_screen is False
+        assert graphics.screen[1, 2] == 77
+
+    def test_screen_to_vram_immediate_path_clears_pending_flag(self, graphics):
+        """Immediate screen copies should clear the pending transfer flag after execution."""
+        graphics.graphics_batch_frequency = 4
+        graphics.layer_0[6, 7] = 88
+        graphics.composite_layers()
+
+        graphics.ScreenToVRAM()
+
+        assert graphics.pending_screen_to_vram is False
+        assert graphics.vram[6, 7] == 88
+
+    def test_screen_to_vram_batched_transfer_uses_visible_frame(self, graphics):
+        """Batched screen copies should capture the current composited frame before clearing it."""
+        graphics.graphics_batch_frequency = 1
+        graphics.layer_0[2, 3] = 40
+        graphics.background_layers[0][2, 3] = 90
+        graphics.layers_dirty = True
+
+        graphics.ScreenToVRAM()
+
+        assert graphics.vram[2, 3] == 90
+        assert graphics.pending_screen_to_vram is False
+
 
 class TestGraphicsTransformations:
     """Test graphics transformation operations."""
+
+    @staticmethod
+    def _shift_expected(buffer, axis, amount):
+        result = buffer.copy()
+        if amount > 0:
+            if axis == 1:
+                result[:, amount:] = buffer[:, :-amount]
+                result[:, :amount] = 0
+            else:
+                result[amount:, :] = buffer[:-amount, :]
+                result[:amount, :] = 0
+        elif amount < 0:
+            shift_amount = -amount
+            if axis == 1:
+                result[:, :-shift_amount] = buffer[:, shift_amount:]
+                result[:, -shift_amount:] = 0
+            else:
+                result[:-shift_amount, :] = buffer[shift_amount:, :]
+                result[-shift_amount:, :] = 0
+        return result
+
+    @pytest.mark.parametrize(
+        ("operation", "expected_transform"),
+        [
+            (
+                lambda gfx: gfx.shift_layer_x(2, 0),
+                lambda buffer, helper: helper(buffer, axis=1, amount=2),
+            ),
+            (
+                lambda gfx: gfx.shift_layer_y(1, 0),
+                lambda buffer, helper: helper(buffer, axis=0, amount=1),
+            ),
+            (
+                lambda gfx: gfx.rotate_layer_left(90, 0),
+                lambda buffer, helper: np.rot90(buffer, k=1),
+            ),
+            (
+                lambda gfx: gfx.rotate_layer_right(90, 0),
+                lambda buffer, helper: np.rot90(buffer, k=-1),
+            ),
+            (
+                lambda gfx: gfx.flip_layer_x(0),
+                lambda buffer, helper: np.fliplr(buffer),
+            ),
+            (
+                lambda gfx: gfx.flip_layer_y(0),
+                lambda buffer, helper: np.flipud(buffer),
+            ),
+        ],
+        ids=[
+            "shift-layer-x",
+            "shift-layer-y",
+            "rotate-layer-left",
+            "rotate-layer-right",
+            "flip-layer-x",
+            "flip-layer-y",
+        ],
+    )
+    def test_layer_zero_helper_transforms_survive_recomposite(self, graphics, operation, expected_transform):
+        """Layer-0 helper transforms should update the backing store, not only the composited screen."""
+        base = np.zeros_like(graphics.layer_0)
+        base[10:12, 20:23] = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8)
+        graphics.layer_0[:, :] = base
+        graphics.composite_layers()
+
+        operation(graphics)
+
+        expected = expected_transform(base, self._shift_expected)
+        assert np.array_equal(graphics.layer_0, expected)
+        assert np.array_equal(graphics.screen, expected)
 
     def test_screen_roll_x(self, graphics):
         """Test horizontal screen rolling."""
@@ -204,6 +461,18 @@ class TestGraphicsTransformations:
         graphics.roll_x(1)  # Roll right by 1
 
         # Pixels should have moved
+        assert graphics.screen[0, 1] == 100
+        assert graphics.screen[0, 2] == 200
+
+    def test_screen_roll_x_persists_after_recomposite(self, graphics):
+        """Rolling layer 0 should update the base buffer, not just the composited screen."""
+        graphics.layer_0[0, 0] = 100
+        graphics.layer_0[0, 1] = 200
+        graphics.composite_layers()
+
+        graphics.roll_x(1)
+        graphics.layers_dirty = True
+
         assert graphics.screen[0, 1] == 100
         assert graphics.screen[0, 2] == 200
 
@@ -242,6 +511,22 @@ class TestGraphicsTransformations:
         # Pixels should be swapped
         assert graphics.screen[255, 0] == 100
         assert graphics.screen[0, 0] == 200
+
+    def test_invert_colors_on_layer_zero_recomposites_screen(self, graphics):
+        """Inverting layer 0 should update the visible frame after recomposition."""
+        graphics.layer_0[4, 5] = 0
+        graphics.layer_0[4, 6] = 64
+        graphics.layer_0[4, 7] = 255
+        graphics.composite_layers()
+
+        graphics.invert_colors()
+
+        assert graphics.layer_0[4, 5] == 255
+        assert graphics.layer_0[4, 6] == 191
+        assert graphics.layer_0[4, 7] == 0
+        assert graphics.screen[4, 5] == 255
+        assert graphics.screen[4, 6] == 191
+        assert graphics.screen[4, 7] == 0
 
 
 class TestGraphicsSprites:

@@ -118,6 +118,28 @@ class GFX:
         # Cache the most common fast-path condition for per-pixel writes.
         self.blend_enabled = not (self._blend_mode == 0 and self._blend_alpha == 255)
 
+    def _divide_by_255_squared(self, value):
+        """Return a rounded integer division by 255^2 without losing full-scale intensity."""
+        return (int(value) + 32512) // 65025
+
+    def _can_sync_layer0_from_screen(self):
+        if self.mouse_cursor_visible:
+            return False
+
+        for index, layer in enumerate(self.background_layers, start=1):
+            if self.layer_visibility.get(index, True) and np.any(layer):
+                return False
+
+        for index, layer in enumerate(self.sprite_layers, start=5):
+            if self.layer_visibility.get(index, True) and np.any(layer):
+                return False
+
+        return True
+
+    def _prepare_layer0_transform(self):
+        if self._can_sync_layer0_from_screen():
+            self.layer_0[:, :] = self._screen
+
     def roll_x( self, roll_x ):
         # Roll the current layer by roll_x pixels horizontally, pixels roll over to the opposite side
         if self.VL == 0:
@@ -145,19 +167,18 @@ class GFX:
     def shift_x( self, shift_x ):
         # Shift the current layer by shift_x pixels horizontally, pixels that roll over are erased (set to 0)
         if self.VL == 0:
+            self._prepare_layer0_transform()
             if shift_x > 0:
                 # Shift right: move left part to right, fill left with zeros
                 self.layer_0[ :, shift_x: ] = self.layer_0[ :, :-shift_x ]
                 self.layer_0[ :, :shift_x ] = 0
-                self.screen[ :, shift_x: ] = self.screen[ :, :-shift_x ]
-                self.screen[ :, :shift_x ] = 0
+                self.layers_dirty = True
             elif shift_x < 0:
                 # Shift left: move right part to left, fill right with zeros
                 shift_amount = -shift_x
                 self.layer_0[ :, :-shift_amount ] = self.layer_0[ :, shift_amount: ]
                 self.layer_0[ :, -shift_amount: ] = 0
-                self.screen[ :, :-shift_amount ] = self.screen[ :, shift_amount: ]
-                self.screen[ :, -shift_amount: ] = 0
+                self.layers_dirty = True
         elif 1 <= self.VL <= 4:
             layer = self.background_layers[self.VL - 1]
             if shift_x > 0:
@@ -183,19 +204,18 @@ class GFX:
     def shift_y( self, shift_y ):
         # Shift the current layer by shift_y pixels vertically, pixels that roll over are erased (set to 0)
         if self.VL == 0:
+            self._prepare_layer0_transform()
             if shift_y > 0:
                 # Shift down: move upper part down, fill top with zeros
                 self.layer_0[ shift_y:, : ] = self.layer_0[ :-shift_y, : ]
                 self.layer_0[ :shift_y, : ] = 0
-                self.screen[ shift_y:, : ] = self.screen[ :-shift_y, : ]
-                self.screen[ :shift_y, : ] = 0
+                self.layers_dirty = True
             elif shift_y < 0:
                 # Shift up: move lower part up, fill bottom with zeros
                 shift_amount = -shift_y
                 self.layer_0[ :-shift_amount, : ] = self.layer_0[ shift_amount:, : ]
                 self.layer_0[ -shift_amount:, : ] = 0
-                self.screen[ :-shift_amount, : ] = self.screen[ shift_amount:, : ]
-                self.screen[ -shift_amount:, : ] = 0
+                self.layers_dirty = True
         elif 1 <= self.VL <= 4:
             layer = self.background_layers[self.VL - 1]
             if shift_y > 0:
@@ -221,8 +241,9 @@ class GFX:
     def flip_x( self ):
         # Flip the current layer horizontally
         if self.VL == 0:
+            self._prepare_layer0_transform()
             self.layer_0 = np.flip( self.layer_0, axis=1 )
-            self.screen = np.flip( self.screen, axis=1 )
+            self.layers_dirty = True
         elif 1 <= self.VL <= 4:
             self.background_layers[self.VL - 1] = np.flip( self.background_layers[self.VL - 1], axis=1 )
             self.layers_dirty = True
@@ -233,8 +254,9 @@ class GFX:
     def flip_y( self ):
         # Flip the current layer vertically
         if self.VL == 0:
+            self._prepare_layer0_transform()
             self.layer_0 = np.flip( self.layer_0, axis=0 )
-            self.screen = np.flip( self.screen, axis=0 )
+            self.layers_dirty = True
         elif 1 <= self.VL <= 4:
             self.background_layers[self.VL - 1] = np.flip( self.background_layers[self.VL - 1], axis=0 )
             self.layers_dirty = True
@@ -245,8 +267,9 @@ class GFX:
     def rotate_r( self, times ):
         # Rotate the current layer 90 degrees clockwise
         if self.VL == 0:
+            self._prepare_layer0_transform()
             self.layer_0 = np.rot90( self.layer_0, times, axes=(1,0) )
-            self.screen = np.rot90( self.screen, times, axes=(1,0) )
+            self.layers_dirty = True
         elif 1 <= self.VL <= 4:
             self.background_layers[self.VL - 1] = np.rot90( self.background_layers[self.VL - 1], times, axes=(1,0) )
             self.layers_dirty = True
@@ -257,8 +280,9 @@ class GFX:
     def rotate_l( self, times ):
         # Rotate the current layer 90 degrees counter-clockwise
         if self.VL == 0:
+            self._prepare_layer0_transform()
             self.layer_0 = np.rot90( self.layer_0, times, axes=(0,1) )
-            self.screen = np.rot90( self.screen, times, axes=(0,1) )
+            self.layers_dirty = True
         elif 1 <= self.VL <= 4:
             self.background_layers[self.VL - 1] = np.rot90( self.background_layers[self.VL - 1], times, axes=(0,1) )
             self.layers_dirty = True
@@ -302,13 +326,13 @@ class GFX:
             return max(0, result)
         elif self.blend_mode == 3:  # Multiply
             # result = (existing * new * alpha) / (255 * 255)
-            result = (existing * new * alpha) >> 16  # Shift by 16 for / (255*255)
+            result = self._divide_by_255_squared(existing * new * alpha)
             return min(255, result)
         elif self.blend_mode == 4:  # Screen
             # Screen: 255 - ((255-existing) * (255-new) * alpha) / (255 * 255)
             inv_existing = 255 - existing
             inv_new = 255 - new
-            result = 255 - ((inv_existing * inv_new * alpha) >> 16)
+            result = 255 - self._divide_by_255_squared(inv_existing * inv_new * alpha)
             return min(255, max(0, result))
         else:
             return new  # Default to normal
@@ -322,7 +346,23 @@ class GFX:
         self.blend_alpha = max(0, min(255, int(alpha)))
 
     def clear( self ):
-        self.screen.fill( 0 )
+        self.layer_0.fill( 0 )
+        self._screen.fill( 0 )
+        self.layers_dirty = True
+
+    def _copy_vram_to_screen(self):
+        """Transfer VRAM into the base screen layer and final screen buffer."""
+        self.layer_0[:, :] = self.vram[:, :]
+        self._screen[:, :] = self.vram[:, :]
+        self.vram.fill(0)
+        self.layers_dirty = False
+        self.pending_vram_to_screen = False
+
+    def _copy_screen_to_vram(self):
+        """Transfer the current visible frame into VRAM and clear the transient screen buffer."""
+        self.vram[:, :] = self.screen[:, :]
+        self._screen.fill(0)
+        self.pending_screen_to_vram = False
 
     def VRAMtoScreen( self ):
         """Optimized VRAM to Screen transfer with batching"""
@@ -337,8 +377,7 @@ class GFX:
             self._execute_batched_operations()
         else:
             # For immediate responsiveness, still do the copy but skip expensive simulations
-            self.screen[:, :] = self.vram[:, :]
-            self.vram.fill( 0 )
+            self._copy_vram_to_screen()
 
     def _execute_batched_operations(self):
         """Execute all pending graphics operations in a batch"""
@@ -349,15 +388,11 @@ class GFX:
         
         if self.pending_vram_to_screen:
             # Vectorized operation: copy entire VRAM to screen in one operation
-            self.screen[:, :] = self.vram[:, :]
-            self.vram.fill( 0 )
-            self.pending_vram_to_screen = False
+            self._copy_vram_to_screen()
             
         if self.pending_screen_to_vram:
             # Vectorized operation: copy entire screen to VRAM in one operation
-            self.vram[:, :] = self.screen[:, :]
-            self.screen.fill( 0 )
-            self.pending_screen_to_vram = False
+            self._copy_screen_to_vram()
         
         # Skip expensive HBlank simulation entirely for batched operations
         self.flags[ 1 ] = 0  # Clear VBlank flag at end
@@ -375,8 +410,7 @@ class GFX:
             self._execute_batched_operations()
         else:
             # For immediate responsiveness, still do the copy but skip expensive simulations
-            self.vram[:, :] = self.screen[:, :]
-            self.screen.fill( 0 )
+            self._copy_screen_to_vram()
 
     def set_registers( self, registers ):
         self.registers = registers
@@ -405,13 +439,13 @@ class GFX:
     def get_target_layer( self ):
         """Get the target layer buffer based on VL register value"""
         if self.VL == 0:
-            return self.screen  # Main screen
+            return self.layer_0  # Base layer backing store
         elif 1 <= self.VL <= 4:
             return self.background_layers[self.VL - 1]  # Background layers
         elif 5 <= self.VL <= 8:
             return self.sprite_layers[self.VL - 5]  # Sprite layers
         else:
-            return self.screen  # Default to main screen for invalid values
+            return self.layer_0  # Default to base layer for invalid values
     
     def clear_layer( self, layer_num=None ):
         """Clear a specific layer or the current VL layer"""
@@ -419,7 +453,9 @@ class GFX:
             layer_num = self.VL
         
         if layer_num == 0:
-            self.screen.fill(0)
+            self.layer_0.fill(0)
+            self._screen.fill(0)
+            self.layers_dirty = True
         elif 1 <= layer_num <= 4:
             self.background_layers[layer_num - 1].fill(0)
             self.layers_dirty = True
@@ -434,7 +470,7 @@ class GFX:
         
         if layer_num == 0:
             self.layer_0.fill(value)
-            self.screen.fill(value)
+            self._screen.fill(value)
             self.layers_dirty = True
         elif 1 <= layer_num <= 4:
             self.background_layers[layer_num - 1].fill(value)
@@ -453,7 +489,7 @@ class GFX:
     def get_layer_buffer_by_num( self, layer_num ):
         """Get layer buffer by layer number"""
         if layer_num == 0:
-            return self.screen
+            return self.layer_0
         elif 1 <= layer_num <= 4:
             return self.background_layers[layer_num - 1]
         elif 5 <= layer_num <= 8:
@@ -496,23 +532,11 @@ class GFX:
         """Copy contents from one layer to another"""
         if source_layer == dest_layer:
             return
-            
-        source_data = None
-        if source_layer == 0:
-            source_data = self.screen.copy()
-        elif 1 <= source_layer <= 4:
-            source_data = self.background_layers[source_layer - 1].copy()
-        elif 5 <= source_layer <= 8:
-            source_data = self.sprite_layers[source_layer - 5].copy()
-        
-        if source_data is not None:
-            if dest_layer == 0:
-                self.screen[:] = source_data
-            elif 1 <= dest_layer <= 4:
-                self.background_layers[dest_layer - 1][:] = source_data
-            elif 5 <= dest_layer <= 8:
-                self.sprite_layers[dest_layer - 5][:] = source_data
-            
+
+        source_buffer = self.get_layer_buffer_by_num(source_layer)
+        dest_buffer = self.get_layer_buffer_by_num(dest_layer)
+        if source_buffer is not None and dest_buffer is not None:
+            dest_buffer[:] = source_buffer
             self.layers_dirty = True
     
     def set_current_layer(self, layer):
@@ -528,13 +552,21 @@ class GFX:
         """Clear a specific layer or the current layer"""
         if layer is None:
             layer = self.current_layer
-        
-        if layer == 0:
-            self.screen.fill(0)
-        elif 1 <= layer <= 4:
-            self.background_layers[layer - 1].fill(0)
-        elif 5 <= layer <= 8:
-            self.sprite_layers[layer - 5].fill(0)
+
+        target_buffer = self.get_layer_buffer_by_num(layer)
+        if target_buffer is not None:
+            target_buffer.fill(0)
+            if layer == 0:
+                self._screen.fill(0)
+            self.layers_dirty = True
+
+    def _layer_has_visible_pixels(self, layer):
+        """Return whether a layer contains any opaque pixels worth compositing."""
+        return np.any(layer)
+
+    def _composite_opaque_layer(self, layer):
+        mask = layer != 0
+        self._screen[mask] = layer[mask]
     
     def composite_layers(self):
         """Composite all visible layers into the main screen buffer"""
@@ -548,15 +580,17 @@ class GFX:
         for i, layer in enumerate(self.background_layers):
             layer_num = i + 1
             if self.layer_visibility.get(layer_num, True):  # Check visibility
-                mask = layer != 0  # Non-zero pixels are opaque
-                self._screen[mask] = layer[mask]
+                if not self._layer_has_visible_pixels(layer):
+                    continue
+                self._composite_opaque_layer(layer)
         
         # Add sprite layers (5-8) on top
         for i, layer in enumerate(self.sprite_layers):
             layer_num = i + 5
             if self.layer_visibility.get(layer_num, True):  # Check visibility
-                mask = layer != 0  # Non-zero pixels are opaque
-                self._screen[mask] = layer[mask]
+                if not self._layer_has_visible_pixels(layer):
+                    continue
+                self._composite_opaque_layer(layer)
 
         self._composite_mouse_cursor()
         
@@ -736,7 +770,9 @@ class GFX:
     def roll_x( self, roll_x ):
         # Roll the current layer by roll_x pixels horizontally, pixels roll over to the opposite side
         if self.VL == 0:
-            self.screen = np.roll( self.screen, roll_x, axis=1 )
+            self._prepare_layer0_transform()
+            self.layer_0 = np.roll( self.layer_0, roll_x, axis=1 )
+            self.layers_dirty = True
         elif 1 <= self.VL <= 4:
             self.background_layers[self.VL - 1] = np.roll( self.background_layers[self.VL - 1], roll_x, axis=1 )
             self.layers_dirty = True
@@ -747,7 +783,9 @@ class GFX:
     def roll_y( self, roll_y ):
         # Roll the current layer by roll_y pixels vertically, pixels roll over to the opposite side
         if self.VL == 0:
-            self.screen = np.roll( self.screen, roll_y, axis=0 )
+            self._prepare_layer0_transform()
+            self.layer_0 = np.roll( self.layer_0, roll_y, axis=0 )
+            self.layers_dirty = True
         elif 1 <= self.VL <= 4:
             self.background_layers[self.VL - 1] = np.roll( self.background_layers[self.VL - 1], roll_y, axis=0 )
             self.layers_dirty = True
@@ -764,8 +802,7 @@ class GFX:
         target_buffer = self.get_layer_buffer_by_num(layer_num)
         if target_buffer is not None:
             target_buffer[:] = np.roll(target_buffer, roll_x, axis=1)
-            if layer_num != 0:
-                self.layers_dirty = True
+            self.layers_dirty = True
     
     def roll_y_layer( self, roll_y, layer_num=None ):
         """Roll a specific layer or current VL layer vertically"""
@@ -775,8 +812,7 @@ class GFX:
         target_buffer = self.get_layer_buffer_by_num(layer_num)
         if target_buffer is not None:
             target_buffer[:] = np.roll(target_buffer, roll_y, axis=0)
-            if layer_num != 0:
-                self.layers_dirty = True
+            self.layers_dirty = True
     
     def flip_x_layer( self, layer_num=None ):
         """Flip a specific layer or current VL layer horizontally"""
@@ -786,8 +822,7 @@ class GFX:
         target_buffer = self.get_layer_buffer_by_num(layer_num)
         if target_buffer is not None:
             target_buffer[:] = np.flip(target_buffer, axis=1)
-            if layer_num != 0:
-                self.layers_dirty = True
+            self.layers_dirty = True
     
     def flip_y_layer( self, layer_num=None ):
         """Flip a specific layer or current VL layer vertically"""
@@ -797,8 +832,7 @@ class GFX:
         target_buffer = self.get_layer_buffer_by_num(layer_num)
         if target_buffer is not None:
             target_buffer[:] = np.flip(target_buffer, axis=0)
-            if layer_num != 0:
-                self.layers_dirty = True
+            self.layers_dirty = True
     
     # let's make a color palette for the 256 color screen
     # 0x00-0x0F: Grayscale ramp (16 colors)
@@ -1352,21 +1386,15 @@ class GFX:
         """Invert all colors on the current layer"""
         target_buffer = self._get_layer_buffer()
         target_buffer[:, :] = 255 - target_buffer[:, :]
-        if self.VL != 0:
-            self.layers_dirty = True
+        self.layers_dirty = True
 
     def shift_layer_x(self, amount, layer_num=None):
         """Shift layer horizontally by amount pixels"""
         if layer_num is None:
             layer_num = self.VL
-            
-        if layer_num == 0:
-            buffer = self.screen
-        elif 1 <= layer_num <= 4:
-            buffer = self.background_layers[layer_num - 1]
-        elif 5 <= layer_num <= 8:
-            buffer = self.sprite_layers[layer_num - 5]
-        else:
+
+        buffer = self.get_layer_buffer_by_num(layer_num)
+        if buffer is None:
             return
             
         if amount > 0:
@@ -1382,14 +1410,9 @@ class GFX:
         """Shift layer vertically by amount pixels"""
         if layer_num is None:
             layer_num = self.VL
-            
-        if layer_num == 0:
-            buffer = self.screen
-        elif 1 <= layer_num <= 4:
-            buffer = self.background_layers[layer_num - 1]
-        elif 5 <= layer_num <= 8:
-            buffer = self.sprite_layers[layer_num - 5]
-        else:
+
+        buffer = self.get_layer_buffer_by_num(layer_num)
+        if buffer is None:
             return
             
         if amount > 0:
@@ -1405,14 +1428,9 @@ class GFX:
         """Rotate layer left by amount degrees"""
         if layer_num is None:
             layer_num = self.VL
-            
-        if layer_num == 0:
-            buffer = self.screen
-        elif 1 <= layer_num <= 4:
-            buffer = self.background_layers[layer_num - 1]
-        elif 5 <= layer_num <= 8:
-            buffer = self.sprite_layers[layer_num - 5]
-        else:
+
+        buffer = self.get_layer_buffer_by_num(layer_num)
+        if buffer is None:
             return
             
         # Simple 90-degree rotations
@@ -1426,14 +1444,9 @@ class GFX:
         """Rotate layer right by amount degrees"""
         if layer_num is None:
             layer_num = self.VL
-            
-        if layer_num == 0:
-            buffer = self.screen
-        elif 1 <= layer_num <= 4:
-            buffer = self.background_layers[layer_num - 1]
-        elif 5 <= layer_num <= 8:
-            buffer = self.sprite_layers[layer_num - 5]
-        else:
+
+        buffer = self.get_layer_buffer_by_num(layer_num)
+        if buffer is None:
             return
             
         # Simple 90-degree rotations
@@ -1447,14 +1460,9 @@ class GFX:
         """Flip layer horizontally"""
         if layer_num is None:
             layer_num = self.VL
-            
-        if layer_num == 0:
-            buffer = self.screen
-        elif 1 <= layer_num <= 4:
-            buffer = self.background_layers[layer_num - 1]
-        elif 5 <= layer_num <= 8:
-            buffer = self.sprite_layers[layer_num - 5]
-        else:
+
+        buffer = self.get_layer_buffer_by_num(layer_num)
+        if buffer is None:
             return
             
         buffer[:, :] = np.fliplr(buffer)
@@ -1464,14 +1472,9 @@ class GFX:
         """Flip layer vertically"""
         if layer_num is None:
             layer_num = self.VL
-            
-        if layer_num == 0:
-            buffer = self.screen
-        elif 1 <= layer_num <= 4:
-            buffer = self.background_layers[layer_num - 1]
-        elif 5 <= layer_num <= 8:
-            buffer = self.sprite_layers[layer_num - 5]
-        else:
+
+        buffer = self.get_layer_buffer_by_num(layer_num)
+        if buffer is None:
             return
             
         buffer[:, :] = np.flipud(buffer)
