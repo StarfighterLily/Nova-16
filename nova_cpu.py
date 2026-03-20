@@ -1506,22 +1506,11 @@ class CPU:
         if self.profiling_enabled:
             self.profile_data['memory_accesses'] += 1
         
-        # Enable prefetch optimization
-        offset = self._get_prefetch_offset(self.pc)
+        offset = self._ensure_prefetch_offset()
         if offset is not None:
             value = self.prefetch_buffer[offset]
             self.pc = (self.pc + 1) & 0xFFFF
             return int(value)
-        
-        # Prefetch buffer miss - fill it and try again
-        if not self.prefetch_valid:
-            self._fill_prefetch_buffer()
-            # Try prefetch again
-            offset = self._get_prefetch_offset(self.pc)
-            if offset is not None:
-                value = self.prefetch_buffer[offset]
-                self.pc = (self.pc + 1) & 0xFFFF
-                return int(value)
         
         # Fallback to direct memory access
         value = self.memory.read_byte(self.pc)
@@ -1562,6 +1551,15 @@ class CPU:
     def invalidate_prefetch(self):
         """Invalidate prefetch buffer when PC changes unexpectedly (jumps, branches, etc.)"""
         self.prefetch_valid = False
+
+    def _ensure_prefetch_offset(self):
+        """Return the active prefetch offset for PC, refilling when execution leaves the current window."""
+        offset = self._get_prefetch_offset(self.pc)
+        if offset is not None:
+            return offset
+
+        self._fill_prefetch_buffer()
+        return self._get_prefetch_offset(self.pc)
 
     def _get_prefetch_offset(self, address):
         """Return the prefetch-buffer offset for an address, accounting for wraparound."""
@@ -1611,7 +1609,7 @@ class CPU:
     def fetch_word(self):
         """Optimized 16-bit fetch with prefetching (big-endian for Nova-16)"""
         # Check if we can fetch both bytes from prefetch buffer
-        offset = self._get_prefetch_offset(self.pc)
+        offset = self._ensure_prefetch_offset()
         if offset is not None and offset + 1 < len(self.prefetch_buffer):
             high = self.prefetch_buffer[offset]
             low = self.prefetch_buffer[offset + 1]

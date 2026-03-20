@@ -123,6 +123,60 @@ class TestCPUPrefetchInvalidation:
         assert cpu.pc == 0x0001
 
 
+class TestCPUPrefetchRefill:
+    def test_fetch_byte_refills_prefetch_after_window_exhaustion(self, cpu):
+        base_addr = 0x0200
+
+        for index in range(96):
+            cpu.memory.write_byte(base_addr + index, index & 0xFF)
+
+        cpu.pc = base_addr
+        cpu._fill_prefetch_buffer()
+
+        for expected in range(len(cpu.prefetch_buffer)):
+            assert cpu.fetch_byte() == expected
+
+        assert cpu.pc == base_addr + len(cpu.prefetch_buffer)
+        assert cpu.prefetch_pc == base_addr
+
+        assert cpu.fetch_byte() == len(cpu.prefetch_buffer)
+        assert cpu.prefetch_pc == base_addr + len(cpu.prefetch_buffer)
+        assert cpu.prefetch_valid is True
+
+        assert cpu.fetch_byte() == len(cpu.prefetch_buffer) + 1
+
+    def test_fetch_word_refills_prefetch_when_pc_moves_past_window(self, cpu):
+        base_addr = 0x0300
+
+        for index in range(96):
+            cpu.memory.write_byte(base_addr + index, index & 0xFF)
+
+        cpu.pc = base_addr
+        cpu._fill_prefetch_buffer()
+        cpu.pc = base_addr + len(cpu.prefetch_buffer)
+
+        assert cpu.fetch_word() == 0x4041
+        assert cpu.prefetch_pc == base_addr + len(cpu.prefetch_buffer)
+        assert cpu.pc == base_addr + len(cpu.prefetch_buffer) + 2
+
+    def test_step_advances_prefetch_window_during_long_sequential_execution(self, cpu):
+        base_addr = 0x0400
+        program_length = len(cpu.prefetch_buffer) + 16
+
+        for index in range(program_length):
+            cpu.memory.write_byte(base_addr + index, 0xFF)
+        cpu.memory.write_byte(base_addr + program_length, 0x00)
+
+        cpu.pc = base_addr
+
+        for _ in range(program_length + 1):
+            cpu.step()
+
+        assert cpu.halted is True
+        assert cpu.pc == base_addr + program_length + 1
+        assert cpu.prefetch_pc >= base_addr + len(cpu.prefetch_buffer)
+
+
 class TestCPUStateReset:
     def test_reinit_clears_transient_execution_state(self, cpu):
         cpu.pc = 0x0400
