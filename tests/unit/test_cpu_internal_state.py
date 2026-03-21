@@ -177,6 +177,60 @@ class TestCPUPrefetchRefill:
         assert cpu.prefetch_pc >= base_addr + len(cpu.prefetch_buffer)
 
 
+class TestCPUModeByteDecode:
+    def test_decode_mode_byte_preserves_operand_layout_and_memory_flags(self, cpu):
+        mode_info = cpu._decode_mode_byte(0xE4)
+
+        assert mode_info['operand_modes'] == (0, 1, 2, 3)
+        assert mode_info['indexed'] is True
+        assert mode_info['direct'] is True
+
+    def test_parse_operands_four_operands_reuses_cached_mode_decode(self, cpu):
+        cpu._current_mode_byte = 0xE4
+        cpu.pc = 0x0200
+
+        cpu.memory.write_byte(0x0200, 0xE7)      # R0
+        cpu.memory.write_byte(0x0201, 0x12)      # imm8
+        cpu.memory.write_word(0x0202, 0x3456)    # imm16
+        cpu.memory.write_word(0x0204, 0x2000)    # memory base
+        cpu.memory.write_byte(0x0206, 0x05)      # memory index
+
+        operands = cpu.parse_operands(4)
+
+        assert operands == [
+            {'mode': 0, 'type': 'register', 'reg_type': 'R', 'reg_idx': 0},
+            {'mode': 1, 'type': 'immediate', 'value': 0x12, 'size': 8},
+            {'mode': 2, 'type': 'immediate', 'value': 0x3456, 'size': 16},
+            {
+                'mode': 3,
+                'type': 'memory',
+                'indexed': True,
+                'direct': True,
+                'address': 0x2005,
+                'index': 0x05,
+            },
+        ]
+        assert cpu.pc == 0x0207
+
+        cpu.pc = 0x0200
+        cached_operands = cpu.parse_operands(4)
+
+        assert cached_operands == operands
+        assert cpu.pc == 0x0207
+        assert cpu.operand_cache[(0x01FF, 0xE4, 4)] == (operands, 7)
+
+    def test_get_operand_address_uses_signed_stack_relative_indexing(self, cpu):
+        cpu._current_mode_byte = 0x43
+        cpu.pc = 0x0300
+        cpu.Pregisters[8] = 0x1000
+
+        cpu.memory.write_byte(0x0300, 0xFB)  # SP alias (P8)
+        cpu.memory.write_byte(0x0301, 0xFF)  # signed -1 offset
+
+        assert cpu.get_operand_address(3) == 0x0FFF
+        assert cpu.pc == 0x0302
+
+
 class TestCPUStateReset:
     def test_reinit_clears_transient_execution_state(self, cpu):
         cpu.pc = 0x0400

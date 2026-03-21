@@ -113,6 +113,9 @@ class CPU:
         
         # Pre-computed parity lookup table for fast parity calculation
         self._parity_table = self._build_parity_table()
+
+        # Pre-computed mode byte decode table for operand parsing.
+        self._mode_decode_table = self._build_mode_decode_table()
         
         # Register value cache for performance
         self.register_cache = {}  # Cache register values
@@ -1480,6 +1483,23 @@ class CPU:
             table[i] = (count % 2) == 0  # True if even parity
         return table
 
+    def _build_mode_decode_table(self):
+        """Build a lookup table for operand-mode extraction and memory flag decoding."""
+        table = [None] * 256
+        for mode_byte in range(256):
+            table[mode_byte] = {
+                'operand_modes': tuple((mode_byte >> (i * 2)) & 0x3 for i in range(4)),
+                'indexed': bool(mode_byte & 0x40),
+                'direct': bool(mode_byte & 0x80),
+            }
+        return table
+
+    def _decode_mode_byte(self, mode_byte=None):
+        """Return cached operand mode metadata for the provided or current mode byte."""
+        if mode_byte is None:
+            mode_byte = self._current_mode_byte
+        return self._mode_decode_table[int(mode_byte) & 0xFF]
+
     # Optimized register lookup - O(1) performance
     def reg_index(self, reg_code):
         """Fast register lookup using pre-computed dictionary"""
@@ -1741,9 +1761,9 @@ class CPU:
         elif mode_bits == 2:  # Immediate 16-bit
             return self.fetch_word()
         elif mode_bits == 3:  # Memory reference
-            # Check flags for interpretation
-            indexed = (self._current_mode_byte & (1 << 6)) != 0
-            direct = (self._current_mode_byte & (1 << 7)) != 0
+            mode_info = self._decode_mode_byte()
+            indexed = mode_info['indexed']
+            direct = mode_info['direct']
             
             if direct and not indexed:
                 # Direct memory address
@@ -1795,9 +1815,12 @@ class CPU:
             self.profile_data['operand_parses'] = self.profile_data.get('operand_parses', 0) + 1
         
         operands_start_pc = self.pc
+        mode_byte = int(self._current_mode_byte) & 0xFF
+        mode_info = self._decode_mode_byte(mode_byte)
+        operand_modes = mode_info['operand_modes']
 
         # Check cache first
-        cache_key = (self.pc - 1, self._current_mode_byte, num_operands)  # PC-1 because mode byte was already fetched
+        cache_key = (self.pc - 1, mode_byte, num_operands)  # PC-1 because mode byte was already fetched
         cached_entry = self.operand_cache.get(cache_key)
         if cached_entry is not None:
             # New format: (operands, pc_advance). Keep legacy fallback for safety.
@@ -1825,7 +1848,7 @@ class CPU:
         
         operands = []
         for i in range(num_operands):
-            mode_bits = (self._current_mode_byte >> (i * 2)) & 0x3
+            mode_bits = operand_modes[i]
             operand = {'mode': mode_bits}
             
             if mode_bits == 0:  # Register direct
@@ -1843,8 +1866,8 @@ class CPU:
                 operand['value'] = self.fetch_word()
                 operand['size'] = 16
             elif mode_bits == 3:  # Memory reference
-                indexed = (self._current_mode_byte & (1 << 6)) != 0
-                direct = (self._current_mode_byte & (1 << 7)) != 0
+                indexed = mode_info['indexed']
+                direct = mode_info['direct']
                 operand['type'] = 'memory'
                 operand['indexed'] = indexed
                 operand['direct'] = direct
@@ -2016,8 +2039,9 @@ class CPU:
         elif mode_bits == 2:  # Immediate 16-bit - not an address
             raise Exception("Cannot get address for immediate 16-bit mode")
         elif mode_bits == 3:  # Memory reference
-            indexed = (self._current_mode_byte & (1 << 6)) != 0
-            direct = (self._current_mode_byte & (1 << 7)) != 0
+            mode_info = self._decode_mode_byte()
+            indexed = mode_info['indexed']
+            direct = mode_info['direct']
             
             if direct and not indexed:
                 # Direct memory address
