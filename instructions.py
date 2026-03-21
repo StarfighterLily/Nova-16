@@ -53,8 +53,6 @@ class Ret(BaseInstruction):
         
         # Invalidate prefetch buffer after jump
         cpu.invalidate_prefetch()
-        # Invalidate instruction cache after return
-        cpu.invalidate_instruction_cache()
 
 class IRet(BaseInstruction):
     def __init__(self):
@@ -96,8 +94,6 @@ class IRet(BaseInstruction):
         
         # Invalidate prefetch buffer after jump
         cpu.invalidate_prefetch()
-        # Invalidate instruction cache after return from interrupt
-        cpu.invalidate_instruction_cache()
 
 class Cli(BaseInstruction):
     def __init__(self):
@@ -1380,9 +1376,6 @@ class Jmp(BaseInstruction):
         else:
             cpu.invalidate_prefetch()
         
-        # Invalidate instruction cache on jump
-        cpu.invalidate_instruction_cache()
-        
         cpu.pc = target_address
 
 class Jz(BaseInstruction):
@@ -1426,9 +1419,6 @@ class Jnz(BaseInstruction):
                 pass
             else:
                 cpu.invalidate_prefetch()
-            
-            # Invalidate instruction cache on conditional jump
-            cpu.invalidate_instruction_cache()
             
             cpu.pc = target_address
 
@@ -1664,7 +1654,6 @@ class Call(BaseInstruction):
         # Jump to target
         cpu.pc = target_address
         cpu.invalidate_prefetch()
-        cpu.invalidate_instruction_cache()
 
 # Interrupt
 class Int(BaseInstruction):
@@ -1723,7 +1712,6 @@ class Callz(BaseInstruction):
             cpu.memory.write_word(sp, cpu.pc)
             cpu.pc = target_address
             cpu.invalidate_prefetch()
-            cpu.invalidate_instruction_cache()
 
 class Callnz(BaseInstruction):
     """CALLNZ instruction - call if not zero"""
@@ -1742,7 +1730,6 @@ class Callnz(BaseInstruction):
             cpu.memory.write_word(sp, cpu.pc)
             cpu.pc = target_address
             cpu.invalidate_prefetch()
-            cpu.invalidate_instruction_cache()
 
 class Retn(BaseInstruction):
     """RETN instruction - return with value"""
@@ -1768,7 +1755,6 @@ class Retn(BaseInstruction):
         cpu.Pregisters[8] = sp
 
         cpu.invalidate_prefetch()
-        cpu.invalidate_instruction_cache()
 
 class Loopz(BaseInstruction):
     """LOOPZ instruction - loop while zero"""

@@ -138,10 +138,10 @@ class CPU:
         
         # Instruction cache for performance optimization
         self.instruction_cache = {}  # Cache decoded instructions by PC
-        self.instruction_cache_size = 256  # Maximum cache entries (8KB of cached instructions)
+        self.instruction_cache_size = 512  # Tuned from workload profiling across asm and NoBASIC starfield/gfxtest runs.
         self.cache_hits = 0
         self.cache_misses = 0
-        self.cache_enabled = False  # False is faster, but breaks existing tests.
+        self.cache_enabled = True  # Safe default now that control-flow preserves decoded instructions.
         
         # Timer optimization
         self.timer_update_counter = 0
@@ -1240,8 +1240,6 @@ class CPU:
             
             # Invalidate prefetch buffer after jump
             self.invalidate_prefetch()
-            # Invalidate instruction cache on interrupt
-            self.invalidate_instruction_cache()
     
     def _check_pending_interrupts(self):
         """Optimized interrupt checking with batching and caching"""
@@ -1592,28 +1590,41 @@ class CPU:
                 return True
 
         return False
+
+    def _write_memory_precisely(self, address, value, byte_count=1):
+        """Write memory while preserving unrelated cached instructions and prefetch state."""
+        start_addr = int(address)
+        width = int(byte_count)
+
+        if width <= 0:
+            raise ValueError(f"Write width must be positive: {width}")
+        if start_addr < 0 or start_addr + width > self.memory.size:
+            raise IndexError(f"Write address out of bounds: {start_addr}")
+
+        if width == 1:
+            self.memory.write_byte(start_addr, value, invalidate_cpu_cache=False)
+        elif width == 2:
+            word_value = int(value) & 0xFFFF
+            self.memory.write_byte(start_addr, (word_value >> 8) & 0xFF, invalidate_cpu_cache=False)
+            self.memory.write_byte(start_addr + 1, word_value & 0xFF, invalidate_cpu_cache=False)
+        else:
+            int_value = int(value)
+            for offset in range(width):
+                shift = 8 * (width - 1 - offset)
+                self.memory.write_byte(start_addr + offset, (int_value >> shift) & 0xFF, invalidate_cpu_cache=False)
+
+        if self._prefetch_overlaps(start_addr, width):
+            self.prefetch_valid = False
+
+        self.invalidate_instruction_cache(start_addr, start_addr + width - 1)
         
     def write_memory(self, address, value, bytes=1):
         """Write to memory and invalidate prefetch buffer if necessary"""
-        self.memory.write(address, value, bytes)
-        
-        # Invalidate prefetch buffer if writing to area that might be prefetched
-        if self._prefetch_overlaps(address, bytes):
-            self.prefetch_valid = False
-            
-        # Invalidate instruction cache if writing to cached instruction area
-        self.invalidate_instruction_cache(address, address + bytes - 1)
+        self._write_memory_precisely(address, value, byte_count=bytes)
             
     def write_byte(self, address, value):
         """Write single byte to memory and invalidate prefetch buffer if necessary"""
-        self.memory.write_byte(address, value)
-        
-        # Invalidate prefetch buffer if writing to area that might be prefetched
-        if self._prefetch_overlaps(address, 1):
-            self.prefetch_valid = False
-            
-        # Invalidate instruction cache if writing to cached instruction area
-        self.invalidate_instruction_cache(address, address)
+        self._write_memory_precisely(address, value, byte_count=1)
     
     def fetch_word(self):
         """Optimized 16-bit fetch with prefetching (big-endian for Nova-16)"""
@@ -1670,17 +1681,39 @@ class CPU:
             # Clear entire cache
             self.instruction_cache.clear()
             return
+
+        start_addr = int(start_addr) & 0xFFFF
+        if end_addr is not None:
+            end_addr = int(end_addr) & 0xFFFF
+
+        def address_in_range(address, range_start, range_end):
+            if range_start <= range_end:
+                return range_start <= address <= range_end
+            return address >= range_start or address <= range_end
+
+        def cached_prefix_length(cached_instruction):
+            if isinstance(cached_instruction, (tuple, list)) and cached_instruction:
+                opcode = cached_instruction[0]
+                if isinstance(opcode, int) and opcode in self.no_operand_opcodes:
+                    return 1
+            return 2
         
         # Invalidate specific range
         if start_addr is not None and end_addr is not None:
-            # Remove entries in the range
-            to_remove = [pc for pc in self.instruction_cache.keys() 
-                        if start_addr <= pc <= end_addr]
+            # Remove entries whose cached opcode/mode prefix overlaps the modified range.
+            to_remove = []
+            for pc, cached_instruction in self.instruction_cache.items():
+                prefix_length = cached_prefix_length(cached_instruction)
+                for offset in range(prefix_length):
+                    cached_addr = (int(pc) + offset) & 0xFFFF
+                    if address_in_range(cached_addr, start_addr, end_addr):
+                        to_remove.append(pc)
+                        break
             for pc in to_remove:
                 del self.instruction_cache[pc]
         elif start_addr is not None:
             # Remove single address
-            self.instruction_cache.pop(start_addr, None)
+            self.invalidate_instruction_cache(start_addr, start_addr)
     
     def get_cache_stats(self):
         """Get instruction cache statistics"""
@@ -1930,17 +1963,17 @@ class CPU:
             # Determine write size based on source operand or value size
             if source_operand and source_operand['type'] == 'immediate':
                 if source_operand.get('size') == 8:
-                    self.memory.write_byte(address, value)
+                    self.write_byte(address, value)
                 else:  # 16-bit or unknown
-                    self.memory.write_word(address, value)
+                    self.write_memory(address, value, bytes=2)
             elif source_operand and source_operand['type'] == 'register':
                 if source_operand['reg_type'] == 'R':
-                    self.memory.write_byte(address, value)
+                    self.write_byte(address, value)
                 else:  # P register or other
-                    self.memory.write_word(address, value)
+                    self.write_memory(address, value, bytes=2)
             else:
                 # Default to word for backward compatibility
-                self.memory.write_word(address, value)
+                self.write_memory(address, value, bytes=2)
         else:
             raise Exception(f"Cannot set value for operand type: {operand['type']}")
 

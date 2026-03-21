@@ -2562,10 +2562,10 @@ class TestInstructionCache:
     def test_instruction_cache_initialization(self, cpu):
         """Test that instruction cache is initialized correctly."""
         assert cpu.instruction_cache == {}
-        assert cpu.instruction_cache_size == 256
+        assert cpu.instruction_cache_size == 512
         assert cpu.cache_hits == 0
         assert cpu.cache_misses == 0
-        assert cpu.cache_enabled == False
+        assert cpu.cache_enabled == True
 
     def test_instruction_cache_basic_caching(self, cpu):
         """Test basic instruction caching functionality."""
@@ -2615,8 +2615,8 @@ class TestInstructionCache:
         assert cpu.Rregisters[0] == 42
         assert cpu.pc == 0x1004
 
-    def test_instruction_cache_invalidation_on_jump(self, cpu):
-        """Test that instruction cache is invalidated on jumps."""
+    def test_instruction_cache_preserved_across_jump(self, cpu):
+        """Jumps should preserve decoded instructions because code bytes did not change."""
         cpu.cache_enabled = True
 
         # First, cache an instruction at the target location
@@ -2626,17 +2626,23 @@ class TestInstructionCache:
         assert 0x2000 in cpu.instruction_cache
 
         # Set up a JMP instruction at a different location
-        cpu.memory.write_byte(0x1000, 0x1E)  # JMP opcode
-        cpu.memory.write_byte(0x1001, 0x02)  # Mode: immediate 16-bit
-        cpu.memory.write_byte(0x1002, 0x20)  # High byte of 0x2000
-        cpu.memory.write_byte(0x1003, 0x00)  # Low byte of 0x2000
+        cpu.memory.memory[0x1000] = 0x1E  # JMP opcode
+        cpu.memory.memory[0x1001] = 0x02  # Mode: immediate 16-bit
+        cpu.memory.memory[0x1002] = 0x20  # High byte of 0x2000
+        cpu.memory.memory[0x1003] = 0x00  # Low byte of 0x2000
         cpu.pc = 0x1000
 
-        # Execute JMP - should invalidate cache
+        # Execute JMP and land on the cached target.
         cpu.step()
         assert cpu.pc == 0x2000  # Jumped to target
-        # Cache should be invalidated (JMP invalidates cache), so NOP should not be cached
-        assert 0x2000 not in cpu.instruction_cache
+
+        # The cached target instruction remains valid because only PC changed.
+        assert 0x2000 in cpu.instruction_cache
+
+        initial_hits = cpu.cache_hits
+        cpu.step()
+        assert cpu.cache_hits == initial_hits + 1
+        assert cpu.pc == 0x2001
 
     def test_instruction_cache_invalidation_on_memory_write(self, cpu):
         """Test that instruction cache is invalidated when memory is written."""
@@ -2654,6 +2660,95 @@ class TestInstructionCache:
 
         # Instruction should be invalidated from cache
         assert 0x1000 not in cpu.instruction_cache
+
+    def test_instruction_cache_invalidation_on_mode_byte_write(self, cpu):
+        """Changing a cached instruction's mode byte must invalidate that instruction entry."""
+        cpu.cache_enabled = True
+        cpu.Rregisters[1] = 99
+
+        # MOV R0, 42
+        cpu.memory.write_byte(0x1000, 0x06)
+        cpu.memory.write_byte(0x1001, 0x04)
+        cpu.memory.write_byte(0x1002, 0xE7)
+        cpu.memory.write_byte(0x1003, 42)
+        cpu.pc = 0x1000
+
+        cpu.step()
+
+        assert cpu.Rregisters[0] == 42
+        assert 0x1000 in cpu.instruction_cache
+
+        # Rewrite the cached instruction as MOV R0, R1 by changing the mode byte
+        # and second operand byte. The cached prefix must be discarded.
+        cpu.write_byte(0x1001, 0x00)
+        cpu.write_byte(0x1003, 0xE8)
+
+        assert 0x1000 not in cpu.instruction_cache
+
+        cpu.Rregisters[0] = 0
+        cpu.pc = 0x1000
+        cpu.step()
+
+        assert cpu.Rregisters[0] == 99
+        assert cpu.pc == 0x1004
+
+    def test_instruction_cache_invalidation_on_word_write_overlap(self, cpu):
+        """Word writes must invalidate cached instructions when either written byte overlaps the cached prefix."""
+        cpu.cache_enabled = True
+        cpu.Rregisters[1] = 77
+
+        # MOV R0, R1
+        cpu.memory.write_byte(0x1000, 0x06)
+        cpu.memory.write_byte(0x1001, 0x00)
+        cpu.memory.write_byte(0x1002, 0xE7)
+        cpu.memory.write_byte(0x1003, 0xE8)
+        cpu.pc = 0x1000
+
+        cpu.step()
+
+        assert cpu.Rregisters[0] == 77
+
+        assert 0x1000 in cpu.instruction_cache
+
+        # Rewrite mode byte + destination register in one word so the instruction becomes MOV R0, 0xE8.
+        cpu.write_memory(0x1001, 0x04E7, bytes=2)
+
+        assert 0x1000 not in cpu.instruction_cache
+
+        cpu.Rregisters[0] = 0
+        cpu.pc = 0x1000
+        cpu.step()
+
+        assert cpu.Rregisters[0] == 0xE8
+        assert cpu.pc == 0x1004
+
+    def test_cpu_write_byte_preserves_unrelated_cache_entries_and_prefetch(self, cpu):
+        """CPU-managed writes should only invalidate overlapping cached state."""
+        cpu.cache_enabled = True
+
+        cpu.memory.write_byte(0x1000, 0xFF)
+        cpu.memory.write_byte(0x2000, 0xFF)
+        cpu.pc = 0x1000
+        cpu.step()
+        cpu.pc = 0x2000
+        cpu.step()
+
+        for offset in range(len(cpu.prefetch_buffer)):
+            cpu.memory.memory[0x3000 + offset] = offset & 0xFF
+
+        cpu.pc = 0x3000
+        cpu._fill_prefetch_buffer()
+
+        assert cpu.prefetch_valid is True
+        assert 0x1000 in cpu.instruction_cache
+        assert 0x2000 in cpu.instruction_cache
+
+        cpu.write_byte(0x4000, 0xAA)
+
+        assert cpu.memory.read_byte(0x4000) == 0xAA
+        assert cpu.prefetch_valid is True
+        assert 0x1000 in cpu.instruction_cache
+        assert 0x2000 in cpu.instruction_cache
 
     def test_instruction_cache_size_limit(self, cpu):
         """Test that instruction cache respects size limits."""
@@ -2703,10 +2798,10 @@ class TestInstructionCache:
         assert stats['hits'] == 1
         assert stats['misses'] == 1
         assert stats['hit_rate'] == 0.5
-        assert stats['max_size'] == 256
+        assert stats['max_size'] == 512
 
     def test_instruction_cache_loop_performance(self, cpu):
-        """Test that instruction cache improves performance in loops."""
+        """Test that instruction cache records hits in tight loops."""
         cpu.cache_enabled = True
 
         # Create a simple program: NOP, NOP, JMP back
@@ -2729,9 +2824,8 @@ class TestInstructionCache:
         for i in range(6):  # Execute the NOPs and start the jump
             cpu.step()
 
-        # Should have some cache hits (the NOPs should be cached and reused)
-        # Note: This is a simplified test - in a real loop the hits would be more obvious
-        assert cpu.cache_misses >= initial_misses  # At least some misses occurred
+        assert cpu.cache_misses > initial_misses
+        assert cpu.cache_hits > 0
         assert cpu.pc == loop_start  # Should be back at start after jump
 
 
