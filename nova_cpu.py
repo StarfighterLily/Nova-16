@@ -1637,6 +1637,7 @@ class CPU:
             self.prefetch_valid = False
 
         self.invalidate_instruction_cache(start_addr, start_addr + width - 1)
+        self.invalidate_operand_cache(start_addr, start_addr + width - 1)
         
     def write_memory(self, address, value, bytes=1):
         """Write to memory and invalidate prefetch buffer if necessary"""
@@ -1734,6 +1735,57 @@ class CPU:
         elif start_addr is not None:
             # Remove single address
             self.invalidate_instruction_cache(start_addr, start_addr)
+
+    def invalidate_operand_cache(self, start_addr=None, end_addr=None):
+        """Invalidate cached parsed operands whose mode or operand bytes overlap a write."""
+        if start_addr is None and end_addr is None:
+            self.operand_cache.clear()
+            return
+
+        start_addr = int(start_addr) & 0xFFFF
+        end_addr = int(end_addr if end_addr is not None else start_addr) & 0xFFFF
+
+        def address_in_range(address, range_start, range_end):
+            if range_start <= range_end:
+                return range_start <= address <= range_end
+            return address >= range_start or address <= range_end
+
+        def cached_operand_span(cache_key, cached_entry):
+            mode_addr = int(cache_key[0]) & 0xFFFF
+
+            if isinstance(cached_entry, tuple) and len(cached_entry) == 2:
+                _, pc_advance = cached_entry
+            else:
+                cached_operands = cached_entry
+                pc_advance = 0
+                for operand in cached_operands:
+                    if operand['type'] == 'register':
+                        pc_advance += 1
+                    elif operand['type'] == 'immediate':
+                        pc_advance += 2 if operand.get('size') == 16 else 1
+                    elif operand['type'] == 'memory':
+                        if operand.get('direct', False) and not operand.get('indexed', False):
+                            pc_advance += 2
+                        elif not operand.get('direct', False) and not operand.get('indexed', False):
+                            pc_advance += 1
+                        elif not operand.get('direct', False) and operand.get('indexed', False):
+                            pc_advance += 2
+                        elif operand.get('direct', False) and operand.get('indexed', False):
+                            pc_advance += 3
+
+            return mode_addr, int(pc_advance) + 1
+
+        to_remove = []
+        for cache_key, cached_entry in self.operand_cache.items():
+            span_start, span_length = cached_operand_span(cache_key, cached_entry)
+            for offset in range(span_length):
+                cached_addr = (span_start + offset) & 0xFFFF
+                if address_in_range(cached_addr, start_addr, end_addr):
+                    to_remove.append(cache_key)
+                    break
+
+        for cache_key in to_remove:
+            del self.operand_cache[cache_key]
     
     def get_cache_stats(self):
         """Get instruction cache statistics"""

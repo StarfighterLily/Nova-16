@@ -315,3 +315,86 @@ class TestCPUInterruptRefreshFastPath:
         assert cpu.uart.pending_interrupt is False
         assert cpu.Pregisters[8] == 0xFFFB
         assert cpu.memory.read_word(0xFFFB) == 0x0001
+
+
+class TestCPUOperandCacheInvalidation:
+    def test_write_byte_invalidates_cached_immediate_operand_without_flushing_instruction_cache(self, cpu):
+        base_addr = 0x0600
+
+        cpu.pc = base_addr
+        cpu.memory.write_byte(base_addr, 0x06)
+        cpu.memory.write_byte(base_addr + 1, 0x04)
+        cpu.memory.write_byte(base_addr + 2, 0xE7)
+        cpu.memory.write_byte(base_addr + 3, 0x12)
+
+        cpu.step()
+
+        cache_key = (base_addr + 1, 0x04, 2)
+        assert cpu.Rregisters[0] == 0x12
+        assert base_addr in cpu.instruction_cache
+        assert cache_key in cpu.operand_cache
+
+        cpu.write_byte(base_addr + 3, 0x34)
+
+        assert base_addr in cpu.instruction_cache
+        assert cache_key not in cpu.operand_cache
+
+        cpu.pc = base_addr
+        cpu.step()
+
+        assert cpu.Rregisters[0] == 0x34
+
+    def test_write_memory_invalidates_cached_16bit_immediate_operand(self, cpu):
+        base_addr = 0x0620
+
+        cpu.pc = base_addr
+        cpu.memory.write_byte(base_addr, 0x06)
+        cpu.memory.write_byte(base_addr + 1, 0x08)
+        cpu.memory.write_byte(base_addr + 2, 0xF1)
+        cpu.memory.write_word(base_addr + 3, 0x1234)
+
+        cpu.step()
+
+        cache_key = (base_addr + 1, 0x08, 2)
+        assert cpu.Pregisters[0] == 0x1234
+        assert cache_key in cpu.operand_cache
+
+        cpu.write_memory(base_addr + 3, 0xBEEF, bytes=2)
+
+        assert cache_key not in cpu.operand_cache
+
+        cpu.pc = base_addr
+        cpu.step()
+
+        assert cpu.Pregisters[0] == 0xBEEF
+
+    def test_write_byte_invalidates_cached_direct_indexed_operand_address(self, cpu):
+        base_addr = 0x0640
+        source_base = 0x2200
+
+        cpu.memory.write_byte(source_base + 1, 0x11)
+        cpu.memory.write_byte(source_base + 2, 0x22)
+
+        cpu.pc = base_addr
+        cpu.memory.write_byte(base_addr, 0x06)
+        cpu.memory.write_byte(base_addr + 1, 0xCC)
+        cpu.memory.write_byte(base_addr + 2, 0xE7)
+        cpu.memory.write_word(base_addr + 3, source_base)
+        cpu.memory.write_byte(base_addr + 5, 0x01)
+
+        cpu.step()
+
+        cache_key = (base_addr + 1, 0xCC, 2)
+        assert cpu.Rregisters[0] == 0x11
+        assert base_addr in cpu.instruction_cache
+        assert cache_key in cpu.operand_cache
+
+        cpu.write_byte(base_addr + 5, 0x02)
+
+        assert base_addr in cpu.instruction_cache
+        assert cache_key not in cpu.operand_cache
+
+        cpu.pc = base_addr
+        cpu.step()
+
+        assert cpu.Rregisters[0] == 0x22
