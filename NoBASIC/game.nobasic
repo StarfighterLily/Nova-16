@@ -60,6 +60,12 @@ Function drawEnemy()
     renderEnemy(enemy.ex, enemy.ey, 0x0C)
 End
 
+Function clearSword()
+    player.counter = 0
+    Text(player.oldx - 16, player.oldy + 8, Str1, 0x00)
+    Text(player.oldx + 8, player.oldy + 8, Str1, 0x00)
+End
+
 Function attack()
     If player.facing = 0 Then
         Text(player.x - 16, player.y + 8, Str1, 0x0F)
@@ -131,10 +137,14 @@ Function callPlayer()
 
     drawPlayer()
 
-    If player.counter = 255 Then
-        player.counter = 0
-        Text(player.oldx - 16, player.oldy + 8, Str1, 0x00)
-        Text(player.oldx + 8, player.oldy + 8, Str1, 0x00)
+    If player.counter = 8 Then
+        clearSword()
+    End
+    If player.x <> player.oldx Then
+        clearSword()
+    End
+    If player.y <> player.oldy Then
+        clearSword()
     End
 End
 
