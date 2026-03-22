@@ -1,37 +1,69 @@
+Struct stext color toggle End
+
+stext.color = 0x10
+stext.toggle = 0
+
 SetLayer(1)
-For x = 0 to 25
-    For y = 0 to 20
-        PxlOn(rnd()+x, rnd()-y, rndr(0x01, 0x05))
+For x = 0 to 150
+    For y = 0 to 150
+        PxlOn(rnd()+x, rnd()-y, rndr(0x01, 0x04))
     Next
 Next
 ScrRotate(1,0)
 
 SetLayer(2)
-For x = 0 to 20
-    For y = 0 to 15
-        PxlOn(rnd()+x, rnd()+x, rndr(0x06, 0x0A))
+For x = 0 to 50
+    For y = 0 to 50
+        PxlOn(rnd()+x, rnd()+x, rndr(0x05, 0x09))
     Next
 Next
 ScrRotate(1,1)
 
 SetLayer(3)
-For x = 0 to 15
-    For y = 0 to 10
-        PxlOn(rnd()-x, rnd()-y, rndr(0x0B, 0x0F))
+For x = 0 to 10
+    For y = 0 to 5
+        PxlOn(rnd()-x, rnd()-y, rndr(0x0A, 0x0F))
     Next
 Next
 ScrRotate(1,2)
 
-SetLayer(4)
-Text(80, 118, "StarField", 0x1F)
-
-While 1
+Function scrollBG()
     SetLayer(1)
     ScrRoll(0, 1)
     SetLayer(2)
     ScrRoll(0, 2)
     SetLayer(3)
     ScrRoll(0, 3)
+    For x = 0 to 255
+    Next
+End
+
+Function flashText()
+    SetLayer(4)
+    If stext.toggle = 0 Then
+        stext.color++
+        If stext.color > 31 Then
+            stext.color = 31
+            stext.toggle = 1
+        End
+    End
+    If stext.toggle = 1 Then
+        stext.color--
+        If stext.color < 16 Then
+            stext.color = 16
+            stext.toggle = 0
+        End
+    End
+    Text( 80, 120, "StarField", stext.color )
+    For x = 0 to 255
+    Next
+End
+
+While 1
+    scrollBG()
+    For x = 0 to 255
+        flashText()
+    Next
     For x = 0 to 255
         For y = 0 to 255
         Next

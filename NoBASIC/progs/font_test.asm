@@ -65,13 +65,22 @@ MOV VX, 0
 MOV VC, 15
 TEXT STR8
 ADD VY, 8
+MOV VX, 0
+MOV VC, 15
+TEXT STR1
+ADD VY, 8
+MOV VX, 0
+MOV VC, 15
+TEXT STR9
+ADD VY, 8
 HLT
-STR0: DEFSTR "Aa Bb Cc Dd Ee Ff Gg Hh"
+STR0: DEFSTR "Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk"
 STR1: DEFSTR ""
-STR2: DEFSTR "Ii Jj Kk Ll Mm Nn Oo Pp"
-STR3: DEFSTR "Qq Rr Ss Tt Uu Vv Ww Xx"
-STR4: DEFSTR "Yy Zz 1234567890"
+STR2: DEFSTR "Ll Mm Nn Oo Pp Qq Rr Ss Tt Uu Vv"
+STR3: DEFSTR "         Ww Xx Yy Zz <3         "
+STR4: DEFSTR "1234567890 867-5309 420 69"
 STR5: DEFSTR "[]:'{}|<>?,./`~!@#$%^&*()_+"
 STR6: DEFSTR "Cool cat"
 STR7: DEFSTR "Owls hoot"
 STR8: DEFSTR "The quick brown fox jumped over the lazy dog as a boxing wizard jabbed deftly."
+STR9: DEFSTR "'Do you know the muffin man?' he asked.\n\r'The muffin man?' I replied.\n\r'The muffin man!!' he spat back."
