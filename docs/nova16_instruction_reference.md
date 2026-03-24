@@ -71,6 +71,10 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
   - Operands: dest
   - Side Effects: dest = |dest|, sets Z, C, S, O flags
 
+- **ADC** (0x87): 2 operands - Add with carry
+  - Operands: dest, src
+  - Side Effects: dest = dest + src + C, sets Z, C, S, O flags
+
 ## Fixed-Point Arithmetic Operations (Q8.8)
 - **FMUL** (0xAC): 2 operands - Fixed-point multiplication
   - Operands: dest, src
@@ -110,6 +114,56 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 - **POPCNT** (0x8F): 1 operand - Population count
   - Operands: dest
   - Side Effects: dest = count of set bits, sets Z, C, S, O flags
+
+## Serial Operations
+- **SERIN** (0xA2): 1 operand - Read serial data
+  - Operands: dest
+  - Side Effects: Reads serial data to dest
+- **SEROUT** (0xA3): 1 operand - Write serial data
+  - Operands: value
+  - Side Effects: Writes value to serial port
+- **SERSTAT** (0xA4): 1 operand - Check serial status
+  - Operands: dest
+  - Side Effects: Sets dest to serial status
+- **SERCTRL** (0xA5): 1 operand - Serial control
+  - Operands: value
+  - Side Effects: Sets serial control flags
+
+## Hardware Debugging Operations
+- **SETBP** (0xA6): 2 operands - Set hardware breakpoint
+  - Operands: address, index
+  - Side Effects: Sets breakpoint at address
+- **CLRBP** (0xA7): 1 operand - Clear hardware breakpoint
+  - Operands: index
+  - Side Effects: Clears breakpoint at index
+- **ENABRK** (0xA8): 0 operands - Enable all hardware breakpoints
+  - Operands: None
+  - Side Effects: Enables all breakpoints
+- **DISBRK** (0xA9): 0 operands - Disable all hardware breakpoints
+  - Operands: None
+  - Side Effects: Disables all breakpoints
+- **ENATRAP** (0xAA): 0 operands - Enable single-step trap
+  - Operands: None
+  - Side Effects: Enables single-step trap
+- **DISATRAP** (0xAB): 0 operands - Disable single-step trap
+  - Operands: None
+  - Side Effects: Disables single-step trap
+
+## Layer Operations
+- **LSWAP** (0xB0): 1 operand - Switch current layer contents with specified layer
+  - Operands: layer_id
+  - Side Effects: Swaps contents
+- **LMOVE** (0xB1): 1 operand - Move current layer contents to specified layer, clear current layer
+  - Operands: layer_id
+  - Side Effects: Moves contents
+- **LCOPY** (0xB2): 1 operand - Copy current layer contents to specified layer, keep current layer
+  - Operands: layer_id
+  - Side Effects: Copies contents
+
+## Mouse Control
+- **MOUSECTRL** (0xB3): 1 operand - Enable/disable host mouse input and interrupts
+  - Operands: value
+  - Side Effects: Controls mouse input/interrupts
 
 ## Bitwise Operations
 - **AND** (0x10): 2 operands - Bitwise AND
@@ -548,6 +602,11 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 ## Special Registers
 These are special register access instructions, operands are values to set/get.
 
+- **C0** (0xC3): 1 operand - RTC seconds low word (epoch 2018-07-17 UTC)
+- **C1** (0xC4): 1 operand - RTC seconds high word (epoch 2018-07-17 UTC)
+- **MX** (0xC5): 1 operand - Mouse X position
+- **MY** (0xC6): 1 operand - Mouse Y position
+- **MB** (0xC7): 1 operand - Mouse buttons
 - **VC** (0xC8): 1 operand - Video Color
 - **P0:** (0xC9): 1 operand - P0 high byte
 - **P1:** (0xCA): 1 operand - P1 high byte
