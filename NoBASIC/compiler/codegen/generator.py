@@ -2721,7 +2721,23 @@ class CodeGenerator:
         self.emit_condition_false_jump(stmt.condition, loop_label)
 
     def emit_condition_false_jump(self, condition: Expression, false_label: str):
-        """Emit a jump to ``false_label`` when ``condition`` evaluates to false."""
+        """Emit a jump to ``false_label`` when ``condition`` evaluates to false, with short-circuiting for 'and'/'or'."""
+        # Short-circuit for logical AND
+        if isinstance(condition, BinaryExpr) and condition.operator == "and":
+            mid_label = self.new_label()
+            self.emit_condition_false_jump(condition.left, false_label)
+            self.emit_condition_false_jump(condition.right, false_label)
+            return
+
+        # Short-circuit for logical OR
+        if isinstance(condition, BinaryExpr) and condition.operator == "or":
+            pass_label = self.new_label()
+            self.emit_condition_false_jump(condition.left, pass_label)
+            self.emit_condition_false_jump(condition.right, false_label)
+            self.current_output.append(f"{pass_label}:")
+            return
+
+        # Direct branch for comparisons
         if isinstance(condition, BinaryExpr):
             false_jump_map = {
                 "<": "JGE",
@@ -2733,7 +2749,6 @@ class CodeGenerator:
             }
             jump_opcode = false_jump_map.get(condition.operator)
             if jump_opcode:
-                # Direct branch lowering avoids materializing booleans for control flow.
                 left_result = self.generate_expression(condition.left, 'P1')
                 right_result = self.generate_expression(condition.right, 'P2')
                 self.current_output.append(f"CMP {left_result}, {right_result}")
@@ -3364,7 +3379,7 @@ class CodeGenerator:
             return target_reg
         else:
             # Fallback
-            self.current_output.append(f"MOV {target_reg}, #0")
+            self.current_output.append(f"MOV {target_reg}, 0")
             
         # Free operand registers immediately after use (unless they're the target)
         if left_result != target_reg:

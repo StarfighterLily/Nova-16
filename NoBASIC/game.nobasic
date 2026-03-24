@@ -86,7 +86,7 @@ Function keyCheck()
             player.x = player.x - 8
             player.facing = 0
         End
-        If key = 128 Then // right
+        If key = 128 Then // left
             player.x = player.x - 8
             player.facing = 0
         End
@@ -95,7 +95,7 @@ Function keyCheck()
             player.x = player.x + 8
             player.facing = 1
         End
-        If key = 129 Then // left
+        If key = 129 Then // right
             player.x = player.x + 8
             player.facing = 1
         End
@@ -137,13 +137,7 @@ Function callPlayer()
 
     drawPlayer()
 
-    If player.counter = 8 Then
-        clearSword()
-    End
-    If player.x <> player.oldx Then
-        clearSword()
-    End
-    If player.y <> player.oldy Then
+    If player.counter = 8 or player.x <> player.oldx or player.y <> player.oldy Then
         clearSword()
     End
 End

@@ -70,7 +70,7 @@ XOR R1, R1
 MOV P0, 308
 MOV P1, R1
 MOV [P0], P1
-MOV P1, STR65
+MOV P1, STR63
 MOV P0, 310
 MOV [P0], P1
 MOV VM, 0
@@ -82,16 +82,16 @@ MOV R0, R1
 MOV R1, 1
 SHL R1, 2
 MOV P3, R1
-L67:
+L65:
 CMP P2, R0
-JGT L68
+JGT L66
 XOR VX, VX
 MOV VY, P2
 MOV VC, 31
-TEXT STR68
+TEXT STR66
 ADD P2, P3
-JMP L67
-L68:
+JMP L65
+L66:
 XOR R0, R0
 MOV R1, 1
 SROT R0, R1
@@ -104,30 +104,30 @@ MOV R0, R1
 MOV R1, 1
 SHL R1, 2
 MOV P3, R1
-L70:
+L68:
 CMP P2, R0
-JGT L71
+JGT L69
 XOR VX, VX
 MOV VY, P2
 MOV VC, 31
-TEXT STR68
+TEXT STR66
 ADD P2, P3
-JMP L70
-L71:
+JMP L68
+L69:
 MOV VM, 0
 MOV VL, 5
-L72:
+L70:
 MOV R1, 1
 WHILE R1
-JZ L73
+JZ L71
 PUSH P2
 CALL _func_callenemy_8
 POP P2
 PUSH P2
 CALL _func_callplayer_7
 POP P2
-JMP L72
-L73:
+JMP L70
+L71:
 HLT
 _func_renderplayer_0:
 ; Function: renderplayer
@@ -798,9 +798,7 @@ SHL P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L42
-CALL _func_clearsword_4
-L42:
+JNZ L45
 ; Load player.x
 MOV P0, 288
 MOV P1, [P0]
@@ -811,8 +809,7 @@ CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
 JZ L44
-CALL _func_clearsword_4
-L44:
+L45:
 ; Load player.y
 MOV P0, 290
 MOV P1, [P0]
@@ -822,9 +819,10 @@ MOV P2, [P0]
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JZ L46
+JZ L42
+L44:
 CALL _func_clearsword_4
-L46:
+L42:
 MOV SP, FP
 POP FP
 RETN 0
@@ -870,10 +868,32 @@ SHL P2, 6
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L48
+JNZ L46
 MOV P0, 314
 MOV P1, [P0]
 XOR P2, P2
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L48
+; Load enemy.ex
+MOV P0, 300
+MOV P1, [P0]
+; Preserve left operand in register across right-side evaluation
+MOV R2, P1
+MOV R3, 1
+SHL R3, 3
+MOV R1, R2
+SUB R1, R3
+; Free R3 (last use)
+; Store to enemy.ex
+MOV P0, 300
+MOV P1, R1
+MOV [P0], P1
+L48:
+MOV P0, 314
+MOV P1, [P0]
+MOV P2, 1
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
@@ -886,7 +906,7 @@ MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
-SUB R1, R3
+ADD R1, R3
 ; Free R3 (last use)
 ; Store to enemy.ex
 MOV P0, 300
@@ -896,29 +916,29 @@ L50:
 MOV P0, 314
 MOV P1, [P0]
 MOV P2, 1
+SHL P2, 1
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
 JNZ L52
-; Load enemy.ex
-MOV P0, 300
+; Load enemy.ey
+MOV P0, 302
 MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
-ADD R1, R3
+SUB R1, R3
 ; Free R3 (last use)
-; Store to enemy.ex
-MOV P0, 300
+; Store to enemy.ey
+MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
 L52:
 MOV P0, 314
 MOV P1, [P0]
-MOV P2, 1
-SHL P2, 1
+MOV P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
@@ -931,35 +951,13 @@ MOV R2, P1
 MOV R3, 1
 SHL R3, 3
 MOV R1, R2
-SUB R1, R3
-; Free R3 (last use)
-; Store to enemy.ey
-MOV P0, 302
-MOV P1, R1
-MOV [P0], P1
-L54:
-MOV P0, 314
-MOV P1, [P0]
-MOV P2, 3
-CMP P1, P2
-; Free P1 (last use)
-; Free P2 (last use)
-JNZ L56
-; Load enemy.ey
-MOV P0, 302
-MOV P1, [P0]
-; Preserve left operand in register across right-side evaluation
-MOV R2, P1
-MOV R3, 1
-SHL R3, 3
-MOV R1, R2
 ADD R1, R3
 ; Free R3 (last use)
 ; Store to enemy.ey
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L56:
+L54:
 ; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
@@ -968,14 +966,14 @@ SHL P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JGE L58
+JGE L56
 MOV R1, 1
 SHL R1, 3
 ; Store to enemy.ex
 MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
-L58:
+L56:
 ; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
@@ -983,13 +981,13 @@ MOV P2, 240
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JLE L60
+JLE L58
 MOV R1, 240
 ; Store to enemy.ex
 MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
-L60:
+L58:
 ; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
@@ -998,14 +996,14 @@ SHL P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JGE L62
+JGE L60
 MOV R1, 1
 SHL R1, 3
 ; Store to enemy.ey
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L62:
+L60:
 ; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
@@ -1013,19 +1011,19 @@ MOV P2, 232
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JLE L64
+JLE L62
 MOV R1, 232
 ; Store to enemy.ey
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L64:
+L62:
 XOR R1, R1
 ; Store to enemy.ecounter
 MOV P0, 308
 MOV P1, R1
 MOV [P0], P1
-L48:
+L46:
 CALL _func_drawenemy_3
 MOV SP, FP
 POP FP
@@ -1033,5 +1031,5 @@ RETN 0
 STR0: DEFSTR "O"
 STR1: DEFSTR "X"
 STR2: DEFSTR "m"
-STR65: DEFSTR "--"
-STR68: DEFSTR "X                              X"
+STR63: DEFSTR "--"
+STR66: DEFSTR "X                              X"
