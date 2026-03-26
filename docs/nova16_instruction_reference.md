@@ -664,14 +664,14 @@ These are special register access instructions, operands are values to set/get.
 - **VY** (0xFE): 1 operand - Video Y coordinate
 
 ## Notes
-- Operands are specified using a prefixed operand system (register, immediate, indirect, indexed).
+- Decimal immediates are undecorated, hex is prefixed with '0x'.
 - Flags: Z (zero), C (carry), S (sign), O (overflow), I (interrupt), T (trap), B (break), D (decimal), P (parity), H (unused), A (auxiliary), E (error).
-- Some instructions are unimplemented or marked as such in the source.
 - For string operations, addresses point to null-terminated strings.
-- Graphics operations often use VX, VY for coordinates.
+- Graphics operations often use VX, VY for coordinates and VC for color.
 
 # Assembler Directives
 - **DB, DW, DS** Define byte, word, or space
+- **DEFSTR** Define a string, automatically null-terminates.
 - **MACRO/ENDM** Define a macro
 - **ORG** Set where code goes in memory. NOTE: The first ORG directive is what PC sets to on binary loading.
 - **Label:** Labels for code sections
