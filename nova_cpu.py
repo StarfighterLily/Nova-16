@@ -1559,6 +1559,15 @@ class CPU:
         """Invalidate prefetch buffer when PC changes unexpectedly (jumps, branches, etc.)"""
         self.prefetch_valid = False
 
+    def _decode_mode_byte(self, mode_byte):
+        """Decode a mode byte into operand layout plus memory-mode flags."""
+        decoded = int(mode_byte) & 0xFF
+        return {
+            'operand_modes': tuple((decoded >> (index * 2)) & 0x3 for index in range(4)),
+            'indexed': (decoded & (1 << 6)) != 0,
+            'direct': (decoded & (1 << 7)) != 0,
+        }
+
     def _ensure_prefetch_offset(self):
         """Return the active prefetch offset for PC, refilling when execution leaves the current window."""
         offset = self._get_prefetch_offset(self.pc)
@@ -1617,6 +1626,7 @@ class CPU:
             self.prefetch_valid = False
 
         self.invalidate_instruction_cache(start_addr, start_addr + width - 1)
+        self.invalidate_operand_cache(start_addr, start_addr + width - 1)
         
     def write_memory(self, address, value, bytes=1):
         """Write to memory and invalidate prefetch buffer if necessary"""
@@ -1714,6 +1724,67 @@ class CPU:
         elif start_addr is not None:
             # Remove single address
             self.invalidate_instruction_cache(start_addr, start_addr)
+
+    def _address_in_wrapped_range(self, address, range_start, range_end):
+        """Return True when address lies within an inclusive 16-bit range."""
+        if range_start <= range_end:
+            return range_start <= address <= range_end
+        return address >= range_start or address <= range_end
+
+    def _get_operand_cache_pc_advance(self, cached_entry):
+        """Return the cached PC advance for an operand-cache entry."""
+        if isinstance(cached_entry, tuple) and len(cached_entry) == 2:
+            cached_operands, pc_advance = cached_entry
+            if isinstance(pc_advance, int):
+                return pc_advance & 0xFFFF
+        else:
+            cached_operands = cached_entry
+
+        pc_advance = 0
+        for operand in cached_operands:
+            if operand['type'] == 'register':
+                pc_advance += 1
+            elif operand['type'] == 'immediate':
+                pc_advance += 2 if operand.get('size') == 16 else 1
+            elif operand['type'] == 'memory':
+                if operand.get('direct', False) and not operand.get('indexed', False):
+                    pc_advance += 2
+                elif not operand.get('direct', False) and not operand.get('indexed', False):
+                    pc_advance += 1
+                elif not operand.get('direct', False) and operand.get('indexed', False):
+                    pc_advance += 2
+                elif operand.get('direct', False) and operand.get('indexed', False):
+                    pc_advance += 3
+        return pc_advance & 0xFFFF
+
+    def invalidate_operand_cache(self, start_addr=None, end_addr=None):
+        """Invalidate operand cache entries whose encoded operand bytes overlap a write."""
+        if start_addr is None and end_addr is None:
+            self.operand_cache.clear()
+            return
+
+        start_addr = int(start_addr) & 0xFFFF
+        if end_addr is None:
+            end_addr = start_addr
+        else:
+            end_addr = int(end_addr) & 0xFFFF
+
+        to_remove = []
+        for cache_key, cached_entry in self.operand_cache.items():
+            mode_addr = int(cache_key[0]) & 0xFFFF
+            operand_start = (mode_addr + 1) & 0xFFFF
+            pc_advance = self._get_operand_cache_pc_advance(cached_entry)
+            if pc_advance <= 0:
+                continue
+
+            for offset in range(pc_advance):
+                operand_addr = (operand_start + offset) & 0xFFFF
+                if self._address_in_wrapped_range(operand_addr, start_addr, end_addr):
+                    to_remove.append(cache_key)
+                    break
+
+        for cache_key in to_remove:
+            del self.operand_cache[cache_key]
     
     def get_cache_stats(self):
         """Get instruction cache statistics"""
@@ -1807,20 +1878,7 @@ class CPU:
                 return cached_operands
 
             cached_operands = cached_entry
-            for operand in cached_operands:
-                if operand['type'] == 'register':
-                    self.pc = (self.pc + 1) & 0xFFFF
-                elif operand['type'] == 'immediate':
-                    self.pc = (self.pc + (2 if operand.get('size') == 16 else 1)) & 0xFFFF
-                elif operand['type'] == 'memory':
-                    if operand.get('direct', False) and not operand.get('indexed', False):
-                        self.pc = (self.pc + 2) & 0xFFFF
-                    elif not operand.get('direct', False) and not operand.get('indexed', False):
-                        self.pc = (self.pc + 1) & 0xFFFF
-                    elif not operand.get('direct', False) and operand.get('indexed', False):
-                        self.pc = (self.pc + 2) & 0xFFFF
-                    elif operand.get('direct', False) and operand.get('indexed', False):
-                        self.pc = (self.pc + 3) & 0xFFFF
+            self.pc = (self.pc + self._get_operand_cache_pc_advance(cached_operands)) & 0xFFFF
             return cached_operands
         
         operands = []

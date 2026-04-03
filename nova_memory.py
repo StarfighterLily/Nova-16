@@ -117,6 +117,7 @@ class Memory:
                     continue
                 end = min(int(start) + int(length) - 1, self.size - 1)
                 self.cpu.invalidate_instruction_cache(int(start), end)
+                self.cpu.invalidate_operand_cache(int(start), end)
             self.cpu.invalidate_prefetch()
 
     def _refresh_caches_for_range(self, address, length):
@@ -163,6 +164,7 @@ class Memory:
 
         if hasattr(self, 'cpu') and self.cpu:
             self.cpu.invalidate_instruction_cache(start, min(end - 1, self.size - 1))
+            self.cpu.invalidate_operand_cache(start, min(end - 1, self.size - 1))
             self.cpu.invalidate_prefetch()
     
     def _lazy_write_back(self):
@@ -201,6 +203,7 @@ class Memory:
 
         if hasattr(self, 'cpu') and self.cpu:
             self.cpu.invalidate_instruction_cache()
+            self.cpu.invalidate_operand_cache()
             self.cpu.invalidate_prefetch()
 
     def write( self, address, value, bytes=1 ):
@@ -226,6 +229,7 @@ class Memory:
         # Invalidate instruction cache and prefetch once per write operation
         if hasattr(self, 'cpu') and self.cpu:
             self.cpu.invalidate_instruction_cache()
+            self.cpu.invalidate_operand_cache()
             self.cpu.invalidate_prefetch()
 
     def read( self, address, bytes=1 ):
@@ -320,6 +324,7 @@ class Memory:
         # Invalidate instruction cache and prefetch if CPU exists (for self-modifying code)
         if invalidate_cpu_cache and hasattr(self, 'cpu') and self.cpu:
             self.cpu.invalidate_instruction_cache()
+            self.cpu.invalidate_operand_cache()
             self.cpu.invalidate_prefetch()
     
     def write_word(self, address, value):
@@ -341,6 +346,7 @@ class Memory:
         # Invalidate instruction cache and prefetch once per write operation
         if hasattr(self, 'cpu') and self.cpu:
             self.cpu.invalidate_instruction_cache()
+            self.cpu.invalidate_operand_cache()
             self.cpu.invalidate_prefetch()
     
     def read_bytes_direct(self, address, count):

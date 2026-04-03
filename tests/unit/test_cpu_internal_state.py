@@ -398,3 +398,49 @@ class TestCPUOperandCacheInvalidation:
         cpu.step()
 
         assert cpu.Rregisters[0] == 0x22
+
+    def test_memory_write_byte_invalidates_cached_immediate_operand(self, cpu):
+        base_addr = 0x0660
+
+        cpu.pc = base_addr
+        cpu.memory.write_byte(base_addr, 0x06)
+        cpu.memory.write_byte(base_addr + 1, 0x04)
+        cpu.memory.write_byte(base_addr + 2, 0xE7)
+        cpu.memory.write_byte(base_addr + 3, 0x12)
+
+        cpu.step()
+
+        cache_key = (base_addr + 1, 0x04, 2)
+        assert cache_key in cpu.operand_cache
+
+        cpu.memory.write_byte(base_addr + 3, 0x56)
+
+        assert cache_key not in cpu.operand_cache
+
+        cpu.pc = base_addr
+        cpu.step()
+
+        assert cpu.Rregisters[0] == 0x56
+
+    def test_memory_write_word_invalidates_cached_16bit_immediate_operand(self, cpu):
+        base_addr = 0x0680
+
+        cpu.pc = base_addr
+        cpu.memory.write_byte(base_addr, 0x06)
+        cpu.memory.write_byte(base_addr + 1, 0x08)
+        cpu.memory.write_byte(base_addr + 2, 0xF1)
+        cpu.memory.write_word(base_addr + 3, 0x1234)
+
+        cpu.step()
+
+        cache_key = (base_addr + 1, 0x08, 2)
+        assert cache_key in cpu.operand_cache
+
+        cpu.memory.write_word(base_addr + 3, 0xCAFE)
+
+        assert cache_key not in cpu.operand_cache
+
+        cpu.pc = base_addr
+        cpu.step()
+
+        assert cpu.Pregisters[0] == 0xCAFE

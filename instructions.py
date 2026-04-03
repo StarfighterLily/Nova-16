@@ -1301,18 +1301,22 @@ class Popa(BaseInstruction):
     
     def execute(self, cpu):
         # Pop all registers from stack (R0-R9, P0-P9, VX, VY, VC)
-        registers_order = list(range(23))  # 0-22 (R0-R9, P0-P9, VX, VY, VC)
-        
-        for reg_num in registers_order:
-            sp = int(cpu.Pregisters[8])
+        # using a local traversal pointer so restoring P8 does not corrupt the walk.
+        sp = int(cpu.Pregisters[8])
+        restored_values = []
+
+        for _ in range(23):
             if sp >= 0xFFFF:
                 raise RuntimeError(f"Stack underflow during POPA: SP=0x{sp:04X}")
             
             value = cpu.memory.read_word(sp)
             sp = (sp + 2) & 0xFFFF
-            cpu.Pregisters[8] = sp
-            
+            restored_values.append(value)
+
+        for reg_num, value in enumerate(restored_values):
             cpu.set_register_value(reg_num, value)
+
+        cpu.Pregisters[8] = sp
 
 class Enter(BaseInstruction):
     """ENTER instruction - enter subroutine (stack frame)"""

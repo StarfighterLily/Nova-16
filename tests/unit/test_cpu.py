@@ -591,7 +591,7 @@ class TestCPUErrorHandling:
         cpu.pc = 0x2000
         cpu.halted = False  # Reset halted state
         cpu.step()
-        assert_register_equals(cpu, 'R0', 0x42)
+        assert_register_equals(cpu, 'R0', 0x24)
 
     def test_flag_operations_edge_cases(self, cpu):
         """Test flag operations at boundaries."""

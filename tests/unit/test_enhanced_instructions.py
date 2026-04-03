@@ -174,6 +174,75 @@ class TestEnhancedControlFlow:
 class TestStackFrameInstructions:
     """Test stack frame management instructions."""
 
+    def test_pusha_instruction_saves_register_frame(self, cpu, memory):
+        """Test PUSHA instruction - save R/P/V registers as 16-bit words."""
+        for index in range(10):
+            cpu.Rregisters[index] = 0x10 + index
+            cpu.Pregisters[index] = 0x2000 + index
+
+        cpu.Pregisters[8] = 0xFFFF
+        cpu.Pregisters[9] = 0x2009
+        cpu.gfx.Vregisters[0] = 0xAA
+        cpu.gfx.Vregisters[1] = 0xBB
+        cpu.gfx.Vregisters[3] = 0xCC
+
+        memory.load_program([
+            0x1C,  # PUSHA
+            0x00,  # HLT
+        ])
+        run_cpu_cycles(cpu, 1)
+
+        assert cpu.Pregisters[8] == 0xFFD1
+        assert memory.read_word(0xFFD1) == 0x0010  # R0
+        assert memory.read_word(0xFFE3) == 0x0019  # R9
+        assert memory.read_word(0xFFE5) == 0x2000  # P0
+        assert memory.read_word(0xFFF5) == 0xFFFF  # Saved P8
+        assert memory.read_word(0xFFF7) == 0x2009  # P9
+        assert memory.read_word(0xFFF9) == 0x00AA  # VX
+        assert memory.read_word(0xFFFB) == 0x00BB  # VY
+        assert memory.read_word(0xFFFD) == 0x00CC  # VC
+
+    def test_popa_instruction_restores_register_frame_without_underflow(self, cpu, memory):
+        """Test POPA instruction - restore R/P/V registers while keeping stack traversal stable."""
+        for index in range(10):
+            cpu.Rregisters[index] = 0x10 + index
+            cpu.Pregisters[index] = 0x2000 + index
+
+        cpu.Pregisters[8] = 0xFFFF
+        cpu.Pregisters[9] = 0x2009
+        cpu.gfx.Vregisters[0] = 0xAA
+        cpu.gfx.Vregisters[1] = 0xBB
+        cpu.gfx.Vregisters[3] = 0xCC
+
+        memory.load_program([
+            0x1C,  # PUSHA
+            0x1D,  # POPA
+            0x00,  # HLT
+        ])
+        run_cpu_cycles(cpu, 1)
+
+        for index in range(10):
+            cpu.Rregisters[index] = 0
+            if index != 8:
+                cpu.Pregisters[index] = 0
+        cpu.gfx.Vregisters[0] = 0
+        cpu.gfx.Vregisters[1] = 0
+        cpu.gfx.Vregisters[3] = 0
+
+        run_cpu_cycles(cpu, 1)
+
+        assert cpu.halted is False
+        assert cpu.pc == 0x0002
+        assert cpu.Pregisters[8] == 0xFFFF
+        assert cpu.Pregisters[9] == 0x2009
+        for index in range(10):
+            assert cpu.Rregisters[index] == 0x10 + index
+        for index in range(8):
+            assert cpu.Pregisters[index] == 0x2000 + index
+        assert cpu.gfx.Vregisters[0] == 0xAA
+        assert cpu.gfx.Vregisters[1] == 0xBB
+        assert cpu.gfx.Vregisters[3] == 0xCC
+
     def test_enter_instruction(self, cpu, memory):
         """Test ENTER instruction - create stack frame."""
         # Load test program: MOV P0, 10; ENTER P0
