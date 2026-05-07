@@ -273,5 +273,4 @@ ORG 0x0100
     DW TIMER_HANDLER     ; Timer interrupt vector
 
 TIMER_HANDLER:
-    IRET</content>
-<parameter name="filePath">c:\Code\Nova\asm\performance_benchmark.asm
+    IRET

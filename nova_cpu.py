@@ -103,7 +103,7 @@ class CPU:
         self.keyboard[ 3 ] = 0 # Keyboard buffer count (B) - number of keys in buffer
         
         self.key_buffer = []  # Circular buffer for keyboard input (max 16 keys)
-        self.key_buffer_size = 16
+        self.key_buffer_size = 64
 
         self.halted = False
         self.cycles = 0  # Total cycles executed
