@@ -84,7 +84,7 @@ opcodes = [
     ("SROL",               "0x34", 2), # Roll screen by axis, amount # implemented
     ("SROT",               "0x35", 2), # Rotate screen by direction, amount # implemented
     ("SSHFT",              "0x36", 2), # Shift screen by axis, amount # implemented
-    ("SFLIP",              "0x37", 2), # Flip screen by axis, amount # implemented
+    ("SFLIP",              "0x37", 1), # Flip screen by axis, amount # implemented
     ("SLINE",              "0x38", 2), # Line end x, end y # implemented
     ("SRECT",              "0x39", 3), # Rectangle end x, end y, filled
     ("SCIRC",              "0x3A", 2), # Circle radius, filled # implemented
