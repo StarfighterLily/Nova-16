@@ -1,8 +1,23 @@
 // Define game structs
-STRUCT Player x y oldx oldy facing counter END
-Struct Enemy ex ey eoldx eoldy ecounter End
+Struct
+    Player
+    x
+    y
+    oldx
+    oldy
+    facing
+    counter
+End
+Struct
+    Enemy
+    ex
+    ey
+    eoldx
+    eoldy
+    ecounter
+End
 
-// Initialize Player struct
+// Initialize player variables
 player.x = 8
 player.y = 8
 player.oldx = 8

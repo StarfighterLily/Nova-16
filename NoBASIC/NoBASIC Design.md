@@ -20,6 +20,10 @@ NoBASIC programs are structured as a sequence of statements, executed line by li
 - **Statements**: End implicitly at the end of a line; no semicolons required.
 - **Operators**: Standard arithmetic (`+`, `-`, `*`, `/`, `^`), comparison (`=`, `<>`, `<`, `>`, `<=`, `>=`), logical (`and`, `or`, `not`).
 
+### Includes
+
+- **Basic include system**: `Include program.nb` allows the modularization of NoBASIC projects
+
 ### Data Types and Variables
 
 NoBASIC supports simple data types inspired by TI-BASIC:
@@ -92,6 +96,9 @@ NoBASIC includes familiar control flow from TI-BASIC:
 
 - **Jumps and Labels**: `Goto label`, `Label:`
 
+- **User-defined Functions**
+  - Declare above its caller: `Function name(args) ... End`
+
 ### Graphics Commands
 
 Leveraging the Nova-16's 8-layer graphics system:
@@ -119,7 +126,7 @@ Utilizing the Nova-16's programmable sound system:
 
 ### Input and Output
 
-- `GetKey`: Wait for and return a key press (returns key code).
+- `GetKey`: Return a key press (returns key code) without waiting.
 - `Input(prompt, variable)`: Prompt the user for input and store in a variable.
 - `Disp "text"`: Display on the first available line and move to next line.
 - `Pause`: Pause execution until a key is pressed.
@@ -139,9 +146,13 @@ Mathematical and utility functions:
 - **List/Matrix**: `dim(list)`, `sum(list)`, `mean(list)`, etc.
 - **Hardware Access**: `MemRead(addr)`, `MemWrite(addr, value)` for direct memory manipulation.
 
+Advanced/System functions:
+
+- Inline Assembly: `Asm ... End`
+
 ### Program Structure and Execution
 
-Programs start execution from the first line. No main function is required. Programs can call subroutines using `Goto` or structured loops.
+Programs start execution from the first line. No main function is required. Programs can call subroutines using `Goto`, structured loops, or user-defined functions.
 
 NoBASIC programs are compiled to Nova-16 assembly using a dedicated compiler (e.g., `nobasic_compiler.py`), which generates optimized assembly code that interfaces directly with the Nova-16 hardware.
 

@@ -1273,49 +1273,66 @@ class Popf(BaseInstruction):
             cpu.flags[i] = 1 if bit_set else 0
 
 class Pusha(BaseInstruction):
-    """PUSHA instruction - push all registers"""
+    """PUSHA instruction - push all registers
+    
+    Pushes R0-R9, P0-P9, VX, VY, VC as 16-bit words.
+    Push order: reversed so POPA can pop in forward order.
+    Stack layout (top to bottom): VC, VY, VX, P9, ..., P0, R9, ..., R0
+    """
     def __init__(self):
         opcode_val = 0x1C  # PUSHA
         super().__init__("PUSHA", opcode_val)
     
     def execute(self, cpu):
-        # Push all registers (R0-R9, P0-P9, VX, VY, VC) to stack
+        # Canonical register set (all pushed as 16-bit words)
         registers = []
-        registers.extend(cpu.Rregisters)  # R0-R9
-        registers.extend(cpu.Pregisters)  # P0-P9
-        registers.append(cpu.gfx.Vregisters[0])  # VX
-        registers.append(cpu.gfx.Vregisters[1])  # VY
-        registers.append(cpu.gfx.Vregisters[3])  # VC
+        registers.extend(cpu.Rregisters)         # R0-R9  (10 words)
+        registers.extend(cpu.Pregisters)         # P0-P9  (10 words)
+        registers.append(cpu.gfx.Vregisters[0]) # VX     (1 word)
+        registers.append(cpu.gfx.Vregisters[1]) # VY     (1 word)
+        registers.append(cpu.gfx.Vregisters[3]) # VC     (1 word)
+        # Total: 23 values × 2 bytes = 46 bytes
         
-        for reg_value in reversed(registers):  # Push in reverse order so POPA can pop in forward order
+        for reg_value in reversed(registers):
             sp = int(cpu.Pregisters[8])
             sp = (sp - 2) & 0xFFFF
             cpu.Pregisters[8] = sp
             cpu.memory.write_word(sp, reg_value)
 
 class Popa(BaseInstruction):
-    """POPA instruction - pop all registers"""
+    """POPA instruction - pop all registers
+    
+    Pops in forward order: R0-R9, P0-P9, VX, VY, VC.
+    Uses a local SP copy so restoring P8 doesn't corrupt the walk.
+    """
     def __init__(self):
         opcode_val = 0x1D  # POPA
         super().__init__("POPA", opcode_val)
     
     def execute(self, cpu):
-        # Pop all registers from stack (R0-R9, P0-P9, VX, VY, VC)
-        # using a local traversal pointer so restoring P8 does not corrupt the walk.
         sp = int(cpu.Pregisters[8])
         restored_values = []
 
+        # Pop 23 registers (R0-R9, P0-P9, VX, VY, VC)
         for _ in range(23):
-            if sp >= 0xFFFF:
+            if sp >= 0xFFFE:
                 raise RuntimeError(f"Stack underflow during POPA: SP=0x{sp:04X}")
-            
             value = cpu.memory.read_word(sp)
             sp = (sp + 2) & 0xFFFF
             restored_values.append(value)
 
-        for reg_num, value in enumerate(restored_values):
-            cpu.set_register_value(reg_num, value)
+        # Restore R0-R9
+        for i in range(10):
+            cpu.Rregisters[i] = restored_values[i] & 0xFF
+        # Restore P0-P9 (P8 will be overwritten at the end)
+        for i in range(10):
+            cpu.Pregisters[i] = restored_values[10 + i] & 0xFFFF
+        # Restore VX, VY, VC
+        cpu.gfx.Vregisters[0] = restored_values[20] & 0xFF
+        cpu.gfx.Vregisters[1] = restored_values[21] & 0xFF
+        cpu.gfx.Vregisters[3] = restored_values[22] & 0xFF
 
+        # Set SP last (overrides P8)
         cpu.Pregisters[8] = sp
 
 class Enter(BaseInstruction):
@@ -1588,7 +1605,7 @@ class Brz(BaseInstruction):
     
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
-        if cpu.flags[0]:  # Zero flag
+        if cpu.flags[7]:  # Zero flag (bit 7)
             offset = cpu.get_operand_value(operands[0])
             # Sign extend 16-bit offset
             if offset & 0x8000:
@@ -1604,7 +1621,7 @@ class Brnz(BaseInstruction):
     
     def execute(self, cpu):
         operands = cpu.parse_operands(1)
-        if not cpu.flags[0]:  # Not zero flag
+        if not cpu.flags[7]:  # Not zero flag (bit 7)
             offset = cpu.get_operand_value(operands[0])
             # Sign extend 16-bit offset
             if offset & 0x8000:
@@ -2438,11 +2455,11 @@ class Memtest(BaseInstruction):
                 break
         
         # Set zero flag if regions match (Z=1 means equal)
-        cpu.flags[0] = 1 if match else 0  # Zero flag
+        cpu.flags[7] = 1 if match else 0  # Zero flag (bit 7)
         # Clear other flags
         cpu.flags[1] = 0  # Sign flag
         cpu.flags[2] = 0  # Overflow flag
-        cpu.flags[3] = 0  # Carry flag
+        cpu.flags[6] = 0  # Carry flag (bit 6)
 
 class Memmove(BaseInstruction):
     """MEMMOVE instruction - memory move (handles overlapping regions)"""
