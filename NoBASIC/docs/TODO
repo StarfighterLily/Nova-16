@@ -11,3 +11,6 @@ Compile-time gain: ~40-80% on repeated runs in local iteration.
 Add pass-level timing and counters in verbose mode.
 Report instruction counts pre/post each pass and spill/load-store counts.
 Not direct speedup, but improves optimization ROI quickly.
+
+**Additions**
+Peek/poke instructions for memory ops.
