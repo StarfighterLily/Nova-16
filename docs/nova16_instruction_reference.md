@@ -360,8 +360,7 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 - **SINV** (0x3B): 0 operands - Invert screen colors
   - Operands: None
   - Side Effects: Inverts all screen pixels
-- **SBLIT** (0x3C): 1 operand - Blit screen
-  - Operands: mode
+- **SBLIT** (0x3C): 0 operands - Blit screen
   - Side Effects: Blits screen buffer
 - **SFILL** (0x3D): 1 operand - Fill screen
   - Operands: color
@@ -371,11 +370,10 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 - **VREAD** (0x3E): 1 operand - Read VRAM
   - Operands: dest
   - Side Effects: Reads VRAM at VX,VY to dest
-- **VWRITE** (0x3F): 2 operands - Write VRAM
-  - Operands: value, mode
+- **VWRITE** (0x3F): 1 operands - Write VRAM
+  - Operands: value
   - Side Effects: Writes to VRAM at VX,VY
-- **VBLIT** (0x40): 1 operand - Blit VRAM
-  - Operands: mode
+- **VBLIT** (0x40): 0 operands - Blit VRAM
   - Side Effects: Blits VRAM buffer
 
 ## Text Operations
@@ -572,8 +570,7 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 - **SPBLIT** (0x55): 1 operand - Blit sprite
   - Operands: sprite_id
   - Side Effects: Blits sprite to screen
-- **SPBLITALL** (0x56): 1 operand - Blit all sprites
-  - Operands: None (operand ignored?)
+- **SPBLITALL** (0x56): 0 operands - Blit all sprites
   - Side Effects: Blits all sprites
 
 ## Sound Operations

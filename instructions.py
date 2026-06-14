@@ -1918,15 +1918,13 @@ class Sflip(BaseInstruction):
             raise ValueError(f"Invalid axis for SFLIP: {axis}")
 
 class Sblit(BaseInstruction):
-    """SBLIT instruction - blit screen"""
+    """SBLIT instruction - blit screen (VRAM -> active layer)"""
     def __init__(self):
         opcode_val = 0x3C  # SBLIT
         super().__init__("SBLIT", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        source_addr = cpu.get_operand_value(operands[0])
-        cpu.gfx.blit(source_addr)
+        cpu.gfx.blit()
 
 class Sfill(BaseInstruction):
     """SFILL instruction - fill screen"""
@@ -2120,36 +2118,25 @@ class Vread(BaseInstruction):
             raise IndexError(f"VRAM address out of range: {addr}")
 
 class Vwrite(BaseInstruction):
-    """VWRITE instruction - write VRAM"""
+    """VWRITE instruction - write VRAM (1 operand, like SWRITE but for VRAM)"""
     def __init__(self):
         opcode_val = 0x3F  # VWRITE
         super().__init__("VWRITE", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(2)
-        addr = cpu.get_operand_value(operands[0])
-        value = cpu.get_operand_value(operands[1])
-        # Convert linear address to x,y coordinates
-        if 0 <= addr < 65536:  # 256*256 = 65536
-            x = addr % 256
-            y = addr // 256
-            if 0 <= x < 256 and 0 <= y < 256:
-                cpu.gfx.vram[y, x] = value
-            else:
-                raise IndexError(f"VRAM coordinates out of range: x={x}, y={y}")
-        else:
-            raise IndexError(f"VRAM address out of range: {addr}")
+        operands = cpu.parse_operands(1)
+        value = cpu.get_operand_value(operands[0])
+        # Write pixel at VX,VY coordinates to VRAM (like SWRITE but for VRAM)
+        cpu.gfx.set_vram_val(value)
 
 class Vblit(BaseInstruction):
-    """VBLIT instruction - blit VRAM"""
+    """VBLIT instruction - blit VRAM (screen -> VRAM, 0 operands)"""
     def __init__(self):
         opcode_val = 0x40  # VBLIT
         super().__init__("VBLIT", opcode_val)
     
     def execute(self, cpu):
-        operands = cpu.parse_operands(1)
-        source_addr = cpu.get_operand_value(operands[0])
-        cpu.gfx.blit_vram(source_addr)
+        cpu.gfx.blit_vram()
 
 # Text operations
 class Char(BaseInstruction):

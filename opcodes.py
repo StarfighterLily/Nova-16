@@ -89,13 +89,13 @@ opcodes = [
     ("SRECT",              "0x39", 3), # Rectangle end x, end y, filled
     ("SCIRC",              "0x3A", 2), # Circle radius, filled # implemented
     ("SINV",               "0x3B", 0), # Invert screen colors # implemented
-    ("SBLIT",              "0x3C", 1), # Blit screen # implemented
+    ("SBLIT",              "0x3C", 0), # Blit screen # implemented
     ("SFILL",              "0x3D", 1), # Fill screen # implemented
 
     # VRAM operations
     ("VREAD",              "0x3E", 1), # Read VRAM # implemented
-    ("VWRITE",             "0x3F", 2), # Write VRAM # implemented
-    ("VBLIT",              "0x40", 1), # Blit VRAM # implemented
+    ("VWRITE",             "0x3F", 1), # Write VRAM # implemented
+    ("VBLIT",              "0x40", 0), # Blit VRAM # implemented
 
     # Text operations
     ("CHAR",               "0x41", 1), # Draw character # implemented
@@ -129,7 +129,7 @@ opcodes = [
 
     # Sprite operations
     ("SPBLIT",             "0x55", 1), # Blit sprite # implemented
-    ("SPBLITALL",          "0x56", 1), # Blit all sprites # implemented
+    ("SPBLITALL",          "0x56", 0), # Blit all sprites # implemented
 
     # Sound operations
     ("SPLAY",              "0x57", 0), # Play sound # implemented

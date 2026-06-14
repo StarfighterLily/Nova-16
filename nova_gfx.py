@@ -350,6 +350,26 @@ class GFX:
         self._screen.fill( 0 )
         self.layers_dirty = True
 
+    def blit( self ):
+        """SBLIT: Copy VRAM contents into the layer specified by VL register, then clear VRAM.
+        If VL=0, also updates the composited screen buffer."""
+        target = self.get_target_layer()
+        self.vram_to_vram = self.vram  # alias for clarity
+        target[:] = self.vram[:, :]
+        if self.VL == 0:
+            self._screen[:, :] = self.vram[:, :]
+        self.vram.fill(0)
+        self.layers_dirty = True
+
+    def blit_vram( self ):
+        """VBLIT: Copy the composited screen buffer into VRAM, then clear the screen."""
+        # Ensure screen is up to date
+        if self.layers_dirty and self.auto_composite:
+            self.composite_layers()
+        self.vram[:, :] = self.screen[:, :]
+        self._screen.fill(0)
+        self.layers_dirty = True
+
     def _copy_vram_to_screen(self):
         """Transfer VRAM into the base screen layer and final screen buffer."""
         self.layer_0[:, :] = self.vram[:, :]

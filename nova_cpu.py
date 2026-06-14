@@ -164,6 +164,8 @@ class CPU:
             0x1C,  # PUSHA
             0x1D,  # POPA
             0x3B,  # SINV
+            0x3C,  # SBLIT
+            0x40,  # VBLIT
             0xA8,  # ENABRK
             0xA9,  # DISBRK
             0xAA,  # ENATRAP
