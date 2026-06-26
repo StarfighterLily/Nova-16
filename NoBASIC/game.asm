@@ -6,7 +6,7 @@ MOV :P7, 0xFF
 MOV SP, P7
 MOV FP, SP
 ; Struct Player declared with fields: x, y, oldx, oldy, facing, counter
-; Struct Enemy declared with fields: ex, ey, eoldx, eoldy, ecounter
+; Struct Enemy declared with fields: ex, ey, eoldx, eoldy, ecounter, ehit
 MOV R1, 1
 SHL R1, 3
 ; Store to player.x
@@ -70,8 +70,13 @@ XOR R1, R1
 MOV P0, 308
 MOV P1, R1
 MOV [P0], P1
-MOV P1, STR63
+XOR R1, R1
+; Store to enemy.ehit
 MOV P0, 310
+MOV P1, R1
+MOV [P0], P1
+MOV P1, STR80
+MOV P0, 312
 MOV [P0], P1
 MOV VM, 0
 MOV VL, 1
@@ -82,16 +87,16 @@ MOV R0, R1
 MOV R1, 1
 SHL R1, 2
 MOV P3, R1
-L65:
+L82:
 CMP P2, R0
-JGT L66
+JGT L83
 XOR VX, VX
 MOV VY, P2
 MOV VC, 31
-TEXT STR66
+TEXT STR83
 ADD P2, P3
-JMP L65
-L66:
+JMP L82
+L83:
 XOR R0, R0
 MOV R1, 1
 SROT R0, R1
@@ -104,30 +109,61 @@ MOV R0, R1
 MOV R1, 1
 SHL R1, 2
 MOV P3, R1
-L68:
+L85:
 CMP P2, R0
-JGT L69
+JGT L86
 XOR VX, VX
 MOV VY, P2
 MOV VC, 31
-TEXT STR66
+TEXT STR83
 ADD P2, P3
-JMP L68
-L69:
+JMP L85
+L86:
 MOV VM, 0
 MOV VL, 5
-L70:
-MOV R1, 1
-WHILE R1
-JZ L71
+L87:
+; Load enemy.ehit
+MOV P0, 310
+MOV P1, [P0]
+MOV R0, 1
+CMP P1, R0
+; Free P1 (last use)
+; Free R0 (last use)
+JZ L88
 PUSH P2
+PUSH P4
 CALL _func_callenemy_8
+POP P4
 POP P2
 PUSH P2
+PUSH P4
 CALL _func_callplayer_7
+POP P4
 POP P2
-JMP L70
-L71:
+JMP L87
+L88:
+MOV VM, 0
+MOV VL, 1
+; ClrDraw
+MOV VM, 0
+MOV VL, 1
+SFILL 0x00
+MOV VM, 0
+MOV VL, 5
+; ClrDraw
+MOV VM, 0
+MOV VL, 1
+SFILL 0x00
+MOV VM, 0
+MOV VL, 6
+; ClrDraw
+MOV VM, 0
+MOV VL, 1
+SFILL 0x00
+XOR VX, VX
+XOR VY, VY
+MOV VC, 31
+TEXT STR88
 HLT
 _func_renderplayer_0:
 ; Function: renderplayer
@@ -319,6 +355,14 @@ PUSH P1
 CALL _func_renderenemy_1
 ADD SP, 6
 L10:
+; Load enemy.ehit
+MOV P0, 310
+MOV P1, [P0]
+MOV P2, 1
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JZ L12
 ; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
@@ -332,6 +376,7 @@ PUSH P1
 ; Free R3 (last use)
 CALL _func_renderenemy_1
 ADD SP, 6
+L12:
 MOV SP, FP
 POP FP
 RETN 0
@@ -340,6 +385,8 @@ _func_clearsword_4:
 ; Parameters:
 ; Locals:  (0 bytes)
 ENTER 0
+MOV VM, 0
+MOV VL, 5
 XOR R1, R1
 ; Store to player.counter
 MOV P0, 298
@@ -368,7 +415,7 @@ ADD R0, R4
 ; Free R4 (last use)
 MOV VY, R0
 XOR VC, VC
-MOV P0, 310
+MOV P0, 312
 MOV P0, [P0]
 TEXT P0
 ; Load player.oldx
@@ -394,7 +441,7 @@ ADD R0, R4
 ; Free R4 (last use)
 MOV VY, R0
 XOR VC, VC
-MOV P0, 310
+MOV P0, 312
 MOV P0, [P0]
 TEXT P0
 MOV SP, FP
@@ -405,6 +452,8 @@ _func_attack_5:
 ; Parameters:
 ; Locals:  (0 bytes)
 ENTER 0
+MOV VM, 0
+MOV VL, 5
 ; Load player.facing
 MOV P0, 296
 MOV P1, [P0]
@@ -412,7 +461,7 @@ XOR P2, P2
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L12
+JNZ L14
 ; Load player.x
 MOV P0, 288
 MOV P1, [P0]
@@ -436,10 +485,10 @@ ADD R0, R4
 ; Free R4 (last use)
 MOV VY, R0
 MOV VC, 15
-MOV P0, 310
+MOV P0, 312
 MOV P0, [P0]
 TEXT P0
-L12:
+L14:
 ; Load player.facing
 MOV P0, 296
 MOV P1, [P0]
@@ -447,7 +496,7 @@ MOV P2, 1
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L14
+JNZ L16
 ; Load player.x
 MOV P0, 288
 MOV P1, [P0]
@@ -471,15 +520,158 @@ ADD R0, R4
 ; Free R4 (last use)
 MOV VY, R0
 MOV VC, 15
-MOV P0, 310
+MOV P0, 312
 MOV P0, [P0]
 TEXT P0
-L14:
+L16:
 XOR R1, R1
 ; Store to player.counter
 MOV P0, 298
 MOV P1, R1
 MOV [P0], P1
+; Load player.facing
+MOV P0, 296
+MOV P1, [P0]
+MOV P2, 1
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L18
+; Load enemy.ex
+MOV P0, 300
+MOV P1, [P0]
+; Load player.x
+MOV P0, 288
+MOV P3, [P0]
+; Preserve left operand in register across right-side evaluation
+MOV R1, P3
+MOV R2, 1
+SHL R2, 3
+MOV P2, R1
+ADD P2, R2
+; Free R2 (last use)
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L18
+; Load enemy.ey
+MOV P0, 302
+MOV P1, [P0]
+; Load player.y
+MOV P0, 290
+MOV P3, [P0]
+; Preserve left operand in register across right-side evaluation
+MOV R2, P3
+MOV R3, 1
+SHL R3, 3
+MOV P2, R2
+ADD P2, R3
+; Free R3 (last use)
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L18
+MOV R1, 1
+; Store to enemy.ehit
+MOV P0, 310
+MOV P1, R1
+MOV [P0], P1
+L18:
+; Load player.facing
+MOV P0, 296
+MOV P1, [P0]
+MOV P2, 1
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L22
+; Load enemy.ex
+MOV P0, 300
+MOV P1, [P0]
+; Load player.x
+MOV P0, 288
+MOV P3, [P0]
+; Preserve left operand in register across right-side evaluation
+MOV R1, P3
+MOV R2, 1
+SHL R2, 4
+MOV P2, R1
+ADD P2, R2
+; Free R2 (last use)
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L22
+; Load enemy.ey
+MOV P0, 302
+MOV P1, [P0]
+; Load player.y
+MOV P0, 290
+MOV P3, [P0]
+; Preserve left operand in register across right-side evaluation
+MOV R2, P3
+MOV R3, 1
+SHL R3, 3
+MOV P2, R2
+ADD P2, R3
+; Free R3 (last use)
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L22
+MOV R1, 1
+; Store to enemy.ehit
+MOV P0, 310
+MOV P1, R1
+MOV [P0], P1
+L22:
+; Load player.facing
+MOV P0, 296
+MOV P1, [P0]
+XOR P2, P2
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L26
+; Load enemy.ex
+MOV P0, 300
+MOV P1, [P0]
+; Load player.x
+MOV P0, 288
+MOV P3, [P0]
+; Preserve left operand in register across right-side evaluation
+MOV R1, P3
+MOV R2, 24
+MOV P2, R1
+SUB P2, R2
+; Free R2 (last use)
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L26
+; Load enemy.ey
+MOV P0, 302
+MOV P1, [P0]
+; Load player.y
+MOV P0, 290
+MOV P3, [P0]
+; Preserve left operand in register across right-side evaluation
+MOV R2, P3
+MOV R3, 1
+SHL R3, 3
+MOV P2, R2
+ADD P2, R3
+; Free R3 (last use)
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L26
+MOV R1, 1
+; Store to enemy.ehit
+MOV P0, 310
+MOV P1, R1
+MOV [P0], P1
+L26:
 MOV SP, FP
 POP FP
 RETN 0
@@ -492,24 +684,24 @@ KEYIN R0
 MOV R1, R0
 MOV P0, 0
 MOV :P0, R1
-MOV P1, 312
+MOV P1, 314
 MOV [P1], P0
-MOV P0, 312
+MOV P0, 314
 MOV P1, [P0]
 MOV P2, 101
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L16
+JNZ L30
 CALL _func_attack_5
-L16:
-MOV P0, 312
+L30:
+MOV P0, 314
 MOV P1, [P0]
 MOV P2, 97
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L18
+JNZ L32
 ; Load player.x
 MOV P0, 288
 MOV P1, [P0]
@@ -529,15 +721,15 @@ XOR R1, R1
 MOV P0, 296
 MOV P1, R1
 MOV [P0], P1
-L18:
-MOV P0, 312
+L32:
+MOV P0, 314
 MOV P1, [P0]
 MOV P2, 1
 SHL P2, 7
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L20
+JNZ L34
 ; Load player.x
 MOV P0, 288
 MOV P1, [P0]
@@ -557,14 +749,14 @@ XOR R1, R1
 MOV P0, 296
 MOV P1, R1
 MOV [P0], P1
-L20:
-MOV P0, 312
+L34:
+MOV P0, 314
 MOV P1, [P0]
 MOV P2, 100
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L22
+JNZ L36
 ; Load player.x
 MOV P0, 288
 MOV P1, [P0]
@@ -584,14 +776,14 @@ MOV R1, 1
 MOV P0, 296
 MOV P1, R1
 MOV [P0], P1
-L22:
-MOV P0, 312
+L36:
+MOV P0, 314
 MOV P1, [P0]
 MOV P2, 129
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L24
+JNZ L38
 ; Load player.x
 MOV P0, 288
 MOV P1, [P0]
@@ -611,14 +803,14 @@ MOV R1, 1
 MOV P0, 296
 MOV P1, R1
 MOV [P0], P1
-L24:
-MOV P0, 312
+L38:
+MOV P0, 314
 MOV P1, [P0]
 MOV P2, 115
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L26
+JNZ L40
 ; Load player.y
 MOV P0, 290
 MOV P1, [P0]
@@ -633,14 +825,14 @@ ADD R1, R3
 MOV P0, 290
 MOV P1, R1
 MOV [P0], P1
-L26:
-MOV P0, 312
+L40:
+MOV P0, 314
 MOV P1, [P0]
 MOV P2, 131
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L28
+JNZ L42
 ; Load player.y
 MOV P0, 290
 MOV P1, [P0]
@@ -655,14 +847,14 @@ ADD R1, R3
 MOV P0, 290
 MOV P1, R1
 MOV [P0], P1
-L28:
-MOV P0, 312
+L42:
+MOV P0, 314
 MOV P1, [P0]
 MOV P2, 119
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L30
+JNZ L44
 ; Load player.y
 MOV P0, 290
 MOV P1, [P0]
@@ -677,14 +869,14 @@ SUB R1, R3
 MOV P0, 290
 MOV P1, R1
 MOV [P0], P1
-L30:
-MOV P0, 312
+L44:
+MOV P0, 314
 MOV P1, [P0]
 MOV P2, 130
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L32
+JNZ L46
 ; Load player.y
 MOV P0, 290
 MOV P1, [P0]
@@ -699,7 +891,7 @@ SUB R1, R3
 MOV P0, 290
 MOV P1, R1
 MOV [P0], P1
-L32:
+L46:
 MOV SP, FP
 POP FP
 RETN 0
@@ -737,14 +929,14 @@ SHL P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JGE L34
+JGE L48
 MOV R1, 1
 SHL R1, 3
 ; Store to player.x
 MOV P0, 288
 MOV P1, R1
 MOV [P0], P1
-L34:
+L48:
 ; Load player.x
 MOV P0, 288
 MOV P1, [P0]
@@ -752,13 +944,13 @@ MOV P2, 240
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JLE L36
+JLE L50
 MOV R1, 240
 ; Store to player.x
 MOV P0, 288
 MOV P1, R1
 MOV [P0], P1
-L36:
+L50:
 ; Load player.y
 MOV P0, 290
 MOV P1, [P0]
@@ -767,14 +959,14 @@ SHL P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JGE L38
+JGE L52
 MOV R1, 1
 SHL R1, 3
 ; Store to player.y
 MOV P0, 290
 MOV P1, R1
 MOV [P0], P1
-L38:
+L52:
 ; Load player.y
 MOV P0, 290
 MOV P1, [P0]
@@ -782,13 +974,15 @@ MOV P2, 232
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JLE L40
+JLE L54
 MOV R1, 232
 ; Store to player.y
 MOV P0, 290
 MOV P1, R1
 MOV [P0], P1
-L40:
+L54:
+MOV VM, 0
+MOV VL, 5
 CALL _func_drawplayer_2
 ; Load player.counter
 MOV P0, 298
@@ -798,7 +992,7 @@ SHL P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L45
+JNZ L59
 ; Load player.x
 MOV P0, 288
 MOV P1, [P0]
@@ -808,8 +1002,8 @@ MOV P2, [P0]
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JZ L44
-L45:
+JZ L58
+L59:
 ; Load player.y
 MOV P0, 290
 MOV P1, [P0]
@@ -819,10 +1013,10 @@ MOV P2, [P0]
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JZ L42
-L44:
+JZ L56
+L58:
 CALL _func_clearsword_4
-L42:
+L56:
 MOV SP, FP
 POP FP
 RETN 0
@@ -858,24 +1052,24 @@ RNDR R1, R0, R2
 ; Free R2 (last use)
 MOV P0, 0
 MOV :P0, R1
-MOV P1, 314
+MOV P1, 316
 MOV [P1], P0
 ; Load enemy.ecounter
 MOV P0, 308
 MOV P1, [P0]
 MOV P2, 1
-SHL P2, 6
+SHL P2, 5
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L46
-MOV P0, 314
+JNZ L60
+MOV P0, 316
 MOV P1, [P0]
 XOR P2, P2
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L48
+JNZ L62
 ; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
@@ -890,14 +1084,14 @@ SUB R1, R3
 MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
-L48:
-MOV P0, 314
+L62:
+MOV P0, 316
 MOV P1, [P0]
 MOV P2, 1
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L50
+JNZ L64
 ; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
@@ -912,15 +1106,15 @@ ADD R1, R3
 MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
-L50:
-MOV P0, 314
+L64:
+MOV P0, 316
 MOV P1, [P0]
 MOV P2, 1
 SHL P2, 1
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L52
+JNZ L66
 ; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
@@ -935,14 +1129,14 @@ SUB R1, R3
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L52:
-MOV P0, 314
+L66:
+MOV P0, 316
 MOV P1, [P0]
 MOV P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JNZ L54
+JNZ L68
 ; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
@@ -957,23 +1151,46 @@ ADD R1, R3
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L54:
+L68:
+MOV P0, 316
+MOV P1, [P0]
+MOV P2, 1
+SHL P2, 2
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L72
+MOV P0, 316
+MOV P1, [P0]
+MOV P2, 5
+CMP P1, P2
+; Free P1 (last use)
+; Free P2 (last use)
+JNZ L70
+L72:
+; Load enemy.ex
+MOV P0, 300
+MOV P1, [P0]
+; Store to enemy.ex
+MOV P0, 300
+MOV [P0], P1
+L70:
 ; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
 MOV P2, 1
-SHL P2, 3
+SHL P2, 4
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JGE L56
+JGE L73
 MOV R1, 1
-SHL R1, 3
+SHL R1, 4
 ; Store to enemy.ex
 MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
-L56:
+L73:
 ; Load enemy.ex
 MOV P0, 300
 MOV P1, [P0]
@@ -981,13 +1198,13 @@ MOV P2, 240
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JLE L58
+JLE L75
 MOV R1, 240
 ; Store to enemy.ex
 MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
-L58:
+L75:
 ; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
@@ -996,14 +1213,14 @@ SHL P2, 3
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JGE L60
+JGE L77
 MOV R1, 1
 SHL R1, 3
 ; Store to enemy.ey
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L60:
+L77:
 ; Load enemy.ey
 MOV P0, 302
 MOV P1, [P0]
@@ -1011,19 +1228,21 @@ MOV P2, 232
 CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
-JLE L62
+JLE L79
 MOV R1, 232
 ; Store to enemy.ey
 MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
-L62:
+L79:
 XOR R1, R1
 ; Store to enemy.ecounter
 MOV P0, 308
 MOV P1, R1
 MOV [P0], P1
-L46:
+L60:
+MOV VM, 0
+MOV VL, 6
 CALL _func_drawenemy_3
 MOV SP, FP
 POP FP
@@ -1031,5 +1250,6 @@ RETN 0
 STR0: DEFSTR "O"
 STR1: DEFSTR "X"
 STR2: DEFSTR "m"
-STR63: DEFSTR "--"
-STR66: DEFSTR "X                              X"
+STR80: DEFSTR "--"
+STR83: DEFSTR "X                              X"
+STR88: DEFSTR "WIN"

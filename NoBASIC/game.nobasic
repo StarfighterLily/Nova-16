@@ -1,6 +1,5 @@
 // Define game structs
-Struct
-    Player
+Struct Player
     x
     y
     oldx
@@ -8,13 +7,13 @@ Struct
     facing
     counter
 End
-Struct
-    Enemy
+Struct Enemy
     ex
     ey
     eoldx
     eoldy
     ecounter
+    ehit
 End
 
 // Initialize player variables
@@ -31,6 +30,7 @@ enemy.ey = 128
 enemy.eoldx = 128
 enemy.eoldy = 128
 enemy.ecounter = 0
+enemy.ehit = 0
 
 // Initialize other variables
 Str1 = "--"    // Sword sprite
@@ -72,16 +72,20 @@ Function drawEnemy()
     If enemy.eoldy <> enemy.ey Then
         renderEnemy(enemy.eoldx, enemy.eoldy, 0x00)
     End
-    renderEnemy(enemy.ex, enemy.ey, 0x0C)
+    If enemy.ehit <> 1 Then
+        renderEnemy(enemy.ex, enemy.ey, 0x0C)
+    End
 End
 
 Function clearSword()
+    SetLayer(5)
     player.counter = 0
     Text(player.oldx - 16, player.oldy + 8, Str1, 0x00)
     Text(player.oldx + 8, player.oldy + 8, Str1, 0x00)
 End
 
 Function attack()
+    SetLayer(5)
     If player.facing = 0 Then
         Text(player.x - 16, player.y + 8, Str1, 0x0F)
     End
@@ -89,6 +93,16 @@ Function attack()
        Text(player.x + 8, player.y + 8, Str1, 0x0F)
     End
     player.counter = 0
+
+    If player.facing = 1 and enemy.ex = player.x + 8 and enemy.ey = player.y + 8 Then
+        enemy.ehit = 1
+    End
+    If player.facing = 1 and enemy.ex = player.x + 16 and enemy.ey = player.y + 8 Then
+        enemy.ehit = 1
+    End
+    If player.facing = 0 and enemy.ex = player.x - 24 and enemy.ey = player.y + 8 Then
+        enemy.ehit = 1
+    End
 End
 
 Function keyCheck()
@@ -149,7 +163,7 @@ Function callPlayer()
     If player.y > 232 Then
         player.y = 232
     End
-
+    SetLayer(5)
     drawPlayer()
 
     If player.counter = 8 or player.x <> player.oldx or player.y <> player.oldy Then
@@ -163,7 +177,7 @@ Function callEnemy()
     enemy.eoldx = enemy.ex
     enemy.eoldy = enemy.ey
     direction = rndr(0, 3)
-    If enemy.ecounter = 64 Then
+    If enemy.ecounter = 32 Then
         If direction = 0 Then
             enemy.ex = enemy.ex - 8
         End
@@ -176,9 +190,12 @@ Function callEnemy()
         If direction = 3 Then
             enemy.ey = enemy.ey + 8
         End
+        If direction = 4 or direction = 5 Then
+            enemy.ex = enemy.ex
+        End
 
-        If enemy.ex < 8 Then
-            enemy.ex = 8
+        If enemy.ex < 16 Then
+            enemy.ex = 16
         End
         If enemy.ex > 240 Then
             enemy.ex = 240
@@ -191,13 +208,20 @@ Function callEnemy()
         End
         enemy.ecounter = 0
     End
-
+    SetLayer(6)
     drawEnemy()
 End
 
 // Main loop
 SetLayer(5)
-While 1
+While enemy.ehit <> 1
     callEnemy()
     callPlayer()
 End
+SetLayer(1)
+ClrDraw
+SetLayer(5)
+ClrDraw
+SetLayer(6)
+ClrDraw
+Text(0, 0, "WIN", 0x1F)
