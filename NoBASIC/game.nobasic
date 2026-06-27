@@ -37,21 +37,23 @@ Str1 = "--"    // Sword sprite
 
 // Initialize level
 SetLayer(1)
-For a = 0 to 248 Step 4
+For a = 0 to 248 Step 6
     Text(0, a, "X                              X", 0x1F)
 Next
 ScrRotate(0, 1)
-For a = 0 to 248 Step 4
+For a = 0 to 248 Step 6
     Text(0, a, "X                              X", 0x1F)
 Next
 
 // Function definitions
 Function renderPlayer(x, y, color)
+    SetLayer(5)
     Text(x, y, "O", color)
     Text(x, y + 8, "X", color)
 End
 
 Function renderEnemy(x, y, color)
+    SetLayer(6)
     Text(x, y, "m", color)
 End
 
@@ -94,14 +96,33 @@ Function attack()
     End
     player.counter = 0
 
-    If player.facing = 1 and enemy.ex = player.x + 8 and enemy.ey = player.y + 8 Then
-        enemy.ehit = 1
+    If player.facing = 1 Then
+        If enemy.ex = player.x + 8 Then
+            If enemy.ey = player.y + 8 Then
+                enemy.ehit = 1
+            End
+        End
     End
-    If player.facing = 1 and enemy.ex = player.x + 16 and enemy.ey = player.y + 8 Then
-        enemy.ehit = 1
+    If player.facing = 1 Then
+        If enemy.ex = player.x + 16 Then
+            If enemy.ey = player.y + 8 Then
+                enemy.ehit = 1
+            End
+        End
     End
-    If player.facing = 0 and enemy.ex = player.x - 24 and enemy.ey = player.y + 8 Then
-        enemy.ehit = 1
+    If player.facing = 0 Then
+        If enemy.ex = player.x - 16 Then
+            If enemy.ey = player.y + 8 Then
+                enemy.ehit = 1
+            End
+        End
+    End
+    If player.facing = 0 Then
+        If enemy.ex = player.x - 24 Then
+            If enemy.ey = player.y + 8 Then
+                enemy.ehit = 1
+            End
+        End
     End
 End
 
@@ -176,6 +197,7 @@ Function callEnemy()
 
     enemy.eoldx = enemy.ex
     enemy.eoldy = enemy.ey
+
     direction = rndr(0, 3)
     If enemy.ecounter = 32 Then
         If direction = 0 Then
@@ -189,9 +211,6 @@ Function callEnemy()
         End
         If direction = 3 Then
             enemy.ey = enemy.ey + 8
-        End
-        If direction = 4 or direction = 5 Then
-            enemy.ex = enemy.ex
         End
 
         If enemy.ex < 16 Then
