@@ -1,3 +1,6 @@
+Fixes:
+Lists
+
 Pipeline Optimizations
 
 Add --asm-only / --no-assemble mode in nobasic_compiler.py.
