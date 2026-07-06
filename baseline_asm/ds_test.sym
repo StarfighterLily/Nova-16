@@ -1,0 +1,6 @@
+# Symbol table
+# Format: <symbol> <value>
+BUFFER 0x0000
+DATA 0x000A
+END_BUFFER 0x000D
+START 0x0012

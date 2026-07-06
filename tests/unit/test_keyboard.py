@@ -246,7 +246,7 @@ class TestKeyboardBufferStatus:
     def test_buffer_status_no_cpu(self, keyboard_device):
         """Test buffer status when no CPU is attached."""
         status = keyboard_device.get_buffer_status()
-        assert status == {'available': 0, 'count': 0, 'status': 0}
+        assert status == {'available': 0, 'count': 0, 'status': 0, 'full': 0}
 
     def test_buffer_status_with_cpu(self, keyboard_device, cpu):
         """Test buffer status with CPU attached."""
@@ -563,7 +563,7 @@ class TestKeyboardEdgeCases:
         """Test memory reference handling edge cases."""
         # No CPU reference
         status = keyboard_device.get_buffer_status()
-        assert status == {'available': 0, 'count': 0, 'status': 0}
+        assert status == {'available': 0, 'count': 0, 'status': 0, 'full': 0}
 
         # With CPU reference
         keyboard_device.cpu = cpu

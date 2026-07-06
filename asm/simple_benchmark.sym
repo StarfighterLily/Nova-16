@@ -1,0 +1,5 @@
+# Symbol table
+# Format: <symbol> <value>
+RESULT_ADDR 0x2000
+MAIN 0x1000
+TIMING_LOOP 0x1008

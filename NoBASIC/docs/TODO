@@ -1,8 +1,7 @@
-Fixes:
+**Fixes**
 Lists
 
-Pipeline Optimizations
-
+**Pipeline Optimizations**
 Add --asm-only / --no-assemble mode in nobasic_compiler.py.
 Skip assembler invocation during iteration or test loops.
 Compile-time gain: typically ~30-70% faster edit-compile cycles for codegen-only work.
@@ -17,3 +16,6 @@ Not direct speedup, but improves optimization ROI quickly.
 
 **Additions**
 Peek/poke instructions for memory ops.
+
+**Aftermarket**
+Convert IR to LLVM IR to target other architectures

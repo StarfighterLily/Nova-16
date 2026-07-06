@@ -58,6 +58,41 @@ def cpu(memory, graphics, keyboard_device, sound_system):
 
 
 @pytest.fixture
+def bus():
+    """Create a fresh event bus for testing."""
+    from nova.bus.eventbus import EventBus
+    return EventBus()
+
+
+@pytest.fixture
+def cpu_with_timer(bus, memory, graphics, keyboard_device, sound_system):
+    """Create a CPU instance wired with event bus, timer, and interrupt controller."""
+    from nova.bus.interrupt import InterruptController
+    from nova.peripherals.timer import Timer
+
+    intr = InterruptController(bus, cpu=None, memory=memory)
+    timer = Timer(bus, interrupt_controller=intr)
+    cpu = cpu_mod.CPU(
+        memory, graphics, keyboard_device, sound_system,
+        bus=bus, interrupt_controller=intr, timer_device=timer
+    )
+    intr.cpu = cpu
+    intr.memory = memory
+    return cpu
+
+
+@pytest.fixture
+def memory_with_bus(bus, graphics):
+    """Create a memory instance connected to an event bus and graphics."""
+    from nova.memory import Memory
+    memory = Memory(bus=bus)
+    # Wire graphics sprite engine to the same bus so SCB events are received
+    graphics._sprites.bus = bus
+    bus.subscribe('memory.scb_written', graphics._sprites._on_scb_write)
+    return memory
+
+
+@pytest.fixture
 def test_program():
     """Sample test program for assembler testing."""
     return """

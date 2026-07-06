@@ -1,4 +1,4 @@
 # Symbol table
 # Format: <symbol> <value>
-loop_start 0x0029
-done 0x002E
+LOOP_START 0x0029
+DONE 0x002E

@@ -1,7 +1,7 @@
 import sys
 import argparse
 import nova_cpu as cpu
-import nova_memory as ram
+from nova.memory import Memory as ram
 import nova_gfx as gpu
 import nova_sound as sound
 import nova_keyboard as keyboard
@@ -188,8 +188,8 @@ class NovaDebugger:
         print(f"SA: 0x{self.sound.SA:04X} SF: 0x{self.sound.SF:04X} SV: 0x{self.sound.SV:04X} SW: 0x{self.sound.SW:04X}")
         print(f"TT: 0x{self.cpu.timer[0]:04X} TM: 0x{self.cpu.timer[1]:04X} TC: 0x{self.cpu.timer[2]:04X} TS: 0x{self.cpu.timer[3]:04X}")
         # Show flags if available
-        if hasattr(self.cpu, '_flags'):
-            print("FLAGS:", ' '.join(str(int(f)) for f in self.cpu._flags))
+        if hasattr(self.cpu, 'flags_obj'):
+            print("FLAGS:", ' '.join(str(self.cpu.flags_obj[i]) for i in range(12)))
 
     def print_current_instruction(self):
         """Print the current instruction at PC"""

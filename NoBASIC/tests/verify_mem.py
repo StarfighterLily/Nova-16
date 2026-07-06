@@ -5,7 +5,7 @@ Quick memory dump utility to verify MEMREAD/MEMWRITE
 import sys
 sys.path.insert(0, 'c:\\Code\\Nova')
 
-from nova_memory import Memory
+from nova.memory import Memory
 
 # Load the binary
 memory = Memory()

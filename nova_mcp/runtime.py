@@ -28,7 +28,7 @@ try:
     import nova_disassembler
     import nova_gfx as gfx_module
     import nova_keyboard as keyboard_module
-    import nova_memory as memory_module
+    from nova.memory import Memory as memory_module
     import nova_sound as sound_module
 except ImportError as exc:
     print(f"Error importing Nova modules: {exc}", file=sys.stderr)
@@ -90,18 +90,24 @@ def cleanup_emulator() -> None:
 
 
 def initialize_emulator(force_clean: bool = True):
-    """Initialize the Nova-16 emulator components."""
+    """Initialize the Nova-16 emulator components with event-bus architecture."""
     if force_clean and _emulator_state["cpu"] is not None:
         cleanup_emulator()
 
-    mem = memory_module.Memory()
-    gfx = gfx_module.GFX(256, 256)
-    kbd = keyboard_module.NovaKeyboard()
+    # Create shared event bus first (per Phase 3 architecture)
+    from nova.bus import EventBus, InterruptController
+    bus = EventBus()
+
+    mem = memory_module(bus=bus)
+    gfx = gfx_module.GFX()
+    kbd = keyboard_module.NovaKeyboard(bus=bus)
     snd = sound_module.NovaSound()
 
-    proc = cpu_module.CPU(mem, gfx, kbd, snd)
-    kbd.cpu = proc
-    mem.gfx_system = gfx
+    intr_ctrl = InterruptController(bus=bus, cpu=None, memory=mem)
+
+    proc = cpu_module.CPU(mem, gfx, kbd, snd,
+                         bus=bus, interrupt_controller=intr_ctrl)
+    intr_ctrl.cpu = proc
 
     _emulator_state.update(
         {

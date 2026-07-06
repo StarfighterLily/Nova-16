@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, 'c:\\Code\\Nova')
 
 from nova_cpu import CPU
-from nova_memory import Memory
+from nova.memory import Memory
 from nova_gfx import GFX
 from nova_keyboard import NovaKeyboard
 from nova_sound import NovaSound

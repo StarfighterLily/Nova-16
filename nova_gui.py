@@ -10,7 +10,7 @@ import time
 # Keep these imports for type hinting and the __main__ block
 import nova_gfx as gpu
 import nova_cpu as cpu
-import nova_memory as mem
+from nova.memory import Memory as mem
 import nova_uart as uart
 
 
@@ -104,8 +104,8 @@ class CPUController:
         
         # Reset any keyboard state if available
         if hasattr(self.cpu, 'keyboard_device') and self.cpu.keyboard_device:
-            if hasattr(self.cpu.keyboard_device, 'key_buffer'):
-                self.cpu.keyboard_device.key_buffer.clear()
+            if hasattr(self.cpu.keyboard_device, 'clear_buffer'):
+                self.cpu.keyboard_device.clear_buffer()
         
         # Force immediate screen update after reset
         self.force_update = True

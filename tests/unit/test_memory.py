@@ -19,11 +19,11 @@ class TestMemoryInitialization:
         """Test that memory is initialized to zeros."""
         assert np.all(memory.memory == 0)
 
-    def test_timer_initialization(self, memory):
-        """Test timer initialization."""
-        assert memory.timer == 0
-        assert memory.timer_limit == 256
-        assert memory.interrupt_enabled == False
+    def test_timer_removed_from_memory(self, memory):
+        """Timer functionality was moved to a standalone peripheral (Phase 7)."""
+        assert not hasattr(memory, 'timer')
+        assert not hasattr(memory, 'timer_limit')
+        assert not hasattr(memory, 'interrupt_enabled')
 
 
 class TestMemoryReadWrite:
@@ -123,25 +123,22 @@ class TestMemoryLoadSave:
 
 
 class TestMemorySpriteIntegration:
-    """Test sprite memory region integration."""
+    """Test sprite memory region integration via event bus."""
 
-    def test_sprite_memory_write_triggers_dirty_flag(self, memory, graphics):
-        """Test that writing to sprite memory marks sprites as dirty."""
-        memory.gfx_system = graphics
-        graphics.sprites_dirty = False
-
+    def test_sprite_memory_write_triggers_dirty_flag(self, memory_with_bus, graphics):
+        """Test that writing to sprite memory marks sprites as dirty via event bus."""
+        memory = memory_with_bus
         # Write to sprite memory region
         memory.write_byte(0xF000, 0x42)
-        assert graphics.sprites_dirty == True
+        # The sprite engine should have received the event
+        assert graphics._sprites._pending_dirty == True
 
-    def test_non_sprite_memory_write_no_dirty_flag(self, memory, graphics):
+    def test_non_sprite_memory_write_no_dirty_flag(self, memory_with_bus, graphics):
         """Test that writing outside sprite memory doesn't affect dirty flag."""
-        memory.gfx_system = graphics
-        graphics.sprites_dirty = False
-
+        memory = memory_with_bus
         # Write outside sprite memory
         memory.write_byte(0x1000, 0x42)
-        assert graphics.sprites_dirty == False
+        assert graphics._sprites._pending_dirty == False
 
 
 class TestMemoryDump:
@@ -504,7 +501,7 @@ class TestMemoryLoadSaveEdgeCases:
         memory.save(str(roundtrip_file))
 
         # Create new memory and load
-        from nova_memory import Memory
+        from nova.memory import Memory
         new_memory = Memory()
 
         new_memory.load(str(roundtrip_file))
@@ -553,277 +550,85 @@ class TestMemorySpriteIntegrationEdgeCases:
         assert memory.read_word(0xF020) == 0x0000  # Should wrap or truncate
 
 
-class TestMemoryCacheCoherence:
-    """Regression tests for cache coherence during direct memory updates."""
+class TestMemoryCacheRemoved:
+    """Regression tests confirming cache removal (Phase 4/5 reimplantation)."""
 
-    def test_read_bytes_direct_rejects_negative_inputs(self, memory):
-        """Direct reads should reject negative addresses and counts instead of indexing from the end."""
-        with pytest.raises(IndexError):
-            memory.read_bytes_direct(-1, 1)
+    def test_lru_cache_removed(self, memory):
+        """LRU cache was eliminated in Phase 5."""
+        assert not hasattr(memory, 'lru_cache')
 
-        with pytest.raises(ValueError):
-            memory.read_bytes_direct(0, -1)
+    def test_zero_page_cache_removed(self, memory):
+        """Zero-page cache was eliminated in Phase 5."""
+        assert not hasattr(memory, 'zero_page_cache')
+        assert not hasattr(memory, 'zero_page_dirty')
 
-    def test_cached_region_writes_do_not_pollute_lru_cache(self, memory):
-        """Zero-page and interrupt-vector writes should stay in their dedicated caches only."""
+    def test_interrupt_vector_cache_removed(self, memory):
+        """Interrupt-vector cache was eliminated in Phase 5."""
+        assert not hasattr(memory, 'interrupt_vector_cache')
+        assert not hasattr(memory, 'interrupt_vector_dirty')
+
+    def test_cpu_cache_attributes_removed(self, cpu):
+        """CPU-side caches were eliminated in Phase 4."""
+        assert not hasattr(cpu, 'instruction_cache')
+        assert not hasattr(cpu, 'cache_enabled')
+        assert not hasattr(cpu, 'prefetch_valid')
+        assert not hasattr(cpu, 'cache_misses')
+        assert not hasattr(cpu, 'cache_hits')
+
+    def test_direct_write_immediately_visible(self, memory):
+        """With no cache, writes are immediately visible in backing memory."""
         memory.write_byte(0x0001, 0xAA)
-        memory.write_byte(0x0102, 0xBB)
-
-        assert 0x0001 not in memory.lru_cache
-        assert 0x0102 not in memory.lru_cache
-        assert memory.read_byte(0x0001) == 0xAA
-        assert memory.read_byte(0x0102) == 0xBB
-
-    def test_general_region_writes_still_seed_lru_cache(self, memory):
-        """Non-cached regions should still seed the LRU for read locality."""
-        memory.write_byte(0x2000, 0xCC)
-
-        assert memory.lru_cache[0x2000] == 0xCC
-        assert memory.read_byte(0x2000) == 0xCC
-
-    def test_load_binary_refreshes_cached_regions(self, memory):
-        """Direct binary loads should refresh cached regions and invalidate stale LRU entries."""
-        memory.write_byte(0x0005, 0xAA)
-        memory.write_byte(0x0105, 0xBB)
-
-        memory.memory[0x2000] = 0x33
-        assert memory.read_byte(0x2000) == 0x33
-        assert 0x2000 in memory.lru_cache
-
-        memory.load_binary(b'\x11\x22', address=0x0005)
-        memory.load_binary(b'\x44', address=0x0105)
-        memory.load_binary(b'\x55', address=0x2000)
-
-        assert memory.zero_page_dirty is False
-        assert memory.interrupt_vector_dirty is False
-        assert 0x2000 not in memory.lru_cache
-        assert memory.read_byte(0x0005) == 0x11
-        assert memory.read_byte(0x0006) == 0x22
-        assert memory.read_byte(0x0105) == 0x44
-        assert memory.read_byte(0x2000) == 0x55
-
-    def test_load_program_invalidates_cpu_views_and_marks_sprite_region(self, cpu, graphics):
-        """In-memory program loads should invalidate affected CPU views and sprite state."""
-        memory = cpu.memory
-        memory.gfx_system = graphics
-        graphics.sprites_dirty = False
-        cpu.cache_enabled = True
-        cpu.instruction_cache[0xF000] = ("sprite-program",)
-        cpu.instruction_cache[0xF100] = ("outside-range",)
-        cpu.prefetch_valid = True
-
-        memory.load_program([0x12, 0x34], address=0xF000)
-
-        assert memory.zero_page_dirty is False
-        assert memory.interrupt_vector_dirty is False
-        assert memory.read_byte(0xF000) == 0x12
-        assert memory.read_byte(0xF001) == 0x34
-        assert 0xF000 not in cpu.instruction_cache
-        assert 0xF100 in cpu.instruction_cache
-        assert cpu.prefetch_valid is False
-        assert graphics.sprites_dirty is True
-
-    def test_load_with_org_info_invalidates_each_loaded_range_and_marks_sprite_region(self, cpu, graphics, tmp_path):
-        """ORG-aware loads should invalidate CPU state for each segment and preserve unrelated cache entries."""
-        memory = cpu.memory
-        memory.gfx_system = graphics
-        graphics.sprites_dirty = False
-        cpu.cache_enabled = True
-        cpu.instruction_cache[0x0001] = ("zero-page",)
-        cpu.instruction_cache[0xF000] = ("sprite",)
-        cpu.instruction_cache[0x1000] = ("untouched",)
-        cpu.prefetch_valid = True
-
-        bin_file = tmp_path / "segmented.bin"
-        bin_file.write_bytes(b"\x11\x22\x33")
-
-        org_file = tmp_path / "segmented.org"
-        org_file.write_text("0001 2 0\nF000 1 2\n")
-
-        entry_point = memory.load_with_org_info(str(bin_file), str(org_file))
-
-        assert entry_point == 0x0001
-        assert memory.zero_page_dirty is False
-        assert memory.interrupt_vector_dirty is False
-        assert memory.read_byte(0x0001) == 0x11
-        assert memory.read_byte(0x0002) == 0x22
-        assert memory.read_byte(0xF000) == 0x33
-        assert 0x0001 not in cpu.instruction_cache
-        assert 0xF000 not in cpu.instruction_cache
-        assert 0x1000 in cpu.instruction_cache
-        assert cpu.prefetch_valid is False
-        assert graphics.sprites_dirty is True
-
-    def test_load_invalidates_loaded_range_and_marks_sprite_region(self, cpu, graphics, tmp_path):
-        """Legacy file loads should restore coherence after direct backing-memory writes."""
-        memory = cpu.memory
-        memory.gfx_system = graphics
-        graphics.sprites_dirty = False
-        cpu.cache_enabled = True
-        cpu.instruction_cache[0x0000] = ("entry",)
-        cpu.instruction_cache[0xF000] = ("sprite",)
-        cpu.instruction_cache[0xF100] = ("outside-range",)
-        cpu.prefetch_valid = True
-
-        bin_file = tmp_path / "legacy.bin"
-        bin_file.write_bytes(b"\xAA" * 0xF001)
-
-        entry_point = memory.load(str(bin_file))
-
-        assert entry_point == 0x0000
-        assert memory.zero_page_dirty is False
-        assert memory.interrupt_vector_dirty is False
-        assert memory.read_byte(0x0000) == 0xAA
-        assert memory.read_byte(0xF000) == 0xAA
-        assert 0x0000 not in cpu.instruction_cache
-        assert 0xF000 not in cpu.instruction_cache
-        assert 0xF100 in cpu.instruction_cache
-        assert cpu.prefetch_valid is False
-        assert graphics.sprites_dirty is True
-
-    def test_write_bytes_direct_preserves_cache_coherence_and_side_effects(self, cpu, graphics):
-        """Direct writes should refresh caches and trigger the same side effects as byte writes."""
-        memory = cpu.memory
-        memory.gfx_system = graphics
-        cpu.cache_enabled = True
-        cpu.instruction_cache[0x0001] = ("cached",)
-        cpu.prefetch_valid = True
-        graphics.sprites_dirty = False
-
-        memory.write_byte(0x0001, 0xAA)
-        memory.write_byte(0x0102, 0xBB)
-        memory.memory[0x2000] = 0x33
-        assert memory.read_byte(0x2000) == 0x33
-        assert 0x2000 in memory.lru_cache
-
-        memory.write_bytes_direct(0x0001, [0x11, 0x22])
-        memory.write_bytes_direct(0x0102, [0x44])
-        memory.write_bytes_direct(0x2000, [0x1FF, -1])
-        memory.write_bytes_direct(0xF000, [0x66])
-
-        assert memory.zero_page_dirty is False
-        assert memory.interrupt_vector_dirty is False
-        assert cpu.prefetch_valid is False
-        assert 0x0001 not in cpu.instruction_cache
-        assert 0x2000 not in memory.lru_cache
-        assert graphics.sprites_dirty is True
-        assert memory.read_byte(0x0001) == 0x11
-        assert memory.read_byte(0x0002) == 0x22
-        assert memory.read_byte(0x0102) == 0x44
-        assert memory.read_byte(0x2000) == 0xFF
-        assert memory.read_byte(0x2001) == 0xFF
-        assert memory.read_byte(0xF000) == 0x66
-
-
-class TestMemoryCoherentExports:
-    """Regression tests for export and inspection paths that read backing memory directly."""
-
-    def test_save_flushes_deferred_cached_regions(self, memory, tmp_path):
-        """Saving memory should persist cached zero-page and interrupt-vector writes without a manual flush."""
-        memory.write_byte(0x0001, 0xAA)
-        memory.write_byte(0x0102, 0xBB)
-
-        assert memory.zero_page_dirty is True
-        assert memory.interrupt_vector_dirty is True
-        assert memory.memory[0x0001] == 0x00
-        assert memory.memory[0x0102] == 0x00
-
-        save_file = tmp_path / "cached_regions.bin"
-        memory.save(str(save_file))
-        saved_data = save_file.read_bytes()
-
-        assert memory.zero_page_dirty is False
-        assert memory.interrupt_vector_dirty is False
+        # Should be immediately visible in the backing array
         assert memory.memory[0x0001] == 0xAA
-        assert memory.memory[0x0102] == 0xBB
-        assert saved_data[0x0001] == 0xAA
-        assert saved_data[0x0102] == 0xBB
 
-    def test_dump_flushes_deferred_cached_regions(self, memory, capsys):
-        """Memory dumps should reflect pending cached writes before printing backing memory."""
-        memory.write_byte(0x0001, 0xAA)
-        memory.write_byte(0x0102, 0xBB)
-
-        assert memory.zero_page_dirty is True
-        assert memory.interrupt_vector_dirty is True
-        assert memory.memory[0x0001] == 0x00
-        assert memory.memory[0x0102] == 0x00
-
-        memory.dump()
-        captured = capsys.readouterr()
-
-        assert memory.zero_page_dirty is False
-        assert memory.interrupt_vector_dirty is False
-        assert memory.memory[0x0001] == 0xAA
-        assert memory.memory[0x0102] == 0xBB
-        assert "0000: 00 AA" in captured.out
-        assert "0100: 00 00 BB" in captured.out
-
-
-class TestMemoryResetCoherence:
-    """Regression tests for full memory clears and CPU-facing cache coherence."""
-
-    def test_reset_clears_cache_state_and_invalidates_cpu_views(self, cpu, graphics):
-        """Reset should clear all memory-backed cache state and invalidate CPU-side views."""
-        memory = cpu.memory
-        memory.gfx_system = graphics
-        graphics.sprites_dirty = False
-        cpu.cache_enabled = True
-        cpu.instruction_cache[0x0001] = ("cached",)
-        cpu.prefetch_valid = True
-
+    def test_memory_reset_clears_all(self, memory):
+        """Reset should clear all memory to zero."""
         memory.write_byte(0x0001, 0xAA)
         memory.write_byte(0x0102, 0xBB)
         memory.write_byte(0x2000, 0xCC)
-        memory.read_byte(0x2000)
-
-        assert memory.zero_page_dirty is True
-        assert memory.interrupt_vector_dirty is True
-        assert len(memory.lru_cache) > 0
 
         memory.reset()
 
         assert memory.read_byte(0x0001) == 0x00
         assert memory.read_byte(0x0102) == 0x00
         assert memory.read_byte(0x2000) == 0x00
-        assert memory.zero_page_dirty is False
-        assert memory.interrupt_vector_dirty is False
-        assert len(memory.lru_cache) == 1
-        assert memory.cache_hits == 0
-        assert memory.cache_misses == 1
-        assert cpu.prefetch_valid is False
-        assert cpu.instruction_cache == {}
-        assert graphics.sprites_dirty is True
+        assert np.all(memory.memory == 0)
 
-    def test_cpu_fetch_bytes_reads_pending_cached_values(self, cpu):
-        """CPU multi-byte fetches should see lazy-write cached regions without requiring a flush."""
-        cpu.pc = 0x0000
-        cpu.memory.write_byte(0x0000, 0x11)
-        cpu.memory.write_byte(0x0001, 0x22)
-        cpu.memory.write_byte(0x0002, 0x33)
-
-        assert cpu.memory.memory[0x0000] == 0x00
-        assert cpu.memory.memory[0x0001] == 0x00
-        assert cpu.memory.memory[0x0002] == 0x00
-
-        result = cpu.fetch_bytes(3)
-
-        assert result == [0x11, 0x22, 0x33]
-        assert cpu.pc == 0x0003
-
-    def test_cpu_reinit_resets_dirty_cached_regions(self, cpu):
-        """CPU reinitialization should clear pending cached writes as well as backing memory."""
+    def test_cpu_reinit_clears_memory(self, cpu):
+        """CPU reinitialization should clear memory."""
         cpu.memory.write_byte(0x0001, 0xAA)
         cpu.memory.write_byte(0x0102, 0xBB)
         cpu.memory.write_byte(0x2000, 0xCC)
-
-        assert cpu.memory.zero_page_dirty is True
-        assert cpu.memory.interrupt_vector_dirty is True
 
         cpu.reinit()
 
         assert cpu.memory.read_byte(0x0001) == 0x00
         assert cpu.memory.read_byte(0x0102) == 0x00
         assert cpu.memory.read_byte(0x2000) == 0x00
-        assert cpu.memory.zero_page_dirty is False
-        assert cpu.memory.interrupt_vector_dirty is False
+
+    def test_save_no_flush_needed(self, memory, tmp_path):
+        """With no cache, save needs no flush."""
+        memory.write_byte(0x0001, 0xAA)
+        memory.write_byte(0x0102, 0xBB)
+
+        # Data should already be in backing memory
+        assert memory.memory[0x0001] == 0xAA
+        assert memory.memory[0x0102] == 0xBB
+
+        save_file = tmp_path / "no_flush.bin"
+        memory.save(str(save_file))
+        saved_data = save_file.read_bytes()
+
+        assert saved_data[0x0001] == 0xAA
+        assert saved_data[0x0102] == 0xBB
+
+    def test_dump_no_flush_needed(self, memory, capsys):
+        """With no cache, dump needs no flush."""
+        memory.write_byte(0x0001, 0xAA)
+        memory.write_byte(0x0102, 0xBB)
+
+        memory.dump()
+        captured = capsys.readouterr()
+
+        assert "0000: 00 AA" in captured.out
+        assert "0100: 00 00 BB" in captured.out

@@ -24,7 +24,7 @@ from nobasic_compiler import generate_with_error_remapping, resolve_source_file_
 # Add Nova-16 emulator imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import nova_cpu as cpu
-import nova_memory as ram
+from nova.memory import Memory as ram
 import nova_gfx as gpu
 import nova_sound as sound
 import nova_keyboard as keyboard

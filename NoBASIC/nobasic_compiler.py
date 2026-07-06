@@ -21,6 +21,7 @@ from compiler.lexer.lexer import Lexer
 from compiler.parser.parser import Parser
 from compiler.semantic.analyzer import SemanticAnalyzer
 from compiler.codegen.generator import CodeGenerator
+from compiler.codegen.llvm_ir_generator import LLVMIRGenerator
 from compiler.utils.error import CodeGenError, CompilerError
 
 
@@ -430,13 +431,24 @@ def _remove_stale_binary(binary_file: Path) -> None:
         raise CompilerError(f"Failed to remove stale binary '{binary_file}': {exc}", str(binary_file), 1, 1)
 
 
-def _prepare_output_file_path(output_file: Optional[str], resolved_source_file: Path) -> Path:
-    """Resolve the assembly output path and create its parent directory when needed."""
-    output_path = resolved_source_file.with_suffix('.asm') if output_file is None else Path(output_file)
+def _prepare_output_file_path(output_file: Optional[str], resolved_source_file: Path, target: str = "nova") -> Path:
+    """Resolve the output path and create its parent directory when needed.
 
-    if output_path.suffix.lower() != '.asm':
+    Args:
+        output_file: Explicit output path, or None to derive from source
+        resolved_source_file: The resolved source path
+        target: Target backend ('nova' or 'llvm')
+
+    Returns:
+        Resolved Path for the output file
+    """
+    expected_suffix = '.ll' if target == 'llvm' else '.asm'
+    output_path = resolved_source_file.with_suffix(expected_suffix) if output_file is None else Path(output_file)
+
+    expected_name = "LLVM IR" if target == 'llvm' else "assembly"
+    if output_path.suffix.lower() != expected_suffix:
         raise CompilerError(
-            f"Output file must have .asm extension: {output_path}",
+            f"Output file must have {expected_suffix} extension for target '{target}': {output_path}",
             str(output_path),
             1,
             1,
@@ -472,20 +484,22 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
                     enable_optimizations: bool = True, debug_optimizations: bool = False,
                     enable_peephole: bool = True, enable_live_range_scheduling: bool = True,
                     log: Optional[Callable[[str], None]] = print,
-                    assemble_callback: Optional[Callable[[Path, bool, Callable[[str], None]], bool]] = None):
+                    assemble_callback: Optional[Callable[[Path, bool, Callable[[str], None]], bool]] = None,
+                    target: str = "nova"):
     """
-    Compile a NoBASIC source file to Nova-16 assembly and binary.
+    Compile a NoBASIC source file.
 
     Args:
         source_file: Path to the .nobasic source file
-        output_file: Path to the output .asm file (optional)
+        output_file: Path to the output file (optional, extension determines target)
         verbose: Enable verbose output
         enable_optimizations: Enable compiler optimizations (default: True)
         debug_optimizations: Enable optimization debug output (default: False)
         enable_peephole: Enable peephole optimizer (default: True)
         enable_live_range_scheduling: Enable live range scheduler (default: True)
         log: Optional callback for compiler messages; defaults to print
-        assemble_callback: Optional callback to assemble the generated .asm file in-process
+        assemble_callback: Optional callback to assemble the generated .asm file in-process (nova target only)
+        target: Target backend ('nova' or 'llvm', default: 'nova')
     """
     line_map: SourceLineMap = []
     resolved_source_file: Optional[Path] = None
@@ -501,6 +515,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
 
         if verbose:
             emit(f"Compiling {source_file}...")
+            emit(f"Target: {target}")
             if enable_optimizations:
                 emit("Optimizations: ENABLED")
                 if enable_peephole:
@@ -519,16 +534,23 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         if verbose:
             emit("Semantic analysis complete")
 
-        # Code generation with optimizations configuration
-        generator = CodeGenerator(
-            debug_allocation=debug_optimizations,
-            enable_optimizations=enable_optimizations,
-            enable_peephole=enable_peephole,
-            enable_live_range_scheduling=enable_live_range_scheduling
-        )
-        if debug_optimizations:
-            generator.opt_config['debug_optimizations'] = True
-        assembly = generate_with_error_remapping(
+        if target == "llvm":
+            # Generate LLVM IR
+            generator = LLVMIRGenerator(debug=debug_optimizations)
+            output_ext = '.ll'
+        else:
+            # Code generation with optimizations configuration (Nova-16 assembly)
+            generator = CodeGenerator(
+                debug_allocation=debug_optimizations,
+                enable_optimizations=enable_optimizations,
+                enable_peephole=enable_peephole,
+                enable_live_range_scheduling=enable_live_range_scheduling
+            )
+            if debug_optimizations:
+                generator.opt_config['debug_optimizations'] = True
+            output_ext = '.asm'
+
+        output_code = generate_with_error_remapping(
             generator,
             pipeline.ast,
             str(resolved_source_file),
@@ -539,31 +561,36 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
             emit("Code generation complete")
 
         # Determine output file and ensure the destination exists.
-        output_path = _prepare_output_file_path(output_file, resolved_source_file)
+        output_path = _prepare_output_file_path(output_file, resolved_source_file, target)
 
-        # Write assembly
-        with open(output_path, 'w') as f:
-            f.write(assembly)
-
-        if verbose:
-            emit(f"Assembly written to {output_path}")
-
-        binary_file = output_path.with_suffix('.bin')
-        _remove_stale_binary(binary_file)
+        # Write output (use UTF-8 to support any special characters in comments)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(output_code)
 
         if verbose:
-            emit(f"Assembling {output_path} to {binary_file}...")
+            output_type = "LLVM IR" if target == "llvm" else "Assembly"
+            emit(f"{output_type} written to {output_path}")
 
-        _assemble_output(output_path, binary_file, verbose, emit, assemble_callback)
+        if target == "llvm":
+            emit(f"Compilation successful: {output_path}")
+        else:
+            # Nova-16 assembly target: assemble to binary
+            binary_file = output_path.with_suffix('.bin')
+            _remove_stale_binary(binary_file)
 
-        if not binary_file.exists():
-            emit(f"Binary file not created at {binary_file}")
-            sys.exit(1)
+            if verbose:
+                emit(f"Assembling {output_path} to {binary_file}...")
 
-        if verbose:
-            emit(f"Binary written to {binary_file}")
+            _assemble_output(output_path, binary_file, verbose, emit, assemble_callback)
 
-        emit(f"Compilation successful: {output_path} and {binary_file}")
+            if not binary_file.exists():
+                emit(f"Binary file not created at {binary_file}")
+                sys.exit(1)
+
+            if verbose:
+                emit(f"Binary written to {binary_file}")
+
+            emit(f"Compilation successful: {output_path} and {binary_file}")
 
     except CompilerError as e:
         main_source_for_remap = str(resolved_source_file) if resolved_source_file is not None else source_file
@@ -583,7 +610,7 @@ def main():
         print("Usage: python nobasic_compiler.py <source.nobasic> [options]")
         print()
         print("Options:")
-        print("  --output <file.asm>        Output assembly file (default: same as source with .asm)")
+        print("  --output <file>            Output file (default: same as source with .asm or .ll)")
         print("  --verbose                  Enable verbose output")
         print("  --enable-optimizations     Enable compiler optimizations (default: enabled)")
         print("  --disable-optimizations    Disable compiler optimizations")
@@ -592,6 +619,7 @@ def main():
         print("  --enable-live-range        Enable live range scheduling (default: enabled)")
         print("  --disable-live-range       Disable live range scheduling")
         print("  --debug-optimizations      Enable optimization debug output")
+        print("  --target <backend>         Target backend: 'nova' (default) or 'llvm'")
         sys.exit(1)
 
     source_file = sys.argv[1]
@@ -601,6 +629,7 @@ def main():
     debug_optimizations = False
     enable_peephole = True
     enable_live_range_scheduling = True
+    target = "nova"
 
     # Parse command line arguments
     i = 2
@@ -624,6 +653,16 @@ def main():
         elif arg == "--debug-optimizations":
             debug_optimizations = True
             enable_optimizations = True  # Debug implies optimizations enabled
+        elif arg == "--target":
+            if i + 1 < len(sys.argv):
+                target = sys.argv[i + 1].lower()
+                if target not in ("nova", "llvm"):
+                    print(f"Error: Unknown target '{target}'. Options: 'nova', 'llvm'")
+                    sys.exit(1)
+                i += 1
+            else:
+                print("Error: --target requires an argument (nova or llvm)")
+                sys.exit(1)
         elif arg == "--output":
             if i + 1 < len(sys.argv):
                 output_file = sys.argv[i + 1]
@@ -644,7 +683,7 @@ def main():
         enable_optimizations = True
 
     compile_nobasic(source_file, output_file, verbose, enable_optimizations, debug_optimizations,
-                    enable_peephole, enable_live_range_scheduling)
+                    enable_peephole, enable_live_range_scheduling, target=target)
 
 
 if __name__ == "__main__":

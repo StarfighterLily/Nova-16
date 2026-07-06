@@ -1,0 +1,6 @@
+# Symbol table
+# Format: <symbol> <value>
+DEBUG 1
+DEBUG_MSG 0x0000
+TEST_DATA 0x000A
+MAIN 0x000B

@@ -2,10 +2,17 @@
 """Nova-16 mouse device with CPU-visible registers and hardware cursor state."""
 
 from __future__ import annotations
+from typing import Optional
+from nova.bus.eventbus import EventBus
 
 
 class NovaMouse:
-    """Track mouse position/buttons and synchronize the hardware cursor overlay."""
+    """Track mouse position/buttons and synchronize the hardware cursor overlay.
+    
+    Publishes ``mouse.button_changed`` and ``mouse.moved`` events on the event bus
+    when button state or position changes, enabling the InterruptController to
+    trigger mouse interrupts without a direct CPU reference.
+    """
 
     CURSOR_BITMAP = (
         (1, 1, 1, 0),
@@ -17,9 +24,10 @@ class NovaMouse:
     LEFT_BUTTON_MASK = 0x01
     RIGHT_BUTTON_MASK = 0x02
 
-    def __init__(self, gfx=None, cpu_ref=None, cursor_color=0xFF):
+    def __init__(self, gfx=None, bus: Optional[EventBus] = None, cpu_ref=None, cursor_color=0xFF):
+        self.bus = bus
         self.gfx = gfx
-        self.cpu = cpu_ref
+        self._cpu_legacy = cpu_ref
         self.cursor_color = int(cursor_color) & 0xFF
         self.x = 0
         self.y = 0

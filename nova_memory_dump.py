@@ -1,7 +1,7 @@
 import sys
 import argparse
 import nova_cpu as cpu
-import nova_memory as ram
+from nova.memory import Memory as ram
 import nova_gfx as gpu
 import nova_sound as sound
 

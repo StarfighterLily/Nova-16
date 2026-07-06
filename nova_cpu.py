@@ -1,26 +1,33 @@
 import numpy as np
-import nova_memory as mem
+from nova.memory import Memory as mem
 import nova_gfx as gpu
 import nova_mouse as mouse
 import nova_sound as sound
 import nova_uart as uart
-from instructions import create_instruction_table
+from core.exec import build_instruction_table, NO_OPERAND_OPCODES
 import time
 import cProfile
 import pstats
 from datetime import datetime, timezone
 from functools import wraps
+from core.flags import Flags
+from core.regfile import RegisterFile, REGISTER_CODE_MAP
+from core.fetch import decode_operands, calculate_memory_address, Operand
 
 class CPU:
     RTC_EPOCH_UNIX = int(datetime(2018, 7, 17, tzinfo=timezone.utc).timestamp())
 
-    def __init__( self, memory, gfx, keyboard=None, sound_system=None, uart_device=None, mouse_device=None, stack_size = 65535 ):
+    def __init__( self, memory, gfx, keyboard=None, sound_system=None, uart_device=None, mouse_device=None, stack_size = 65535, bus=None, interrupt_controller=None, timer_device=None ):
         self.memory = memory
         self.gfx = gfx
         self.keyboard_device = keyboard
+        self.bus = bus
+        self.intr_ctrl = interrupt_controller
+        self.timer_device = timer_device
         
-        # Set CPU reference in memory for cache invalidation
-        self.memory.cpu = self
+        # No longer setting circular back-references:
+        #   self.memory.cpu = self   -- REMOVED
+        #   self.memory.gfx_system = self.gfx  -- REMOVED
         
         # Initialize sound system
         if sound_system is None:
@@ -30,32 +37,18 @@ class CPU:
         else:
             self.sound = sound_system
 
-        self.Rregisters = [0] * 10  # R registers (8-bit)
-        self.Pregisters = [0] * 10  # P registers (16-bit)
-
-        # Initialize stack pointer and frame pointer
-        self.Pregisters[8] = 0xFFFF  # SP (Stack Pointer)
-        self.Pregisters[9] = 0xFFFF  # FP (Frame Pointer)
+        # RegisterFile instance — unified O(1) dispatch for all register types.
+        # Rregisters / Pregisters are aliased to regfile.R / regfile.P for
+        # backward compatibility with instructions.py and test code.
+        self.regfile = RegisterFile()
+        self.Rregisters = self.regfile.R  # alias: R0-R9 (8-bit list)
+        self.Pregisters = self.regfile.P  # alias: P0-P9 (16-bit array('H'))
+        # SP and FP are initialised by RegisterFile (0xFFFF)
 
         self.pc = 0x0000
 
-        # Internal flag array for bulk operations and compatibility
-        self._flags = [0] * 12  # CPU flags
-        self._flags[ 11 ] = 0 # Hacker flag (E), set to 1 if the user is a hacker (not touched by the CPU)
-        self._flags[ 10 ] = 0 # BCD Carry flag (A), set to 1 if the result of an operation is greater than 9
-        self._flags[ 9 ] = 0 # Direction flag (H), set to 1 if the CPU runs High to Low
-        self._flags[ 8 ] = 0 # Parity flag (P), set to 1 if the result of an operation is even
-        self._flags[ 7 ] = 0 # Zero flag (Z), set to 1 if the result of an operation is 0
-        self._flags[ 6 ] = 0 # Carry flag (C), set to 1 if the result of an operation is greater than 255
-        self._flags[ 5 ] = 0 # Interrupt flag (I), set to 1 if interrupts are enabled
-        self._flags[ 4 ] = 0 # Decimal flag (D), set to 1 if BCD mode is enabled
-        self._flags[ 3 ] = 0 # Break flag (B), set to 1 if a breakpoint is hit
-        self._flags[ 2 ] = 0 # Overflow flag (O), set to 1 if the result of an operation overflows
-        self._flags[ 1 ] = 0 # Sign flag (S), set to 1 if the result of an operation is negative
-        self._flags[ 0 ] = 0 # Trap flag (T), set to 1 to enable stepping
-        
-        # Legacy compatibility - points to internal array
-        self.flags = self._flags
+        # Flags instance (compact bitfield implementation)
+        self.flags_obj = Flags()
 
         # Flag to track if last operation was CMP for correct carry flag handling
         self._last_operation_was_cmp = False
@@ -74,16 +67,6 @@ class CPU:
         self.hw_breakpoints = [0] * 4
         self.hw_breakpoint_enabled = [False] * 4
 
-        self.timer = [0] * 4  # Timer registers # Timers for the timer interrupt
-        self.timer[ 0 ] = 0 # Timer counter (T)
-        self.timer[ 1 ] = 0 # Timer modulo (M)
-        self.timer[ 2 ] = 0 # Timer control (C)
-        self.timer[ 3 ] = 0 # Timer speed (S)
-        
-        # Timer internal state
-        self.timer_cycles = 0  # Cycle counter for timer
-        self.timer_enabled = False  # Timer enable state
-        
         # Random number generator seed - initialized with system entropy for true randomness
         import random
         self.rng_seed = random.randint(0, 0xFFFF)  # True random seed (0-65535)
@@ -114,10 +97,6 @@ class CPU:
         # Pre-computed parity lookup table for fast parity calculation
         self._parity_table = self._build_parity_table()
         
-        # Register value cache for performance
-        self.register_cache = {}  # Cache register values
-        self.register_cache_size = 512
-        
         # Interrupt checking optimization
         self.interrupt_check_counter = 0
         self.interrupt_check_frequency = 8  # Check every 8 instructions
@@ -126,59 +105,22 @@ class CPU:
 
         # Breakpoint checking optimization
         self.has_hw_breakpoints = False  # Fast gate for hardware breakpoint scan path
-        
-        # Operand parsing cache for performance optimization
-        self.operand_cache = {}  # Cache parsed operands by (pc, mode_byte)
-        self.operand_cache_size = 512  # Maximum cache entries
-        
-        # Memory prefetch optimization
-        self.prefetch_buffer = np.zeros(64, dtype=np.uint8)  # 64-byte prefetch buffer
-        self.prefetch_pc = 0  # PC when buffer was loaded
-        self.prefetch_valid = False  # Is the buffer valid?
-        
-        # Instruction cache for performance optimization
-        self.instruction_cache = {}  # Cache decoded instructions by PC
-        self.instruction_cache_size = 512  # Tuned from workload profiling across asm and NoBASIC starfield/gfxtest runs.
-        self.cache_hits = 0
-        self.cache_misses = 0
-        self.cache_enabled = True  # Safe default now that control-flow preserves decoded instructions.
-        
-        # Timer optimization
-        self.timer_update_counter = 0
-        self.timer_update_frequency = 36  # Update timer every 36 cycles instead of every cycle; higher begins affecting timing-sensitive code
-        self.timer_speed_divisor = 1  # Cached divisor derived from TS (speed) register
-        
-        # Initialize instruction dispatch table
-        self.instruction_table = create_instruction_table()
+
+        # Initialize instruction dispatch table (Phase 6: parameterized wrappers)
+        self.instruction_table = build_instruction_table()
 
         # Opcodes that do not use a mode byte / operand parsing
-        self.no_operand_opcodes = {
-            0x00,  # HLT
-            0xFF,  # NOP
-            0x01,  # RET
-            0x02,  # IRET
-            0x03,  # CLI
-            0x04,  # STI
-            0x1A,  # PUSHF
-            0x1B,  # POPF
-            0x1C,  # PUSHA
-            0x1D,  # POPA
-            0x3B,  # SINV
-            0x3C,  # SBLIT
-            0x40,  # VBLIT
-            0xA8,  # ENABRK
-            0xA9,  # DISBRK
-            0xAA,  # ENATRAP
-            0xAB,  # DISATRAP
-        }
+        self.no_operand_opcodes = NO_OPERAND_OPCODES
         
         # Create reverse mapping for profiling (opcode -> name)
         self.opcode_to_name = {}
         for opcode, instruction in self.instruction_table.items():
             self.opcode_to_name[opcode] = instruction.name
         
-        # Connect memory system to graphics for sprite memory-mapping
-        self.memory.gfx_system = self.gfx
+        # Removed: self.memory.gfx_system = self.gfx  (now uses event bus)
+
+        # Register all external peripheral registers into the RegisterFile
+        self._register_externals()
 
         # ========================================
         # PROFILING SYSTEM
@@ -276,134 +218,156 @@ class CPU:
         return decorator
 
     # ========================================
-    # FLAG PROPERTIES - Readable Access to CPU Flags
+    # FLAGS ACCESS - Backward-compatible property
+    # ========================================
+    
+    @property
+    def flags(self):
+        """Backward-compatible flags access - returns Flags instance.
+        
+        Supports both list-style access (flags[7] = 1) and property access
+        (flags.zero_flag). Assignment accepts a list to set_state.
+        """
+        return self.flags_obj
+    
+    @flags.setter
+    def flags(self, value):
+        """Allow assignment from a list (backward compatible with tests)."""
+        if isinstance(value, (list, tuple)):
+            self.flags_obj.set_state(value)
+        elif isinstance(value, Flags):
+            self.flags_obj = value
+        # else: ignore non-list/Flags assignments
+    
+    # ========================================
+    # FLAG PROPERTIES - Delegated to Flags instance
     # ========================================
     
     @property
     def trap_flag(self):
         """Trap flag (T) - bit 0: Enable single-step mode"""
-        return bool(self._flags[0])
+        return self.flags_obj.trap_flag
     
     @trap_flag.setter
     def trap_flag(self, value):
-        self._flags[0] = int(bool(value))
+        self.flags_obj.trap_flag = value
     
     @property
     def sign_flag(self):
         """Sign flag (S) - bit 1: Result is negative"""
-        return bool(self._flags[1])
+        return self.flags_obj.sign_flag
     
     @sign_flag.setter
     def sign_flag(self, value):
-        self._flags[1] = int(bool(value))
+        self.flags_obj.sign_flag = value
     
     @property
     def overflow_flag(self):
         """Overflow flag (O) - bit 2: Arithmetic overflow occurred"""
-        return bool(self._flags[2])
+        return self.flags_obj.overflow_flag
     
     @overflow_flag.setter
     def overflow_flag(self, value):
-        self._flags[2] = int(bool(value))
+        self.flags_obj.overflow_flag = value
     
     @property
     def break_flag(self):
         """Break flag (B) - bit 3: Breakpoint hit"""
-        return bool(self._flags[3])
+        return self.flags_obj.break_flag
     
     @break_flag.setter
     def break_flag(self, value):
-        self._flags[3] = int(bool(value))
+        self.flags_obj.break_flag = value
     
     @property
     def decimal_flag(self):
         """Decimal flag (D) - bit 4: BCD mode enabled"""
-        return bool(self._flags[4])
+        return self.flags_obj.decimal_flag
     
     @decimal_flag.setter
     def decimal_flag(self, value):
-        self._flags[4] = int(bool(value))
+        self.flags_obj.decimal_flag = value
     
     @property
     def interrupt_flag(self):
         """Interrupt flag (I) - bit 5: Interrupts enabled"""
-        return bool(self._flags[5])
+        return self.flags_obj.interrupt_flag
     
     @interrupt_flag.setter
     def interrupt_flag(self, value):
-        self._flags[5] = int(bool(value))
+        self.flags_obj.interrupt_flag = value
     
     @property
     def carry_flag(self):
         """Carry flag (C) - bit 6: Arithmetic carry/borrow occurred"""
-        return bool(self._flags[6])
+        return self.flags_obj.carry_flag
     
     @carry_flag.setter
     def carry_flag(self, value):
-        self._flags[6] = int(bool(value))
+        self.flags_obj.carry_flag = value
     
     @property
     def zero_flag(self):
         """Zero flag (Z) - bit 7: Result is zero"""
-        return bool(self._flags[7])
+        return self.flags_obj.zero_flag
     
     @zero_flag.setter
     def zero_flag(self, value):
-        self._flags[7] = int(bool(value))
+        self.flags_obj.zero_flag = value
     
     @property
     def parity_flag(self):
         """Parity flag (P) - bit 8: Result has even parity"""
-        return bool(self._flags[8])
+        return self.flags_obj.parity_flag
     
     @parity_flag.setter
     def parity_flag(self, value):
-        self._flags[8] = int(bool(value))
+        self.flags_obj.parity_flag = value
     
     @property
     def direction_flag(self):
         """Direction flag (H) - bit 9: CPU runs High to Low"""
-        return bool(self._flags[9])
+        return self.flags_obj.direction_flag
     
     @direction_flag.setter
     def direction_flag(self, value):
-        self._flags[9] = int(bool(value))
+        self.flags_obj.direction_flag = value
     
     @property
     def bcd_carry_flag(self):
         """BCD Carry flag (A) - bit 10: BCD operation carry"""
-        return bool(self._flags[10])
+        return self.flags_obj.bcd_carry_flag
     
     @bcd_carry_flag.setter
     def bcd_carry_flag(self, value):
-        self._flags[10] = int(bool(value))
+        self.flags_obj.bcd_carry_flag = value
     
     @property
     def hacker_flag(self):
         """Hacker flag (E) - bit 11: User is a hacker (not touched by CPU)"""
-        return bool(self._flags[11])
+        return self.flags_obj.hacker_flag
     
     @hacker_flag.setter
     def hacker_flag(self, value):
-        self._flags[11] = int(bool(value))
+        self.flags_obj.hacker_flag = value
     
     @property
     def decimal_mode(self):
         """Decimal mode flag (maps to decimal flag D)"""
-        return bool(self._flags[4])
+        return self.flags_obj.decimal_mode
     
     @decimal_mode.setter
     def decimal_mode(self, value):
-        self._flags[4] = int(bool(value))
+        self.flags_obj.decimal_mode = value
     
     @property
     def aux_carry(self):
         """Auxiliary carry flag (maps to BCD carry flag A)"""
-        return bool(self._flags[10])
+        return self.flags_obj.aux_carry
     
     @aux_carry.setter
     def aux_carry(self, value):
-        self._flags[10] = int(bool(value))
+        self.flags_obj.aux_carry = value
 
     # ========================================
     # REGISTER PROPERTIES - Readable Access to Registers
@@ -718,7 +682,7 @@ class CPU:
     
     def reset_all_flags(self):
         """Reset all flags to 0 - efficient bulk operation"""
-        self._flags[:] = [0] * len(self._flags)
+        self.flags_obj.reset_all()
     
     def reset_all_registers(self):
         """Reset all registers to 0 - efficient bulk operation"""
@@ -730,12 +694,12 @@ class CPU:
         self.Pregisters[9] = 0xFFFF  # FP
     
     def get_flag_state(self):
-        """Get complete flag state as numpy array"""
-        return self._flags.copy()
+        """Get complete flag state as list"""
+        return self.flags_obj.get_state()
     
     def set_flag_state(self, flag_array):
-        """Set complete flag state from numpy array"""
-        self._flags[:] = flag_array
+        """Set complete flag state from a list"""
+        self.flags_obj.set_state(flag_array)
     
     def get_register_state(self):
         """Get complete register state"""
@@ -761,20 +725,17 @@ class CPU:
         self.Pregisters[9] = 0xFFFF  # FP (Frame Pointer)
         
         self.pc = 0x0000
-        self._flags[:] = [0] * len(self._flags)  # Use internal flag array
+        self.flags_obj.reset_all()
         self.stack = []
         self.interrupts[:] = [0] * len(self.interrupts)
         self.interrupt_check_counter = 0
         self.last_interrupt_state = 0
         self.has_pending_interrupt_sources = False
-        self.timer[:] = [0] * len(self.timer)
-        self.timer_cycles = 0
-        self.timer_enabled = False
-        self.timer_update_counter = 0
-        self.timer_speed_divisor = 1
         self.uart.reset()
         self.keyboard[:] = [0] * len(self.keyboard)
         self.key_buffer = []
+        if self.keyboard_device is not None:
+            self.keyboard_device.clear_buffer()
         self.halted = False
         self.has_hw_breakpoints = False
         self.memory.reset()
@@ -789,15 +750,13 @@ class CPU:
             self.sound.sstop()  # Stop all sounds
             self.sound.update_registers(sa=0, sf=0, sv=0, sw=0)  # Reset sound registers
         self.mouse.reset()
-        
-        # Rebuild register lookup table 
-        self._register_lookup = self._build_register_lookup_table()
 
-        # Clear caches
-        self.instruction_cache.clear()
-        self.operand_cache.clear()
-        self.register_cache.clear()
-        self.invalidate_prefetch()
+        # Reset standalone timer peripheral
+        if self.timer_device:
+            self.timer_device.reset()
+        
+        # Rebuild register lookup table and re-bind external registers 
+        self._register_lookup = self._build_register_lookup_table()
 
         # Connect keyboard if provided
         if self.keyboard_device is not None:
@@ -832,152 +791,188 @@ class CPU:
             self.hw_breakpoint_enabled[3]
         )
 
-    def _get_operand_value( self, type, idx ):
-        if type == 'R': return int( self.Rregisters[ idx ] )
-        if type == 'P': return int( self.Pregisters[ idx ] )
-        if type == 'P_high': return int( (self.Pregisters[ idx ] >> 8) & 0xFF )  # High byte of P register
-        if type == 'P_low': return int( self.Pregisters[ idx ] & 0xFF )  # Low byte of P register
-        if type == 'V': return int( self.gfx.Vregisters[ idx ] )
-        if type == 'SP': return int( self.sp )
-        if type == 'FP': return int( self.fp )
-        if type == 'T': return int( self.timer[ idx ] )  # Generic timer register access
-        if type == 'TT': return int( self.timer[ 0 ] )  # Timer Time/Counter
-        if type == 'TM': return int( self.timer[ 1 ] )  # Timer Modulo
-        if type == 'TC': return int( self.timer[ 2 ] )  # Timer Control
-        if type == 'TS': return int( self.timer[ 3 ] )  # Timer Speed
-        if type == 'C0': return int( self.c0 )
-        if type == 'C1': return int( self.c1 )
-        if type == 'VL': return int( self.gfx.VL )  # Graphics Layer register
-        if type == 'MX': return int( self.mouse.x )
-        if type == 'MY': return int( self.mouse.y )
-        if type == 'MB': return int( self.mouse.buttons ) & 0xFF
-        
+    # ========================================
+    # REGISTER DISPATCH — O(1) via RegisterFile
+    # ========================================
+    
+    def _register_externals(self):
+        """Register all external peripheral registers into the RegisterFile.
+
+        Called once at the end of __init__ so all hardware references exist.
+        """
+        rf = self.regfile
+        sound = self.sound
+        gfx = self.gfx
+        mouse = self.mouse
+        timer_dev = self.timer_device
+
         # Sound registers
-        if type == 'SA': 
-            if self.sound: return int( self.sound.get_register('SA') )  # Sound Address
+        if sound:
+            rf.register_external('SA',
+                getter=lambda idx: int(sound.get_register('SA')),
+                setter=lambda idx, v: sound.update_registers(sa=int(v) & 0xFFFF))
+            rf.register_external('SF',
+                getter=lambda idx: int(sound.get_register('SF')),
+                setter=lambda idx, v: sound.update_registers(sf=int(v) & 0xFF))
+            rf.register_external('SV',
+                getter=lambda idx: int(sound.get_register('SV')),
+                setter=lambda idx, v: sound.update_registers(sv=int(v) & 0xFF))
+            rf.register_external('SW',
+                getter=lambda idx: int(sound.get_register('SW')),
+                setter=lambda idx, v: sound.update_registers(sw=int(v) & 0xFF))
+        else:
+            rf.register_external('SA', getter=lambda idx: 0)
+            rf.register_external('SF', getter=lambda idx: 0)
+            rf.register_external('SV', getter=lambda idx: 0)
+            rf.register_external('SW', getter=lambda idx: 0)
+
+        # Graphics registers (V — VX/VY/VC/VM)
+        rf.register_external('V',
+            getter=lambda idx: int(gfx.Vregisters[idx]),
+            setter=lambda idx, v: gfx.Vregisters.__setitem__(idx, int(v) & 0xFF))
+        rf.register_external('VL',
+            getter=lambda idx: int(gfx.VL),
+            setter=lambda idx, v: setattr(gfx, 'VL', int(v) & 0xFF))
+
+        # Mouse registers
+        rf.register_external('MX',
+            getter=lambda idx: int(mouse.x),
+            setter=lambda idx, v: mouse.move_to(v, mouse.y))
+        rf.register_external('MY',
+            getter=lambda idx: int(mouse.y),
+            setter=lambda idx, v: mouse.move_to(mouse.x, v))
+        rf.register_external('MB',
+            getter=lambda idx: int(mouse.buttons) & 0xFF,
+            setter=lambda idx, v: mouse.set_buttons(v))
+
+        # RTC registers (read-only)
+        rf.register_external('C0', getter=lambda idx: int(self.c0))
+        rf.register_external('C1', getter=lambda idx: int(self.c1))
+
+        # Timer registers (delegated to standalone Timer peripheral)
+        if timer_dev:
+            rf.register_external('TT',
+                getter=lambda idx: timer_dev.get_register(0),
+                setter=lambda idx, v: timer_dev.set_register(0, v))
+            rf.register_external('TM',
+                getter=lambda idx: timer_dev.get_register(1),
+                setter=lambda idx, v: timer_dev.set_register(1, v))
+            rf.register_external('TC',
+                getter=lambda idx: timer_dev.get_register(2),
+                setter=lambda idx, v: timer_dev.set_register(2, v))
+            rf.register_external('TS',
+                getter=lambda idx: timer_dev.get_register(3),
+                setter=lambda idx, v: timer_dev.set_register(3, v))
+        else:
+            # Fallback stubs when no timer device is provided
+            rf.register_external('TT', getter=lambda idx: 0,
+                setter=lambda idx, v: None)
+            rf.register_external('TM', getter=lambda idx: 0,
+                setter=lambda idx, v: None)
+            rf.register_external('TC', getter=lambda idx: 0,
+                setter=lambda idx, v: None)
+            rf.register_external('TS', getter=lambda idx: 0,
+                setter=lambda idx, v: None)
+    
+    def _get_operand_value( self, type, idx ):
+        """Get operand value — delegates core types to regfile, handles special cases."""
+        # Fast-path: core and external types served by RegisterFile
+        core_types = {'R', 'P', 'P_high', 'P_low', 'SP', 'FP', 'V', 'VL',
+                      'TT', 'TM', 'TC', 'TS', 'C0', 'C1', 'MX', 'MY', 'MB',
+                      'SA', 'SF', 'SV', 'SW'}
+        if type in core_types:
+            # SP → ('P', 8), FP → ('P', 9) for the regfile
+            if type == 'SP':
+                return int(self.regfile.get('P', 8))
+            if type == 'FP':
+                return int(self.regfile.get('P', 9))
+            return int(self.regfile.get(type, idx))
+        
+        # Sound byte-access (SA:, :SA) — fall through to legacy handling
+        if type == 'SA:':
+            if self.sound: return int((self.sound.get_register('SA') >> 8) & 0xFF)
             return 0
-        if type == 'SF': 
-            if self.sound: return int( self.sound.get_register('SF') )  # Sound Frequency
-            return 0
-        if type == 'SV': 
-            if self.sound: return int( self.sound.get_register('SV') )  # Sound Volume
-            return 0
-        if type == 'SW': 
-            if self.sound: return int( self.sound.get_register('SW') )  # Sound Waveform
-            return 0
-        if type == 'SA:': 
-            if self.sound: return int( (self.sound.get_register('SA') >> 8) & 0xFF )  # Sound Address high byte
-            return 0
-        if type == ':SA': 
-            if self.sound: return int( self.sound.get_register('SA') & 0xFF )  # Sound Address low byte
+        if type == ':SA':
+            if self.sound: return int(self.sound.get_register('SA') & 0xFF)
             return 0
         
-        # Optimized indirect memory access - Phase 3
-        if type == 'Rind': return self.memory.read_byte( self.Rregisters[ idx ] )
-        if type == 'Pind': return self.memory.read_byte( self.Pregisters[ idx ] )
-        if type == 'SPind': return self.memory.read_byte( self.sp )
-        if type == 'FPind': return self.memory.read_byte( self.fp )
-        if type == 'Vind': return self.memory.read_byte( self.gfx.Vregisters[ idx ] )
+        # Optimized indirect memory access
+        if type == 'Rind': return self.memory.read_byte_fast(self.Rregisters[idx])
+        if type == 'Pind': return self.memory.read_byte_fast(self.Pregisters[idx])
+        if type == 'SPind': return self.memory.read_byte_fast(self.sp)
+        if type == 'FPind': return self.memory.read_byte_fast(self.fp)
+        if type == 'Vind': return self.memory.read_byte_fast(self.gfx.Vregisters[idx])
         
-        # NOTE: Indexed addressing (Ridx, Pidx, etc.) should not be used in _get_operand_value
-        # because they require an offset parameter that must be fetched by individual instructions.
-        # The following are kept for compatibility but may not work correctly:
-        if type == 'Ridx': return self.memory.read_byte( self.Rregisters[ idx ] )
-        if type == 'Pidx': return self.memory.read_byte( self.Pregisters[ idx ] )
-        if type == 'Vidx': return self.memory.read_byte( self.gfx.Vregisters[ idx ] )
+        # Indexed addressing stubs
+        if type == 'Ridx': return self.memory.read_byte_fast(self.Rregisters[idx])
+        if type == 'Pidx': return self.memory.read_byte_fast(self.Pregisters[idx])
+        if type == 'Vidx': return self.memory.read_byte_fast(self.gfx.Vregisters[idx])
+        
         return 0
 
     def _set_operand_value( self, type, idx, value ):
-        """Set value to operand based on type"""
-        if type == 'R': 
-            self.Rregisters[ idx ] = int(value) & 0xFF
-        elif type == 'P': 
-            self.Pregisters[ idx ] = int(value) & 0xFFFF
-        elif type == 'P_high':  # Set high byte of P register
-            current_val = self.Pregisters[ idx ]
-            new_val = (current_val & 0x00FF) | ((int(value) & 0xFF) << 8)
-            self.Pregisters[ idx ] = new_val & 0xFFFF
-        elif type == 'P_low':  # Set low byte of P register
-            current_val = self.Pregisters[ idx ]
-            new_val = (current_val & 0xFF00) | (int(value) & 0xFF)
-            self.Pregisters[ idx ] = new_val & 0xFFFF
-        elif type == 'SP':
-            self.sp = int(value) & 0xFFFF
-        elif type == 'FP':
-            self.fp = int(value) & 0xFFFF
-        elif type == 'V': 
-            self.gfx.Vregisters[ idx ] = int(value) & 0xFF
-        elif type == 'T':
-            self.timer[ idx ] = int(value) & 0xFF
-            # Update timer enabled state when control register (idx=2) is written
-            if idx == 2:
-                self.set_timer_control(self.timer[ 2 ])
-            elif idx == 3:
-                self.set_timer_speed(self.timer[ 3 ])
-        elif type == 'TT': 
-            self.timer[ 0 ] = int(value) & 0xFF
-        elif type == 'TM': 
-            self.timer[ 1 ] = int(value) & 0xFF
-        elif type == 'TC': 
-            self.timer[ 2 ] = int(value) & 0xFF
-            # Update timer enabled state when control register is written
-            self.set_timer_control(self.timer[ 2 ])
-        elif type == 'TS': 
-            self.set_timer_speed(value)
-        elif type == 'C0':
+        """Set operand value — delegates to regfile for core and external types."""
+        # Core types + SP/FP aliases
+        if type == 'SP':
+            self.regfile.set('P', 8, int(value) & 0xFFFF)
             return
-        elif type == 'C1':
+        if type == 'FP':
+            self.regfile.set('P', 9, int(value) & 0xFFFF)
             return
-        elif type == 'VL': 
-            self.gfx.VL = int(value) & 0xFF
-        elif type == 'MX':
-            self.mouse.move_to(value, self.mouse.y)
-        elif type == 'MY':
-            self.mouse.move_to(self.mouse.x, value)
-        elif type == 'MB':
-            self.mouse.set_buttons(value)
-            
-        # Sound registers
-        elif type == 'SA': 
-            if self.sound: self.sound.update_registers(sa=int(value) & 0xFFFF)
-        elif type == 'SF': 
-            if self.sound: self.sound.update_registers(sf=int(value) & 0xFF)
-        elif type == 'SV': 
-            if self.sound: self.sound.update_registers(sv=int(value) & 0xFF)
-        elif type == 'SW': 
-            if self.sound: self.sound.update_registers(sw=int(value) & 0xFF)
-        elif type == 'SA:':  # Sound Address high byte
+        
+        # Types served by RegisterFile (core + registered externals)
+        regfile_types = {'R', 'P', 'P_high', 'P_low', 'V', 'VL',
+                         'TT', 'TM', 'TC', 'TS', 'C0', 'C1',
+                         'MX', 'MY', 'MB', 'SA', 'SF', 'SV', 'SW'}
+        if type in regfile_types:
+            try:
+                self.regfile.set(type, idx, value)
+            except Exception:
+                pass  # C0/C1 are read-only; silently ignore
+            # Side effects for TC/TS are handled by the registered setter callbacks
+            return
+        
+        # Sound byte-access
+        if type == 'SA:':
             if self.sound:
                 current_sa = self.sound.get_register('SA')
                 new_sa = (current_sa & 0x00FF) | ((int(value) & 0xFF) << 8)
                 self.sound.update_registers(sa=new_sa)
-        elif type == ':SA':  # Sound Address low byte
+            return
+        if type == ':SA':
             if self.sound:
                 current_sa = self.sound.get_register('SA')
                 new_sa = (current_sa & 0xFF00) | (int(value) & 0xFF)
                 self.sound.update_registers(sa=new_sa)
+            return
         
-        # Optimized indirect memory writes - Phase 3
-        elif type == 'Rind': 
-            self.write_byte( self.Rregisters[ idx ], int(value) & 0xFF )
-        elif type == 'Pind': 
-            self.write_byte( self.Pregisters[ idx ], int(value) & 0xFF )
-        elif type == 'SPind':
-            self.write_byte( self.sp, int(value) & 0xFF )
-        elif type == 'FPind':
-            self.write_byte( self.fp, int(value) & 0xFF )
-        elif type == 'Vind': 
-            self.write_byte( self.gfx.Vregisters[ idx ], int(value) & 0xFF )
+        # Optimized indirect memory writes
+        if type == 'Rind':
+            self.write_byte(self.Rregisters[idx], int(value) & 0xFF)
+            return
+        if type == 'Pind':
+            self.write_byte(self.Pregisters[idx], int(value) & 0xFF)
+            return
+        if type == 'SPind':
+            self.write_byte(self.sp, int(value) & 0xFF)
+            return
+        if type == 'FPind':
+            self.write_byte(self.fp, int(value) & 0xFF)
+            return
+        if type == 'Vind':
+            self.write_byte(self.gfx.Vregisters[idx], int(value) & 0xFF)
+            return
         
-        # NOTE: Indexed addressing (Ridx, Pidx, etc.) should not be used in _set_operand_value
-        # because they require an offset parameter that must be fetched by individual instructions.
-        # The following are kept for compatibility but may not work correctly:
-        elif type == 'Ridx': 
-            self.write_byte( self.Rregisters[ idx ], int(value) & 0xFF )
-        elif type == 'Pidx': 
-            self.write_byte( self.Pregisters[ idx ], int(value) & 0xFF )
-        elif type == 'Vidx': 
-            self.write_byte( self.gfx.Vregisters[ idx ], int(value) & 0xFF )
+        # Indexed addressing stubs
+        if type == 'Ridx':
+            self.write_byte(self.Rregisters[idx], int(value) & 0xFF)
+            return
+        if type == 'Pidx':
+            self.write_byte(self.Pregisters[idx], int(value) & 0xFF)
+            return
+        if type == 'Vidx':
+            self.write_byte(self.gfx.Vregisters[idx], int(value) & 0xFF)
+            return
 
     def _set_flags_8bit(self, result, original_result=None):
         """Set flags for 8-bit operations using readable property names"""
@@ -1154,6 +1149,19 @@ class CPU:
     # Keyboard input handling
     def add_key_to_buffer(self, key_code):
         """Add a key press to the keyboard buffer and trigger interrupt if enabled"""
+        if self.keyboard_device is not None:
+            self.keyboard_device.add_key(key_code)
+            # Sync legacy registers from keyboard_device state
+            self.keyboard[0] = self.keyboard_device.data_register
+            self.keyboard[1] = self.keyboard_device.status_register
+            self.keyboard[3] = self.keyboard_device.buffer_count
+            # Only set legacy interrupt pending flag if no interrupt controller
+            if self.intr_ctrl is None and self.interrupts[2] == 1:
+                self.keyboard[1] |= 0x80
+                self.has_pending_interrupt_sources = True
+            return
+
+        # Legacy path (no keyboard_device)
         if len(self.key_buffer) < self.key_buffer_size:
             self.key_buffer.append(key_code & 0xFF)
             self.keyboard[3] = len(self.key_buffer)  # Update buffer count
@@ -1173,6 +1181,15 @@ class CPU:
                 
     def read_key_from_buffer(self):
         """Read and remove the oldest key from the keyboard buffer"""
+        if self.keyboard_device is not None:
+            key = self.keyboard_device.read_key()
+            # Sync legacy registers from keyboard_device state
+            self.keyboard[0] = self.keyboard_device.data_register
+            self.keyboard[1] = self.keyboard_device.status_register
+            self.keyboard[3] = self.keyboard_device.buffer_count
+            return key
+
+        # Legacy path
         if self.key_buffer:
             key_code = self.key_buffer.pop(0)
             self.keyboard[3] = len(self.key_buffer)  # Update buffer count
@@ -1199,6 +1216,8 @@ class CPU:
     
     def clear_keyboard_buffer(self):
         """Clear the keyboard buffer and reset status"""
+        if self.keyboard_device is not None:
+            self.keyboard_device.clear_buffer()
         self.key_buffer = []
         self.keyboard[0] = 0  # Clear data register
         self.keyboard[1] = 0  # Clear status flags
@@ -1212,7 +1231,7 @@ class CPU:
 
     def _trigger_interrupt(self, interrupt_vector):
         """Trigger an interrupt if global interrupts are enabled"""
-        if int(self._flags[5]) == 1:  # Check if interrupts are globally enabled
+        if int(self.flags[5]) == 1:  # Check if interrupts are globally enabled
             # Check stack bounds before writing (need to push 2 words)
             sp = int(self.Pregisters[8])
             if sp < 0x0124:  # Stack overflow check (protect interrupt vectors)
@@ -1225,7 +1244,7 @@ class CPU:
             # Push current PC and flags onto stack in memory
             flags_val = 0
             for i in range(12):
-                if int(self._flags[i]) != 0:
+                if int(self.flags[i]) != 0:
                     flags_val |= (1 << i)
             
             self.Pregisters[8] = (int(self.Pregisters[8]) - 2) & 0xFFFF  # Decrement SP
@@ -1235,13 +1254,10 @@ class CPU:
             self.memory.write_word(self.Pregisters[8], self.pc)
             
             # Disable interrupts during interrupt handling
-            self._flags[5] = 0
+            self.flags[5] = 0
             
             # Jump to interrupt handler
             self.pc = handler_address
-            
-            # Invalidate prefetch buffer after jump
-            self.invalidate_prefetch()
     
     def _check_pending_interrupts(self):
         """Optimized interrupt checking with batching and caching"""
@@ -1310,7 +1326,7 @@ class CPU:
     
     def _check_hw_breakpoints(self):
         """Check for hardware breakpoints and single-step trap"""
-        if self._flags[0] != 1 and not self.has_hw_breakpoints:
+        if self.flags[0] != 1 and not self.has_hw_breakpoints:
             return
 
         # Check hardware breakpoints
@@ -1319,7 +1335,7 @@ class CPU:
             if self.hw_breakpoint_enabled[i]:
                 any_enabled = True
                 if self.pc == self.hw_breakpoints[i]:
-                    self._flags[3] = 1  # Set B flag
+                    self.flags[3] = 1  # Set B flag
                     self._trigger_interrupt(7)  # Debug interrupt
                     return
 
@@ -1327,95 +1343,10 @@ class CPU:
             self.has_hw_breakpoints = False
 
         # Check single-step trap
-        if self._flags[0] == 1:  # T flag set
-                self._flags[3] = 1  # Set B flag
+        if self.flags[0] == 1:  # T flag set
+                self.flags[3] = 1  # Set B flag
                 self._trigger_interrupt(7)  # Debug interrupt
     
-    def _check_timer_interrupt(self):
-        """Check if timer interrupt should be triggered"""
-        if not self.timer_enabled:
-            return False
-            
-        # Check if timer has reached or exceeded modulo value
-        if self.timer[1] > 0 and self.timer[0] >= self.timer[1]:
-            return True
-            
-        return False
-    
-    def update_timer(self):
-        """Optimized timer update - batched for better performance"""
-        # Fast exit if timer is disabled
-        if not self.timer_enabled:
-            return
-
-        speed_divisor = self.timer_speed_divisor
-        if speed_divisor > self.timer_update_frequency:
-            self.timer_cycles += 1
-        else:
-            counter = self.timer_update_counter + 1
-            if counter < self.timer_update_frequency:
-                self.timer_update_counter = counter
-                return
-            self.timer_update_counter = 0
-            self.timer_cycles += counter
-
-        timer_cycles = self.timer_cycles
-        if timer_cycles < speed_divisor:
-            return
-
-        timer_increments = timer_cycles // speed_divisor
-        self.timer_cycles = timer_cycles % speed_divisor
-
-        # Limit increments to avoid overflow warning noise in hot profiling runs.
-        timer_increments = min(timer_increments, 255)
-
-        self.timer[0] = (int(self.timer[0]) + int(timer_increments)) & 0xFF
-
-        # Trigger only when enabled and modulo threshold is crossed.
-        if (self.interrupts[0] == 1 and self.timer[1] > 0 and self.timer[0] >= self.timer[1]):
-            self.timer[0] = 0
-            self._trigger_interrupt(0)
-
-    def set_timer_speed(self, speed_value):
-        """Set timer speed register and cache its cycle divisor."""
-        speed = int(speed_value) & 0xFF
-        self.timer[3] = speed
-        # Linear scaling: TS=0 -> 1 cycle, TS=n -> n+1 cycles.
-        self.timer_speed_divisor = speed + 1
-    
-    def set_timer_control(self, control_value):
-        """Set timer control register and update timer state"""
-        was_enabled = self.timer_enabled
-        self.timer[2] = control_value & 0xFF
-        
-        # Bit 0: Timer enable
-        self.timer_enabled = bool(control_value & 0x01)
-        
-        # Bit 1: Timer interrupt enable
-        self.interrupts[0] = int(bool(control_value & 0x02))
-        
-        # If timer is disabled, reset internal state
-        if not self.timer_enabled:
-            self.timer_cycles = 0
-            self.timer_update_counter = 0
-            self.timer[0] = 0
-        elif not was_enabled:
-            self.timer_cycles = 0
-            self.timer_update_counter = 0
-            self.timer[0] = 0
-    
-    def get_timer_status(self):
-        """Get timer status for debugging/monitoring"""
-        return {
-            'counter': self.timer[0],
-            'modulo': self.timer[1], 
-            'control': self.timer[2],
-            'speed': self.timer[3],
-            'enabled': self.timer_enabled,
-            'cycles': self.timer_cycles,
-            'interrupt_enabled': bool(self.interrupts[0])
-        }
-
     def _build_register_lookup_table(self):
         """Build optimized lookup table for register access - O(1) performance"""
         lookup = {}
@@ -1506,299 +1437,47 @@ class CPU:
             self.pc = (self.pc + bytes) & 0xFFFF
             return [ int( b ) for b in data ]
     
-    # ========================================
-    # OPTIMIZED FETCH METHODS - Phase 2
-    # ========================================
-    
     def fetch_byte(self):
-        """Optimized single byte fetch with prefetching"""
+        """Fetch single byte directly from memory (no caching)."""
         if self.profiling_enabled:
             self.profile_data['memory_accesses'] += 1
         
-        offset = self._ensure_prefetch_offset()
-        if offset is not None:
-            value = self.prefetch_buffer[offset]
-            self.pc = (self.pc + 1) & 0xFFFF
-            return int(value)
-        
-        # Fallback to direct memory access
-        value = self.memory.read_byte(self.pc)
+        value = self.memory.read_byte_fast(self.pc)
         self.pc = (self.pc + 1) & 0xFFFF
         return int(value)
     
-    def _fill_prefetch_buffer(self):
-        """Fill the prefetch buffer with 64 bytes starting from current PC"""
-        self.prefetch_pc = self.pc
-
-        # Fast path: contiguous non-wrapping copy from backing memory
-        if self.pc + 64 <= self.memory.size:
-            self.prefetch_buffer[:] = self.memory.memory[self.pc:self.pc + 64]
-
-            # Overlay cached regions to preserve lazy write-back correctness
-            if self.pc < 0x0100:
-                zero_page_end = min(self.pc + 64, 0x0100)
-                count = zero_page_end - self.pc
-                if count > 0:
-                    self.prefetch_buffer[:count] = self.memory.zero_page_cache[self.pc:zero_page_end]
-
-            if self.pc < 0x0120 and self.pc + 64 > 0x0100:
-                int_start = max(self.pc, 0x0100)
-                int_end = min(self.pc + 64, 0x0120)
-                count = int_end - int_start
-                if count > 0:
-                    buf_offset = int_start - self.pc
-                    cache_offset = int_start - 0x0100
-                    self.prefetch_buffer[buf_offset:buf_offset + count] = self.memory.interrupt_vector_cache[cache_offset:cache_offset + count]
-        else:
-            # Slow path: wrapping reads across memory end
-            for i in range(64):
-                addr = (self.pc + i) & 0xFFFF
-                self.prefetch_buffer[i] = self.memory.read_byte(addr)
-
-        self.prefetch_valid = True
-    
-    def invalidate_prefetch(self):
-        """Invalidate prefetch buffer when PC changes unexpectedly (jumps, branches, etc.)"""
-        self.prefetch_valid = False
-
-    def _decode_mode_byte(self, mode_byte):
-        """Decode a mode byte into operand layout plus memory-mode flags."""
-        decoded = int(mode_byte) & 0xFF
-        return {
-            'operand_modes': tuple((decoded >> (index * 2)) & 0x3 for index in range(4)),
-            'indexed': (decoded & (1 << 6)) != 0,
-            'direct': (decoded & (1 << 7)) != 0,
-        }
-
-    def _ensure_prefetch_offset(self):
-        """Return the active prefetch offset for PC, refilling when execution leaves the current window."""
-        offset = self._get_prefetch_offset(self.pc)
-        if offset is not None:
-            return offset
-
-        self._fill_prefetch_buffer()
-        return self._get_prefetch_offset(self.pc)
-
-    def _get_prefetch_offset(self, address):
-        """Return the prefetch-buffer offset for an address, accounting for wraparound."""
-        if not self.prefetch_valid:
-            return None
-
-        offset = (int(address) - int(self.prefetch_pc)) & 0xFFFF
-        if offset < len(self.prefetch_buffer):
-            return offset
-
-        return None
-
-    def _prefetch_overlaps(self, address, size):
-        """Return True when a write overlaps any byte in the active prefetch window."""
-        if not self.prefetch_valid or size <= 0:
-            return False
-
-        base_address = int(address) & 0xFFFF
-        for byte_offset in range(size):
-            if self._get_prefetch_offset((base_address + byte_offset) & 0xFFFF) is not None:
-                return True
-
-        return False
-
-    def _write_memory_precisely(self, address, value, byte_count=1):
-        """Write memory while preserving unrelated cached instructions and prefetch state."""
-        start_addr = int(address)
-        width = int(byte_count)
-
-        if width <= 0:
-            raise ValueError(f"Write width must be positive: {width}")
-        if start_addr < 0 or start_addr + width > self.memory.size:
-            raise IndexError(f"Write address out of bounds: {start_addr}")
-
-        if width == 1:
-            self.memory.write_byte(start_addr, value, invalidate_cpu_cache=False)
-        elif width == 2:
-            word_value = int(value) & 0xFFFF
-            self.memory.write_byte(start_addr, (word_value >> 8) & 0xFF, invalidate_cpu_cache=False)
-            self.memory.write_byte(start_addr + 1, word_value & 0xFF, invalidate_cpu_cache=False)
-        else:
-            int_value = int(value)
-            for offset in range(width):
-                shift = 8 * (width - 1 - offset)
-                self.memory.write_byte(start_addr + offset, (int_value >> shift) & 0xFF, invalidate_cpu_cache=False)
-
-        if self._prefetch_overlaps(start_addr, width):
-            self.prefetch_valid = False
-
-        self.invalidate_instruction_cache(start_addr, start_addr + width - 1)
-        self.invalidate_operand_cache(start_addr, start_addr + width - 1)
-        
-    def write_memory(self, address, value, bytes=1):
-        """Write to memory and invalidate prefetch buffer if necessary"""
-        self._write_memory_precisely(address, value, byte_count=bytes)
-            
-    def write_byte(self, address, value):
-        """Write single byte to memory and invalidate prefetch buffer if necessary"""
-        self._write_memory_precisely(address, value, byte_count=1)
-    
     def fetch_word(self):
-        """Optimized 16-bit fetch with prefetching (big-endian for Nova-16)"""
-        # Check if we can fetch both bytes from prefetch buffer
-        offset = self._ensure_prefetch_offset()
-        if offset is not None and offset + 1 < len(self.prefetch_buffer):
-            high = self.prefetch_buffer[offset]
-            low = self.prefetch_buffer[offset + 1]
-            self.pc = (self.pc + 2) & 0xFFFF
-            return (int(high) << 8) | int(low)
-        
-        # Use individual byte fetches with prefetching
+        """Fetch 16-bit word directly from memory (big-endian for Nova-16)."""
         high = self.fetch_byte()
         low = self.fetch_byte()
         return (int(high) << 8) | int(low)
-    
 
     def fetch_bytes(self, count):
-        """Optimized multi-byte fetch returning list of ints"""
-        result = [self.memory.read_byte((self.pc + i) & 0xFFFF) for i in range(count)]
+        """Fetch multiple bytes directly from memory."""
+        result = [self.memory.read_byte_fast((self.pc + i) & 0xFFFF) for i in range(count)]
         self.pc = (self.pc + count) & 0xFFFF
         return result
-
+    
+    def write_memory(self, address, value, bytes=1):
+        """Write to memory (no cache invalidation needed)."""
+        self.memory.write(address, value, bytes)
+    
+    def write_byte(self, address, value):
+        """Write single byte to memory (no cache invalidation needed)."""
+        self.memory.write_byte_fast(address, value)
+    
+    def write_word(self, address, value):
+        """Write 16-bit word to memory (no cache invalidation needed)."""
+        self.memory.write_word_fast(address, value)
+    
     # ========================================
-    # INSTRUCTION CACHE METHODS
+    # LEGACY COMPATIBILITY STUBS
     # ========================================
     
-    def get_cached_instruction(self, pc):
-        """Get cached instruction at PC, or None if not cached"""
-        if not self.cache_enabled:
-            return None
-        return self.instruction_cache.get(pc, None)
-    
-    def cache_instruction(self, pc, instruction_data):
-        """Cache a decoded instruction at PC"""
-        if not self.cache_enabled:
-            return
-            
-        # Implement LRU eviction if cache is full
-        if len(self.instruction_cache) >= self.instruction_cache_size:
-            # Remove oldest entry (simple FIFO eviction for now)
-            oldest_pc = next(iter(self.instruction_cache.keys()))
-            del self.instruction_cache[oldest_pc]
-        
-        self.instruction_cache[pc] = instruction_data
-        self.cache_misses += 1  # Count as miss since we're caching it now
-    
-    def invalidate_instruction_cache(self, start_addr=None, end_addr=None):
-        """Invalidate instruction cache entries in the given address range"""
-        if not self.cache_enabled:
-            return
+    def invalidate_prefetch(self):
+        """Legacy stub — prefetch cache eliminated in Phase 4."""
+        pass
 
-        if start_addr is None and end_addr is None:
-            # Clear entire cache
-            self.instruction_cache.clear()
-            return
-
-        start_addr = int(start_addr) & 0xFFFF
-        if end_addr is not None:
-            end_addr = int(end_addr) & 0xFFFF
-
-        def address_in_range(address, range_start, range_end):
-            if range_start <= range_end:
-                return range_start <= address <= range_end
-            return address >= range_start or address <= range_end
-
-        def cached_prefix_length(cached_instruction):
-            if isinstance(cached_instruction, (tuple, list)) and cached_instruction:
-                opcode = cached_instruction[0]
-                if isinstance(opcode, int) and opcode in self.no_operand_opcodes:
-                    return 1
-            return 2
-        
-        # Invalidate specific range
-        if start_addr is not None and end_addr is not None:
-            # Remove entries whose cached opcode/mode prefix overlaps the modified range.
-            to_remove = []
-            for pc, cached_instruction in self.instruction_cache.items():
-                prefix_length = cached_prefix_length(cached_instruction)
-                for offset in range(prefix_length):
-                    cached_addr = (int(pc) + offset) & 0xFFFF
-                    if address_in_range(cached_addr, start_addr, end_addr):
-                        to_remove.append(pc)
-                        break
-            for pc in to_remove:
-                del self.instruction_cache[pc]
-        elif start_addr is not None:
-            # Remove single address
-            self.invalidate_instruction_cache(start_addr, start_addr)
-
-    def _address_in_wrapped_range(self, address, range_start, range_end):
-        """Return True when address lies within an inclusive 16-bit range."""
-        if range_start <= range_end:
-            return range_start <= address <= range_end
-        return address >= range_start or address <= range_end
-
-    def _get_operand_cache_pc_advance(self, cached_entry):
-        """Return the cached PC advance for an operand-cache entry."""
-        if isinstance(cached_entry, tuple) and len(cached_entry) == 2:
-            cached_operands, pc_advance = cached_entry
-            if isinstance(pc_advance, int):
-                return pc_advance & 0xFFFF
-        else:
-            cached_operands = cached_entry
-
-        pc_advance = 0
-        for operand in cached_operands:
-            if operand['type'] == 'register':
-                pc_advance += 1
-            elif operand['type'] == 'immediate':
-                pc_advance += 2 if operand.get('size') == 16 else 1
-            elif operand['type'] == 'memory':
-                if operand.get('direct', False) and not operand.get('indexed', False):
-                    pc_advance += 2
-                elif not operand.get('direct', False) and not operand.get('indexed', False):
-                    pc_advance += 1
-                elif not operand.get('direct', False) and operand.get('indexed', False):
-                    pc_advance += 2
-                elif operand.get('direct', False) and operand.get('indexed', False):
-                    pc_advance += 3
-        return pc_advance & 0xFFFF
-
-    def invalidate_operand_cache(self, start_addr=None, end_addr=None):
-        """Invalidate operand cache entries whose encoded operand bytes overlap a write."""
-        if start_addr is None and end_addr is None:
-            self.operand_cache.clear()
-            return
-
-        start_addr = int(start_addr) & 0xFFFF
-        if end_addr is None:
-            end_addr = start_addr
-        else:
-            end_addr = int(end_addr) & 0xFFFF
-
-        to_remove = []
-        for cache_key, cached_entry in self.operand_cache.items():
-            mode_addr = int(cache_key[0]) & 0xFFFF
-            operand_start = (mode_addr + 1) & 0xFFFF
-            pc_advance = self._get_operand_cache_pc_advance(cached_entry)
-            if pc_advance <= 0:
-                continue
-
-            for offset in range(pc_advance):
-                operand_addr = (operand_start + offset) & 0xFFFF
-                if self._address_in_wrapped_range(operand_addr, start_addr, end_addr):
-                    to_remove.append(cache_key)
-                    break
-
-        for cache_key in to_remove:
-            del self.operand_cache[cache_key]
-    
-    def get_cache_stats(self):
-        """Get instruction cache statistics"""
-        return {
-            'enabled': self.cache_enabled,
-            'size': len(self.instruction_cache),
-            'max_size': self.instruction_cache_size,
-            'hits': self.cache_hits,
-            'misses': self.cache_misses,
-            'hit_rate': self.cache_hits / (self.cache_hits + self.cache_misses) if (self.cache_hits + self.cache_misses) > 0 else 0
-        }
-    
     # ========================================
     # NEW PREFIXED OPERAND METHODS
     # ========================================
@@ -1867,22 +1546,6 @@ class CPU:
         if self.profiling_enabled:
             self.profile_data['operand_parses'] = self.profile_data.get('operand_parses', 0) + 1
         
-        operands_start_pc = self.pc
-
-        # Check cache first
-        cache_key = (self.pc - 1, self._current_mode_byte, num_operands)  # PC-1 because mode byte was already fetched
-        cached_entry = self.operand_cache.get(cache_key)
-        if cached_entry is not None:
-            # New format: (operands, pc_advance). Keep legacy fallback for safety.
-            if isinstance(cached_entry, tuple) and len(cached_entry) == 2:
-                cached_operands, pc_advance = cached_entry
-                self.pc = (self.pc + pc_advance) & 0xFFFF
-                return cached_operands
-
-            cached_operands = cached_entry
-            self.pc = (self.pc + self._get_operand_cache_pc_advance(cached_operands)) & 0xFFFF
-            return cached_operands
-        
         operands = []
         for i in range(num_operands):
             mode_bits = (self._current_mode_byte >> (i * 2)) & 0x3
@@ -1938,16 +1601,6 @@ class CPU:
                     operand['address'] = (addr + index) & 0xFFFF
                     operand['index'] = index
             operands.append(operand)
-        
-        # Cache parsed operands and encoded PC advance for fast cache hits.
-        pc_advance = (self.pc - operands_start_pc) & 0xFFFF
-        if len(self.operand_cache) < self.operand_cache_size:
-            self.operand_cache[cache_key] = (operands.copy(), pc_advance)
-        elif len(self.operand_cache) >= self.operand_cache_size:
-            # Simple LRU: remove oldest entry
-            oldest_key = next(iter(self.operand_cache))
-            del self.operand_cache[oldest_key]
-            self.operand_cache[cache_key] = (operands.copy(), pc_advance)
         
         return operands
 
@@ -2125,39 +1778,26 @@ class CPU:
         
         self.cycles += 1  # Increment cycle counter
         
+        # Publish tick event at start of step (timer ticks before instruction execution)
+        if self.bus:
+            self.bus.publish('cpu.tick', self.cycles)
+        
         if self.profiling_enabled:
             if self.profile_data['cycle_start_time'] is None:
                 self.profile_data['cycle_start_time'] = time.time()
             self.profile_data['total_cycles'] += 1
         
-        # Update timer first (so timer interrupt can happen before instruction execution)
-        self.update_timer()
-
         # Poll UART host bridge so RX data can trigger interrupts.
         self.uart.poll_host_bridge()
         
-        # Check instruction cache first
-        cached_instruction = self.get_cached_instruction(self.pc)
-        if cached_instruction:
-            # Cache hit - use cached instruction
-            self.cache_hits += 1
-            opcode, mode_byte, instruction = cached_instruction
-            self._current_mode_byte = mode_byte
-            
-            # Set PC to position after mode byte (opcode + mode byte = +2)
-            if opcode in self.no_operand_opcodes:
-                # No-operand instruction: PC should be after opcode
-                self.pc = (self.pc + 1) & 0xFFFF
-            else:
-                # Instruction with operands: PC should be after opcode + mode byte
-                self.pc = (self.pc + 2) & 0xFFFF
-            
-            instruction.execute(self)
-            self._check_hw_breakpoints()
-        else:
-            # Cache miss - fetch and decode instruction
-            opcode = self.fetch_byte()  # Use optimized fetch for single byte opcodes
-            self.execute_and_cache(opcode)
+        # Fetch opcode with caching for hot-path optimization
+        opcode = self.memory.fetch_opcode(self.pc)
+        self.pc = (self.pc + 1) & 0xFFFF
+        self._execute_instruction(opcode)
+        
+        # Publish post-step event (interrupt check, etc.)
+        if self.bus:
+            self.bus.publish('cpu.post_step', self)
         
         # Refresh only when async interrupt sources are enabled but the fast gate is stale.
         if self.has_pending_interrupt_sources:
@@ -2167,8 +1807,8 @@ class CPU:
             if self.has_pending_interrupt_sources:
                 self._check_pending_interrupts()
 
-    def execute_and_cache(self, opcode):
-        """Execute instruction and cache it for future use"""
+    def _execute_instruction(self, opcode):
+        """Execute a single instruction by opcode (no caching)."""
         if self.profiling_enabled:
             self.profile_data['instructions_executed'] += 1
             if opcode not in self.profile_data['opcode_counts']:
@@ -2180,27 +1820,44 @@ class CPU:
             # Check if this is a no-operand instruction
             if opcode in self.no_operand_opcodes:
                 # No-operand instructions don't have mode byte
-                self._current_mode_byte = 0  # Dummy mode byte
-                start_pc = self.pc - 1  # PC was already advanced by fetch_byte
+                self._current_mode_byte = 0
+                self.operands = []
                 instruction.execute(self)
                 self._check_hw_breakpoints()
-                # Cache the instruction (opcode, mode_byte, instruction)
-                self.cache_instruction(start_pc, (opcode, 0, instruction))
             else:
                 # All other instructions use prefixed operand format
-                mode_byte = self.fetch_byte()
+                # Fetch mode byte with caching
+                mode_byte = self.memory.fetch_opcode(self.pc)
                 self._current_mode_byte = mode_byte
-                start_pc = self.pc - 2  # PC was advanced by fetch_byte (opcode) + fetch_byte (mode)
+                self.pc = (self.pc + 1) & 0xFFFF
+
+                if instruction.handler is not None:
+                    # Handler-based instruction: decode operands with the new
+                    # standalone decoder and advance PC past operand bytes.
+                    # decode_operands() returns (operands, byte_length) — use it!
+                    self.operands, byte_length = decode_operands(
+                        self.memory, self.pc, mode_byte, instruction.num_operands,
+                        self.regfile.decode_register_code
+                    )
+                    self.pc = (self.pc + byte_length) & 0xFFFF
+                else:
+                    # Legacy class-based instruction: it will call parse_operands()
+                    # internally and advance PC itself. Provide an empty operands
+                    # list in case a handler fallback is ever triggered.
+                    self.operands = []
+
                 instruction.execute(self)
                 self._check_hw_breakpoints()
-                # Cache the instruction (opcode, mode_byte, instruction)
-                self.cache_instruction(start_pc, (opcode, mode_byte, instruction))
+                # Release operands back to pool after handler-based execution
+                if instruction.handler is not None and hasattr(self, 'operands'):
+                    from core.fetch import release_operands
+                    release_operands(self.operands)
         else:
             raise Exception(f"Unknown opcode: {opcode:02X}")
 
     def execute(self, opcode):
         """Execute instruction using dispatch table (legacy method for compatibility)"""
-        self.execute_and_cache(opcode)
+        self._execute_instruction(opcode)
 
 if __name__ == "__main__":
     print("Nova-16")

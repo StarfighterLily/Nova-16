@@ -10,7 +10,7 @@ import os
 sys.path.append(os.path.dirname(__file__))
 
 from nova_cpu import CPU
-from nova_memory import Memory
+from nova.memory import Memory
 from nova_gfx import GFX
 from nova_keyboard import NovaKeyboard
 from nova_sound import NovaSound

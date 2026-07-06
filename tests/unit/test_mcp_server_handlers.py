@@ -166,13 +166,13 @@ def test_keyboard_inject_key_supports_aliases_hex_and_count_validation():
     assert alias_result["status"] == "injected"
     assert alias_result["key"] == "enter"
     assert alias_result["count"] == 2
-    assert mcp._emulator_state["cpu"].key_buffer == [0x0A, 0x0A]
+    assert mcp._emulator_state["cpu"].keyboard_device._buffer == [0x0A, 0x0A]
 
     hex_result = json.loads(mcp._handle_keyboard_inject_key({"key": "0x41"}))
     assert hex_result["status"] == "injected"
     assert hex_result["key"] == "0x41"
     assert hex_result["scan_code"] == "0x41"
-    assert mcp._emulator_state["cpu"].key_buffer[-1] == 0x41
+    assert mcp._emulator_state["cpu"].keyboard_device._buffer[-1] == 0x41
 
     invalid_count = json.loads(mcp._handle_keyboard_inject_key({"key": "a", "count": -1}))
     assert invalid_count["error"] == "count must be >= 0"
@@ -183,7 +183,7 @@ def test_keyboard_type_string_supports_control_characters_and_ascii_validation()
 
     assert result["status"] == "typed"
     assert result["length"] == 4
-    assert mcp._emulator_state["cpu"].key_buffer == [0x61, 0x0A, 0x09, 0x08]
+    assert mcp._emulator_state["cpu"].keyboard_device._buffer == [0x61, 0x0A, 0x09, 0x08]
 
     invalid_text = json.loads(mcp._handle_keyboard_type_string({"text": "cafe\u00e9"}))
     assert invalid_text["error"] == "text must contain only ASCII characters"

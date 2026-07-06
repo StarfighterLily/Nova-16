@@ -18,7 +18,7 @@ def profile_cpu_during_execution():
 
     # Import after path setup
     import nova_cpu as cpu
-    import nova_memory as mem
+    from nova.memory import Memory as mem
     import nova_gfx as gpu
     import nova_sound as sound
     import nova_keyboard as kbd
@@ -71,7 +71,7 @@ def profile_specific_cpu_methods():
     """Example of profiling specific CPU methods using decorators"""
 
     import nova_cpu as cpu
-    import nova_memory as mem
+    from nova.memory import Memory as mem
     import nova_gfx as gpu
 
     # Setup system
@@ -98,7 +98,7 @@ def benchmark_cpu_performance():
     """Run comprehensive CPU benchmarks"""
 
     import nova_cpu as cpu
-    import nova_memory as mem
+    from nova.memory import Memory as mem
     import nova_gfx as gpu
 
     memory = mem.Memory()

@@ -15,7 +15,7 @@ import numpy as np
 sys.path.append(os.path.dirname(__file__))
 
 from nova_cpu import CPU
-from nova_memory import Memory
+from nova.memory import Memory
 from nova_gfx import GFX
 from nova_keyboard import NovaKeyboard
 from nova_sound import NovaSound
@@ -264,15 +264,18 @@ class GPUProfiler:
 
 def run_profiled_program(program_path: str, max_cycles: int = 10000, output_file: str = "gpu_profile.json"):
     """Run a program with GPU profiling enabled"""
-    # Initialize components
-    mem = Memory()
-    gfx = GFX()
-    kbd = NovaKeyboard()
-    snd = NovaSound()
-    cpu = CPU(mem, gfx, kbd, snd)
+    # Initialize components with event-bus architecture (Phase 3)
+    from nova.bus import EventBus, InterruptController
+    bus = EventBus()
 
-    # Connect keyboard
-    kbd.cpu = cpu
+    mem = Memory(bus=bus)
+    gfx = GFX()
+    kbd = NovaKeyboard(bus=bus)
+    snd = NovaSound()
+    intr_ctrl = InterruptController(bus=bus, cpu=None, memory=mem)
+
+    cpu = CPU(mem, gfx, kbd, snd, bus=bus, interrupt_controller=intr_ctrl)
+    intr_ctrl.cpu = cpu
 
     # Load program
     entry_point = mem.load(program_path)

@@ -1,4 +1,4 @@
 # Symbol table
 # Format: <symbol> <value>
-subroutine_yes 0x0018
-done 0x001E
+SUBROUTINE_YES 0x0018
+DONE 0x001E

@@ -1,0 +1,1 @@
+"""Nova-16 core subsystem package."""

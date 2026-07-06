@@ -46,7 +46,8 @@ import argparse
 sys.path.insert(0, str(Path(__file__).parent))
 
 import nova_cpu as cpu
-import nova_memory as mem
+from nova.memory import Memory
+
 import nova_gfx as gpu
 import nova_sound as sound
 import nova_keyboard as kbd
@@ -61,12 +62,19 @@ class NovaProfiler:
         self.profile_data = {}
 
     def setup_system(self, program_path: Optional[str] = None):
-        """Initialize the Nova-16 system"""
-        self.memory = mem.Memory()
+        """Initialize the Nova-16 system with event-bus architecture (Phase 3)"""
+        from nova.bus import EventBus, InterruptController
+
+        bus = EventBus()
+        self.memory = Memory(bus=bus)
         self.gfx = gpu.GFX()
-        self.keyboard = kbd.NovaKeyboard()
+        self.keyboard = kbd.NovaKeyboard(bus=bus)
         self.sound = sound.NovaSound()
-        self.cpu = cpu.CPU(self.memory, self.gfx, self.keyboard, self.sound)
+        intr_ctrl = InterruptController(bus=bus, cpu=None, memory=self.memory)
+
+        self.cpu = cpu.CPU(self.memory, self.gfx, self.keyboard, self.sound,
+                          bus=bus, interrupt_controller=intr_ctrl)
+        intr_ctrl.cpu = self.cpu
 
         if program_path:
             entry_point = self.memory.load(program_path)
