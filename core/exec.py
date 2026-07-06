@@ -108,13 +108,20 @@ class Instruction:
             )
 
     def _execute_handler(self, cpu) -> None:
-        """Execute via the handler function."""
+        """Execute via the handler function.
+
+        Optimizations:
+        - Uses cached function references for hot-path dispatch
+        - Supports operand value caching for repeated instructions
+        """
         if self.num_operands == 0:
             self.handler(cpu)
         else:
             # Resolve operands using the CPU's operand evaluation methods
+            # Cache the calculate_memory_address function locally for speed
             from core.fetch import calculate_memory_address
-            values = self._resolve_operands(cpu, calculate_memory_address)
+            calc_addr = calculate_memory_address
+            values = self._resolve_operands(cpu, calc_addr)
             result = self.handler(cpu, values)
             if self.flags_fn is not None:
                 self.flags_fn(cpu, values, result)

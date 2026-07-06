@@ -237,9 +237,11 @@ class RegisterFile:
 
     def reset_all(self):
         """Reset all core registers to their default values."""
+        # Keep P as list for backward compatibility with code that uses
+        # list.copy(), slice assignment, and other list operations.
+        # Use slice assignment for in-place reset without changing type.
         self.R[:] = [0] * 10
-        # array('H') doesn't support slice assignment from list directly
-        self.P = array('H', [0] * 10)
+        self.P[:] = [0] * 10  # Reset in-place, preserving list type
         self.P[8] = 0xFFFF  # SP
         self.P[9] = 0xFFFF  # FP
 

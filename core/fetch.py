@@ -166,11 +166,14 @@ def decode_operands(memory, pc: int, mode_byte: int, num_operands: int,
     direct_bit = (mode_byte >> 7) & 1
     indexed_bit = (mode_byte >> 6) & 1
 
+    # Cache commonly used methods locally for hot-path access
+    read_byte = memory.read_byte_fast
+
     for i in range(num_operands):
         mode = (mode_byte >> (i * 2)) & 0x3
 
         if mode == 0:  # Register direct
-            reg_code = memory.read_byte_fast(addr)
+            reg_code = read_byte(addr)
             addr = (addr + 1) & 0xFFFF
             idx, typ = reg_index_fn(reg_code)
             op = _acquire_operand()
@@ -181,7 +184,7 @@ def decode_operands(memory, pc: int, mode_byte: int, num_operands: int,
             operands.append(op)
 
         elif mode == 1:  # Immediate 8-bit
-            value = memory.read_byte_fast(addr)
+            value = read_byte(addr)
             addr = (addr + 1) & 0xFFFF
             op = _acquire_operand()
             op.mode = 1
@@ -191,8 +194,8 @@ def decode_operands(memory, pc: int, mode_byte: int, num_operands: int,
             operands.append(op)
 
         elif mode == 2:  # Immediate 16-bit
-            high = memory.read_byte_fast(addr)
-            low = memory.read_byte_fast((addr + 1) & 0xFFFF)
+            high = read_byte(addr)
+            low = read_byte((addr + 1) & 0xFFFF)
             addr = (addr + 2) & 0xFFFF
             op = _acquire_operand()
             op.mode = 2

@@ -74,6 +74,14 @@ class Flags:
     # Mask for valid flag bits (12 bits)
     FLAGS_MASK = 0xFFF
 
+    # Pre-computed bit masks for hot-path flag checks (avoid repeated shift operations)
+    # Used for frequently-checked flags: I (interrupt), Z (zero), C (carry)
+    _INTERRUPT_MASK = 1 << 5   # 0x20
+    _ZERO_MASK = 1 << 7       # 0x80
+    _CARRY_MASK = 1 << 6      # 0x40
+    _SIGN_MASK = 1 << 1       # 0x02
+    _OVERFLOW_MASK = 1 << 2   # 0x04
+
     # Module-level parity table reference (built once)
     PARITY_TABLE = PARITY_TABLE
 
@@ -83,6 +91,30 @@ class Flags:
     def __init__(self):
         """Initialize all flags to 0."""
         self._bits: int = 0
+
+    # ---- Fast-path flag checks (inline cache-friendly, no property overhead) ----
+    # These methods are optimized for the hot path where I, Z, C flags are checked
+    # frequently in instruction handlers and interrupt processing.
+
+    def check_I(self) -> bool:
+        """Fast check for Interrupt flag - no property overhead."""
+        return (self._bits & self._INTERRUPT_MASK) != 0
+
+    def check_Z(self) -> bool:
+        """Fast check for Zero flag - no property overhead."""
+        return (self._bits & self._ZERO_MASK) != 0
+
+    def check_C(self) -> bool:
+        """Fast check for Carry flag - no property overhead."""
+        return (self._bits & self._CARRY_MASK) != 0
+
+    def check_S(self) -> bool:
+        """Fast check for Sign flag - no property overhead."""
+        return (self._bits & self._SIGN_MASK) != 0
+
+    def check_O(self) -> bool:
+        """Fast check for Overflow flag - no property overhead."""
+        return (self._bits & self._OVERFLOW_MASK) != 0
 
     # ---- List-style access (backward compatible) ----
 
