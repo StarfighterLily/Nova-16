@@ -149,11 +149,19 @@ class RegisterFile:
             setter: Optional callable(idx, value) to write register value.
                     Set to None for read-only registers.
         """
+        # Install directly into the core dispatch tables so get()/set() pay
+        # only a single dict lookup for external (peripheral-backed) registers
+        # too, instead of missing _get/_set_dispatchers and falling through to
+        # a second dict. _external_getters/_external_setters are kept purely
+        # as a read-only-vs-unknown registry for the set() error path below.
+        self._get_dispatchers[reg_type] = getter
         self._external_getters[reg_type] = getter
         if setter is not None:
+            self._set_dispatchers[reg_type] = setter
             self._external_setters[reg_type] = setter
-        elif reg_type in self._external_setters:
-            del self._external_setters[reg_type]
+        else:
+            self._set_dispatchers.pop(reg_type, None)
+            self._external_setters.pop(reg_type, None)
 
     # ---- Core register dispatch ----
 
@@ -170,13 +178,9 @@ class RegisterFile:
         Raises:
             ValueError: If the register type is unknown.
         """
-        # Dict dispatch for core types (faster than if/elif chain)
         dispatcher = self._get_dispatchers.get(reg_type)
         if dispatcher is not None:
             return dispatcher(idx)
-        # Fall through to external getters
-        if reg_type in self._external_getters:
-            return self._external_getters[reg_type](idx)
         raise ValueError(f"Unknown register type: {reg_type}")
 
     def set(self, reg_type: str, idx: int, value: int):
@@ -190,18 +194,13 @@ class RegisterFile:
         Raises:
             ValueError: If the register type is unknown or read-only.
         """
-        # Dict dispatch for core types (faster than if/elif chain)
         dispatcher = self._set_dispatchers.get(reg_type)
         if dispatcher is not None:
             dispatcher(idx, value)
             return
-        # Fall through to external setters
-        if reg_type in self._external_setters:
-            self._external_setters[reg_type](idx, value)
-        elif reg_type in self._external_getters:
+        if reg_type in self._external_getters:
             raise ValueError(f"Register type '{reg_type}' is read-only")
-        else:
-            raise ValueError(f"Unknown register type: {reg_type}")
+        raise ValueError(f"Unknown register type: {reg_type}")
 
     # ---- Register code lookup ----
 

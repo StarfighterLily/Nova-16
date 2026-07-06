@@ -4,7 +4,7 @@ import nova_gfx as gpu
 import nova_mouse as mouse
 import nova_sound as sound
 import nova_uart as uart
-from core.exec import build_instruction_table, NO_OPERAND_OPCODES
+from core.exec import build_instruction_table
 import time
 import cProfile
 import pstats
@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from core.flags import Flags
 from core.regfile import RegisterFile, REGISTER_CODE_MAP
-from core.fetch import decode_operands, calculate_memory_address, Operand
+from core.fetch import decode_operands, calculate_memory_address, release_operands, Operand
 
 class CPU:
     RTC_EPOCH_UNIX = int(datetime(2018, 7, 17, tzinfo=timezone.utc).timestamp())
@@ -116,9 +116,6 @@ class CPU:
         # Initialize instruction dispatch table (Phase 6: parameterized wrappers)
         self.instruction_table = build_instruction_table()
 
-        # Opcodes that do not use a mode byte / operand parsing
-        self.no_operand_opcodes = NO_OPERAND_OPCODES
-        
         # Create reverse mapping for profiling (opcode -> name)
         self.opcode_to_name = {}
         for opcode, instruction in self.instruction_table.items():
@@ -749,7 +746,7 @@ class CPU:
         self.gfx.vram[:] = 0
         self.gfx.screen[:] = 0
         self.gfx.flags[:] = 0
-        self.gfx.Vregisters[:] = 0
+        self.gfx.Vregisters[:] = [0, 0, 0, 0]
         self.gfx.vmode = 0
         
         # Reset sound system
@@ -835,7 +832,7 @@ class CPU:
 
         # Graphics registers (V — VX/VY/VC/VM)
         rf.register_external('V',
-            getter=lambda idx: int(gfx.Vregisters[idx]),
+            getter=lambda idx: gfx.Vregisters[idx],
             setter=lambda idx, v: gfx.Vregisters.__setitem__(idx, int(v) & 0xFF))
         rf.register_external('VL',
             getter=lambda idx: int(gfx.VL),
@@ -1252,7 +1249,7 @@ class CPU:
             # Push current PC and flags onto stack in memory
             flags_val = 0
             for i in range(12):
-                if int(self.flags[i]) != 0:
+                if int(self.flags_obj[i]) != 0:
                     flags_val |= (1 << i)
             
             self.Pregisters[8] = (int(self.Pregisters[8]) - 2) & 0xFFFF  # Decrement SP
@@ -1262,7 +1259,7 @@ class CPU:
             self.memory.write_word(self.Pregisters[8], self.pc)
             
             # Disable interrupts during interrupt handling
-            self.flags[5] = 0
+            self.flags_obj[5] = 0
             
             # Jump to interrupt handler
             self.pc = handler_address
@@ -1334,7 +1331,7 @@ class CPU:
     
     def _check_hw_breakpoints(self):
         """Check for hardware breakpoints and single-step trap"""
-        if self.flags[0] != 1 and not self.has_hw_breakpoints:
+        if not self.has_hw_breakpoints and self.flags_obj[0] != 1:
             return
 
         # Check hardware breakpoints
@@ -1343,7 +1340,7 @@ class CPU:
             if self.hw_breakpoint_enabled[i]:
                 any_enabled = True
                 if self.pc == self.hw_breakpoints[i]:
-                    self.flags[3] = 1  # Set B flag
+                    self.flags_obj[3] = 1  # Set B flag
                     self._trigger_interrupt(7)  # Debug interrupt
                     return
 
@@ -1351,8 +1348,8 @@ class CPU:
             self.has_hw_breakpoints = False
 
         # Check single-step trap
-        if self.flags[0] == 1:  # T flag set
-                self.flags[3] = 1  # Set B flag
+        if self.flags_obj[0] == 1:  # T flag set
+                self.flags_obj[3] = 1  # Set B flag
                 self._trigger_interrupt(7)  # Debug interrupt
     
     def _build_register_lookup_table(self):
@@ -1796,7 +1793,8 @@ class CPU:
             self.profile_data['total_cycles'] += 1
         
         # Poll UART host bridge so RX data can trigger interrupts.
-        self.uart.poll_host_bridge()
+        if self.uart.host_bridge is not None:
+            self.uart.poll_host_bridge()
         
         # Fetch opcode with caching for hot-path optimization
         opcode = self.memory.fetch_opcode(self.pc)
@@ -1826,7 +1824,7 @@ class CPU:
         instruction = self.instruction_table.get(opcode)
         if instruction:
             # Check if this is a no-operand instruction
-            if opcode in self.no_operand_opcodes:
+            if instruction.num_operands == 0:
                 # No-operand instructions don't have mode byte
                 self._current_mode_byte = 0
                 self.operands = []
@@ -1857,8 +1855,7 @@ class CPU:
                 instruction.execute(self)
                 self._check_hw_breakpoints()
                 # Release operands back to pool after handler-based execution
-                if instruction.handler is not None and hasattr(self, 'operands'):
-                    from core.fetch import release_operands
+                if instruction.handler is not None:
                     release_operands(self.operands)
         else:
             raise Exception(f"Unknown opcode: {opcode:02X}")

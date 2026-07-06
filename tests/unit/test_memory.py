@@ -17,7 +17,7 @@ class TestMemoryInitialization:
 
     def test_memory_initialization(self, memory):
         """Test that memory is initialized to zeros."""
-        assert np.all(memory.memory == 0)
+        assert memory.memory == bytearray(len(memory.memory))
 
     def test_timer_removed_from_memory(self, memory):
         """Timer functionality was moved to a standalone peripheral (Phase 7)."""
@@ -112,7 +112,7 @@ class TestMemoryLoadSave:
         """Test saving memory to binary file."""
         # Write some test data to memory
         test_data = [i % 256 for i in range(100)]
-        memory.memory[:100] = np.array(test_data, dtype=np.uint8)
+        memory.memory[:100] = bytes(test_data)
 
         save_file = tmp_path / "saved.bin"
         memory.save(str(save_file))
@@ -376,7 +376,7 @@ class TestMemoryLoadSaveEdgeCases:
         # Should handle empty file gracefully
         memory.load(str(empty_file))
         # Memory should remain unchanged (all zeros)
-        assert np.all(memory.memory == 0)
+        assert memory.memory == bytearray(len(memory.memory))
 
     def test_corrupted_org_file(self, memory, tmp_path):
         """Test loading file with corrupted ORG data."""
@@ -592,7 +592,7 @@ class TestMemoryCacheRemoved:
         assert memory.read_byte(0x0001) == 0x00
         assert memory.read_byte(0x0102) == 0x00
         assert memory.read_byte(0x2000) == 0x00
-        assert np.all(memory.memory == 0)
+        assert memory.memory == bytearray(len(memory.memory))
 
     def test_cpu_reinit_clears_memory(self, cpu):
         """CPU reinitialization should clear memory."""

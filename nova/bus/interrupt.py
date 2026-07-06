@@ -107,9 +107,14 @@ class InterruptController:
         if cpu is None:
             return
 
-        flags = cpu.flags_obj if hasattr(cpu, 'flags_obj') else getattr(cpu, 'flags', None)
-        if flags is None:
+        # Fast exit: nothing pending and no level-triggered user interrupt
+        # requested. VECTOR_USER1 has no "pending" edge flag (it's checked
+        # directly against cpu.interrupts below), so has_pending() alone
+        # would silently starve it if used as the sole fast-exit condition.
+        if not self.has_pending() and not cpu.interrupts[self.VECTOR_USER1]:
             return
+
+        flags = cpu.flags_obj
 
         # Fast exit if global interrupts are disabled
         if flags[Flags.I] == 0:
@@ -144,9 +149,7 @@ class InterruptController:
             return
 
         # Use flags_obj directly
-        flags_obj = cpu.flags_obj if hasattr(cpu, 'flags_obj') else getattr(cpu, 'flags', None)
-        if flags_obj is None:
-            return
+        flags_obj = cpu.flags_obj
 
         # Check if global interrupts are enabled (redundant with _check but safe)
         if flags_obj[Flags.I] == 0:

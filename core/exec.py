@@ -30,6 +30,7 @@ Migration strategy:
 from dataclasses import dataclass, field
 from typing import Callable, Optional, List, Dict, Any
 
+from core.fetch import calculate_memory_address
 from core.exec_handlers import (
     _mov, _movz, _movnz, _xchng, _swap, _lea,
     _add, _sub, _mul, _div, _mod, _inc, _dec, _neg, _abs,
@@ -117,11 +118,7 @@ class Instruction:
         if self.num_operands == 0:
             self.handler(cpu)
         else:
-            # Resolve operands using the CPU's operand evaluation methods
-            # Cache the calculate_memory_address function locally for speed
-            from core.fetch import calculate_memory_address
-            calc_addr = calculate_memory_address
-            values = self._resolve_operands(cpu, calc_addr)
+            values = self._resolve_operands(cpu, calculate_memory_address)
             result = self.handler(cpu, values)
             if self.flags_fn is not None:
                 self.flags_fn(cpu, values, result)
@@ -148,34 +145,6 @@ class Instruction:
             else:
                 values.append(0)
         return values
-
-    def _write_result(self, cpu, operand_index: int, value: int,
-                      source_size: int = 16) -> None:
-        """Write a computed result back to the destination operand.
-
-        Matches legacy set_operand_value behavior for register and memory writes.
-        """
-        from core.fetch import calculate_memory_address
-        op = cpu.operands[operand_index]
-        if op.is_register:
-            cpu.regfile.set(op.reg_type, op.reg_idx, value)
-        elif op.is_memory:
-            addr = calculate_memory_address(op, cpu.regfile)
-            if source_size == 8:
-                cpu.memory.write_byte_fast(addr, value)
-            else:
-                cpu.memory.write_word_fast(addr, value)
-        else:
-            raise RuntimeError(f"Cannot write result to operand type: {op.type}")
-
-    def _operand_width(self, cpu) -> int:
-        """Return 8 if the destination operand is an R register, else 16."""
-        if not cpu.operands:
-            return 16
-        dest = cpu.operands[0]
-        if dest.is_register and dest.reg_type == 'R':
-            return 8
-        return 16
 
     def __repr__(self) -> str:
         return f"Instruction({self.name}, 0x{self.opcode:02X})"

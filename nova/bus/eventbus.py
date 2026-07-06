@@ -43,9 +43,11 @@ class EventBus:
         """Publish an event.  Subscribers are called synchronously in order."""
         for cb in self._subscribers.get(event_type, []):
             cb(data)
-        for cb in self._once.get(event_type, []):
-            cb(data)
-        self._once[event_type].clear()
+        once = self._once.get(event_type)
+        if once:
+            for cb in once:
+                cb(data)
+            once.clear()
 
     # ── Introspection ──────────────────────────────────────────────────
 

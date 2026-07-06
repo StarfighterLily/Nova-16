@@ -97,10 +97,10 @@ class CPUController:
         if hasattr(self.gfx, 'flags'):
             self.gfx.flags[:] = 0
         if hasattr(self.gfx, 'Vregisters'):
-            self.gfx.Vregisters[:] = 0
+            self.gfx.Vregisters[:] = [0, 0, 0, 0]
             
         # Clear memory completely
-        self.mem.memory[:] = 0
+        self.mem.memory[:] = bytes(len(self.mem.memory))
         
         # Reset any keyboard state if available
         if hasattr(self.cpu, 'keyboard_device') and self.cpu.keyboard_device:

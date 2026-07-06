@@ -46,7 +46,11 @@ class GFX:
         self.auto_composite = True
 
         # Video registers: VX, VY, VM, VC
-        self.Vregisters = np.zeros(4, dtype=np.uint8)
+        # Plain list, not numpy: these are accessed one scalar at a time on
+        # every VX/VY/VM/VC register read or write, and numpy scalar boxing
+        # is measurably slower than native list indexing for that access
+        # pattern (confirmed as a hot leaf frame in profiling).
+        self.Vregisters = [0, 0, 0, 0]
 
         # Video flags (HBlank, VBlank, VMode)
         self.flags = np.zeros(3, dtype=np.uint8)

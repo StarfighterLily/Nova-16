@@ -12,6 +12,9 @@ Optimization Phase (Performance):
 - Added read_word_fast() / write_word_fast() — fast-path word access
 - Optimized existing methods with local references
 - LRU instruction cache for non-sequential opcode fetches (64 entries)
+- Backing store is a plain bytearray (not numpy) — single-byte indexing
+  already returns a native int with no scalar-boxing overhead, which matters
+  since every instruction fetch/decode does several single-byte reads.
 """
 
 from __future__ import annotations
@@ -31,8 +34,8 @@ class Memory:
       - Zero page (0x0000-0x00FF) — fast access for frequently used variables
       - Interrupt vectors (0x0100-0x011F) — 8 vectors × 4 bytes each
 
-    It is implemented as a numpy *view* into the main array — zero-copy and
-    auto-synchronising.
+    It is implemented as a ``memoryview`` *slice* of the main bytearray —
+    zero-copy and auto-synchronising in both directions.
 
     The Sprite Control Block region (0xF000-0xF0FF) is monitored: any write
     to that region publishes a ``memory.scb_written`` event on the bus so
@@ -50,10 +53,10 @@ class Memory:
     def __init__(self, bus: Optional[EventBus] = None):
         self.bus = bus
         self.size = self.SIZE
-        self.memory = np.zeros(self.size, dtype=np.uint8)
+        self.memory = bytearray(self.size)
 
         # Single hot-region view — zero-copy, auto-synchronising with memory
-        self._hot = self.memory[0:self.HOT_END]
+        self._hot = memoryview(self.memory)[0:self.HOT_END]
 
         # Local references for fast-path access (avoid attribute lookups)
         self._mem = self.memory
@@ -83,17 +86,17 @@ class Memory:
             raise IndexError(f"Address out of bounds: 0x{address:04X}")
 
         if address < self._hot_end:
-            return int(self._hot[address])
-        return int(self._mem[address])
+            return self._hot[address]
+        return self._mem[address]
 
     def read_byte_fast(self, address: int) -> int:
         """Fast-path single-byte read — no bounds checking.
-        
+
         Caller MUST ensure address is in range 0..SIZE-1.
         """
         if address < self._hot_end:
-            return int(self._hot[address])
-        return int(self._mem[address])
+            return self._hot[address]
+        return self._mem[address]
 
     def read_bytes_direct(self, address: int, count: int) -> list:
         """Read *count* bytes starting at *address* as a list of ints."""
@@ -107,7 +110,7 @@ class Memory:
                 f"0x{self.size:04X}"
             )
 
-        return self._mem[address:address + count].tolist()
+        return list(self._mem[address:address + count])
 
     # ── Word reads (big-endian) ─────────────────────────────────────────
 
@@ -178,11 +181,9 @@ class Memory:
         if not data:
             return
 
-        byte_array = np.fromiter(
-            ((int(byte) & 0xFF) for byte in data),
-            dtype=np.uint8, count=len(data),
+        self._mem[address:address + len(data)] = bytes(
+            (int(byte) & 0xFF) for byte in data
         )
-        self._mem[address:address + len(data)] = byte_array
 
         # Invalidate instruction cache for the written range
         for addr in range(address, address + len(data)):
@@ -325,9 +326,7 @@ class Memory:
             data = file.read()
             load_size = min(len(data), self.size)
             if load_size:
-                self._mem[:load_size] = np.frombuffer(
-                    data[:load_size], dtype=np.uint8
-                )
+                self._mem[:load_size] = data[:load_size]
 
         # Notify about SCB region writes
         if self.bus and load_size > 0 and 0x0000 < self._scb_end:
@@ -390,8 +389,7 @@ class Memory:
 
                     segment_data = bin_data[bin_offset:bin_offset + length]
                     if length:
-                        self._mem[start_addr:start_addr + length] = \
-                            np.frombuffer(segment_data, dtype=np.uint8)
+                        self._mem[start_addr:start_addr + length] = segment_data
 
                     # Notify about SCB region writes
                     if (self.bus and start_addr < self._scb_end
@@ -432,9 +430,7 @@ class Memory:
 
         load_size = min(len(binary_data), self.size - address)
         if load_size:
-            self._mem[address:address + load_size] = np.frombuffer(
-                binary_data[:load_size], dtype=np.uint8
-            )
+            self._mem[address:address + load_size] = binary_data[:load_size]
 
             # Notify about SCB region writes
             if (self.bus and address < self._scb_end
@@ -459,9 +455,7 @@ class Memory:
 
         load_size = min(len(program_data), self.size - address)
         if load_size:
-            self._mem[address:address + load_size] = np.frombuffer(
-                program_data[:load_size], dtype=np.uint8
-            )
+            self._mem[address:address + load_size] = program_data[:load_size]
 
             # Notify about SCB region writes
             if (self.bus and address < self._scb_end
@@ -502,7 +496,7 @@ class Memory:
 
     def reset(self):
         """Clear backing memory, cache, and statistics; publish ``memory.reset`` event."""
-        self._mem.fill(0)
+        self._mem[:] = bytes(len(self._mem))
         self._icache.clear()
         self._icache_hits = 0
         self._icache_misses = 0

@@ -13,6 +13,8 @@ handled by the Instruction.execute wrapper.
 
 import math
 
+from core.fetch import calculate_memory_address
+
 
 # ------------------------------------------------------------------------------
 # Helpers
@@ -37,7 +39,6 @@ def _write_result(cpu, operand_index: int, value: int,
     MOV [mem], imm16 writes a word).  Register destinations always use the
     register's natural width.
     """
-    from core.fetch import calculate_memory_address
     op = cpu.operands[operand_index]
     if op.is_register:
         cpu.regfile.set(op.reg_type, op.reg_idx, value)
@@ -137,7 +138,6 @@ def _swap(cpu, values) -> int:
 
 def _lea(cpu, values) -> int:
     """LEA: load effective address of source operand into destination."""
-    from core.fetch import calculate_memory_address
     op = cpu.operands[1]
     if op.is_memory:
         result = calculate_memory_address(op, cpu.regfile)

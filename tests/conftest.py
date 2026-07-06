@@ -130,7 +130,7 @@ def load_program_into_memory(memory, program_data, start_addr=0x0000):
     """Load program data into memory at specified address."""
     if isinstance(program_data, str):
         program_data = program_data.encode('utf-8')
-    memory.memory[start_addr:start_addr + len(program_data)] = np.frombuffer(program_data, dtype=np.uint8)
+    memory.memory[start_addr:start_addr + len(program_data)] = bytes(program_data)
 
 
 def run_cpu_cycles(cpu, cycles):
