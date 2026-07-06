@@ -2,7 +2,7 @@
 Nova-16 Memory — 64KB unified memory with single hot-region view.
 
 Phase 5 of the reimplantation strategy:
-- Removes zero_page_cache, interrupt_vector_cache, LRU cache
+- Removes zero_page_cache, interrupt_vector_cache
 - Single numpy view ``self._hot = self.memory[0:0x0120]`` for hot region
 - Event-bus notification for SCB (sprite control block) writes
 - No dirty-tracking, no writeback logic, no cache invalidation
@@ -11,11 +11,12 @@ Optimization Phase (Performance):
 - Added read_byte_fast() / write_byte_fast() — skip bounds checking
 - Added read_word_fast() / write_word_fast() — fast-path word access
 - Optimized existing methods with local references
-- Added simple instruction cache for recently fetched opcodes
+- LRU instruction cache for non-sequential opcode fetches (64 entries)
 """
 
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
+from collections import OrderedDict
 
 import numpy as np
 
@@ -60,10 +61,19 @@ class Memory:
         self._scb_start = self.SCB_START
         self._scb_end = self.SCB_END
 
-        # Simple instruction cache: maps address -> opcode byte
+        # LRU instruction cache: maps address -> opcode byte
         # Only caches opcode fetches (not operand reads)
-        self._icache = {}
+        # Uses OrderedDict for O(1) LRU eviction via move_to_end()
+        self._icache: OrderedDict = OrderedDict()
         self._icache_max = self.ICACHE_SIZE
+        
+        # Sequential fetch tracking (optimization for linear code)
+        self._last_fetch_pc: Optional[int] = None
+        self._sequential_count: int = 0
+        
+        # Cache statistics for benchmarking
+        self._icache_hits: int = 0
+        self._icache_misses: int = 0
 
     # ── Byte reads ─────────────────────────────────────────────────────
 
@@ -218,26 +228,52 @@ class Memory:
     # ── Instruction cache ───────────────────────────────────────────────
 
     def fetch_opcode(self, address: int) -> int:
-        """Fetch an opcode byte with simple instruction caching."""
-        # Check instruction cache first
+        """Fetch an opcode byte with LRU instruction caching.
+        
+        For sequential code execution (PC increments by 1), this method
+        skips the cache entirely to avoid unnecessary overhead. Cache is
+        only used for non-sequential fetches (jumps, calls, etc.).
+        
+        Uses LRU (Least Recently Used) eviction: most-recently-used entries
+        are moved to the end of the OrderedDict, so eviction always removes
+        the least-recently-used entry.
+        """
+        # Check if this is a sequential fetch (next address after last fetch)
+        if self._last_fetch_pc is not None and address == (self._last_fetch_pc + 1) & 0xFFFF:
+            # Sequential fetch - no cache needed, just read directly
+            self._sequential_count += 1
+            opcode = self.read_byte_fast(address)
+            self._last_fetch_pc = address
+            return opcode
+        
+        # Non-sequential or first fetch - check cache
         cached = self._icache.get(address)
         if cached is not None:
+            # Cache hit - LRU: move to end (most recently used)
+            self._icache.move_to_end(address)
+            self._icache_hits += 1
+            self._last_fetch_pc = address
             return cached
 
         # Cache miss — read from memory
         opcode = self.read_byte_fast(address)
+        self._icache_misses += 1
 
-        # Add to cache (simple FIFO eviction if full)
+        # Add to cache (LRU eviction if full)
         if len(self._icache) >= self._icache_max:
-            # Remove oldest entry (dict preserves insertion order in Python 3.7+)
-            self._icache.pop(next(iter(self._icache)))
+            # Remove least-recently-used entry (first item in OrderedDict)
+            self._icache.popitem(last=False)
         self._icache[address] = opcode
+        self._last_fetch_pc = address
 
         return opcode
 
     def invalidate_icache(self):
-        """Clear the instruction cache (call when PC jumps non-sequentially)."""
+        """Clear the instruction cache and statistics (call when PC jumps non-sequentially)."""
         self._icache.clear()
+        self._icache_hits = 0
+        self._icache_misses = 0
+        self._last_fetch_pc = None  # Reset sequential tracking on jump
 
     # ── Legacy aliases ──────────────────────────────────────────────────
 
@@ -465,9 +501,13 @@ class Memory:
             file.write(bytes(self._mem))
 
     def reset(self):
-        """Clear backing memory and publish ``memory.reset`` event."""
+        """Clear backing memory, cache, and statistics; publish ``memory.reset`` event."""
         self._mem.fill(0)
         self._icache.clear()
+        self._icache_hits = 0
+        self._icache_misses = 0
+        self._sequential_count = 0
+        self._last_fetch_pc = None
         if self.bus:
             self.bus.publish('memory.reset')
 
@@ -480,13 +520,20 @@ class Memory:
         pass
 
     def get_cache_stats(self) -> dict:
+        """Return instruction cache statistics including LRU hit rate.
+        
+        Returns:
+            dict with cache_hits, cache_misses, cache_size, and hit_rate
+        """
+        total = self._icache_hits + self._icache_misses
+        hit_rate = (self._icache_hits / total) if total > 0 else 0.0
         return {
-            'cache_hits': 0,
-            'cache_misses': 0,
-            'total_cache_accesses': 0,
-            'cache_hit_rate': 0,
+            'cache_hits': self._icache_hits,
+            'cache_misses': self._icache_misses,
+            'total_cache_accesses': total,
+            'cache_hit_rate': hit_rate,
             'zero_page_dirty': False,
             'interrupt_vector_dirty': False,
             'pending_write_back_count': 0,
-            'lru_cache_size': 0,
+            'lru_cache_size': len(self._icache),
         }

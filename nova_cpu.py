@@ -50,6 +50,9 @@ class CPU:
         # Flags instance (compact bitfield implementation)
         self.flags_obj = Flags()
 
+        # Cached flag bits for hot-path access (avoid property overhead)
+        self._cached_flags: int = 0  # Last known flags bitfield (for I, Z, C caching)
+
         # Flag to track if last operation was CMP for correct carry flag handling
         self._last_operation_was_cmp = False
 
@@ -105,6 +108,10 @@ class CPU:
 
         # Breakpoint checking optimization
         self.has_hw_breakpoints = False  # Fast gate for hardware breakpoint scan path
+
+        # Sequential fetch optimization - track last PC to skip iCache for sequential code
+        self._last_pc = 0xFFFF  # Initialize to invalid address
+        self._sequential_fetch_threshold = 2  # Skip cache if N sequential fetches
 
         # Initialize instruction dispatch table (Phase 6: parameterized wrappers)
         self.instruction_table = build_instruction_table()
@@ -975,68 +982,52 @@ class CPU:
             return
 
     def _set_flags_8bit(self, result, original_result=None):
-        """Set flags for 8-bit operations using readable property names"""
+        """Set flags for 8-bit operations — delegates to Flags class.
+        
+        Maintains backward compatibility with _last_operation_was_cmp tracking
+        for CMP instruction carry flag handling.
+        """
         if original_result is None:
             original_result = result
         
-        # Zero flag (Z) - result is zero
-        self.flags[7] = 1 if (result & 0xFF) == 0 else 0
-        
-        # Carry flag (C) - for subtraction (CMP), set when borrow occurs (val1 < val2)
-        # For other operations, overflow/underflow occurred
-        if hasattr(self, '_last_operation_was_cmp') and self._last_operation_was_cmp:
-            self.flags[6] = 1 if original_result < 0 else 0  # Borrow occurred
+        # Delegate to Flags.set_from_8bit with CMP tracking
+        self.flags_obj.set_from_8bit(
+            result & 0xFF,
+            original_result=original_result,
+            is_cmp=getattr(self, '_last_operation_was_cmp', False),
+            last_operation_was_cmp=getattr(self, '_last_operation_was_cmp', False)
+        )
+        # Clear CMP tracking after use
+        if getattr(self, '_last_operation_was_cmp', False):
             self._last_operation_was_cmp = False
-        else:
-            self.flags[6] = 1 if original_result > 0xFF or original_result < 0 else 0
-        
-        # Sign flag (S) - result is negative (bit 7 set)
-        self.flags[1] = 1 if (result & 0x80) != 0 else 0
-        
-        # Parity flag (P) - even number of 1s in result
-        self.flags[8] = self._parity_table[result & 0xFF]
-
+    
     def _set_flags_16bit(self, result, original_result=None):
-        """Set flags for 16-bit operations using readable property names"""
+        """Set flags for 16-bit operations — delegates to Flags class.
+        
+        Maintains backward compatibility with _last_operation_was_cmp tracking
+        for CMP instruction carry flag handling.
+        """
         if original_result is None:
             original_result = result
-            
-        # Zero flag (Z) - result is zero
-        self.flags[7] = 1 if (result & 0xFFFF) == 0 else 0
         
-        # Carry flag (C) - for subtraction (CMP), set when borrow occurs (val1 < val2)
-        # For other operations, overflow/underflow occurred
-        if hasattr(self, '_last_operation_was_cmp') and self._last_operation_was_cmp:
-            self.flags[6] = 1 if original_result < 0 else 0  # Borrow occurred
+        # Delegate to Flags.set_from_16bit with CMP tracking
+        self.flags_obj.set_from_16bit(
+            result & 0xFFFF,
+            original_result=original_result,
+            is_cmp=getattr(self, '_last_operation_was_cmp', False),
+            last_operation_was_cmp=getattr(self, '_last_operation_was_cmp', False)
+        )
+        # Clear CMP tracking after use
+        if getattr(self, '_last_operation_was_cmp', False):
             self._last_operation_was_cmp = False
-        else:
-            self.flags[6] = 1 if original_result > 0xFFFF or original_result < 0 else 0
-        
-        # Sign flag (S) - result is negative (bit 15 set)
-        self.flags[1] = 1 if (result & 0x8000) != 0 else 0
-        
-        # Parity flag (P) - even number of 1s in low byte
-        self.flags[8] = self._parity_table[result & 0xFF]
-
+    
     def _set_overflow_flag_8bit(self, op1, op2, result, is_subtraction=False):
-        """Set overflow flag for 8-bit operations using readable property name"""
-        if is_subtraction:
-            # Overflow in subtraction: (pos - neg = neg) or (neg - pos = pos)
-            overflow = ((op1 & 0x80) != (op2 & 0x80)) and ((op1 & 0x80) != (result & 0x80))
-        else:
-            # Overflow in addition: (pos + pos = neg) or (neg + neg = pos)
-            overflow = ((op1 & 0x80) == (op2 & 0x80)) and ((op1 & 0x80) != (result & 0x80))
-        self.flags[2] = 1 if overflow else 0
-
+        """Set overflow flag for 8-bit operations — delegates to Flags class."""
+        self.flags_obj.set_overflow_8bit(op1, op2, result, is_subtraction)
+    
     def _set_overflow_flag_16bit(self, op1, op2, result, is_subtraction=False):
-        """Set overflow flag for 16-bit operations using readable property name"""
-        if is_subtraction:
-            # Overflow in subtraction: (pos - neg = neg) or (neg - pos = pos)
-            overflow = ((op1 & 0x8000) != (op2 & 0x8000)) and ((op1 & 0x8000) != (result & 0x8000))
-        else:
-            # Overflow in addition: (pos + pos = neg) or (neg + neg = pos)
-            overflow = ((op1 & 0x8000) == (op2 & 0x8000)) and ((op1 & 0x8000) != (result & 0x8000))
-        self.flags[2] = 1 if overflow else 0
+        """Set overflow flag for 16-bit operations — delegates to Flags class."""
+        self.flags_obj.set_overflow_16bit(op1, op2, result, is_subtraction)
 
     # ========================================
     # BCD (Binary Coded Decimal) OPERATIONS
@@ -1103,21 +1094,8 @@ class CPU:
         return bcd_result, bcd_borrow
     
     def _set_flags_8bit_bcd(self, result, bcd_carry=False):
-        """Set flags for 8-bit BCD operations"""
-        # Zero flag (Z) - result is zero
-        self.zero_flag = (result & 0xFF) == 0
-        
-        # BCD Carry flag (A) - BCD operation generated carry/borrow
-        self.bcd_carry_flag = bcd_carry
-        
-        # Regular carry flag is also set for compatibility
-        self.carry_flag = bcd_carry
-        
-        # Sign flag (S) - result is negative (bit 7 set)
-        self.sign_flag = (result & 0x80) != 0
-        
-        # Parity flag (P) - even number of 1s in result
-        self.parity_flag = bool(self._parity_table[result & 0xFF])
+        """Set flags for 8-bit BCD operations — delegates to Flags class."""
+        self.flags_obj.set_from_bcd(result & 0xFF, bcd_carry)
     
     # Public BCD methods for instructions
     def bcd_add(self, val1, val2):
@@ -1145,6 +1123,36 @@ class CPU:
     def binary_to_bcd(self, binary_value):
         """Public binary to BCD conversion for instructions"""
         return self._binary_to_bcd(binary_value)
+
+    # ========================================
+    # INLINE FLAG CHECKS - Fast access for hot-path (I, Z, C flags)
+    # ========================================
+
+    def _check_interrupts_enabled(self) -> bool:
+        """Inline check for interrupt flag - O(1) bitmask operation.
+        
+        Used in hot paths (step, interrupt checking) where we need to
+        know if interrupts are enabled without property method call overhead.
+        """
+        return (self.flags_obj._bits & (1 << self.flags_obj.I)) != 0
+
+    def _check_carry_flag(self) -> bool:
+        """Inline check for carry flag - O(1) bitmask operation.
+        
+        Used in ADC/SBC operations where carry state is frequently read.
+        """
+        return (self.flags_obj._bits & (1 << self.flags_obj.C)) != 0
+
+    def _check_zero_flag(self) -> bool:
+        """Inline check for zero flag - O(1) bitmask operation.
+        
+        Used in conditional jumps and comparisons.
+        """
+        return (self.flags_obj._bits & (1 << self.flags_obj.Z)) != 0
+
+    def _clear_hot_flags(self):
+        """Clear the frequently-used I, Z, C flags in one operation."""
+        self.flags_obj._bits &= ~((1 << self.flags_obj.I) | (1 << self.flags_obj.Z) | (1 << self.flags_obj.C))
 
     # Keyboard input handling
     def add_key_to_buffer(self, key_code):
@@ -1230,8 +1238,8 @@ class CPU:
         # Invalid vectors are ignored
 
     def _trigger_interrupt(self, interrupt_vector):
-        """Trigger an interrupt if global interrupts are enabled"""
-        if int(self.flags[5]) == 1:  # Check if interrupts are globally enabled
+        """Trigger an interrupt if global interrupts are enabled (using optimized inline check)."""
+        if self._check_interrupts_enabled():  # Check if interrupts are globally enabled
             # Check stack bounds before writing (need to push 2 words)
             sp = int(self.Pregisters[8])
             if sp < 0x0124:  # Stack overflow check (protect interrupt vectors)
@@ -1272,8 +1280,8 @@ class CPU:
         # Reset counter for next batch
         self.interrupt_check_counter = 0
         
-        # Fast exit if interrupts are globally disabled
-        if self.flags[5] == 0:  # Interrupts disabled
+        # Fast exit if interrupts are globally disabled (using optimized inline check)
+        if not self._check_interrupts_enabled():
             return False
         
         # Create current interrupt state hash for change detection
