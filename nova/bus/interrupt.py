@@ -35,10 +35,16 @@ class InterruptController:
     VECTOR_USER3 = 6
     VECTOR_DEBUG = 7
 
-    def __init__(self, bus: 'EventBus', cpu=None, memory=None):
+    def __init__(self, bus: 'EventBus', cpu=None, memory=None, check_frequency: int = 8, max_batch: int = 8):
         self.bus = bus
         self._cpu = cpu
         self._memory = memory
+
+        # Throttling and batching configuration
+        self.check_frequency = check_frequency  # Check every N steps
+        self.check_counter = 0
+        self.max_batch = max_batch  # Max interrupts to service per check
+        self.last_state = 0  # Packed state cache for fast-exit optimization
 
         # Per-vector enable flags (written by STI/CLI variants)
         self.enabled = [0] * 8
@@ -98,11 +104,23 @@ class InterruptController:
     # ── Interrupt checking / dispatch ──────────────────────────────────
 
     def check(self, _data=None):
-        """Explicit check call (used from CPU post-step hook)."""
+        """Explicit check call (used from CPU post-step hook).
+
+        Implements throttled checking with batched draining:
+        - Every call increments check_counter; full scan runs once every check_frequency steps
+        - When a scan runs, it services up to max_batch pending interrupts in priority order
+        - Uses last_state cache to skip redundant scans when nothing changed
+        """
+        # Increment counter for throttling
+        self.check_counter += 1
+        if self.check_counter < self.check_frequency:
+            return
+
+        self.check_counter = 0
         self._check()
 
     def _check(self):
-        """Check pending interrupts in priority order and trigger if enabled."""
+        """Check pending interrupts and service up to max_batch in priority order."""
         cpu = self._cpu
         if cpu is None:
             return
@@ -112,6 +130,8 @@ class InterruptController:
         # directly against cpu.interrupts below), so has_pending() alone
         # would silently starve it if used as the sole fast-exit condition.
         if not self.has_pending() and not cpu.interrupts[self.VECTOR_USER1]:
+            # Update state cache for fast-exit optimization
+            self.last_state = 0
             return
 
         flags = cpu.flags_obj
@@ -120,26 +140,85 @@ class InterruptController:
         if flags[Flags.I] == 0:
             return
 
-        # Use cpu.interrupts for per-vector enable (KEYCTRL/ENABRK set these)
+        # Build packed state for change detection
+        current_state = self._compute_state_hash()
+
+        # Skip scan if state hasn't changed and all clear
+        if current_state == self.last_state and current_state == 0:
+            return
+
+        self.last_state = current_state
+
+        # Batched drain: service up to max_batch interrupts in priority order
+        serviced = 0
+        while serviced < self.max_batch:
+            if not self._trigger_next_pending():
+                break
+            serviced += 1
+
+    def _compute_state_hash(self) -> int:
+        """Pack interrupt enable/pending state for fast-change detection.
+
+        Mirrors the pre-refactor optimization that encoded state in a small integer
+        to avoid repeated register reads when nothing changed.
+        """
+        cpu = self._cpu
+        if cpu is None:
+            return 0
+
+        return (
+            (cpu.interrupts[self.VECTOR_TIMER] << 7) |
+            (cpu.interrupts[self.VECTOR_SERIAL] << 6) |
+            (cpu.interrupts[self.VECTOR_KEYBOARD] << 5) |
+            (cpu.interrupts[self.VECTOR_MOUSE] << 4) |
+            (cpu.interrupts[self.VECTOR_USER1] << 3) |
+            ((1 if self._timer_pending else 0) << 2) |
+            ((1 if self._keyboard_pending else 0) << 1) |
+            (1 if self._serial_pending else 0)
+        )
+
+    def _trigger_next_pending(self) -> bool:
+        """Trigger the next pending interrupt in priority order.
+
+        Returns True if an interrupt was serviced, False otherwise.
+        Handles the I-flag re-check so nested interrupts work correctly.
+        """
+        cpu = self._cpu
+        if cpu is None:
+            return False
+
+        flags = cpu.flags_obj
+
+        # Re-check I flag (handler may have cleared it)
+        if flags[Flags.I] == 0:
+            return False
+
         # Priority order: Timer → Serial → Keyboard → Mouse → User
         if cpu.interrupts[self.VECTOR_TIMER] and self._timer_pending:
             self._trigger(self.VECTOR_TIMER)
             self._timer_pending = False
+            return True
 
-        elif cpu.interrupts[self.VECTOR_SERIAL] and self._serial_pending:
+        if cpu.interrupts[self.VECTOR_SERIAL] and self._serial_pending:
             self._trigger(self.VECTOR_SERIAL)
             self._serial_pending = False
+            return True
 
-        elif cpu.interrupts[self.VECTOR_KEYBOARD] and self._keyboard_pending:
+        if cpu.interrupts[self.VECTOR_KEYBOARD] and self._keyboard_pending:
             self._trigger(self.VECTOR_KEYBOARD)
             self._keyboard_pending = False
+            return True
 
-        elif cpu.interrupts[self.VECTOR_MOUSE] and self._mouse_pending:
+        if cpu.interrupts[self.VECTOR_MOUSE] and self._mouse_pending:
             self._trigger(self.VECTOR_MOUSE)
             self._mouse_pending = False
+            return True
 
-        elif cpu.interrupts[self.VECTOR_USER1]:
+        if cpu.interrupts[self.VECTOR_USER1]:
             self._trigger(self.VECTOR_USER1)
+            return True
+
+        return False
 
     def _trigger(self, vector: int):
         """Push PC + flags to stack, jump to handler."""
@@ -246,6 +325,10 @@ class InterruptController:
             'serial_pending': self._serial_pending,
             'keyboard_pending': self._keyboard_pending,
             'mouse_pending': self._mouse_pending,
+            'check_frequency': self.check_frequency,
+            'check_counter': self.check_counter,
+            'max_batch': self.max_batch,
+            'last_state': self.last_state,
         }
 
     def set_state(self, state: dict):
@@ -256,3 +339,7 @@ class InterruptController:
         self._serial_pending = state.get('serial_pending', False)
         self._keyboard_pending = state.get('keyboard_pending', False)
         self._mouse_pending = state.get('mouse_pending', False)
+        self.check_frequency = state.get('check_frequency', 8)
+        self.check_counter = state.get('check_counter', 0)
+        self.max_batch = state.get('max_batch', 8)
+        self.last_state = state.get('last_state', 0)
