@@ -1784,7 +1784,8 @@ class CPU:
         self.cycles += 1  # Increment cycle counter
         
         # Publish tick event at start of step (timer ticks before instruction execution)
-        if self.bus:
+        # Only publish when timer_device exists (sole subscriber)
+        if self.timer_device and self.bus:
             self.bus.publish('cpu.tick', self.cycles)
         
         if self.profiling_enabled:
@@ -1801,11 +1802,12 @@ class CPU:
         self.pc = (self.pc + 1) & 0xFFFF
         self._execute_instruction(opcode)
         
-        # Publish post-step event (interrupt check, etc.)
+        # Publish post-step event (interrupt check via bus subscriber)
         if self.bus:
             self.bus.publish('cpu.post_step', self)
         
-        # Refresh only when async interrupt sources are enabled but the fast gate is stale.
+        # Check pending interrupts (the interrupt controller also checks via cpu.post_step,
+        # but we keep the inline check for immediate response and backward compat)
         if self.has_pending_interrupt_sources:
             self._check_pending_interrupts()
         elif self._has_enabled_async_interrupt_sources():
@@ -1829,11 +1831,12 @@ class CPU:
                 self._current_mode_byte = 0
                 self.operands = []
                 instruction.execute(self)
-                self._check_hw_breakpoints()
+                if self.has_hw_breakpoints or self.flags_obj[0]:
+                    self._check_hw_breakpoints()
             else:
                 # All other instructions use prefixed operand format
-                # Fetch mode byte with caching
-                mode_byte = self.memory.fetch_opcode(self.pc)
+                # Fetch mode byte directly (always sequential after opcode fetch)
+                mode_byte = self.memory.read_byte_fast(self.pc)
                 self._current_mode_byte = mode_byte
                 self.pc = (self.pc + 1) & 0xFFFF
 
@@ -1853,7 +1856,8 @@ class CPU:
                     self.operands = []
 
                 instruction.execute(self)
-                self._check_hw_breakpoints()
+                if self.has_hw_breakpoints or self.flags_obj[0]:
+                    self._check_hw_breakpoints()
                 # Release operands back to pool after handler-based execution
                 if instruction.handler is not None:
                     release_operands(self.operands)

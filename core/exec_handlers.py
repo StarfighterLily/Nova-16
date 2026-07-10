@@ -102,7 +102,7 @@ def _mov(cpu, values) -> int:
 
 def _movz(cpu, values) -> int:
     """MOVZ: move if zero flag set."""
-    if cpu.flags_obj[7]:
+    if cpu.flags_obj.check_Z():
         result = values[1]
         _write_result(cpu, 0, result)
         _set_logic_flags(cpu, result, _operand_width(cpu))
@@ -112,7 +112,7 @@ def _movz(cpu, values) -> int:
 
 def _movnz(cpu, values) -> int:
     """MOVNZ: move if zero flag clear."""
-    if not cpu.flags_obj[7]:
+    if not cpu.flags_obj.check_Z():
         result = values[1]
         _write_result(cpu, 0, result)
         _set_logic_flags(cpu, result, _operand_width(cpu))
@@ -245,7 +245,7 @@ def _abs(cpu, values) -> int:
 
 def _adc(cpu, values) -> int:
     """ADC: dst + src + carry."""
-    carry = cpu.flags_obj[6]
+    carry = 1 if cpu.flags_obj.check_C() else 0
     result = values[0] + values[1] + carry
     _write_result(cpu, 0, result)
     width = _operand_width(cpu)
@@ -255,7 +255,7 @@ def _adc(cpu, values) -> int:
 
 def _sbc(cpu, values) -> int:
     """SBC: dst - src - carry."""
-    carry = cpu.flags_obj[6]
+    carry = 1 if cpu.flags_obj.check_C() else 0
     result = values[0] - values[1] - carry
     _write_result(cpu, 0, result)
     width = _operand_width(cpu)
@@ -559,77 +559,77 @@ def _jmp(cpu, values) -> None:
 
 def _jz(cpu, values) -> None:
     """JZ: jump if zero."""
-    if cpu.flags_obj[7]:
+    if cpu.flags_obj.check_Z():
         cpu.pc = values[0] & 0xFFFF
 
 
 def _jnz(cpu, values) -> None:
     """JNZ: jump if not zero."""
-    if not cpu.flags_obj[7]:
+    if not cpu.flags_obj.check_Z():
         cpu.pc = values[0] & 0xFFFF
 
 
 def _jo(cpu, values) -> None:
     """JO: jump if overflow."""
-    if cpu.flags_obj[2]:
+    if cpu.flags_obj.check_O():
         cpu.pc = values[0] & 0xFFFF
 
 
 def _jno(cpu, values) -> None:
     """JNO: jump if no overflow."""
-    if not cpu.flags_obj[2]:
+    if not cpu.flags_obj.check_O():
         cpu.pc = values[0] & 0xFFFF
 
 
 def _jc(cpu, values) -> None:
     """JC: jump if carry."""
-    if cpu.flags_obj[6]:
+    if cpu.flags_obj.check_C():
         cpu.pc = values[0] & 0xFFFF
 
 
 def _jnc(cpu, values) -> None:
     """JNC: jump if no carry."""
-    if not cpu.flags_obj[6]:
+    if not cpu.flags_obj.check_C():
         cpu.pc = values[0] & 0xFFFF
 
 
 def _js(cpu, values) -> None:
     """JS: jump if sign."""
-    if cpu.flags_obj[1]:
+    if cpu.flags_obj.check_S():
         cpu.pc = values[0] & 0xFFFF
 
 
 def _jns(cpu, values) -> None:
     """JNS: jump if no sign."""
-    if not cpu.flags_obj[1]:
+    if not cpu.flags_obj.check_S():
         cpu.pc = values[0] & 0xFFFF
 
 
 def _jgt(cpu, values) -> None:
     """JGT: jump if signed greater than."""
-    lt = cpu.flags_obj[2] != cpu.flags_obj[1]
-    if not lt and not cpu.flags_obj[7]:
+    lt = cpu.flags_obj.check_O() != cpu.flags_obj.check_S()
+    if not lt and not cpu.flags_obj.check_Z():
         cpu.pc = values[0] & 0xFFFF
 
 
 def _jlt(cpu, values) -> None:
     """JLT: jump if signed less than."""
-    lt = cpu.flags_obj[2] != cpu.flags_obj[1]
+    lt = cpu.flags_obj.check_O() != cpu.flags_obj.check_S()
     if lt:
         cpu.pc = values[0] & 0xFFFF
 
 
 def _jge(cpu, values) -> None:
     """JGE: jump if signed greater or equal."""
-    lt = cpu.flags_obj[2] != cpu.flags_obj[1]
+    lt = cpu.flags_obj.check_O() != cpu.flags_obj.check_S()
     if not lt:
         cpu.pc = values[0] & 0xFFFF
 
 
 def _jle(cpu, values) -> None:
     """JLE: jump if signed less or equal."""
-    lt = cpu.flags_obj[2] != cpu.flags_obj[1]
-    if cpu.flags_obj[7] or lt:
+    lt = cpu.flags_obj.check_O() != cpu.flags_obj.check_S()
+    if cpu.flags_obj.check_Z() or lt:
         cpu.pc = values[0] & 0xFFFF
 
 
@@ -643,7 +643,7 @@ def _br(cpu, values) -> None:
 
 def _brz(cpu, values) -> None:
     """BRZ: relative branch if zero."""
-    if cpu.flags_obj[7]:
+    if cpu.flags_obj.check_Z():
         offset = values[0]
         if offset & 0x8000:
             offset -= 0x10000
@@ -652,7 +652,7 @@ def _brz(cpu, values) -> None:
 
 def _brnz(cpu, values) -> None:
     """BRNZ: relative branch if not zero."""
-    if not cpu.flags_obj[7]:
+    if not cpu.flags_obj.check_Z():
         offset = values[0]
         if offset & 0x8000:
             offset -= 0x10000
@@ -670,7 +670,7 @@ def _call(cpu, values) -> None:
 
 def _callz(cpu, values) -> None:
     """CALLZ: call if zero."""
-    if cpu.flags_obj[7]:
+    if cpu.flags_obj.check_Z():
         sp = cpu.regfile.get('P', 8)
         sp = (sp - 2) & 0xFFFF
         cpu.memory.write_word(sp, cpu.pc)
@@ -680,7 +680,7 @@ def _callz(cpu, values) -> None:
 
 def _callnz(cpu, values) -> None:
     """CALLNZ: call if not zero."""
-    if not cpu.flags_obj[7]:
+    if not cpu.flags_obj.check_Z():
         sp = cpu.regfile.get('P', 8)
         sp = (sp - 2) & 0xFFFF
         cpu.memory.write_word(sp, cpu.pc)
@@ -715,7 +715,7 @@ def _loopz(cpu, values) -> int:
     """LOOPZ: loop while counter != 0 and zero flag set."""
     new_value = (values[0] - 1) & 0xFFFF
     _write_result(cpu, 0, new_value)
-    if new_value != 0 and cpu.flags_obj[7]:
+    if new_value != 0 and cpu.flags_obj.check_Z():
         cpu.pc = values[1] & 0xFFFF
     return new_value
 
@@ -728,7 +728,7 @@ def _while(cpu, values) -> int:
 
 def _int(cpu, values) -> None:
     """INT: software interrupt."""
-    if not cpu.flags_obj[5]:
+    if not cpu.flags_obj.check_I():
         return
     flags_value = cpu.flags_obj.pack()
     sp = cpu.regfile.get('P', 8)

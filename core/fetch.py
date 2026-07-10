@@ -49,6 +49,9 @@ class Operand:
         indirect: For memory-indirect operands: whether [reg] addressing.
         indexed: For memory-indexed operands: whether [reg+offset] or [addr+offset].
         index: Offset byte for indexed addressing.
+        is_register: Pre-computed boolean for fast access (avoids property overhead).
+        is_immediate: Pre-computed boolean for fast access.
+        is_memory: Pre-computed boolean for fast access.
     """
     mode: int
     type: str = ''
@@ -60,6 +63,9 @@ class Operand:
     indirect: bool = False
     indexed: bool = False
     index: int = 0
+    is_register: bool = False
+    is_immediate: bool = False
+    is_memory: bool = False
 
     def reset(self):
         """Reset all fields to defaults for pool reuse."""
@@ -73,18 +79,9 @@ class Operand:
         self.indirect = False
         self.indexed = False
         self.index = 0
-
-    @property
-    def is_register(self) -> bool:
-        return self.type == 'register'
-
-    @property
-    def is_immediate(self) -> bool:
-        return self.type == 'immediate'
-
-    @property
-    def is_memory(self) -> bool:
-        return self.type == 'memory'
+        self.is_register = False
+        self.is_immediate = False
+        self.is_memory = False
 
     @classmethod
     def register(cls, reg_type: str, reg_idx: int) -> 'Operand':
@@ -181,6 +178,7 @@ def decode_operands(memory, pc: int, mode_byte: int, num_operands: int,
             op.type = 'register'
             op.reg_type = typ
             op.reg_idx = idx
+            op.is_register = True
             operands.append(op)
 
         elif mode == 1:  # Immediate 8-bit
@@ -191,6 +189,7 @@ def decode_operands(memory, pc: int, mode_byte: int, num_operands: int,
             op.type = 'immediate'
             op.value = value
             op.size = 8
+            op.is_immediate = True
             operands.append(op)
 
         elif mode == 2:  # Immediate 16-bit
@@ -202,6 +201,7 @@ def decode_operands(memory, pc: int, mode_byte: int, num_operands: int,
             op.type = 'immediate'
             op.value = (high << 8) | low
             op.size = 16
+            op.is_immediate = True
             operands.append(op)
 
         elif mode == 3:  # Memory reference
@@ -224,6 +224,7 @@ def _decode_memory_ref(memory, addr: int, direct: int, indexed: int,
     op = _acquire_operand()
     op.mode = 3
     op.type = 'memory'
+    op.is_memory = True
 
     if direct and not indexed:
         # Direct memory address [imm16]
