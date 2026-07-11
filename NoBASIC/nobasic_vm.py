@@ -173,7 +173,7 @@ class NoBASICVM:
     @staticmethod
     def _initialize_system(enable_sound: bool = True):
         """Initialize Nova-16 system components."""
-        mem = ram.Memory()
+        mem = ram()
         gfx = gpu.GFX()
         kbd = keyboard.NovaKeyboard()
         snd = sound.NovaSound() if enable_sound else SilentSound()

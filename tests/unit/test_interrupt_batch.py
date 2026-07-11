@@ -11,7 +11,6 @@ import pytest
 from nova.bus.interrupt import InterruptController
 from nova.bus.eventbus import EventBus
 from nova.memory import Memory
-from nova_gfx import NovaGFX
 
 
 class MockCPU:
@@ -103,12 +102,11 @@ class TestInterruptBatchProcessing:
         intr_ctrl.check_frequency = 4
         intr_ctrl.check_counter = 0
         
-        # Call check 3 times - should not run the actual scan
+        # Call check 3 times - should not run the actual scan (counter incremented inside check)
         for _ in range(3):
-            intr_ctrl.check_counter += 1
             intr_ctrl.check()
         
-        # check_counter should not have been reset to 0
+        # check_counter should be 3 after 3 calls (each call increments it)
         assert intr_ctrl.check_counter == 3
 
     def test_check_frequency_triggers_after_threshold(self, intr_ctrl, mock_cpu, memory):
@@ -125,18 +123,19 @@ class TestInterruptBatchProcessing:
                 if idx == self.I:
                     return 1
                 return 0
+            def __setitem__(self, idx, val):
+                if idx == self.I:
+                    self._bits = (self._bits & ~0x20) | (val << 5)
             def pack(self):
-                return 0x20
-            def setitem(self, idx, val):
-                pass
+                return self._bits
         mock_cpu.flags_obj = FlagsMock()
         
-        # First 3 calls should not trigger
+        # First 3 calls should not trigger (counter becomes 1,2,3)
         for _ in range(3):
             intr_ctrl.check()
         assert intr_ctrl._keyboard_pending is True  # Not cleared yet
         
-        # 4th call should trigger
+        # 4th call should trigger (counter was 3, increments to 4, which >= check_frequency)
         intr_ctrl.check()
         assert intr_ctrl._keyboard_pending is False  # Cleared
 
