@@ -67,7 +67,7 @@ from core.exec_handlers import (
 # Parameterized Instruction
 # ==============================================================================
 
-@dataclass
+@dataclass(slots=True)
 class Instruction:
     """Parameterized instruction — one instance per opcode family.
 
@@ -111,43 +111,61 @@ class Instruction:
     def _execute_handler(self, cpu) -> None:
         """Execute via the handler function.
 
-        Optimizations:
-        - Uses cached function references for hot-path dispatch
-        - Supports operand value caching for repeated instructions
+        Optimized hot path:
+        - Local variable bindings to avoid repeated attribute lookups
+        - Inline operand resolution to avoid list allocation
+        - Pre-sized tuple for 1-4 operand values
         """
-        if self.num_operands == 0:
+        n_ops = self.num_operands
+        if n_ops == 0:
             self.handler(cpu)
+        elif n_ops == 1:
+            v0 = _resolve_single_operand(cpu.operands[0], cpu)
+            result = self.handler(cpu, (v0,))
+            if self.flags_fn is not None:
+                self.flags_fn(cpu, (v0,), result)
+        elif n_ops == 2:
+            v0 = _resolve_single_operand(cpu.operands[0], cpu)
+            v1 = _resolve_single_operand(cpu.operands[1], cpu)
+            result = self.handler(cpu, (v0, v1))
+            if self.flags_fn is not None:
+                self.flags_fn(cpu, (v0, v1), result)
+        elif n_ops == 3:
+            v0 = _resolve_single_operand(cpu.operands[0], cpu)
+            v1 = _resolve_single_operand(cpu.operands[1], cpu)
+            v2 = _resolve_single_operand(cpu.operands[2], cpu)
+            result = self.handler(cpu, (v0, v1, v2))
+            if self.flags_fn is not None:
+                self.flags_fn(cpu, (v0, v1, v2), result)
         else:
-            values = self._resolve_operands(cpu, calculate_memory_address)
+            # Generic fallback for 4+ operands (rare: STREXT, STREXTI, MEMCMP)
+            values = tuple(_resolve_single_operand(op, cpu) for op in cpu.operands)
             result = self.handler(cpu, values)
             if self.flags_fn is not None:
                 self.flags_fn(cpu, values, result)
 
-    def _resolve_operands(self, cpu, calc_addr) -> list:
-        """Resolve operand values from the CPU's current mode byte and operands."""
-        # The CPU already parses operands into cpu.operands list
-        # during _execute_instruction. We resolve values from those.
-        values = []
-        for i, op in enumerate(cpu.operands):
-            if op.is_register:
-                values.append(cpu.regfile.get(op.reg_type, op.reg_idx))
-            elif op.is_immediate:
-                values.append(op.value)
-            elif op.is_memory:
-                addr = calc_addr(op, cpu.regfile)
-                # Memory read size is determined by the destination operand for
-                # two-operand instructions (legacy behavior), otherwise default word.
-                dest_op = cpu.operands[0] if cpu.operands else None
-                if dest_op is not None and dest_op.is_register and dest_op.reg_type == 'R':
-                    values.append(cpu.memory.read_byte_fast(addr))
-                else:
-                    values.append(cpu.memory.read_word_fast(addr))
-            else:
-                values.append(0)
-        return values
-
     def __repr__(self) -> str:
         return f"Instruction({self.name}, 0x{self.opcode:02X})"
+
+
+def _resolve_single_operand(op, cpu) -> int:
+    """Resolve a single operand value — inline in the hot path.
+
+    Avoids the list allocation and per-operand method call overhead of
+    the old _resolve_operands loop.
+    """
+    if op.is_register:
+        return cpu.regfile.get(op.reg_type, op.reg_idx)
+    if op.is_immediate:
+        return op.value
+    if op.is_memory:
+        addr = calculate_memory_address(op, cpu.regfile)
+        # Memory read size: byte if dest is R register, otherwise word
+        dest_op = cpu.operands[0] if cpu.operands else None
+        if dest_op is not None and dest_op.is_register and dest_op.reg_type == 'R':
+            return cpu.memory.read_byte_fast(addr)
+        return cpu.memory.read_word_fast(addr)
+    return 0
 
 
 # ==============================================================================

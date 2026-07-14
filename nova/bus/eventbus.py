@@ -40,9 +40,14 @@ class EventBus:
             ]
 
     def publish(self, event_type: str, data: Any = None):
-        """Publish an event.  Subscribers are called synchronously in order."""
-        for cb in self._subscribers.get(event_type, []):
-            cb(data)
+        """Publish an event.  Subscribers are called synchronously in order.
+
+        Optimized: skips entirely when no subscribers exist (hot-path guard).
+        """
+        subs = self._subscribers.get(event_type)
+        if subs:
+            for cb in subs:
+                cb(data)
         once = self._once.get(event_type)
         if once:
             for cb in once:
