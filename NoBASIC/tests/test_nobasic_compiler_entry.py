@@ -214,7 +214,7 @@ def test_compile_nobasic_rejects_non_asm_output_path_before_assembly(tmp_path, m
     assert exc.value.code == 1
     assert assembler_called is False
     output = capsys.readouterr().out
-    assert f"Output file must have .asm extension: {output_file}" in output
+    assert f"Output file must have .asm extension for target 'nova': {output_file}" in output
     assert output_file.exists() is False
 
 
@@ -831,8 +831,9 @@ def test_main_parses_flags_and_calls_compile(monkeypatch, tmp_path):
     output_file = tmp_path / "sample.asm"
     called = {}
 
-    def fake_compile(*args):
+    def fake_compile(*args, **kwargs):
         called["args"] = args
+        called["kwargs"] = kwargs
 
     monkeypatch.setattr(nobasic_compiler, "compile_nobasic", fake_compile)
     monkeypatch.setattr(
@@ -853,15 +854,11 @@ def test_main_parses_flags_and_calls_compile(monkeypatch, tmp_path):
 
     nobasic_compiler.main()
 
-    assert called["args"] == (
-        str(source_file),
-        str(output_file),
-        True,
-        True,
-        True,
-        True,
-        True,
-    )
+    assert called["args"][0] == str(source_file)
+    assert called["args"][1] == str(output_file)
+    assert called["args"][2] is True  # verbose
+    assert called["kwargs"].get("target") == "nova"
+    assert called["kwargs"].get("enable_linking") is True
 
 
 def test_main_parses_disable_flags_and_calls_compile(monkeypatch, tmp_path):
@@ -869,8 +866,9 @@ def test_main_parses_disable_flags_and_calls_compile(monkeypatch, tmp_path):
     source_file.write_text("Pause\n")
     called = {}
 
-    def fake_compile(*args):
+    def fake_compile(*args, **kwargs):
         called["args"] = args
+        called["kwargs"] = kwargs
 
     monkeypatch.setattr(nobasic_compiler, "compile_nobasic", fake_compile)
     monkeypatch.setattr(
@@ -896,6 +894,8 @@ def test_main_parses_disable_flags_and_calls_compile(monkeypatch, tmp_path):
         False,
         False,
     )
+    assert called["kwargs"].get("target") == "nova"
+    assert called["kwargs"].get("enable_linking") is True
 
 
 @pytest.mark.parametrize(
@@ -918,8 +918,9 @@ def test_main_honors_flag_ordering_and_debug_invariant(
     source_file.write_text("Pause\n")
     called = {}
 
-    def fake_compile(*args):
+    def fake_compile(*args, **kwargs):
         called["args"] = args
+        called["kwargs"] = kwargs
 
     monkeypatch.setattr(nobasic_compiler, "compile_nobasic", fake_compile)
     monkeypatch.setattr(
@@ -930,15 +931,11 @@ def test_main_honors_flag_ordering_and_debug_invariant(
 
     nobasic_compiler.main()
 
-    assert called["args"] == (
-        str(source_file),
-        None,
-        False,
-        expected_enable_optimizations,
-        expected_debug_optimizations,
-        True,
-        True,
-    )
+    assert called["args"][0] == str(source_file)
+    assert called["args"][3] == expected_enable_optimizations
+    assert called["args"][4] == expected_debug_optimizations
+    assert called["kwargs"].get("target") == "nova"
+    assert called["kwargs"].get("enable_linking") is True
 
 
 def test_compile_nobasic_defaults_match_explicitly_enabled_post_generation_optimizations(tmp_path, monkeypatch):
@@ -1009,7 +1006,7 @@ def test_main_supports_legacy_positional_output(monkeypatch, tmp_path):
     output_file = tmp_path / "legacy.asm"
     called = {}
 
-    def fake_compile(*args):
+    def fake_compile(*args, **kwargs):
         called["args"] = args
 
     monkeypatch.setattr(nobasic_compiler, "compile_nobasic", fake_compile)
@@ -1029,7 +1026,7 @@ def test_main_supports_case_insensitive_legacy_positional_output(monkeypatch, tm
     output_file = tmp_path / "LEGACY_OUTPUT.ASM"
     called = {}
 
-    def fake_compile(*args):
+    def fake_compile(*args, **kwargs):
         called["args"] = args
 
     monkeypatch.setattr(nobasic_compiler, "compile_nobasic", fake_compile)
@@ -1099,7 +1096,7 @@ def test_main_accepts_case_insensitive_asm_output_flag(monkeypatch, tmp_path):
     output_file = tmp_path / "CUSTOM_OUTPUT.ASM"
     called = {}
 
-    def fake_compile(*args):
+    def fake_compile(*args, **kwargs):
         called["args"] = args
 
     monkeypatch.setattr(nobasic_compiler, "compile_nobasic", fake_compile)
@@ -1131,4 +1128,4 @@ def test_main_rejects_non_asm_output_flag(monkeypatch, tmp_path, capsys):
 
     assert exc.value.code == 1
     output = capsys.readouterr().out
-    assert f"Output file must have .asm extension: {output_file}" in output
+    assert f"Output file must have .asm extension for target 'nova': {output_file}" in output

@@ -192,6 +192,37 @@ class LLVMIRGenerator:
         "input":          ("void", ["i8*", "i16*"]),
         "disp":           ("void", ["i8*"]),
         "pause":          ("void", []),
+        # Math functions
+        "sin":            ("i16", ["i16"]),
+        "cos":            ("i16", ["i16"]),
+        "tan":            ("i16", ["i16"]),
+        "sqrt":           ("i16", ["i16"]),
+        "abs":            ("i16", ["i16"]),
+        "intgr":          ("i16", ["i16"]),
+        "round":          ("i16", ["i16"]),
+        "powr":           ("i16", ["i16", "i16"]),
+        "log":            ("i16", ["i16"]),
+        "min":            ("i16", ["i16", "i16"]),
+        "max":            ("i16", ["i16", "i16"]),
+        "itoa":           ("void", ["i16", "i8*"]),
+        # String functions
+        "strlen":         ("i16", ["i8*"]),
+        "strcpy":         ("void", ["i8*", "i8*"]),
+        "strcat":         ("void", ["i8*", "i8*"]),
+        "strcmp":         ("i16", ["i8*", "i8*", "i16"]),
+        "strupr":         ("i16", ["i8*"]),
+        "strlwr":         ("i16", ["i8*"]),
+        "strrev":         ("i16", ["i8*"]),
+        "strfind":        ("i16", ["i8*", "i8*"]),
+        "strfindi":       ("i16", ["i8*", "i8*"]),
+        "strext":         ("void", ["i8*", "i16", "i16", "i8*"]),
+        # Random functions
+        "rand":           ("i16", []),
+        "rndr":           ("i16", ["i16", "i16"]),
+        "randomize":      ("void", ["i16"]),
+        # Memory access
+        "memread":        ("i16", ["i16"]),
+        "memwrite":       ("void", ["i16", "i16"]),
     }
 
     def _emit_extern_if_needed(self, name: str):
@@ -217,63 +248,8 @@ class LLVMIRGenerator:
     def _is_nova_hardware_call(self, name: str) -> bool:
         """Check if a function name matches a built-in Nova-16 hardware operation."""
         lowered = name.lower()
-        # Map known NoBASIC built-in names to Nova-16 extern names
-        name_map = {
-            "clrdraw": "clrdraw",
-            "pxlon": "pxlon",
-            "pxloff": "pxloff",
-            "line": "line",
-            "circle": "circle",
-            "text": "text",
-            "setlayer": "setlayer",
-            "scrroll": "scrroll",
-            "scrrotate": "scrrotate",
-            "scrshift": "scrshift",
-            "scrflip": "scrflip",
-            "spriteon": "spriteon",
-            "spriteoff": "spriteoff",
-            "playtone": "playtone",
-            "playwave": "playwave",
-            "stopsound": "stopsound",
-            "setchannel": "setchannel",
-            "getkey": "getkey",
-            "serout": "serout",
-            "serin": "serin",
-            "serstat": "serstat",
-            "serctrl": "serctrl",
-            "input": "input",
-            "disp": "disp",
-            "pause": "pause",
-        }
-        # Also check statement-level hardware calls
-        stmt_map = {
-            "clrdraw": "clrdraw",
-            "pxlon": "pxlon",
-            "pxloff": "pxloff",
-            "line": "line",
-            "circle": "circle",
-            "text": "text",
-            "setlayer": "setlayer",
-            "scrroll": "scrroll",
-            "scrrotate": "scrrotate",
-            "scrshift": "scrshift",
-            "scrflip": "scrflip",
-            "spriteon": "spriteon",
-            "spriteoff": "spriteoff",
-            "playtone": "playtone",
-            "playwave": "playwave",
-            "stopsound": "stopsound",
-            "setchannel": "setchannel",
-            "getkey": "getkey",
-            "serout": "serout",
-            "serin": "serin",
-            "serstat": "serstat",
-            "serctrl": "serctrl",
-            "input": "input",
-            "disp": "disp",
-            "pause": "pause",
-        }
-        return lowered in name_map or lowered in stmt_map
+        # All HARDWARE_EXTERNS are valid hardware calls
+        return lowered in self.HARDWARE_EXTERNS
 
     def generate(self, program: Program) -> str:
         """
@@ -308,6 +284,9 @@ class LLVMIRGenerator:
         # In NoBASIC, variables at top level are global; inside functions they're local
         self._classify_variables(program)
 
+        # Pre-pass: collect all string literals for module-level declaration
+        self._collect_strings_pre_pass(program)
+
         # Emit module header
         self._emit("; NoBASIC to LLVM IR")
         self._emit(f"; Source: {getattr(program, 'source_file', '<unknown>')}")
@@ -338,8 +317,8 @@ class LLVMIRGenerator:
             if isinstance(stmt, FunctionDefStmt):
                 self._generate_function(stmt)
 
-        # Emit main entry function (top-level statements)
-        self._emit("define i32 @main() {")
+        # Emit main entry function (top-level statements) - renamed to nobasic_main for SDL runtime linking
+        self._emit("define i32 @nobasic_main() {")
         self.indent_level = 1
         self.current_function = "__main__"
         self.local_vars = {}
@@ -424,6 +403,58 @@ class LLVMIRGenerator:
 
         # Everything at top-level scope is global in NoBASIC (by default)
         scan_stmts(program.statements)
+
+    # ============== String Collection (Pre-pass) ==============
+
+    def _collect_strings_pre_pass(self, program: Program) -> None:
+        """Pre-pass: collect all string literals for module-level declaration."""
+        def scan_stmt(stmt):
+            if isinstance(stmt, DispStmt):
+                scan_expr(stmt.text)
+            elif isinstance(stmt, TextStmt):
+                scan_expr(stmt.text)
+            elif isinstance(stmt, InputStmt):
+                if stmt.prompt is not None:
+                    scan_expr(stmt.prompt)
+            elif isinstance(stmt, IfStmt):
+                for s in stmt.then_branch:
+                    scan_stmt(s)
+                if stmt.else_branch:
+                    for s in stmt.else_branch:
+                        scan_stmt(s)
+            elif isinstance(stmt, ForStmt):
+                for s in stmt.body:
+                    scan_stmt(s)
+            elif isinstance(stmt, WhileStmt):
+                for s in stmt.body:
+                    scan_stmt(s)
+            elif isinstance(stmt, RepeatStmt):
+                for s in stmt.body:
+                    scan_stmt(s)
+            elif isinstance(stmt, FunctionDefStmt):
+                for s in stmt.body:
+                    scan_stmt(s)
+            elif isinstance(stmt, AssignmentStmt):
+                scan_expr(stmt.expression)
+
+        def scan_expr(expr):
+            if isinstance(expr, LiteralExpr) and expr.data_type == DataType.STRING:
+                str_id = f"@.str.{len(self.string_constants)}"
+                self.string_constants.append((str_id, None, expr.value))
+            elif isinstance(expr, BinaryExpr):
+                scan_expr(expr.left)
+                scan_expr(expr.right)
+            elif isinstance(expr, UnaryExpr):
+                scan_expr(expr.expression)
+            elif isinstance(expr, GroupingExpr):
+                scan_expr(expr.expression)
+            elif isinstance(expr, FunctionCallExpr):
+                for arg in expr.arguments:
+                    scan_expr(arg)
+
+        for stmt in program.statements:
+            if not isinstance(stmt, StructDeclarationStmt):
+                scan_stmt(stmt)
 
     # ============== Hardware Extern Collection ==============
 
@@ -719,15 +750,20 @@ class LLVMIRGenerator:
             return tmp
 
     def _generate_string_literal(self, value: str) -> str:
-        """Create a global string constant and return an i8* to it."""
+        """Find the pre-collected string constant and return an i8* to it."""
+        # Find the string that was collected in pre-pass
+        for str_id, _, str_val in self.string_constants:
+            if str_val == value:
+                tmp = self._temp()
+                # Use getelementptr inbounds for cleaner LLVM IR
+                self._emit(f"{tmp} = getelementptr inbounds [{len(value) + 1} x i8], [{len(value) + 1} x i8]* {str_id}, i32 0, i32 0")
+                return tmp
+        # Fallback: if string wasn't collected (shouldn't happen), create it inline
         str_id = f"@.str.{len(self.string_constants)}"
-        self.string_constants.append((str_id, None, value))
         escaped = self._escape_llvm_string(value)
-        # Emit the global
         self._emit(f"{str_id} = private unnamed_addr constant [{len(value) + 1} x i8] c\"{escaped}\\00\"")
-        # Get a pointer to it
         tmp = self._temp()
-        self._emit(f"{tmp} = getelementptr [{len(value) + 1} x i8], [{len(value) + 1} x i8]* {str_id}, i32 0, i32 0")
+        self._emit(f"{tmp} = getelementptr inbounds [{len(value) + 1} x i8], [{len(value) + 1} x i8]* {str_id}, i32 0, i32 0")
         return tmp
 
     def _generate_variable_read(self, expr: VariableExpr) -> str:
@@ -844,7 +880,7 @@ class LLVMIRGenerator:
 
         if op == "-":
             self._emit(f"{tmp} = sub i16 0, {inner}")
-        elif op == "!" or op == "NOT":
+        elif op == "!" or op.lower() == "not":
             cmp_reg = self._temp()
             self._emit(f"{cmp_reg} = icmp eq i16 {inner}, 0")
             self._emit(f"{tmp} = zext i1 {cmp_reg} to i16")
@@ -897,12 +933,24 @@ class LLVMIRGenerator:
     def _generate_call_expr(self, expr: FunctionCallExpr) -> str:
         """Generate LLVM IR for a function call expression."""
         name = expr.name.lower()
-        args = [self._generate_expression(arg) for arg in expr.arguments]
-        args_str = ", ".join(f"i16 {a}" for a in args)
+        
+        # Get the parameter types for this hardware function
+        signature = self.HARDWARE_EXTERNS.get(expr.name.lower(), (None, None))
+        param_types = signature[1] if signature else None
 
         if self._is_nova_hardware_call(expr.name):
-            # Hardware function call
-            if self.HARDWARE_EXTERNS.get(name, (None, None))[0] == "void":
+            # Hardware function call - generate arguments with proper types
+            args_with_types = []
+            for i, arg in enumerate(expr.arguments):
+                arg_val = self._generate_expression(arg)
+                # Handle i8* (string pointer) parameters
+                if param_types and i < len(param_types) and param_types[i] == "i8*":
+                    args_with_types.append(f"i8* {arg_val}")
+                else:
+                    args_with_types.append(f"i16 {arg_val}")
+            args_str = ", ".join(args_with_types)
+
+            if signature[0] == "void":
                 self._emit(f"call void @{name}({args_str})")
                 tmp = self._temp()
                 self._emit(f"{tmp} = add i16 0, 0")
@@ -913,6 +961,8 @@ class LLVMIRGenerator:
                 return tmp
         else:
             # User function call
+            args = [self._generate_expression(arg) for arg in expr.arguments]
+            args_str = ", ".join(f"i16 {a}" for a in args)
             label = self.function_labels.get(name, name)
             tmp = self._temp()
             self._emit(f"{tmp} = call i16 @{label}({args_str})")
@@ -1141,6 +1191,8 @@ class LLVMIRGenerator:
         else:
             self._emit(f"ret i16 0")
         # Mark that this function has a return (so a terminal ret isn't needed)
+        if self.current_function:
+            self.function_has_return.add(self.current_function)
 
     def _generate_function_call(self, expr: FunctionCallExpr):
         """Generate a function call as a statement (discarding the return value)."""
@@ -1198,8 +1250,9 @@ class LLVMIRGenerator:
         for s in stmt.body:
             self._generate_statement(s)
 
-        # If no return was emitted, add a default return 0
-        self._emit(f"ret i16 0")
+        # Only add default return if no explicit return was emitted
+        if func_key not in self.function_has_return:
+            self._emit(f"ret i16 0")
 
         # Restore state
         self.indent_level = 0

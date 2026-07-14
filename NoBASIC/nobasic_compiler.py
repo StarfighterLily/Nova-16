@@ -431,6 +431,81 @@ def _remove_stale_binary(binary_file: Path) -> None:
         raise CompilerError(f"Failed to remove stale binary '{binary_file}': {exc}", str(binary_file), 1, 1)
 
 
+def _compile_llvm_to_executable(ll_file: Path, exe_file: Path, verbose: bool, emit: Callable[[str], None], target: str = "llvm") -> bool:
+    """Compile LLVM IR to native executable using clang with the Nova-16 runtime.
+    
+    Args:
+        ll_file: Path to the generated LLVM IR file (.ll)
+        exe_file: Path to the output executable file
+        verbose: Enable verbose output
+        emit: Callback for status messages
+        target: Target type ('llvm' or 'sdl')
+    
+    Returns:
+        True if compilation succeeded, False otherwise
+    """
+    # Find the appropriate runtime stub library
+    if target == "sdl":
+        runtime_path = Path(__file__).resolve().parent / "llvm_runtime_sdl.c"
+        sdl_dir = Path(__file__).resolve().parent / "sdl"
+    else:
+        runtime_path = Path(__file__).resolve().parent / "llvm_runtime_x64.c"
+        sdl_dir = None
+    
+    if not runtime_path.exists():
+        emit(f"LLVM runtime not found: {runtime_path}")
+        return False
+    
+    try:
+        # Clang command: compile .ll + runtime to executable
+        # -fno-builtin avoids issues with builtin function replacement
+        # -Wl,-subsystem,console specifies console application on Windows (avoid GUI WinMain lookup)
+        cmd = [
+            "clang",
+            "-fno-builtin",
+            str(ll_file),
+            str(runtime_path),
+        ]
+        
+        # Add SDL runtime if targeting SDL
+        if target == "sdl":
+            sdl_runtime = sdl_dir / "nobasic_sdl_runtime.c"
+            cmd.append(str(sdl_runtime))
+            cmd.extend(["-I", str(sdl_dir)])
+            # Add SDL2 library (may need adjustment based on system)
+            cmd.append("-lSDL2")
+        
+        cmd.extend(["-o", str(exe_file)])
+        # Add -Wl,--subsystem,console for MinGW to create a console application
+        # This prevents the linker from looking for WinMain (GUI) instead of main (console)
+        cmd.extend(["-Wl,--subsystem,console"])
+        
+        if verbose:
+            emit(f"Executing: {' '.join(cmd)}")
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(ll_file.parent))
+        
+        if result.returncode != 0:
+            emit(f"LLVM compilation failed with exit code {result.returncode}")
+            if result.stderr:
+                emit(f"Clang stderr: {result.stderr}")
+            if result.stdout:
+                emit(f"Clang output: {result.stdout}")
+            return False
+        
+        if verbose and result.stdout:
+            emit(f"Clang output: {result.stdout}")
+        
+        return True
+        
+    except FileNotFoundError as exc:
+        emit(f"Clang executable not found. Please ensure clang is in your PATH.")
+        return False
+    except Exception as exc:
+        emit(f"LLVM compilation failed: {exc}")
+        return False
+
+
 def _prepare_output_file_path(output_file: Optional[str], resolved_source_file: Path, target: str = "nova") -> Path:
     """Resolve the output path and create its parent directory when needed.
 
@@ -485,7 +560,8 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
                     enable_peephole: bool = True, enable_live_range_scheduling: bool = True,
                     log: Optional[Callable[[str], None]] = print,
                     assemble_callback: Optional[Callable[[Path, bool, Callable[[str], None]], bool]] = None,
-                    target: str = "nova"):
+                    target: str = "nova",
+                    enable_linking: bool = True):
     """
     Compile a NoBASIC source file.
 
@@ -500,6 +576,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         log: Optional callback for compiler messages; defaults to print
         assemble_callback: Optional callback to assemble the generated .asm file in-process (nova target only)
         target: Target backend ('nova' or 'llvm', default: 'nova')
+        enable_linking: For LLVM target, link with clang to create executable (default: True)
     """
     line_map: SourceLineMap = []
     resolved_source_file: Optional[Path] = None
@@ -534,7 +611,7 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
         if verbose:
             emit("Semantic analysis complete")
 
-        if target == "llvm":
+        if target in ("llvm", "sdl"):
             # Generate LLVM IR
             generator = LLVMIRGenerator(debug=debug_optimizations)
             output_ext = '.ll'
@@ -568,11 +645,27 @@ def compile_nobasic(source_file: str, output_file: str = None, verbose: bool = F
             f.write(output_code)
 
         if verbose:
-            output_type = "LLVM IR" if target == "llvm" else "Assembly"
+            output_type = "LLVM IR" if target in ("llvm", "sdl") else "Assembly"
             emit(f"{output_type} written to {output_path}")
 
-        if target == "llvm":
-            emit(f"Compilation successful: {output_path}")
+        if target in ("llvm", "sdl"):
+            if enable_linking:
+                # LLVM target: compile to native executable using clang
+                exe_file = output_path.with_suffix('.exe')
+                
+                if verbose:
+                    emit(f"Compiling LLVM IR to executable: {output_path} + runtime -> {exe_file}")
+                
+                if not _compile_llvm_to_executable(output_path, exe_file, verbose, emit, target=target):
+                    emit(f"LLVM linking failed")
+                    sys.exit(1)
+                
+                if verbose:
+                    emit(f"Executable written to {exe_file}")
+                
+                emit(f"Compilation successful: {output_path} and {exe_file}")
+            else:
+                emit(f"Compilation successful: {output_path}")
         else:
             # Nova-16 assembly target: assemble to binary
             binary_file = output_path.with_suffix('.bin')
@@ -610,7 +703,7 @@ def main():
         print("Usage: python nobasic_compiler.py <source.nobasic> [options]")
         print()
         print("Options:")
-        print("  --output <file>            Output file (default: same as source with .asm or .ll)")
+        print("  --output <file>            Output file (default: same as source with .asm, .ll, or .exe)")
         print("  --verbose                  Enable verbose output")
         print("  --enable-optimizations     Enable compiler optimizations (default: enabled)")
         print("  --disable-optimizations    Disable compiler optimizations")
@@ -619,7 +712,8 @@ def main():
         print("  --enable-live-range        Enable live range scheduling (default: enabled)")
         print("  --disable-live-range       Disable live range scheduling")
         print("  --debug-optimizations      Enable optimization debug output")
-        print("  --target <backend>         Target backend: 'nova' (default) or 'llvm'")
+        print("  --target <backend>         Target backend: 'nova' (default), 'llvm', or 'sdl'")
+        print("  --no-link                  For LLVM target: skip clang linking to .exe")
         sys.exit(1)
 
     source_file = sys.argv[1]
@@ -630,6 +724,7 @@ def main():
     enable_peephole = True
     enable_live_range_scheduling = True
     target = "nova"
+    enable_linking = True
 
     # Parse command line arguments
     i = 2
@@ -656,13 +751,15 @@ def main():
         elif arg == "--target":
             if i + 1 < len(sys.argv):
                 target = sys.argv[i + 1].lower()
-                if target not in ("nova", "llvm"):
-                    print(f"Error: Unknown target '{target}'. Options: 'nova', 'llvm'")
+                if target not in ("nova", "llvm", "sdl"):
+                    print(f"Error: Unknown target '{target}'. Options: 'nova', 'llvm', 'sdl'")
                     sys.exit(1)
                 i += 1
             else:
-                print("Error: --target requires an argument (nova or llvm)")
+                print("Error: --target requires an argument (nova, llvm, or sdl)")
                 sys.exit(1)
+        elif arg == "--no-link":
+            enable_linking = False
         elif arg == "--output":
             if i + 1 < len(sys.argv):
                 output_file = sys.argv[i + 1]
@@ -683,7 +780,8 @@ def main():
         enable_optimizations = True
 
     compile_nobasic(source_file, output_file, verbose, enable_optimizations, debug_optimizations,
-                    enable_peephole, enable_live_range_scheduling, target=target)
+                    enable_peephole, enable_live_range_scheduling, target=target,
+                    enable_linking=enable_linking)
 
 
 if __name__ == "__main__":
