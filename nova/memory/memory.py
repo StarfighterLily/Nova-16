@@ -261,10 +261,11 @@ class Memory:
         self._icache_misses += 1
 
         # Add to cache (LRU eviction if full)
-        if len(self._icache) >= self._icache_max:
-            # Remove least-recently-used entry (first item in OrderedDict)
-            self._icache.popitem(last=False)
-        self._icache[address] = opcode
+        if self._icache_max > 0:
+            if len(self._icache) >= self._icache_max:
+                # Remove least-recently-used entry (first item in OrderedDict)
+                self._icache.popitem(last=False)
+            self._icache[address] = opcode
         self._last_fetch_pc = address
 
         return opcode

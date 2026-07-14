@@ -73,7 +73,7 @@ class CPU:
         self._register_lookup = self._build_register_lookup_table()
         
         self.interrupt_check_counter = 0
-        self.interrupt_check_frequency = 8
+        self.interrupt_check_frequency = 1024
         self.last_interrupt_state = 0
         self.has_pending_interrupt_sources = False
         self.has_hw_breakpoints = False
