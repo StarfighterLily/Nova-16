@@ -794,7 +794,8 @@ class Parser:
             TokenType.ABS, TokenType.INT, TokenType.ROUND, TokenType.RAND,
             TokenType.RNDR, TokenType.RANDOMIZE,
             TokenType.LENGTH, TokenType.SUB, TokenType.CONCAT,
-            TokenType.SUM, TokenType.MEAN, TokenType.MEMREAD, TokenType.MEMWRITE
+            TokenType.SUM, TokenType.MEAN, TokenType.MEMREAD, TokenType.MEMWRITE,
+            TokenType.INSTRING, TokenType.UPSTRING, TokenType.LOWSTRING, TokenType.LENSTRING,
         }
         return token_type in function_tokens
 

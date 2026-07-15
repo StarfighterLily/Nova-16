@@ -3357,14 +3357,11 @@ class CodeGenerator:
             self.current_output.append(f"MOV {target_reg}, 0")
             
             # Jump to set true if condition met
+            # Note: = and <> are handled earlier by predicated MOVZ/MOVNZ fast-path
             if expr.operator == "<":
                 self.current_output.append(f"JLT {true_label}")
             elif expr.operator == ">":
                 self.current_output.append(f"JGT {true_label}")
-            elif expr.operator == "=":
-                self.current_output.append(f"JZ {true_label}")
-            elif expr.operator == "<>":
-                self.current_output.append(f"JNZ {true_label}")
             elif expr.operator == "<=":
                 self.current_output.append(f"JLE {true_label}")
             elif expr.operator == ">=":
@@ -4288,7 +4285,6 @@ class CodeGenerator:
                 self.current_output.append(f"JGE {end_label}")
                 self.current_output.append(f"CMP {step_reg}, 0")
                 self.current_output.append(f"JGT {pos_step}")
-                self.current_output.append(f"CMP {step_reg}, 0")
                 self.current_output.append(f"JLT {do_write}")
                 self.current_output.append(f"JMP {end_label}")
                 self.current_output.append(f"{pos_step}:")
