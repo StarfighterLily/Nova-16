@@ -3938,7 +3938,19 @@ class CodeGenerator:
             addr1_reg = self.generate_expression(expr.arguments[0], "R1")
             addr2_reg = self.generate_expression(expr.arguments[1], "R2")
             len_reg = self.generate_expression(expr.arguments[2], "R3")
-            self.current_output.append(f"MEMTEST {target_reg}, {addr1_reg}, {addr2_reg}, {len_reg}")
+            self.current_output.append(f"MEMTEST {addr1_reg}, {addr2_reg}, {len_reg}")
+            # MEMTEST is a fixed 3-operand opcode that reports match/mismatch
+            # via the zero flag (cpu.flags_obj[7]), not a register - the CPU
+            # decoder always reads exactly 3 operands for this opcode, so a
+            # 4th "result" operand would desync instruction decoding.
+            match_label = self.new_label()
+            end_label = self.new_label()
+            self.current_output.append(f"MOV {target_reg}, 0")
+            self.current_output.append(f"JZ {match_label}")
+            self.current_output.append(f"JMP {end_label}")
+            self.current_output.append(f"{match_label}:")
+            self.current_output.append(f"MOV {target_reg}, 1")
+            self.current_output.append(f"{end_label}:")
         elif func_name == "MEMMOVE":
             dest_reg = self.generate_expression(expr.arguments[0], "R1")
             src_reg = self.generate_expression(expr.arguments[1], "R2")

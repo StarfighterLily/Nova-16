@@ -248,7 +248,8 @@ class LiveRangeScheduler:
         
         # Track flag register dependencies
         flag_modifying = ['ADD', 'SUB', 'AND', 'OR', 'XOR', 'SHL', 'SHR',
-                 'INC', 'DEC', 'CMP', 'TEST', 'NOT', 'NEG', 'WHILE', 'RETN']
+                 'INC', 'DEC', 'CMP', 'TEST', 'NOT', 'NEG', 'WHILE', 'RETN',
+                 'MEMTEST', 'MEMCMP']
         flag_reading = ['JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO',
                    'JLT', 'JLE', 'JGT', 'JGE', 'CALLZ', 'CALLNZ', 'LOOPZ']
         
@@ -321,7 +322,26 @@ class LiveRangeScheduler:
         elif opcode in ['POP', 'SWRITE', 'SPLAY', 'SEROUT', 'SERCTRL']:
             if operands:
                 add_use(operands[0])
-        
+
+        # Memory block ops: MEMCPY/MEMSET/MEMMOVE/MEMSWAP write through their
+        # address operands but never define a register (result, if any, is
+        # the unchanged address already held by an existing register); every
+        # operand is a read. MEMTEST is likewise all-reads (result via flags
+        # only). Without this, the scheduler sees no dependency on these
+        # operands and is free to reorder their setup instructions away from
+        # the op, or the flag-consuming JZ away from MEMTEST/MEMCMP.
+        elif opcode in ['MEMCPY', 'MEMSET', 'MEMTEST', 'MEMMOVE', 'MEMSWAP']:
+            for op in operands:
+                add_use(op)
+
+        # MEMCMP dest, addr1, addr2, length: writes its comparison result
+        # into dest; addr1/addr2/length are reads.
+        elif opcode == 'MEMCMP' and len(operands) >= 4:
+            add_define(operands[0])
+            add_use(operands[1])
+            add_use(operands[2])
+            add_use(operands[3])
+
         return defines, uses
     
     def _extract_register(self, operand: str) -> str:
