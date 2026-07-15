@@ -1,5 +1,5 @@
 # Symbol table
 # Format: <symbol> <value>
-L1 0x0235
-L2 0x0257
-STR2 0x0268
+L1 0x0234
+L2 0x025A
+STR2 0x026B

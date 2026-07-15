@@ -470,6 +470,9 @@ def _compile_llvm_to_executable(ll_file: Path, exe_file: Path, verbose: bool, em
         # Add SDL runtime if targeting SDL
         if target == "sdl":
             sdl_runtime = sdl_dir / "nobasic_sdl_runtime.c"
+            if not sdl_runtime.exists():
+                emit(f"SDL runtime not found: {sdl_runtime}")
+                return False
             cmd.append(str(sdl_runtime))
             cmd.extend(["-I", str(sdl_dir)])
             # Add SDL2 library (may need adjustment based on system)
@@ -518,12 +521,12 @@ def _prepare_output_file_path(output_file: Optional[str], resolved_source_file: 
         Resolved Path for the output file
     """
     expected_suffix = '.ll' if target == 'llvm' else '.asm'
+    expected_name = "LLVM IR" if target == 'llvm' else "assembly"
     output_path = resolved_source_file.with_suffix(expected_suffix) if output_file is None else Path(output_file)
 
-    expected_name = "LLVM IR" if target == 'llvm' else "assembly"
     if output_path.suffix.lower() != expected_suffix:
         raise CompilerError(
-            f"Output file must have {expected_suffix} extension for target '{target}': {output_path}",
+            f"Output file must have {expected_suffix} extension ({expected_name} target '{target}'): {output_path}",
             str(output_path),
             1,
             1,

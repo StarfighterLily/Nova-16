@@ -9,12 +9,14 @@ MOV FP, SP
 MOV R1, 10
 ; Allocate struct point (Point) at 0x0120
 ; Store to point.x
+MOV P1, R1
 MOV P0, 288
-MOV [P0], R1
+MOV [P0], P1
 MOV R1, 20
 ; Store to point.y
+MOV P1, R1
 MOV P0, 290
-MOV [P0], R1
+MOV [P0], P1
 XOR VX, VX
 XOR VY, VY
 MOV VC, 31
@@ -26,8 +28,8 @@ MOV VC, 31
 ; Load point.x
 MOV P0, 288
 MOV P1, [P0]
-MOV R0, P1
 ITOS P1, R0
+MOV R0, P1
 TEXT P1
 XOR VX, VX
 MOV VY, 1
@@ -36,8 +38,8 @@ MOV VC, 31
 ; Load point.y
 MOV P0, 290
 MOV P1, [P0]
-MOV R0, P1
 ITOS P1, R0
+MOV R0, P1
 TEXT P1
 L2:
 KEYSTAT R0
@@ -45,15 +47,17 @@ CMP R0, 0
 JZ L2
 MOV R1, 50
 ; Store to point.x
+MOV P1, R1
 MOV P0, 288
-MOV [P0], R1
+MOV [P0], P1
 MOV R1, 100
 ; Store to point.y
+MOV P1, R1
 MOV P0, 290
-MOV [P0], R1
+MOV [P0], P1
 XOR VX, VX
-MOV VY, 48
 MOV VC, 31
+MOV VY, 48
 TEXT STR2
 XOR VX, VX
 MOV VY, 1
@@ -62,17 +66,17 @@ MOV VC, 31
 ; Load point.x
 MOV P0, 288
 MOV P1, [P0]
-MOV R0, P1
 ITOS P1, R0
+MOV R0, P1
 TEXT P1
 XOR VX, VX
-MOV VY, 80
 MOV VC, 31
+MOV VY, 80
 ; Load point.y
 MOV P0, 290
 MOV P1, [P0]
-MOV R0, P1
 ITOS P1, R0
+MOV R0, P1
 TEXT P1
 L4:
 KEYSTAT R0

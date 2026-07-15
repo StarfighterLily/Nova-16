@@ -1,6 +1,6 @@
 # Symbol table
 # Format: <symbol> <value>
-L4 0x02EB
-STR0 0x02F7
-STR1 0x0303
-STR2 0x030F
+L4 0x02F1
+STR0 0x02FD
+STR1 0x0309
+STR2 0x0315

@@ -1,44 +1,47 @@
+; NoBASIC compiler output
+; Generated for Nova-16
 ORG 0x0200
-MOV SP, 0xFFFF
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV SP, P7
 MOV FP, SP
 ; ClrDraw
-SFILL 0x00
+MOV VL, 1
 MOV VM, 0
+SFILL 0x00
 XOR VL, VL
 XOR VX, VX
 XOR VY, VY
 MOV VC, 31
+MOV VM, 0
 TEXT STR0
-MOV R1, 1
-MOV P2, R1
-MOV R1, 5
-MOV R0, R1
+MOV P2, 1
+MOV R0, 5
 L2:
 CMP P2, R0
 JGT L3
-RND P1
-MOV P3, P1
-MOV R2, 1
-SHL R2, 4
-MOV R7, 1
-SHL R7, 3
-MOV R3, P2
-MUL R3, R7
-; Free R7 (last use)
-MOV P1, R2
-ADD P1, R3
-; Free R2 (last use)
-; Free R3 (last use)
-MOV P4, P1
+RND R1
+MOV R0, P2
+MOV P4, R1
+SHL R0, 3
+; Preserve left operand in register across right-side evaluation
+MOV R4, 1
+MOV R3, R0
+SHL R4, 4
+MOV R1, R3
+ADD R1, R4
+; Free R4 (last use)
 XOR VX, VX
-MOV VY, P4
+MOV P3, R1
 MOV VC, 10
+MOV VY, P3
 TEXT STR3
-MOV VX, 40
-MOV VY, P4
+ITOS P1, R0
+MOV VY, P3
 MOV VC, 14
-ITOS R1, P3
-TEXT R1
+MOV R0, P4
+MOV VX, 40
+TEXT P1
 INC P2
 JMP L2
 L3:
@@ -47,45 +50,44 @@ KEYSTAT R0
 CMP R0, 0
 JZ L5
 ; ClrDraw
+MOV VL, 1
+MOV VM, 0
 SFILL 0x00
 XOR VX, VX
 XOR VY, VY
 MOV VC, 31
 TEXT STR5
-MOV R1, 1
-MOV P2, R1
-MOV R1, 5
-MOV R0, R1
+MOV P2, 1
+MOV R0, 5
 L7:
 CMP P2, R0
 JGT L8
-MOV R1, 1
 MOV R2, 6
-RNDR P1, R1, R2
-; Free R1 (last use)
+MOV R0, 1
+RNDR R1, R0, R2
+; Free R0 (last use)
 ; Free R2 (last use)
-MOV P5, P1
-MOV R2, 1
-SHL R2, 4
-MOV R7, 1
-SHL R7, 3
-MOV R3, P2
-MUL R3, R7
-; Free R7 (last use)
-MOV P1, R2
-ADD P1, R3
-; Free R2 (last use)
-; Free R3 (last use)
-MOV P4, P1
+MOV R0, P2
+MOV P5, R1
+SHL R0, 3
+; Preserve left operand in register across right-side evaluation
+MOV R4, 1
+MOV R3, R0
+SHL R4, 4
+MOV R1, R3
+ADD R1, R4
+; Free R4 (last use)
 XOR VX, VX
-MOV VY, P4
+MOV P3, R1
 MOV VC, 10
+MOV VY, P3
 TEXT STR8
-MOV VX, 48
-MOV VY, P4
+ITOS P1, R0
+MOV VY, P3
 MOV VC, 14
-ITOS R1, P5
-TEXT R1
+MOV R0, P5
+MOV VX, 48
+TEXT P1
 INC P2
 JMP L7
 L8:
@@ -94,6 +96,8 @@ KEYSTAT R0
 CMP R0, 0
 JZ L10
 ; ClrDraw
+MOV VL, 1
+MOV VM, 0
 SFILL 0x00
 XOR VX, VX
 XOR VY, VY
@@ -102,42 +106,39 @@ TEXT STR10
 MOV R1, 42
 ; RANDOMIZE(R1) - seed RNG
 MOV R0, R1
-RND R0  ; Initialize RNG with seed
+RND R0 ; Initialize RNG with seed
 ; Free R1 (last use)
-MOV R1, 1
-MOV P2, R1
-MOV R1, 5
-MOV R0, R1
+MOV P2, 1
+MOV R0, 5
 L12:
 CMP P2, R0
 JGT L13
-MOV R1, 1
 MOV R2, 100
-RNDR P1, R1, R2
-; Free R1 (last use)
+MOV R0, 1
+RNDR R1, R0, R2
+; Free R0 (last use)
 ; Free R2 (last use)
-MOV P3, P1
-MOV R2, 1
-SHL R2, 4
-MOV R7, 1
-SHL R7, 3
-MOV R3, P2
-MUL R3, R7
-; Free R7 (last use)
-MOV P1, R2
-ADD P1, R3
-; Free R2 (last use)
-; Free R3 (last use)
-MOV P4, P1
+MOV R0, P2
+MOV P4, R1
+SHL R0, 3
+; Preserve left operand in register across right-side evaluation
+MOV R4, 1
+MOV R3, R0
+SHL R4, 4
+MOV R1, R3
+ADD R1, R4
+; Free R4 (last use)
 XOR VX, VX
-MOV VY, P4
+MOV P3, R1
 MOV VC, 10
+MOV VY, P3
 TEXT STR13
-MOV VX, 40
-MOV VY, P4
+ITOS P1, R0
+MOV VY, P3
 MOV VC, 14
-ITOS R1, P3
-TEXT R1
+MOV R0, P4
+MOV VX, 40
+TEXT P1
 INC P2
 JMP L12
 L13:
@@ -146,31 +147,31 @@ KEYSTAT R0
 CMP R0, 0
 JZ L15
 ; ClrDraw
+MOV VL, 1
+MOV VM, 0
 SFILL 0x00
 XOR VX, VX
 XOR VY, VY
 MOV VC, 31
 TEXT STR15
-MOV R1, 1
-MOV P2, R1
-MOV R1, 100
-MOV R0, R1
+MOV P2, 1
+MOV R0, 100
 L17:
 CMP P2, R0
 JGT L18
-RND P1
-MOV P3, P1
-RND P1
-MOV P4, P1
-MOV R1, 1
+RND R1
+MOV P4, R1
+RND R1
 MOV R2, 31
-RNDR P1, R1, R2
-; Free R1 (last use)
+MOV P3, R1
+MOV R0, 1
+RNDR R1, R0, R2
+; Free R0 (last use)
 ; Free R2 (last use)
-MOV P5, P1
-MOV VX, P3
-MOV VY, P4
+MOV P5, R1
+MOV VY, P3
 MOV VC, P5
+MOV VX, P4
 SWRITE VC
 INC P2
 JMP L17
@@ -180,11 +181,13 @@ KEYSTAT R0
 CMP R0, 0
 JZ L19
 ; ClrDraw
+MOV VL, 1
+MOV VM, 0
 SFILL 0x00
-MOV VX, 20
 MOV VY, 1
-SHL VY, 6
 MOV VC, 31
+SHL VY, 6
+MOV VX, 20
 TEXT STR19
 L21:
 KEYSTAT R0

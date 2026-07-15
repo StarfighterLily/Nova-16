@@ -1,60 +1,62 @@
+; NoBASIC compiler output
+; Generated for Nova-16
 ORG 0x0200
-MOV SP, 0xFFFF
-MOV FP, SP
-MOV P1, 10
-MOV P2, P1
-MOV R0, 20
-MOV P2, R0
 MOV VX, 0
+MOV R1, 10
+MOV P7:, 0xFF
 MOV VC, 15
+MOV P2, R1
+MOV R1, 20
+MOV :P7, 0xFF
+MOV P2, R1
+MOV SP, P7
+MOV FP, SP
 TEXT STR0
 ADD VY, 8
 ; GLOBAL variable: globalVar @ 0x0120
-MOV R1, 100
-MOV P2, R1
 MOV VX, 0
+MOV R1, 100
 MOV VC, 15
+MOV P2, R1
 TEXT STR1
 ADD VY, 8
 ; GLOBAL variable: a @ 0x0122
 ; GLOBAL variable: b @ 0x0124
 ; GLOBAL variable: c @ 0x0126
-MOV R2, 1
-MOV P2, R2
-MOV R3, 1
-SHL R3, 1
-MOV P3, R3
-MOV R4, 3
-MOV P4, R4
+MOV R1, 1
+MOV P2, R1
+MOV R1, 1
+SHL R1, 1
+MOV P3, R1
 MOV VX, 0
+MOV R1, 3
 MOV VC, 15
+MOV P4, R1
 TEXT STR2
 ADD VY, 8
-MOV P5, P2
-MOV P6, P3
-MOV R8, P5
-ADD R8, P6
-; Free P5 (last use)
-; Free P6 (last use)
-MOV R5, R8
-ADD R5, P4
-; Free R8 (last use)
-MOV P2, R5
+; Preserve left operand in register across right-side evaluation
+MOV R3, P2
+MOV R0, R3
+ADD R0, P3
+; Preserve left operand in register across right-side evaluation
+MOV R1, R0
+ADD R1, P4
 MOV VX, 10
 MOV VY, 10
 MOV VC, 15
+MOV P5, R1
 TEXT STR3
+MOV VC, 15
 MOV VX, 10
 MOV VY, 20
-MOV VC, 15
 TEXT STR4
+MOV VC, 15
 MOV VX, 10
 MOV VY, 30
-MOV VC, 15
 TEXT STR5
+MOV VC, 15
 MOV VX, 10
 MOV VY, 40
-MOV VC, 15
 TEXT STR6
 L8:
 KEYSTAT R0

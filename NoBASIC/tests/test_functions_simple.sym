@@ -1,4 +1,4 @@
 # Symbol table
 # Format: <symbol> <value>
-_func_add_0 0x028B
-_func_multiply_1 0x02B4
+_func_add_0 0x0287
+_func_multiply_1 0x02B8

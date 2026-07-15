@@ -1,51 +1,55 @@
+; NoBASIC compiler output
+; Generated for Nova-16
 ORG 0x0200
-MOV SP, 0xFFFF
+XOR R1, R1
+MOV P2, R1
+MOV P7:, 0xFF
+MOV R1, 3
+MOV :P7, 0xFF
+MOV P3, R1
+MOV SP, P7
 MOV FP, SP
-XOR P1, P1
-MOV P2, P1
-MOV R0, 3
-MOV P3, R0
 ; GLOBAL variable: level @ 0x0120
 ; GLOBAL variable: bonus @ 0x0122
-MOV R1, 1
-MOV P3, R1
-MOV R2, 100
-MOV P3, R2
-MOV R4, 1
-MOV P4, R4
-MOV R4, 5
-MOV R3, R4
+MOV P3, 1
+MOV P3, 100
+MOV P4, 1
+MOV R0, 5
 L1:
-CMP P4, R3
+CMP P4, R0
 JGT L2
-MOV R4, P2
-ADD R4, P4
-MOV P2, R4
+; Preserve left operand in register across right-side evaluation
+MOV R2, P4
+MOV R1, R2
+ADD R1, P2
 INC P4
+MOV P2, R1
 JMP L1
 L2:
-MOV P0, P3
-MOV R3, P2
-ADD R3, P0
-; Free P0 (last use)
-MOV P2, R3
+; Preserve left operand in register across right-side evaluation
+MOV R2, P3
+MOV R1, R2
+ADD R1, P2
+MOV P2, R1
 ; ClrDraw
+MOV VL, 1
+MOV VM, 0
 SFILL 0x00
+MOV VC, 15
 MOV VX, 10
 MOV VY, 10
-MOV VC, 15
 TEXT STR2
+MOV VC, 15
 MOV VX, 10
 MOV VY, 20
-MOV VC, 15
 TEXT STR3
+MOV VC, 15
 MOV VX, 10
 MOV VY, 30
-MOV VC, 15
 TEXT STR4
+MOV VC, 15
 MOV VX, 10
 MOV VY, 40
-MOV VC, 15
 TEXT STR5
 L7:
 KEYSTAT R0

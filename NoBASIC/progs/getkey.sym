@@ -1,6 +1,4 @@
 # Symbol table
 # Format: <symbol> <value>
 L1 0x0218
-L3 0x022C
-L4 0x0230
-L2 0x0247
+L2 0x0237

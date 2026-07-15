@@ -1,19 +1,19 @@
 # Symbol table
 # Format: <symbol> <value>
 _func_teststringlength_0 0x0225
-_func_teststringtoupper_1 0x028B
-_func_teststringtolower_2 0x02F1
-_func_teststringfind_3 0x0357
-_func_teststringoperations_4 0x03D5
-STR0 0x04A0
-STR1 0x04A5
-STR2 0x04B1
-STR3 0x04B7
-STR4 0x04C5
-STR5 0x04D4
-STR6 0x04DA
-STR7 0x04E8
-STR8 0x04F3
-STR9 0x04F9
-STR10 0x0513
-STR11 0x0521
+_func_teststringtoupper_1 0x0291
+_func_teststringtolower_2 0x02FD
+_func_teststringfind_3 0x0369
+_func_teststringoperations_4 0x03ED
+STR0 0x04CA
+STR1 0x04D6
+STR2 0x04DC
+STR3 0x04EA
+STR4 0x04F9
+STR5 0x04FF
+STR6 0x050D
+STR7 0x0518
+STR8 0x051E
+STR9 0x0538
+STR10 0x0546
+STR11 0x055D

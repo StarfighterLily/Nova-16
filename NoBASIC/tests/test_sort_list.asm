@@ -1,104 +1,291 @@
 ; NoBASIC compiler output
 ; Generated for Nova-16
 ORG 0x0200
+MOV P1, 0x7200
 MOV P7:, 0xFF
+MOV P0, 0x0124
 MOV :P7, 0xFF
 MOV SP, P7
 MOV FP, SP
+MOV [P0], P1
+MOV P1, 0
+MOV P0, 0x0120
+MOV [P0], P1
+INC P0
+INC P0
+MOV [P0], P1
+MOV P6, 0x0120
+MOV P5, [P6]
+MOV P0, P6
+INC P0
+INC P0
+MOV P4, [P0]
+MOV P2, 0
 MOV P3, 255
-; Fill list starting at 0x1000
-MOV P4, 0x1000
-MOV R1, 0
 L1:
-CMP R1, 100
+CMP P2, P4
 JGE L2
-MOV P1, R1
-MUL P1, 2
-ADD P1, P4
+MOV P1, P2
+SHL P1, 1
+ADD P1, P5
 MOV [P1], P3
-INC R1
+INC P2
 JMP L1
 L2:
-MOV R0, 4096
 ; Free P3 (last use)
+MOV P2, 1
+MOV R0, P4
 MOV R1, 5
-MOV R2, 1
-MOV P0, R2
-MUL P0, 2
-MOV P5, 0x1000
-ADD P0, P5
-MOV P1, R1
+PUSH P1
+PUSH P2
+PUSH P3
+PUSH P4
+PUSH P5
+PUSH P6
+MOV P1, 0x0120
+CALL _nb_list_elem_addr
+POP P6
+POP P5
+POP P4
+POP P3
+POP P2
+POP P1
+CMP P0, 0
+JNZ L3
+JMP L4
+L3:
+MOV P1, 0
+MOV :P1, R1
 MOV [P0], P1
+L4:
+MOV P2, 1
 MOV R1, 1
-MOV R2, 1
-SHL R2, 1
-MOV P0, R2
-MUL P0, 2
-MOV P5, 0x1000
-ADD P0, P5
-MOV P1, R1
+SHL P2, 1
+PUSH P1
+PUSH P2
+PUSH P3
+PUSH P4
+PUSH P5
+PUSH P6
+MOV P1, 0x0120
+CALL _nb_list_elem_addr
+POP P6
+POP P5
+POP P4
+POP P3
+POP P2
+POP P1
+CMP P0, 0
+JNZ L5
+JMP L6
+L5:
+MOV P1, 0
+MOV :P1, R1
 MOV [P0], P1
+L6:
 MOV R1, 1
 SHL R1, 2
-MOV R2, 3
-MOV P0, R2
-MUL P0, 2
-MOV P5, 0x1000
-ADD P0, P5
-MOV P1, R1
+MOV P2, 3
+PUSH P1
+PUSH P2
+PUSH P3
+PUSH P4
+PUSH P5
+PUSH P6
+MOV P1, 0x0120
+CALL _nb_list_elem_addr
+POP P6
+POP P5
+POP P4
+POP P3
+POP P2
+POP P1
+CMP P0, 0
+JNZ L7
+JMP L8
+L7:
+MOV P1, 0
+MOV :P1, R1
 MOV [P0], P1
+L8:
 MOV R1, 1
 SHL R1, 1
-MOV R2, 1
-SHL R2, 2
-MOV P0, R2
-MUL P0, 2
-MOV P5, 0x1000
-ADD P0, P5
-MOV P1, R1
+MOV P2, 1
+SHL P2, 2
+PUSH P1
+PUSH P2
+PUSH P3
+PUSH P4
+PUSH P5
+PUSH P6
+MOV P1, 0x0120
+CALL _nb_list_elem_addr
+POP P6
+POP P5
+POP P4
+POP P3
+POP P2
+POP P1
+CMP P0, 0
+JNZ L9
+JMP L10
+L9:
+MOV P1, 0
+MOV :P1, R1
 MOV [P0], P1
+L10:
+MOV P2, 5
 MOV R1, 3
-MOV R2, 5
-MOV P0, R2
-MUL P0, 2
-MOV P5, 0x1000
-ADD P0, P5
-MOV P1, R1
+PUSH P1
+PUSH P2
+PUSH P3
+PUSH P4
+PUSH P5
+PUSH P6
+MOV P1, 0x0120
+CALL _nb_list_elem_addr
+POP P6
+POP P5
+POP P4
+POP P3
+POP P2
+POP P1
+CMP P0, 0
+JNZ L11
+JMP L12
+L11:
+MOV P1, 0
+MOV :P1, R1
 MOV [P0], P1
-; Sort ascending list at 0x1000
-MOV P0, 0x1000
-MOV R1, 0
-L3:
-CMP R1, 100
-JGE L7
-MOV R2, 0
-L4:
-MOV R5, 99
-SUB R5, R1
-CMP R2, R5
-JGE L5
-MOV P1, R2
-MUL P1, 2
-ADD P1, P0
-MOV P2, P1
+L12:
+MOV P6, 0x0120
+MOV P5, [P6]
+MOV P0, P6
+INC P0
+INC P0
+MOV P4, [P0]
+MOV P1, 0
+L13:
+CMP P1, P4
+JGE L17
+MOV P2, 0
+L14:
+MOV P3, P4
+DEC P3
+SUB P3, P1
+CMP P2, P3
+JGE L15
+MOV P0, P2
+SHL P0, 1
+ADD P0, P5
+MOV P6, [P0]
+MOV P7, P0
+INC P7
+INC P7
+MOV P3, [P7]
+CMP P6, P3
+JLE L16
+MOV [P0], P3
+MOV [P7], P6
+L16:
 INC P2
-INC P2
-MOV P3, [P1]
-MOV P4, [P2]
-CMP P3, P4
-JLE L6
-MOV [P1], P4
-MOV [P2], P3
-L6:
-INC R2
-JMP L4
-L5:
-INC R1
-JMP L3
-L7:
-MOV R0, 4096
-L8:
+JMP L14
+L15:
+INC P1
+JMP L13
+L17:
+MOV R0, P4
+L18:
 KEYSTAT R0
 CMP R0, 0
-JZ L8
+JZ L18
 HLT
+_nb_list_elem_addr:
+; In:  P1=descriptor address, P2=1-based index
+; Out: P0=element address (or 0 on invalid index/OOM)
+PUSH P2
+CMP P2, 1
+JLT _nb_list_elem_addr_fail
+MOV P3, [P1]
+MOV P0, P1
+INC P0
+INC P0
+MOV P4, [P0]
+CMP P2, P4
+JLE _nb_list_have_capacity
+MOV P5, 0x0124
+MOV P6, [P5]
+MOV P0, P2
+MOV P2, P4
+CMP P2, 0
+JGT _nb_list_cap_from_existing
+MOV P2, 8
+JMP _nb_list_cap_ready_base
+_nb_list_cap_from_existing:
+SHL P2, 1
+_nb_list_cap_ready_base:
+CMP P2, P0
+JGE _nb_list_cap_ready
+MOV P2, P0
+_nb_list_cap_ready:
+MOV P0, P2
+SHL P0, 1
+MOV P5, P6
+ADD P5, P0
+MOV P0, 0xEFFF
+DEC P5
+CMP P0, P5
+JC _nb_list_elem_addr_fail
+MOV P5, 0
+_nb_list_zero_loop:
+CMP P5, P2
+JGE _nb_list_zero_done
+MOV P0, P5
+SHL P0, 1
+ADD P0, P6
+MOV [P0], 0
+INC P5
+JMP _nb_list_zero_loop
+_nb_list_zero_done:
+PUSH P1
+CMP P4, 0
+JLE _nb_list_copy_done
+MOV P5, 0
+_nb_list_copy_loop:
+CMP P5, P4
+JGE _nb_list_copy_done
+MOV P0, P5
+SHL P0, 1
+ADD P0, P3
+MOV P1, [P0]
+MOV P0, P5
+SHL P0, 1
+ADD P0, P6
+MOV [P0], P1
+INC P5
+JMP _nb_list_copy_loop
+_nb_list_copy_done:
+POP P1
+MOV [P1], P6
+MOV P0, P1
+INC P0
+INC P0
+MOV [P0], P2
+MOV P0, P2
+SHL P0, 1
+ADD P0, P6
+MOV P5, 0x0124
+MOV [P5], P0
+MOV P4, P2
+MOV P3, P6
+_nb_list_have_capacity:
+POP P2
+MOV P0, P2
+DEC P0
+SHL P0, 1
+ADD P0, P3
+RET
+_nb_list_elem_addr_fail:
+POP P2
+XOR P0, P0
+RET

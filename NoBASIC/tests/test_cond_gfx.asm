@@ -1,6 +1,29 @@
 ; NoBASIC compiler output
 ; Generated for Nova-16
 ORG 0x0200
-MOV SP, 0xFFFF
+MOV P7:, 0xFF
+MOV :P7, 0xFF
+MOV SP, P7
 MOV FP, SP
+; ClrDraw
+MOV VL, 1
+MOV VM, 0
+SFILL 0x00
+MOV R0, 10
+MOV P1, 15
+CMP P1, R0
+; Free P1 (last use)
+; Free R0 (last use)
+JLE L1
+MOV VC, 31
+MOV VX, 10
+MOV VY, 10
+SWRITE VC
+JMP L2
+L1:
+MOV VC, 15
+MOV VX, 20
+MOV VY, 20
+SWRITE VC
+L2:
 HLT

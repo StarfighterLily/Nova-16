@@ -700,10 +700,13 @@ class CodeGenerator:
         """
         # Use different register sets for different nesting levels
         # Level 0: P1, P2, P3
-        # Level 1: P4, P5, P6  
-        # Level 2: P7, P8, P9
+        # Level 1: P4, P5, P6
+        # Level 2+: P7 with spill-to-memory for end/step (P8/P9 do not exist on Nova-16)
         base_reg_num = 1 + (self.loop_nesting_level * 3)
-        return (f"P{base_reg_num}", f"P{base_reg_num + 1}", f"P{base_reg_num + 2}")
+        current = f"P{min(base_reg_num, 7)}"
+        end = f"P{min(base_reg_num + 1, 7)}"
+        step = f"P{min(base_reg_num + 2, 7)}"
+        return (current, end, step)
 
     def collect_lifetimes(self, program: Program):
         """Collect variable lifetimes by traversing the AST (unified liveness tracking)."""
@@ -717,14 +720,6 @@ class CodeGenerator:
         
         # Perform SSA analysis for future optimizations
         self.analyze_ssa_form()
-
-    def collect_lifetimes_stmt(self, stmt):
-        """Collect lifetimes for a statement (unified liveness tracking)."""
-        self.program_counter += 1
-        current_point = self.program_counter
-        
-        # Also update legacy statement_counter for backwards compatibility
-        self.statement_counter = current_point
 
     def collect_lifetimes_stmt(self, stmt):
         """Collect lifetimes for a statement (unified liveness tracking)."""
@@ -1755,11 +1750,13 @@ class CodeGenerator:
         # Calculate sprite control block base address: 0xF000 + (spriteId * 16)
         # Use P2 for address calculation
         self.current_output.append(f"MOV P2, {sprite_id_reg}")
-        # Multiply by 16: shift left 4 times (can't do SHL with immediate > 1)
-        self.current_output.append(f"SHL P2, P2")  # *2
-        self.current_output.append(f"SHL P2, P2")  # *4
-        self.current_output.append(f"SHL P2, P2")  # *8
-        self.current_output.append(f"SHL P2, P2")  # *16
+        # Multiply by 16: shift left by 4 using a count register (P3 holds shift count, start at 1)
+        self.current_output.append(f"MOV P3, 0")
+        self.current_output.append(f"SHL P2, P3")  # Clear any upper bits (shift by 0 just copies)
+        self.current_output.append(f"SHL P2, 1")   # *2
+        self.current_output.append(f"SHL P2, 1")   # *4
+        self.current_output.append(f"SHL P2, 1")   # *8
+        self.current_output.append(f"SHL P2, 1")   # *16
         # Load sprite memory base and add offset
         self.current_output.append(f"MOV P3, 0xF000  ; Sprite memory base")
         self.current_output.append(f"ADD P2, P3  ; P2 = P2 + P3 (2-operand ADD)")
@@ -1798,11 +1795,11 @@ class CodeGenerator:
         
         # Calculate sprite control block base address: 0xF000 + (spriteId * 16)
         self.current_output.append(f"MOV P2, {sprite_id_reg}")
-        # Multiply by 16: shift left 4 times
-        self.current_output.append(f"SHL P2, P2")  # *2
-        self.current_output.append(f"SHL P2, P2")  # *4
-        self.current_output.append(f"SHL P2, P2")  # *8
-        self.current_output.append(f"SHL P2, P2")  # *16
+        # Multiply by 16: shift left by 4 using immediate shift count of 1
+        self.current_output.append(f"SHL P2, 1")   # *2
+        self.current_output.append(f"SHL P2, 1")   # *4
+        self.current_output.append(f"SHL P2, 1")   # *8
+        self.current_output.append(f"SHL P2, 1")   # *16
         # Load sprite memory base and add offset
         self.current_output.append(f"MOV P3, 0xF000  ; Sprite memory base")
         self.current_output.append(f"ADD P2, P3  ; P2 = P2 + P3 (2-operand ADD)")
@@ -2722,17 +2719,23 @@ class CodeGenerator:
 
     def emit_condition_false_jump(self, condition: Expression, false_label: str):
         """Emit a jump to ``false_label`` when ``condition`` evaluates to false, with short-circuiting for 'and'/'or'."""
-        # Short-circuit for logical AND
+        # Short-circuit for logical AND: if either operand is false, the whole AND is false.
         if isinstance(condition, BinaryExpr) and condition.operator == "and":
-            mid_label = self.new_label()
             self.emit_condition_false_jump(condition.left, false_label)
             self.emit_condition_false_jump(condition.right, false_label)
             return
 
-        # Short-circuit for logical OR
+        # Short-circuit for logical OR: if either operand is true, the whole OR is true.
+        # We must NOT jump to false_label in that case.  Only jump to false_label when
+        # *both* operands are false.
         if isinstance(condition, BinaryExpr) and condition.operator == "or":
+            # When left is false we must still evaluate right.
+            right_check_label = self.new_label()
             pass_label = self.new_label()
-            self.emit_condition_false_jump(condition.left, pass_label)
+            self.emit_condition_false_jump(condition.left, right_check_label)
+            # Left was true -- short-circuit: the whole OR is true, skip false_label.
+            self.current_output.append(f"JMP {pass_label}")
+            self.current_output.append(f"{right_check_label}:")
             self.emit_condition_false_jump(condition.right, false_label)
             self.current_output.append(f"{pass_label}:")
             return
@@ -3804,11 +3807,15 @@ class CodeGenerator:
             if value_reg != target_reg:
                 self.current_output.append(f"MOV {target_reg}, {value_reg}")
             self.current_output.append(f"BTST {target_reg}, {bit_reg}")
-            result_label = self.new_label()
-            self.current_output.append(f"MOV {target_reg}, 0")
-            self.current_output.append(f"JZ {result_label}")
+            # BTST sets Z=1 when the tested bit is 0; MOV clobbers flags, so branch first
+            zero_label = self.new_label()
+            done_label = self.new_label()
+            self.current_output.append(f"JZ {zero_label}")
             self.current_output.append(f"MOV {target_reg}, 1")
-            self.current_output.append(f"{result_label}:")
+            self.current_output.append(f"JMP {done_label}")
+            self.current_output.append(f"{zero_label}:")
+            self.current_output.append(f"MOV {target_reg}, 0")
+            self.current_output.append(f"{done_label}:")
             if value_reg != target_reg:
                 self.smart_deallocate(value_reg, is_last_use=True)
             if bit_reg != target_reg:

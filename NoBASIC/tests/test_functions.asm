@@ -5,16 +5,39 @@ MOV P7:, 0xFF
 MOV :P7, 0xFF
 MOV SP, P7
 MOV FP, SP
-MOV R0, 5
-MOV P1, R0
+PUSH P2
+MOV P1, 5
 PUSH P1
 ; Free R0 (last use)
-MOV R0, 3
-MOV P1, R0
+MOV P1, 3
 PUSH P1
 ; Free R0 (last use)
 CALL _func_add_0
 ADD SP, 4
+POP P2
+MOV R1, R0
+MOV P2, R1
+MOV VX, 0
+MOV VC, 15
+TEXT STR2
+ADD VY, 8
+MOV R0, P2
+ITOS P1, R0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV VX, 0
+MOV VC, 15
+TEXT STR3
+ADD VY, 8
+PUSH P2
+MOV P1, 7
+PUSH P1
+; Free R0 (last use)
+CALL _func_double_1
+ADD SP, 2
+POP P2
 MOV R1, R0
 MOV P2, R1
 MOV VX, 0
@@ -29,14 +52,41 @@ TEXT P1
 ADD VY, 8
 MOV VX, 0
 MOV VC, 15
-TEXT STR5
+TEXT STR3
 ADD VY, 8
-MOV R0, 7
-MOV P1, R0
+PUSH P2
+MOV P1, 10
 PUSH P1
 ; Free R0 (last use)
-CALL _func_double_1
+MOV P1, 15
+PUSH P1
+; Free R0 (last use)
+CALL _func_addwithtemp_2
+ADD SP, 4
+POP P2
+MOV R1, R0
+MOV P2, R1
+MOV VX, 0
+MOV VC, 15
+TEXT STR5
+ADD VY, 8
+MOV R0, P2
+ITOS P1, R0
+MOV VX, 0
+MOV VC, 15
+TEXT P1
+ADD VY, 8
+MOV VX, 0
+MOV VC, 15
+TEXT STR3
+ADD VY, 8
+PUSH P2
+MOV P1, 42
+PUSH P1
+; Free R0 (last use)
+CALL _func_greet_3
 ADD SP, 2
+POP P2
 MOV R1, R0
 MOV P2, R1
 MOV VX, 0
@@ -51,18 +101,15 @@ TEXT P1
 ADD VY, 8
 MOV VX, 0
 MOV VC, 15
-TEXT STR5
+TEXT STR3
 ADD VY, 8
-MOV R0, 10
-MOV P1, R0
+PUSH P2
+MOV P1, 99
 PUSH P1
 ; Free R0 (last use)
-MOV R0, 15
-MOV P1, R0
-PUSH P1
-; Free R0 (last use)
-CALL _func_addwithtemp_2
-ADD SP, 4
+CALL _func_greet_3
+ADD SP, 2
+POP P2
 MOV R1, R0
 MOV P2, R1
 MOV VX, 0
@@ -77,14 +124,18 @@ TEXT P1
 ADD VY, 8
 MOV VX, 0
 MOV VC, 15
-TEXT STR5
+TEXT STR3
 ADD VY, 8
-MOV R0, 42
-MOV P1, R0
+PUSH P2
+MOV P1, 10
 PUSH P1
 ; Free R0 (last use)
-CALL _func_greet_3
-ADD SP, 2
+MOV P1, 20
+PUSH P1
+; Free R0 (last use)
+CALL _func_makepoint_4
+ADD SP, 4
+POP P2
 MOV R1, R0
 MOV P2, R1
 MOV VX, 0
@@ -99,14 +150,18 @@ TEXT P1
 ADD VY, 8
 MOV VX, 0
 MOV VC, 15
-TEXT STR5
+TEXT STR3
 ADD VY, 8
-MOV R0, 99
-MOV P1, R0
+PUSH P2
+MOV P1, 5
 PUSH P1
 ; Free R0 (last use)
-CALL _func_greet_3
-ADD SP, 2
+MOV P1, 20
+PUSH P1
+; Free R0 (last use)
+CALL _func_makepoint_4
+ADD SP, 4
+POP P2
 MOV R1, R0
 MOV P2, R1
 MOV VX, 0
@@ -121,18 +176,18 @@ TEXT P1
 ADD VY, 8
 MOV VX, 0
 MOV VC, 15
-TEXT STR5
+TEXT STR3
 ADD VY, 8
-MOV R0, 10
-MOV P1, R0
+PUSH P2
+MOV P1, 5
 PUSH P1
 ; Free R0 (last use)
-MOV R0, 20
-MOV P1, R0
+MOV P1, 10
 PUSH P1
 ; Free R0 (last use)
 CALL _func_makepoint_4
 ADD SP, 4
+POP P2
 MOV R1, R0
 MOV P2, R1
 MOV VX, 0
@@ -147,18 +202,15 @@ TEXT P1
 ADD VY, 8
 MOV VX, 0
 MOV VC, 15
-TEXT STR5
+TEXT STR3
 ADD VY, 8
-MOV R0, 5
-MOV P1, R0
+PUSH P2
+MOV P1, 5
 PUSH P1
 ; Free R0 (last use)
-MOV R0, 20
-MOV P1, R0
-PUSH P1
-; Free R0 (last use)
-CALL _func_makepoint_4
-ADD SP, 4
+CALL _func_factorial_5
+ADD SP, 2
+POP P2
 MOV R1, R0
 MOV P2, R1
 MOV VX, 0
@@ -171,75 +223,26 @@ MOV VX, 0
 MOV VC, 15
 TEXT P1
 ADD VY, 8
-MOV VX, 0
-MOV VC, 15
-TEXT STR5
-ADD VY, 8
-MOV R0, 5
-MOV P1, R0
-PUSH P1
-; Free R0 (last use)
-MOV R0, 10
-MOV P1, R0
-PUSH P1
-; Free R0 (last use)
-CALL _func_makepoint_4
-ADD SP, 4
-MOV R1, R0
-MOV P2, R1
-MOV VX, 0
-MOV VC, 15
-TEXT STR12
-ADD VY, 8
-MOV R0, P2
-ITOS P1, R0
-MOV VX, 0
-MOV VC, 15
-TEXT P1
-ADD VY, 8
-MOV VX, 0
-MOV VC, 15
-TEXT STR5
-ADD VY, 8
-MOV R0, 5
-MOV P1, R0
-PUSH P1
-; Free R0 (last use)
-CALL _func_factorial_5
-ADD SP, 2
-MOV R1, R0
-MOV P2, R1
-MOV VX, 0
-MOV VC, 15
-TEXT STR13
-ADD VY, 8
-MOV R0, P2
-ITOS P1, R0
-MOV VX, 0
-MOV VC, 15
-TEXT P1
-ADD VY, 8
 HLT
-
 _func_add_0:
 ; Function: add
 ; Parameters: a, b
 ; Locals:  (0 bytes)
 ENTER 0
 MOV P0, FP
-ADD P0, 4
+ADD P0, 6
 MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P1
 MOV P0, FP
-ADD P0, 6
-MOV R4, [P0]
+ADD P0, 4
+MOV P2, [P0]
 MOV R0, R2
-ADD R0, R4
-; Free R4 (last use)
-LEAVE
-RET
-
+ADD R0, P2
+; Free P2 (last use)
+MOV SP, FP
+POP FP
+RETN R0
 _func_double_1:
 ; Function: double
 ; Parameters: x
@@ -248,24 +251,18 @@ ENTER 0
 MOV P0, FP
 ADD P0, 4
 MOV P1, [P0]
-; Preserve left operand in register across right-side evaluation
-MOV R2, P1
-MOV R3, 1
-SHL R3, 1
-MOV R1, R2
-MUL R1, R3
-; Free R3 (last use)
+MOV R1, P1
+SHL R1, 1
+; Free P1 (last use)
 MOV P0, FP
 ADD P0, 4
 MOV [P0], R1
 MOV P0, FP
 ADD P0, 4
 MOV P1, [P0]
-MOV R0, P1
-; Free P1 (last use)
-LEAVE
-RET
-
+MOV SP, FP
+POP FP
+RETN P1
 _func_addwithtemp_2:
 ; Function: addwithtemp
 ; Parameters: a, b
@@ -273,27 +270,25 @@ _func_addwithtemp_2:
 ENTER 2
 ; LOCAL variable: temp @ FP-2
 MOV P0, FP
-ADD P0, 4
+ADD P0, 6
 MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P1
 MOV P0, FP
-ADD P0, 6
-MOV R4, [P0]
+ADD P0, 4
+MOV P2, [P0]
 MOV R1, R2
-ADD R1, R4
-; Free R4 (last use)
+ADD R1, P2
+; Free P2 (last use)
 MOV P0, FP
 ADD P0, -2
 MOV [P0], R1
 MOV P0, FP
 ADD P0, -2
 MOV P1, [P0]
-MOV R0, P1
-; Free P1 (last use)
-LEAVE
-RET
-
+MOV SP, FP
+POP FP
+RETN P1
 _func_greet_3:
 ; Function: greet
 ; Parameters: name
@@ -302,30 +297,28 @@ ENTER 0
 MOV P0, FP
 ADD P0, 4
 MOV P1, [P0]
-MOV R0, P1
-; Free P1 (last use)
-LEAVE
-RET
-
+MOV SP, FP
+POP FP
+RETN P1
 _func_makepoint_4:
 ; Function: makepoint
 ; Parameters: x, y
 ; Locals:  (0 bytes)
 ENTER 0
 MOV P0, FP
-ADD P0, 4
+ADD P0, 6
 MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
 MOV R2, P1
 MOV P0, FP
-ADD P0, 6
-MOV R4, [P0]
+ADD P0, 4
+MOV P2, [P0]
 MOV R0, R2
-ADD R0, R4
-; Free R4 (last use)
-LEAVE
-RET
-
+ADD R0, P2
+; Free P2 (last use)
+MOV SP, FP
+POP FP
+RETN R0
 _func_factorial_5:
 ; Function: factorial
 ; Parameters: n
@@ -334,21 +327,15 @@ ENTER 0
 MOV P0, FP
 ADD P0, 4
 MOV P1, [P0]
-MOV R3, 1
-CMP P1, R3
+MOV P2, 1
+CMP P1, P2
 ; Free P1 (last use)
-; Free R3 (last use)
-MOV R1, 0
-JLE L3
-JMP L4
-L3:
-MOV R1, 1
-L4:
-CMP R1, 0
-JZ L1
+; Free P2 (last use)
+JGT L1
 MOV R0, 1
-LEAVE
-RET
+MOV SP, FP
+POP FP
+RETN R0
 L1:
 MOV P0, FP
 ADD P0, 4
@@ -357,15 +344,15 @@ MOV P1, [P0]
 MOV R2, P1
 MOV P0, FP
 ADD P0, 4
-MOV R6, [P0]
+MOV P2, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R7, R6
-MOV R8, 1
-MOV R4, R7
-SUB R4, R8
-; Free R8 (last use)
-MOV P2, R4
-PUSH P2
+MOV R6, P2
+MOV R7, 1
+MOV R4, R6
+SUB R4, R7
+; Free R7 (last use)
+MOV P3, R4
+PUSH P3
 ; Free R4 (last use)
 CALL _func_factorial_5
 ADD SP, 2
@@ -373,15 +360,16 @@ MOV R3, R0
 MOV R0, R2
 MUL R0, R3
 ; Free R3 (last use)
-LEAVE
-RET
-STR4: DEFSTR "Add(5,3) = "
-STR5: DEFSTR ""
-STR6: DEFSTR "Double(7) = "
-STR7: DEFSTR "AddWithTemp(10,15) = "
-STR8: DEFSTR "Greet() = "
-STR9: DEFSTR "Greet(99) = "
-STR10: DEFSTR "MakePoint() = "
-STR11: DEFSTR "MakePoint(5) = "
-STR12: DEFSTR "MakePoint(5,10) = "
-STR13: DEFSTR "Factorial(5) = "
+MOV SP, FP
+POP FP
+RETN R0
+STR2: DEFSTR "Add(5,3) = "
+STR3: DEFSTR ""
+STR4: DEFSTR "Double(7) = "
+STR5: DEFSTR "AddWithTemp(10,15) = "
+STR6: DEFSTR "Greet() = "
+STR7: DEFSTR "Greet(99) = "
+STR8: DEFSTR "MakePoint() = "
+STR9: DEFSTR "MakePoint(5) = "
+STR10: DEFSTR "MakePoint(5,10) = "
+STR11: DEFSTR "Factorial(5) = "

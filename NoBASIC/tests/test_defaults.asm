@@ -5,57 +5,63 @@ MOV P7:, 0xFF
 MOV :P7, 0xFF
 MOV SP, P7
 MOV FP, SP
-MOV R0, 5
-MOV P1, R0
+PUSH P2
+PUSH P3
+MOV P1, 5
 PUSH P1
 ; Free R0 (last use)
-MOV R0, 10
-MOV P1, R0
+MOV P1, 10
 PUSH P1
 ; Free R0 (last use)
 CALL _func_add_0
 ADD SP, 4
+POP P3
+POP P2
 MOV R1, R0
 MOV P2, R1
-MOV R0, 5
-MOV P1, R0
+PUSH P2
+PUSH P3
+MOV P1, 5
 PUSH P1
 ; Free R0 (last use)
-MOV R0, 3
-MOV P1, R0
+MOV P1, 3
 PUSH P1
 ; Free R0 (last use)
 CALL _func_add_0
 ADD SP, 4
+POP P3
+POP P2
+ITOS P1, R0
 MOV R1, R0
-MOV P3, R1
-ITOS P1, P2
 MOV VX, 0
+MOV P3, R1
+MOV R0, P2
 MOV VC, 15
 TEXT P1
 ADD VY, 8
-ITOS P1, P3
-MOV VX, 0
+ITOS P1, R0
 MOV VC, 15
+MOV R0, P3
+MOV VX, 0
 TEXT P1
 ADD VY, 8
 HLT
-
 _func_add_0:
 ; Function: add
 ; Parameters: a, b
 ; Locals:  (0 bytes)
 ENTER 0
 MOV P0, FP
-ADD P0, 4
+ADD P0, 6
 MOV P1, [P0]
 ; Preserve left operand in register across right-side evaluation
-MOV R2, P1
 MOV P0, FP
-ADD P0, 6
-MOV R4, [P0]
+MOV R2, P1
+ADD P0, 4
+MOV P2, [P0]
 MOV R0, R2
-ADD R0, R4
-; Free R4 (last use)
-LEAVE
-RET
+ADD R0, P2
+; Free P2 (last use)
+MOV SP, FP
+POP FP
+RETN R0

@@ -75,7 +75,7 @@ class SymbolTable:
         elif scope == VarScope.LOCAL:
             # Define in current (local) scope
             if self.is_in_global_scope():
-                raise SemanticError(f"Cannot declare LOCAL variable '{name}' in global scope", 0, 0)
+                raise ValueError(f"Cannot declare LOCAL variable '{name}' in global scope")
             self.scopes[-1].define_variable(name, data_type, explicit=True)
         else:  # IMPLICIT
             # Match NoBASIC default scoping semantics:
@@ -173,7 +173,7 @@ class SymbolTable:
     def define_label(self, name: str):
         """Define a label."""
         if name in self.labels:
-            raise SemanticError("Label already defined", 0, 0)  # Line/column not available
+            raise ValueError("Label already defined")
         self.labels.add(name)
 
     def is_label_defined(self, name: str) -> bool:
@@ -444,8 +444,6 @@ class SemanticAnalyzer:
                     self.symbol_table.lists.add(expr.list_name)
                 else:
                     raise self._semantic_error(f"Undefined list: {expr.list_name}", expr)
-            if not self.symbol_table.is_list(expr.list_name):
-                raise self._semantic_error(f"Undefined list: {expr.list_name}", expr)
             index_type = self.analyze_expression(expr.index)
             if index_type != DataType.NUMBER:
                 raise self._semantic_error("List index must be numeric", expr)

@@ -1,47 +1,44 @@
+; NoBASIC compiler output
+; Generated for Nova-16
 ORG 0x0200
-MOV SP, 0xF000
-MOV FP, SP
-; Constant folded: 100 + 50 = 150
-MOV P1, 150
-MOV P2, P1
-; Constant folded: 12 * 8 = 96
-MOV R0, 96
-MOV P2, R0
-; Constant folded: 255 & 127 = 127
-MOV R1, 127
+MOV P7:, 0xFF
+MOV R1, 150
+MOV P0, 1
 MOV P2, R1
-; Constant folded: 1 << 8 = 256
-MOV R2, 256
-MOV P2, R2
-; Constant folded: 10 > 5 = 1
-MOV R3, 1
-MOV P2, R3
-; Constant folded: -(128) = -128
-MOV R4, -128
-MOV P2, R4
-; Constant folded: 8 + 7 = 15
-MOV R5, 15
-MOV P2, R5
+MOV :P7, 0xFF
+MOV R1, 96
+MOV P2, R1
+SHL P0, 8
+MOV R1, 127
+MOV SP, P7
+MOV P2, R1
+MOV FP, SP
+MOV R1, 1
+MOV P2, P0
+MOV P0, -128
+MOV P2, R1
+MOV R1, 15
+MOV P2, P0
+MOV P2, R1
 ; ClrDraw
 MOV VL, 1
+MOV VM, 0
 SFILL 0x00
-XOR R7, R7
-MOV P3, R7
-MOV R7, 50
-MOV R6, R7
+XOR R1, R1
+MOV P3, R1
+MOV R0, 50
 L1:
-CMP P3, R6
+CMP P3, R0
 JGT L2
-XOR R7, R7
-MOV P4, R7
-MOV R7, 50
-MOV P5, R7
+XOR R0, R0
+MOV P4, R0
+MOV P5, 50
 L3:
 CMP P4, P5
 JGT L4
+MOV VC, P2
 MOV VX, P4
 MOV VY, P3
-MOV VC, P2
 SWRITE VC
 INC P4
 JMP L3
@@ -49,9 +46,9 @@ L4:
 INC P3
 JMP L1
 L2:
-MOV VX, 0
-MOV VY, 0
 MOV VC, 15
+MOV VX, 0
 TEXT STR4
+ADD VY, 8
 HLT
 STR4: DEFSTR "Done!"

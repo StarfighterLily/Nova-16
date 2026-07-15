@@ -201,14 +201,13 @@ def handle_full_reset(*, ensure_emulator, state) -> str:
     mem.reset()
 
     gfx = state["gfx"]
-    gfx._screen.fill(0)
+    gfx.screen.fill(0)
     gfx.layer_0.fill(0)
     for layer in gfx.background_layers:
         layer.fill(0)
     for layer in gfx.sprite_layers:
         layer.fill(0)
     gfx.layers_dirty = False
-    gfx.sprites_dirty = False
 
     sound = state["sound"]
     try:
