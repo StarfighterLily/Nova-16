@@ -2199,9 +2199,9 @@ class CodeGenerator:
         self.current_output.append("PUSH P4")
         self.current_output.append("PUSH P5")
         self.current_output.append("PUSH P6")
-        self.current_output.append(f"MOV P1, 0x{desc_addr:04X}")
         if index_reg != "P2":
             self.current_output.append(f"MOV P2, {index_reg}")
+        self.current_output.append(f"MOV P1, 0x{desc_addr:04X}")
         self.current_output.append("CALL _nb_list_elem_addr")
         self.current_output.append("POP P6")
         self.current_output.append("POP P5")
@@ -2236,10 +2236,24 @@ class CodeGenerator:
         self.current_output.append("PUSH P4")
         self.current_output.append("PUSH P5")
         self.current_output.append("PUSH P6")
-        self.current_output.append(f"MOV P1, 0x{desc_addr:04X}")
         if index_reg != "P2":
             self.current_output.append(f"MOV P2, {index_reg}")
+        self.current_output.append(f"MOV P1, 0x{desc_addr:04X}")
         self.current_output.append("CALL _nb_list_elem_addr")
+        # Extend the logical length to cover this index (writing beyond the
+        # current length grows it, matching indexed-assignment semantics).
+        # P2 still holds the original 1-based index and P0 the element
+        # address (0 on failure) - both are guaranteed by the helper's
+        # contract, so this must run before P1-P6 are restored below.
+        length_updated = self.new_label()
+        self.current_output.append("CMP P0, 0")
+        self.current_output.append(f"JZ {length_updated}")
+        self.current_output.append(f"MOV P3, 0x{desc_addr + 4:04X}")
+        self.current_output.append("MOV P4, [P3]")
+        self.current_output.append("CMP P2, P4")
+        self.current_output.append(f"JLE {length_updated}")
+        self.current_output.append("MOV [P3], P2")
+        self.current_output.append(f"{length_updated}:")
         self.current_output.append("POP P6")
         self.current_output.append("POP P5")
         self.current_output.append("POP P4")
@@ -4201,7 +4215,9 @@ class CodeGenerator:
             self.current_output.append("MOV P0, P6")
             self.current_output.append("INC P0")
             self.current_output.append("INC P0")
-            self.current_output.append("MOV P4, [P0]")  # capacity
+            self.current_output.append("INC P0")
+            self.current_output.append("INC P0")
+            self.current_output.append("MOV P4, [P0]")  # logical length (not raw capacity)
 
             if func_name == "DIM":
                 self.current_output.append(f"MOV {target_reg}, P4")
@@ -4269,39 +4285,92 @@ class CodeGenerator:
                 self.current_output.append(f"MOV {target_reg}, P4")
 
             elif func_name == "SEQ":
+                # SEQ is normally the first write to a fresh list (length/capacity
+                # both 0), so - unlike SUM/MEAN/FILL/SORTA/SORTD/REVERSE, which
+                # only ever touch elements already within the logical length -
+                # it must be able to grow the list itself. Each element is
+                # written through the same _nb_list_elem_addr helper used by
+                # indexed assignment, and the logical length is set to exactly
+                # the number of elements produced (SEQ redefines the list's
+                # content from index 1, so it does not just extend the length).
                 current_reg = self.generate_expression(expr.arguments[2], "P2")
+                if current_reg.startswith('R'):
+                    # The accumulator is written to a list element and must
+                    # survive PUSH/POP around the per-element store call below,
+                    # so it needs to be a genuine 16-bit P register.
+                    p_reg = self.allocate_p_register(['P2', 'P3', 'P4', 'P5', 'P6'])
+                    self.current_output.append(f"MOV {p_reg}, 0")
+                    self.current_output.append(f"MOV :{p_reg}, {current_reg}")
+                    self.smart_deallocate(current_reg, is_last_use=True)
+                    current_reg = p_reg
+
                 end_reg = self.generate_expression(expr.arguments[3], "P3")
+                if end_reg == "P1":
+                    # P1 is reserved below as the write counter; relocate.
+                    p_reg = self.allocate_p_register(['P3', 'P4', 'P5', 'P6', 'P2'])
+                    self.current_output.append(f"MOV {p_reg}, P1")
+                    self.smart_deallocate(end_reg, is_last_use=True)
+                    end_reg = p_reg
+
                 step_reg = self.generate_expression(expr.arguments[4], "P7") if len(expr.arguments) > 4 else None
                 if step_reg is None:
                     self.current_output.append("MOV P7, 1")
                     step_reg = "P7"
-                self.current_output.append("MOV P1, 0")  # list index
+                elif step_reg == "P1":
+                    p_reg = self.allocate_p_register(['P7', 'P4', 'P5', 'P6', 'P3', 'P2'])
+                    self.current_output.append(f"MOV {p_reg}, P1")
+                    self.smart_deallocate(step_reg, is_last_use=True)
+                    step_reg = p_reg
+
+                self.current_output.append("MOV P1, 0")  # elements written so far (0-based)
                 loop_label = self.new_label()
                 end_label = self.new_label()
                 pos_step = self.new_label()
+                neg_step = self.new_label()
                 do_write = self.new_label()
                 self.current_output.append(f"{loop_label}:")
-                self.current_output.append("CMP P1, P4")
-                self.current_output.append(f"JGE {end_label}")
                 self.current_output.append(f"CMP {step_reg}, 0")
                 self.current_output.append(f"JGT {pos_step}")
-                self.current_output.append(f"JLT {do_write}")
-                self.current_output.append(f"JMP {end_label}")
+                self.current_output.append(f"JLT {neg_step}")
+                self.current_output.append(f"JMP {end_label}")  # step == 0: stop rather than loop forever
                 self.current_output.append(f"{pos_step}:")
                 self.current_output.append(f"CMP {current_reg}, {end_reg}")
                 self.current_output.append(f"JGT {end_label}")
+                self.current_output.append(f"JMP {do_write}")
+                self.current_output.append(f"{neg_step}:")
+                self.current_output.append(f"CMP {current_reg}, {end_reg}")
+                self.current_output.append(f"JLT {end_label}")
                 self.current_output.append(f"{do_write}:")
-                self.current_output.append("MOV P0, P1")
-                self._emit_scale_register("P0", 2)
-                self.current_output.append("ADD P0, P5")
+                self.current_output.append("PUSH P1")
+                self.current_output.append("PUSH P2")
+                self.current_output.append("PUSH P3")
+                self.current_output.append("PUSH P4")
+                self.current_output.append("PUSH P5")
+                self.current_output.append("PUSH P6")
+                self.current_output.append("MOV P2, P1")
+                self.current_output.append("INC P2")  # 1-based index
+                self.current_output.append(f"MOV P1, 0x{desc_addr:04X}")
+                self.current_output.append("CALL _nb_list_elem_addr")
+                self.current_output.append("POP P6")
+                self.current_output.append("POP P5")
+                self.current_output.append("POP P4")
+                self.current_output.append("POP P3")
+                self.current_output.append("POP P2")
+                self.current_output.append("POP P1")
+                self.current_output.append("CMP P0, 0")
+                self.current_output.append(f"JZ {end_label}")  # heap exhausted - stop early
                 self.current_output.append(f"MOV [P0], {current_reg}")
                 self.current_output.append("INC P1")
                 self.current_output.append(f"ADD {current_reg}, {step_reg}")
                 self.current_output.append(f"JMP {loop_label}")
                 self.current_output.append(f"{end_label}:")
-                self.current_output.append(f"MOV {target_reg}, P4")
+                self.current_output.append(f"MOV P0, 0x{desc_addr + 4:04X}")
+                self.current_output.append("MOV [P0], P1")  # length = elements actually written
+                self.current_output.append(f"MOV {target_reg}, P1")
                 if step_reg != "P7":
                     self.smart_deallocate(step_reg, is_last_use=True)
+                self.smart_deallocate(current_reg, is_last_use=True)
+                self.smart_deallocate(end_reg, is_last_use=True)
 
             elif func_name in {"SORTA", "SORTD"}:
                 ascending = func_name == "SORTA"
@@ -4709,9 +4778,17 @@ class CodeGenerator:
         return suffix.isdigit() and len(suffix) > 0
 
     def _get_or_create_list_descriptor(self, list_name: str) -> int:
-        """Allocate (or return) a descriptor storing list base/capacity words."""
+        """Allocate (or return) a descriptor storing list base/capacity/length words.
+
+        Layout: +0 base address, +2 capacity (backing storage, grows in powers),
+        +4 length (logical element count set by stores/SEQ; the value SUM, MEAN,
+        FILL, SORTA, SORTD, REVERSE and DIM operate over). Capacity is an
+        allocator implementation detail and may exceed length after growth
+        rounds up - list-wide operations must never read past length or they'll
+        pick up unused, zero-filled padding.
+        """
         if list_name not in self.list_descriptors:
-            desc_addr = self._reserve_data_memory(4, f"list descriptor '{list_name}'")
+            desc_addr = self._reserve_data_memory(6, f"list descriptor '{list_name}'")
             self.list_descriptors[list_name] = desc_addr
             self.list_runtime_required = True
         return self.list_descriptors[list_name]
@@ -4839,10 +4916,13 @@ class CodeGenerator:
         self.current_output.append(f"MOV P1, 0x{self.list_heap_start:04X}")
         self.current_output.append("MOV [P0], P1")
 
-        # Zero each descriptor (base=0, capacity=0).
+        # Zero each descriptor (base=0, capacity=0, length=0).
         for desc_addr in self.list_descriptors.values():
             self.current_output.append(f"MOV P0, 0x{desc_addr:04X}")
             self.current_output.append("MOV P1, 0")
+            self.current_output.append("MOV [P0], P1")
+            self.current_output.append("INC P0")
+            self.current_output.append("INC P0")
             self.current_output.append("MOV [P0], P1")
             self.current_output.append("INC P0")
             self.current_output.append("INC P0")

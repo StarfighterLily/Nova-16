@@ -539,7 +539,16 @@ class OperandClassifier:
             return OperandType.IMMEDIATE8
         elif self.patterns['decimal'].match(operand):
             val = int(operand)
-            return OperandType.IMMEDIATE16 if val < -128 or val > 127 else OperandType.IMMEDIATE8
+            # Negative values must always be encoded as a full 16-bit two's
+            # complement immediate. IMMEDIATE8 encodes a single raw byte with
+            # no sign-extension step at decode time, so e.g. -2 stored as a
+            # lone 0xFE loses its sign bit entirely when moved into a 16-bit
+            # P register (becomes 254, not 65534/0xFFFE). Register writes
+            # already mask down to the destination's actual width, so using
+            # IMMEDIATE16 here is also safe for 8-bit R-register destinations.
+            if val < 0:
+                return OperandType.IMMEDIATE16
+            return OperandType.IMMEDIATE16 if val > 127 else OperandType.IMMEDIATE8
         elif self.patterns['char_literal'].match(operand):
             return OperandType.IMMEDIATE8
 
