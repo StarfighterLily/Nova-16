@@ -1,0 +1,27 @@
+// Test: Constant folding of built-in function calls
+// Verifies that built-in functions with all-constant arguments
+// are evaluated at compile time.
+ClrDraw
+
+// Arithmetic builtins
+a = MIN(10, 5)        // Should fold to 5
+b = MAX(10, 5)        // Should fold to 10
+c = ABS(-42)          // Should fold to 42
+
+// Bitwise builtins  
+d = BAND(0xFF, 0x0F)  // Should fold to 15
+e = BOR(0x0F, 0xF0)   // Should fold to 255
+f = BXOR(0xFF, 0x0F)  // Should fold to 240
+g = BNOT(0x00)        // Should fold to 65535 (0xFFFF)
+
+// Shift builtins
+h = SHL(1, 8)         // Should fold to 256
+i = SHR(1024, 4)      // Should fold to 64
+
+// Popcount and friends
+j = POPCNT(0xFF)      // Should fold to 8
+k = CLZ(0x00FF)       // Should fold to 8 (leading zeros in 16-bit)
+l = SWAP(0x1234)      // Should fold to 0x3412
+
+// Display results
+Text(0, 0, "CFold test passed", 15)

@@ -280,10 +280,9 @@ class TestCodeGenerator:
         assert any("MOV" in line and "-3" in line for line in code.split("\n"))
 
     def test_int_function_maps_to_intgr_instruction(self):
-        """Test TI-style int() maps to supported INTGR opcode path."""
-        code = self.generate_code("x = int(2.7)")
+        """Test TI-style int() maps to supported INTGR opcode path for runtime variables."""
+        code = self.generate_code("a = getkey()\nx = int(a)")
         assert "INTGR" in code
-        assert "2.7" not in code
 
     def test_repeat_statement(self):
         """Test repeat loop code generation."""
@@ -293,7 +292,7 @@ class TestCodeGenerator:
 
     def test_function_call(self):
         """Test function call code generation."""
-        code = self.generate_code("x = sin(30)")
+        code = self.generate_code("a = 30\nx = sin(a)")
         lines = code.strip().split("\n")
         # Should generate SIN instruction
         assert any("SIN" in line for line in lines)
@@ -318,16 +317,16 @@ class TestCodeGenerator:
     def test_function_call_codegen(self):
         """Test code generation for various function calls."""
         # Test math functions that have hardware support
-        code = self.generate_code("x = sin(30)")
+        code = self.generate_code("a = 30\nx = sin(a)")
         lines = code.strip().split("\n")
         assert any("SIN" in line for line in lines)
 
-        code = self.generate_code("x = cos(45)")
+        code = self.generate_code("a = 45\nx = cos(a)")
         lines = code.strip().split("\n")
         assert any("COS" in line for line in lines)
 
         # Test functions that use STRLEN
-        code = self.generate_code("x = length(\"hello\")")
+        code = self.generate_code('s = "hello"\nx = length(s)')
         lines = code.strip().split("\n")
         # length() is implemented via strlen
         assert any("STRLEN" in line for line in lines)
@@ -784,7 +783,7 @@ class TestCodeGenerator:
 
     def test_advanced_math_codegen(self):
         """Test code generation for advanced math functions."""
-        code = self.generate_code("x = powr(2, 3)\ny = sqrt(16)\nz = log(100)")
+        code = self.generate_code("a = 2\nb = 3\nx = powr(a, b)\nc = 16\ny = sqrt(c)\nd = 100\nz = log(d)")
         lines = code.strip().split("\n")
         assert "POWR" in "".join(lines)
         assert "SQRT" in "".join(lines)
@@ -1058,7 +1057,7 @@ class TestCodeGenerator:
 
     def test_function_call_optimization(self):
         """Test function call optimization."""
-        code = self.generate_code("x = sin(0)")
+        code = self.generate_code("a = 0\nx = sin(a)")
         lines = code.strip().split("\n")
         # sin(0) could potentially be optimized to 0
         assert any("SIN" in line for line in lines)
@@ -1131,20 +1130,20 @@ class TestCodeGenerator:
         """Test trigonometric function code generation."""
         functions = ["sin", "cos", "tan"]
         for func in functions:
-            code = self.generate_code(f"x = {func}(45)")
+            code = self.generate_code(f"a = 45\nx = {func}(a)")
             lines = code.strip().split("\n")
             assert any(func.upper() in line for line in lines)
 
     def test_math_functions_sqrt_abs(self):
         """Test sqrt and abs function code generation."""
-        code = self.generate_code("x = sqrt(16)\ny = abs(-5)")
+        code = self.generate_code("a = 16\nb = -5\nx = sqrt(a)\ny = abs(b)")
         lines = code.strip().split("\n")
         assert any("SQRT" in line for line in lines)
         assert any("ABS" in line for line in lines)
 
     def test_math_functions_min_max(self):
         """Test min and max function code generation."""
-        code = self.generate_code("x = min(10, 20)\ny = max(5, 15)")
+        code = self.generate_code("a = 10\nb = 20\nc = 5\nd = 15\nx = min(a, b)\ny = max(c, d)")
         lines = code.strip().split("\n")
         assert any("MIN" in line for line in lines)
         assert any("MAX" in line for line in lines)
@@ -1159,13 +1158,13 @@ class TestCodeGenerator:
         """Test inverse trigonometric functions."""
         functions = ["atan", "asin", "acos"]
         for func in functions:
-            code = self.generate_code(f"x = {func}(0.5)")
+            code = self.generate_code(f"a = 128\nx = {func}(a)")
             lines = code.strip().split("\n")
             assert any(func.upper() in line for line in lines)
 
     def test_math_functions_deg_rad(self):
         """Test degree/radian conversion functions."""
-        code = self.generate_code("x = deg(1.57)\ny = rad(90)")
+        code = self.generate_code("a = 90\nb = 180\nx = deg(b)\ny = rad(a)")
         lines = code.strip().split("\n")
         assert any("DEG" in line for line in lines)
         assert any("RAD" in line for line in lines)
@@ -1174,20 +1173,20 @@ class TestCodeGenerator:
         """Test rounding functions."""
         functions = ["floor", "ceil", "round", "trunc"]
         for func in functions:
-            code = self.generate_code(f"x = {func}(3.7)")
+            code = self.generate_code(f"a = 314\ny = {func}(a)")
             lines = code.strip().split("\n")
             assert any(func.upper() in line for line in lines)
 
     def test_math_functions_frac_intgr(self):
         """Test fractional and integer part functions."""
-        code = self.generate_code("x = frac(3.14)\ny = intgr(3.14)")
+        code = self.generate_code("a = 314\nx = frac(a)\ny = intgr(a)")
         lines = code.strip().split("\n")
         assert any("FRAC" in line for line in lines)
         assert any("INTGR" in line for line in lines)
 
     def test_math_functions_power_log_exp(self):
         """Test power, logarithm, and exponential functions."""
-        code = self.generate_code("x = powr(2, 3)\ny = log(10)\nz = exp(1)")
+        code = self.generate_code("a = 2\nb = 3\nc = 10\nd = 256\nx = powr(a, b)\ny = log(c)\nz = exp(d)")
         lines = code.strip().split("\n")
         assert any("POWR" in line for line in lines)
         assert any("LOG" in line for line in lines)

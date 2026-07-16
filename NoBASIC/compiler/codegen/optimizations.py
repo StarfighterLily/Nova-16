@@ -483,6 +483,9 @@ class ExpressionSimplifier:
 
         if isinstance(expr, FunctionCallExpr):
             simplified_args = [self._simplify_node(arg, constants) for arg in expr.arguments]
+            folded = self._fold_builtin_call(expr.name, simplified_args)
+            if folded is not None:
+                return folded
             return FunctionCallExpr(name=expr.name, arguments=simplified_args)
 
         return expr
@@ -668,6 +671,330 @@ class ExpressionSimplifier:
         return 1
 
 
+    def _fold_builtin_call(self, func_name: str, args: List[Any]) -> Optional[LiteralExpr]:
+        """Fold built-in function calls where all arguments are numeric literals."""
+        name = func_name.upper()
+
+        # NEVER fold side-effecting builtins (I/O, RNG, memory writes)
+        if name in ("RND", "RANDOMIZE", "GETKEY", "SERIN", "SERSTAT",
+                    "MEMWRITE", "MEMCPY", "MEMSET", "MEMMOVE", "MEMSWAP",
+                    "PAUSE", "CLRDRAW", "PXLON", "PXLOFF", "LINE", "CIRCLE",
+                    "TEXT", "RECT", "SETLAYER", "SPLAY", "SEROUT", "SERCTRL",
+                    "STRCPY", "STRCAT", "XCHNG"):
+            return None
+
+        if not all(
+            isinstance(a, LiteralExpr) and a.data_type == DataType.NUMBER
+            for a in args
+        ):
+            return None
+
+        try:
+            values = [a.value for a in args]
+
+            # Unary math functions
+            if name in ("SIN", "COS", "TAN", "SQRT", "ABS", "ATAN", "ASIN", "ACOS",
+                        "DEG", "RAD", "FLOOR", "CEIL", "ROUND", "TRUNC", "FRAC",
+                        "INTGR", "INT", "LOG", "EXP"):
+                v = values[0]
+                if name == "SIN":
+                    import math; return LiteralExpr(int(math.sin(math.radians(v)) * 256), DataType.NUMBER)
+                if name == "COS":
+                    import math; return LiteralExpr(int(math.cos(math.radians(v)) * 256), DataType.NUMBER)
+                if name == "TAN":
+                    import math
+                    rad = math.radians(v)
+                    cos_v = math.cos(rad)
+                    if abs(cos_v) < 1e-10:
+                        return None  # division by zero, can't fold
+                    return LiteralExpr(int(math.tan(rad) * 256), DataType.NUMBER)
+                if name == "SQRT":
+                    if v < 0: return None
+                    return LiteralExpr(int(v ** 0.5), DataType.NUMBER)
+                if name == "ABS":
+                    return LiteralExpr(abs(v), DataType.NUMBER)
+                if name == "ATAN":
+                    import math; return LiteralExpr(int(math.degrees(math.atan(v / 256.0)) * 256), DataType.NUMBER)
+                if name == "ASIN":
+                    import math
+                    ratio = max(-1.0, min(1.0, v / 256.0))
+                    return LiteralExpr(int(math.degrees(math.asin(ratio)) * 256), DataType.NUMBER)
+                if name == "ACOS":
+                    import math
+                    ratio = max(-1.0, min(1.0, v / 256.0))
+                    return LiteralExpr(int(math.degrees(math.acos(ratio)) * 256), DataType.NUMBER)
+                if name == "DEG":
+                    return LiteralExpr(int(v * 180 / 3.14159265), DataType.NUMBER)
+                if name == "RAD":
+                    return LiteralExpr(int(v * 3.14159265 / 180), DataType.NUMBER)
+                if name in ("FLOOR", "INTGR", "INT"):
+                    return LiteralExpr(int(v), DataType.NUMBER)
+                if name == "CEIL":
+                    return LiteralExpr(v, DataType.NUMBER)  # integer input → no-op
+                if name == "ROUND":
+                    return LiteralExpr(v, DataType.NUMBER)
+                if name == "TRUNC":
+                    return LiteralExpr(v, DataType.NUMBER)
+                if name == "FRAC":
+                    return LiteralExpr(0, DataType.NUMBER)  # integer → fractional part is 0
+                if name == "LOG":
+                    if v <= 0: return None
+                    import math; return LiteralExpr(int(math.log(v) * 256), DataType.NUMBER)
+                if name == "EXP":
+                    import math
+                    result = int(math.exp(v / 256.0) * 256)
+                    return LiteralExpr(max(0, min(65535, result)), DataType.NUMBER)
+
+            # Binary math functions
+            if name in ("MIN", "MAX"):
+                v0, v1 = values[0], values[1]
+                fn = min if name == "MIN" else max
+                return LiteralExpr(fn(v0, v1), DataType.NUMBER)
+            if name == "POWR":
+                v0, v1 = values[0], values[1]
+                if v1 < 0: return None
+                return LiteralExpr(int(v0 ** v1), DataType.NUMBER)
+
+            # Nullary
+            if name == "RND":
+                return LiteralExpr(0, DataType.NUMBER)  # can't fold RNG
+
+            # Bitwise builtins
+            if name in ("BAND", "BOR", "BXOR"):
+                v0, v1 = values[0], values[1]
+                if name == "BAND": return LiteralExpr(v0 & v1, DataType.NUMBER)
+                if name == "BOR": return LiteralExpr(v0 | v1, DataType.NUMBER)
+                if name == "BXOR": return LiteralExpr(v0 ^ v1, DataType.NUMBER)
+            if name == "BNOT":
+                return LiteralExpr(~values[0] & 0xFFFF, DataType.NUMBER)
+
+            # Shift builtins
+            if name in ("SHL", "SHR", "SAL", "SAR"):
+                v0, v1 = values[0], values[1]
+                if name in ("SHL", "SAL"): return LiteralExpr(v0 << v1, DataType.NUMBER)
+                if name in ("SHR", "SAR"): return LiteralExpr(v0 >> v1, DataType.NUMBER)
+
+            # ROL / ROR on constants
+            if name == "ROL":
+                v0, v1 = values[0], values[1]
+                v1 = v1 & 0xF
+                return LiteralExpr(((v0 << v1) | (v0 >> (16 - v1))) & 0xFFFF, DataType.NUMBER)
+            if name == "ROR":
+                v0, v1 = values[0], values[1]
+                v1 = v1 & 0xF
+                return LiteralExpr(((v0 >> v1) | (v0 << (16 - v1))) & 0xFFFF, DataType.NUMBER)
+
+            # CLZ, CTZ, POPCNT on constants
+            if name == "CLZ":
+                v = values[0]
+                count = 0
+                for i in range(15, -1, -1):
+                    if v & (1 << i): break
+                    count += 1
+                return LiteralExpr(count, DataType.NUMBER)
+            if name == "CTZ":
+                v = values[0]
+                count = 0
+                for i in range(16):
+                    if v & (1 << i): break
+                    count += 1
+                return LiteralExpr(count, DataType.NUMBER)
+            if name == "POPCNT":
+                return LiteralExpr(values[0].bit_count(), DataType.NUMBER)
+
+            # SWAP (byte swap)
+            if name == "SWAP":
+                v = values[0]
+                return LiteralExpr(((v & 0xFF) << 8) | ((v >> 8) & 0xFF), DataType.NUMBER)
+
+        except (TypeError, ValueError, ZeroDivisionError):
+            return None
+
+        return None
+
+
+@dataclass
+class FunctionInliner:
+    """
+    Analyzes user-defined functions for inlining eligibility and performs inlining.
+
+    A function is eligible for inlining when:
+    1. It has <= max_statements body statements (default 8)
+    2. It does NOT call itself (no recursion via inlined path)
+    3. It does NOT contain Goto/Label (would break control flow)
+    4. All call sites use simple (non-side-effecting) argument expressions
+
+    Inlining eliminates CALL/RETN overhead and enables further constant folding
+    and register allocation improvements.
+    """
+
+    max_statements: int = 8
+    min_call_sites: int = 2
+    debug: bool = False
+
+    def __post_init__(self):
+        self._inlineable: Dict[str, bool] = {}
+        self._call_graph: Dict[str, Set[str]] = {}
+        self._call_counts: Dict[str, int] = Counter()
+
+    def analyze(self, functions: Dict[str, Tuple[str, List[str], Any]]) -> Set[str]:
+        """
+        Analyze all functions and return the set of function names eligible for inlining.
+
+        Args:
+            functions: Dict of func_name_lower -> (label, param_names, FunctionDefStmt)
+
+        Returns:
+            Set of function names (lowercase) that should be inlined
+        """
+        # Build call graph and call counts
+        for func_name, (_, _, func_def) in functions.items():
+            called = self._collect_callees(func_def)
+            self._call_graph[func_name] = called
+            for callee in called:
+                self._call_counts[callee] += 1
+
+        if self.debug:
+            print(f"\n[INLINER] Call graph: {dict(self._call_graph)}")
+            print(f"[INLINER] Call counts: {dict(self._call_counts)}")
+
+        # Find inlineable functions
+        inlineable = set()
+        for func_name, (_, _, func_def) in functions.items():
+            if self._is_inlineable(func_name, func_def, functions):
+                inlineable.add(func_name)
+
+        # Filter: only inline functions called at least min_call_sites times
+        # Single-call-site functions save nothing (CALL vs inline is similar)
+        result = {
+            name for name in inlineable
+            if self._call_counts.get(name, 0) >= self.min_call_sites
+        }
+
+        if self.debug:
+            print(f"[INLINER] Eligible for inlining: {result}")
+            for name in inlineable - result:
+                print(f"[INLINER]   {name}: eligible but only {self._call_counts.get(name, 0)} call site(s) < {self.min_call_sites}")
+
+        self._inlineable = {name: True for name in result}
+        return result
+
+    def _collect_callees(self, func_def: Any) -> Set[str]:
+        """Collect names of functions called within func_def body."""
+        callees = set()
+
+        def visit(stmt):
+            if hasattr(stmt, 'function_call') and hasattr(stmt.function_call, 'name'):
+                callees.add(stmt.function_call.name.lower())
+            if hasattr(stmt, 'expression'):
+                self._collect_expr_calls(stmt.expression, callees)
+            if hasattr(stmt, 'condition'):
+                self._collect_expr_calls(stmt.condition, callees)
+            if hasattr(stmt, 'then_branch'):
+                for s in stmt.then_branch:
+                    visit(s)
+            if hasattr(stmt, 'else_branch') and stmt.else_branch:
+                for s in stmt.else_branch:
+                    visit(s)
+            if hasattr(stmt, 'body'):
+                for s in stmt.body:
+                    visit(s)
+            if hasattr(stmt, 'start'):
+                self._collect_expr_calls(stmt.start, callees)
+            if hasattr(stmt, 'end'):
+                self._collect_expr_calls(stmt.end, callees)
+            if hasattr(stmt, 'step') and stmt.step:
+                self._collect_expr_calls(stmt.step, callees)
+
+        for stmt in func_def.body:
+            visit(stmt)
+
+        return callees
+
+    @staticmethod
+    def _collect_expr_calls(expr: Any, callees: Set[str]):
+        """Recursively collect function call names from expressions."""
+        if isinstance(expr, FunctionCallExpr):
+            callees.add(expr.name.lower())
+            for arg in expr.arguments:
+                FunctionInliner._collect_expr_calls(arg, callees)
+        elif isinstance(expr, BinaryExpr):
+            FunctionInliner._collect_expr_calls(expr.left, callees)
+            FunctionInliner._collect_expr_calls(expr.right, callees)
+        elif isinstance(expr, UnaryExpr):
+            FunctionInliner._collect_expr_calls(expr.expression, callees)
+        elif isinstance(expr, GroupingExpr):
+            FunctionInliner._collect_expr_calls(expr.expression, callees)
+
+    def _is_inlineable(self, func_name: str, func_def: Any,
+                       all_functions: Dict) -> bool:
+        """
+        Check if a function is safe to inline.
+
+        Rules:
+        - Must not call itself (direct recursion)
+        - Must not call another function being inlined that calls this one (indirect recursion)
+        - Must not contain Goto/Label
+        - Body must have <= max_statements statements
+        - Must not contain AsmBlock
+        """
+        # Recursion check
+        if func_name in self._call_graph.get(func_name, set()):
+            if self.debug:
+                print(f"[INLINER]   {func_name}: recursive (calls itself)")
+            return False
+
+        # Body size check
+        stmt_count = self._count_statements(func_def.body)
+        if stmt_count > self.max_statements:
+            if self.debug:
+                print(f"[INLINER]   {func_name}: too large ({stmt_count} > {self.max_statements} stmts)")
+            return False
+
+        # Forbidden constructs check
+        if self._contains_forbidden(func_def.body):
+            if self.debug:
+                print(f"[INLINER]   {func_name}: contains Goto/Label/AsmBlock")
+            return False
+
+        return True
+
+    @staticmethod
+    def _count_statements(body: List[Any]) -> int:
+        """Count total statements including those in nested control flow."""
+        count = 0
+        for stmt in body:
+            count += 1
+            if hasattr(stmt, 'then_branch'):
+                count += FunctionInliner._count_statements(stmt.then_branch)
+            if hasattr(stmt, 'else_branch') and stmt.else_branch:
+                count += FunctionInliner._count_statements(stmt.else_branch)
+            if hasattr(stmt, 'body'):
+                count += FunctionInliner._count_statements(stmt.body)
+        return count
+
+    @staticmethod
+    def _contains_forbidden(body: List[Any]) -> bool:
+        """Check if body contains GotoStmt, LabelStmt, or AsmBlockStmt."""
+        for stmt in body:
+            if type(stmt).__name__ in ('GotoStmt', 'LabelStmt', 'AsmBlockStmt'):
+                return True
+            if hasattr(stmt, 'then_branch'):
+                if FunctionInliner._contains_forbidden(stmt.then_branch):
+                    return True
+            if hasattr(stmt, 'else_branch') and stmt.else_branch:
+                if FunctionInliner._contains_forbidden(stmt.else_branch):
+                    return True
+            if hasattr(stmt, 'body'):
+                if FunctionInliner._contains_forbidden(stmt.body):
+                    return True
+        return False
+
+    def is_inlineable(self, func_name: str) -> bool:
+        """Check if a previously-analyzed function is inlineable."""
+        return self._inlineable.get(func_name, False)
+
+
 def get_optimization_config() -> Dict[str, Any]:
     """Get default optimization configuration."""
     return {
@@ -676,6 +1003,9 @@ def get_optimization_config() -> Dict[str, Any]:
         'enable_register_pressure_monitoring': True,
         'enable_dynamic_spill_allocation': True,
         'enable_expression_simplification': True,
+        'enable_function_inlining': True,
+        'inlining_max_statements': 8,
+        'inlining_min_call_sites': 2,
         'debug_optimizations': False,
         'pressure_threshold_percentile': 75.0,
         'zero_page_base': 0x0080,

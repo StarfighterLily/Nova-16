@@ -1,0 +1,7 @@
+# Symbol table
+# Format: <symbol> <value>
+L1 0x0227
+L2 0x028F
+_func_addten_0 0x02C9
+_func_doubleit_1 0x02F2
+STR2 0x0313

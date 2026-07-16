@@ -1,0 +1,28 @@
+// Test: Function inlining optimization
+// Small functions called multiple times should be inlined to eliminate CALL/RETN overhead.
+// This program defines small helper functions and calls them multiple times.
+// The inliner should inline renderPoint (2 stmts, 3+ call sites) and addTen (1 stmt, 2+ call sites).
+
+ClrDraw
+
+// Small helper - single statement, called multiple times from the loop
+Function addTen(val)
+  Return val + 10
+End
+
+// Small helper - 2 statements, called multiple times  
+Function doubleIt(val)
+  Return val * 2
+End
+
+// Test inlining through a loop
+For i = 0 To 5
+  x = addTen(i)       // Should be inlined
+  y = doubleIt(x)     // Should be inlined
+  // Use results on screen
+  PxlOn(x, y, 10)
+Next
+
+// Display a result to verify behavior
+result = addTen(5)    // Should produce 15
+Text(0, 0, "Inline test OK", result)

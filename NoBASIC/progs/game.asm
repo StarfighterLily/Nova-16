@@ -76,8 +76,8 @@ MOV P0, 310
 MOV P1, R1
 MOV [P0], P1
 MOV P1, STR91
-MOV P0, 312
-MOV [P0], P1
+MOV P3, 312
+MOV [P3], P1
 MOV VM, 0
 MOV VL, 1
 XOR R1, R1
@@ -413,8 +413,8 @@ ADD R0, R4
 ; Free R4 (last use)
 MOV VY, R0
 XOR VC, VC
-MOV P0, 312
-MOV P0, [P0]
+MOV P1, 312
+MOV P0, [P1]
 TEXT P0
 ; Load player.oldx
 MOV P0, 292
@@ -439,8 +439,8 @@ ADD R0, R4
 ; Free R4 (last use)
 MOV VY, R0
 XOR VC, VC
-MOV P0, 312
-MOV P0, [P0]
+MOV P1, 312
+MOV P0, [P1]
 TEXT P0
 MOV SP, FP
 POP FP
@@ -483,8 +483,8 @@ ADD R0, R4
 ; Free R4 (last use)
 MOV VY, R0
 MOV VC, 15
-MOV P0, 312
-MOV P0, [P0]
+MOV P1, 312
+MOV P0, [P1]
 TEXT P0
 L14:
 ; Load player.facing
@@ -518,8 +518,8 @@ ADD R0, R4
 ; Free R4 (last use)
 MOV VY, R0
 MOV VC, 15
-MOV P0, 312
-MOV P0, [P0]
+MOV P1, 312
+MOV P0, [P1]
 TEXT P0
 L16:
 XOR R1, R1
@@ -736,12 +736,12 @@ _func_keycheck_6:
 ENTER 0
 KEYIN R0
 MOV R1, R0
-MOV P0, 0
-MOV :P0, R1
-MOV P1, 314
-MOV [P1], P0
-MOV P0, 314
-MOV P1, [P0]
+MOV P1, 0
+MOV :P1, R1
+MOV P2, 314
+MOV [P2], P1
+MOV P2, 314
+MOV P1, [P2]
 MOV P2, 101
 CMP P1, P2
 ; Free P1 (last use)
@@ -749,8 +749,8 @@ CMP P1, P2
 JNZ L42
 CALL _func_attack_5
 L42:
-MOV P0, 314
-MOV P1, [P0]
+MOV P2, 314
+MOV P1, [P2]
 MOV P2, 97
 CMP P1, P2
 ; Free P1 (last use)
@@ -776,8 +776,8 @@ MOV P0, 296
 MOV P1, R1
 MOV [P0], P1
 L44:
-MOV P0, 314
-MOV P1, [P0]
+MOV P2, 314
+MOV P1, [P2]
 MOV P2, 1
 SHL P2, 7
 CMP P1, P2
@@ -804,8 +804,8 @@ MOV P0, 296
 MOV P1, R1
 MOV [P0], P1
 L46:
-MOV P0, 314
-MOV P1, [P0]
+MOV P2, 314
+MOV P1, [P2]
 MOV P2, 100
 CMP P1, P2
 ; Free P1 (last use)
@@ -831,8 +831,8 @@ MOV P0, 296
 MOV P1, R1
 MOV [P0], P1
 L48:
-MOV P0, 314
-MOV P1, [P0]
+MOV P2, 314
+MOV P1, [P2]
 MOV P2, 129
 CMP P1, P2
 ; Free P1 (last use)
@@ -858,8 +858,8 @@ MOV P0, 296
 MOV P1, R1
 MOV [P0], P1
 L50:
-MOV P0, 314
-MOV P1, [P0]
+MOV P2, 314
+MOV P1, [P2]
 MOV P2, 115
 CMP P1, P2
 ; Free P1 (last use)
@@ -880,8 +880,8 @@ MOV P0, 290
 MOV P1, R1
 MOV [P0], P1
 L52:
-MOV P0, 314
-MOV P1, [P0]
+MOV P2, 314
+MOV P1, [P2]
 MOV P2, 131
 CMP P1, P2
 ; Free P1 (last use)
@@ -902,8 +902,8 @@ MOV P0, 290
 MOV P1, R1
 MOV [P0], P1
 L54:
-MOV P0, 314
-MOV P1, [P0]
+MOV P2, 314
+MOV P1, [P2]
 MOV P2, 119
 CMP P1, P2
 ; Free P1 (last use)
@@ -924,8 +924,8 @@ MOV P0, 290
 MOV P1, R1
 MOV [P0], P1
 L56:
-MOV P0, 314
-MOV P1, [P0]
+MOV P2, 314
+MOV P1, [P2]
 MOV P2, 130
 CMP P1, P2
 ; Free P1 (last use)
@@ -1108,10 +1108,10 @@ MOV R2, 3
 RNDR R1, R0, R2
 ; Free R0 (last use)
 ; Free R2 (last use)
-MOV P0, 0
-MOV :P0, R1
-MOV P1, 316
-MOV [P1], P0
+MOV P1, 0
+MOV :P1, R1
+MOV P2, 316
+MOV [P2], P1
 ; Load enemy.ecounter
 MOV P0, 308
 MOV P1, [P0]
@@ -1121,8 +1121,8 @@ CMP P1, P2
 ; Free P1 (last use)
 ; Free P2 (last use)
 JNZ L74
-MOV P0, 316
-MOV P1, [P0]
+MOV P2, 316
+MOV P1, [P2]
 XOR P2, P2
 CMP P1, P2
 ; Free P1 (last use)
@@ -1143,8 +1143,8 @@ MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
 L76:
-MOV P0, 316
-MOV P1, [P0]
+MOV P2, 316
+MOV P1, [P2]
 MOV P2, 1
 CMP P1, P2
 ; Free P1 (last use)
@@ -1165,8 +1165,8 @@ MOV P0, 300
 MOV P1, R1
 MOV [P0], P1
 L78:
-MOV P0, 316
-MOV P1, [P0]
+MOV P2, 316
+MOV P1, [P2]
 MOV P2, 1
 SHL P2, 1
 CMP P1, P2
@@ -1188,8 +1188,8 @@ MOV P0, 302
 MOV P1, R1
 MOV [P0], P1
 L80:
-MOV P0, 316
-MOV P1, [P0]
+MOV P2, 316
+MOV P1, [P2]
 MOV P2, 3
 CMP P1, P2
 ; Free P1 (last use)

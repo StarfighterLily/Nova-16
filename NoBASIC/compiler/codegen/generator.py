@@ -29,7 +29,8 @@ from ..parser.ast import (
 )
 from .optimizations import (
     RegisterColoringPass, HotSpillAnalyzer, RegisterPressureMonitor,
-    DynamicSpillAllocator, ExpressionSimplifier, get_optimization_config
+    DynamicSpillAllocator, ExpressionSimplifier, FunctionInliner,
+    get_optimization_config
 )
 from ..utils.error import CodeGenError
 
@@ -148,6 +149,8 @@ class CodeGenerator:
         self.pressure_monitor: Optional[RegisterPressureMonitor] = None
         self.spill_allocator: Optional[DynamicSpillAllocator] = None
         self.expr_simplifier: Optional[ExpressionSimplifier] = None
+        self.function_inliner: Optional[FunctionInliner] = None
+        self.inlineable_functions: Set[str] = set()
         self.expr_constant_values: Dict[str, int] = {}
 
         # Dynamic list runtime state
@@ -214,6 +217,8 @@ class CodeGenerator:
         self.pressure_monitor = None
         self.spill_allocator = None
         self.expr_simplifier = None
+        self.function_inliner = None
+        self.inlineable_functions = set()
         self.expr_constant_values = {}
         self.list_descriptors = {}
         self.list_heap_next_addr = None
