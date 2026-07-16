@@ -586,7 +586,7 @@ class TestIntegration:
 
         // Advanced graphics
         SetLayer(1)
-        Rect(20, 20, 80, 60, 1)  // Filled rectangle
+        Rect(20, 20, 80, 60, 15, 1)  // Filled rectangle with color 15
         """
 
         with tempfile.TemporaryDirectory() as tmpdir:

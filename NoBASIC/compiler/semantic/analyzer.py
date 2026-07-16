@@ -641,7 +641,7 @@ class SemanticAnalyzer:
             # Type conversion
             "ITOB": 2, "BTOI": 2, "ITOS": 2, "STOI": 2, "STR": 1,
             # Graphics functions
-            "CLRDRAW": 0, "SETLAYER": 1, "PXLON": 3, "PXLOFF": 2, "LINE": 5, "CIRCLE": 4, "TEXT": 4, "RECT": 5,
+            "CLRDRAW": 0, "SETLAYER": 1, "PXLON": 3, "PXLOFF": 2, "LINE": 5, "CIRCLE": (4, 5), "TEXT": 4, "RECT": (5, 6),
             # List/Array functions
             "SUM": 1, "MEAN": 1, "DIM": 1, "SORTA": 1, "SORTD": 1, "FILL": 2, "SEQ": (4, 5), "REVERSE": 1,
             # I/O functions
@@ -693,7 +693,7 @@ class SemanticAnalyzer:
             "CLRDRAW": [], "SETLAYER": [DataType.NUMBER], "PXLON": [DataType.NUMBER, DataType.NUMBER, DataType.NUMBER],
             "PXLOFF": [DataType.NUMBER, DataType.NUMBER], "LINE": [DataType.NUMBER, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER],
             "CIRCLE": [DataType.NUMBER, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER], "TEXT": [DataType.NUMBER, DataType.NUMBER, DataType.STRING, DataType.NUMBER],
-            "RECT": [DataType.NUMBER, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER],
+            "RECT": [DataType.NUMBER, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER, DataType.NUMBER],
             # List/Array functions
             "SUM": [DataType.LIST], "MEAN": [DataType.LIST], "DIM": [DataType.LIST],
             "SORTA": [DataType.LIST], "SORTD": [DataType.LIST], "FILL": [DataType.LIST, DataType.NUMBER],

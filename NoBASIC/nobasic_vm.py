@@ -298,12 +298,16 @@ class NoBASICVM:
             return
 
         if isinstance(statement, CircleStmt):
+            # Default to filled=True when filled arg is omitted
+            filled = True
+            if statement.filled is not None:
+                filled = self._to_int(self._eval_expr(statement.filled)) != 0
             self.gfx.draw_circle(
                 self._to_int(self._eval_expr(statement.x)),
                 self._to_int(self._eval_expr(statement.y)),
                 abs(self._to_int(self._eval_expr(statement.radius))),
                 self._to_int(self._eval_expr(statement.color)) & 0xFF,
-                filled=False,
+                filled=filled,
             )
             return
 

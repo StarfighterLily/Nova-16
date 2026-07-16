@@ -91,11 +91,12 @@ class LineStmt(Statement):
 
 @dataclass
 class CircleStmt(Statement):
-    """Circle(x, y, radius, color) statement."""
+    """Circle(x, y, radius, color [, filled]) statement."""
     x: Expression
     y: Expression
     radius: Expression
     color: Expression
+    filled: Optional[Expression] = None  # None = filled (default True)
 
 
 @dataclass

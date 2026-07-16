@@ -197,7 +197,7 @@ class Parser:
         return self._mark_node(LineStmt(x1, y1, x2, y2, color), token=token)
 
     def circle_statement(self) -> CircleStmt:
-        """Parse Circle(x, y, radius, color)"""
+        """Parse Circle(x, y, radius, color [, filled])"""
         token = self.advance()  # consume CIRCLE
         self.consume(TokenType.LPAREN, "Expected '(' after Circle")
         x = self.expression()
@@ -207,8 +207,13 @@ class Parser:
         radius = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after radius")
         color = self.expression()
-        self.consume(TokenType.RPAREN, "Expected ')' after color")
-        return self._mark_node(CircleStmt(x, y, radius, color), token=token)
+        # Optional 5th argument: filled (True=1 for filled, False=0 for unfilled)
+        filled = None
+        if self.check(TokenType.COMMA):
+            self.advance()  # consume comma
+            filled = self.expression()
+        self.consume(TokenType.RPAREN, "Expected ')' after arguments")
+        return self._mark_node(CircleStmt(x, y, radius, color, filled), token=token)
 
     def text_statement(self) -> TextStmt:
         """Parse Text(x, y, \"string\", color)"""

@@ -844,6 +844,8 @@ class CodeGenerator:
             self.collect_lifetimes_expr(stmt.y)
             self.collect_lifetimes_expr(stmt.radius)
             self.collect_lifetimes_expr(stmt.color)
+            if stmt.filled is not None:
+                self.collect_lifetimes_expr(stmt.filled)
         elif isinstance(stmt, TextStmt):
             self.collect_lifetimes_expr(stmt.x)
             self.collect_lifetimes_expr(stmt.y)
@@ -1638,20 +1640,34 @@ class CodeGenerator:
         self.deallocate_register(y2_reg)
 
     def generate_circle(self, stmt: CircleStmt):
-        """Generate optimized Circle drawing code using SCIRC opcode with direct register assignment."""
+        """Generate optimized Circle drawing code using SCIRC opcode with direct register assignment.
+        
+        Circle(x, y, radius, color [, filled])
+        If filled is omitted or true, circle is filled (default). Use false/0 for outline only.
+        """
         # Generate coordinates and color directly into hardware registers
         self.generate_expression_into(stmt.x, 'VX')
         self.generate_expression_into(stmt.y, 'VY')
         self.generate_expression_into(stmt.color, 'VC')
 
+        # Evaluate the filled flag: defaults to 1 (filled) when omitted
+        if stmt.filled is not None:
+            fill_reg = self.generate_expression(stmt.filled)
+            fill_val = fill_reg
+        else:
+            fill_reg = None
+            fill_val = '1'  # default filled=True
+
         # Radius needs a temp register for SCIRC operand
         radius_reg = self.generate_expression(stmt.radius)
 
-        # Use SCIRC opcode
-        self.current_output.append(f"SCIRC {radius_reg}, 1")  # 1 for filled
+        # Use SCIRC opcode: SCIRC radius, filled
+        self.current_output.append(f"SCIRC {radius_reg}, {fill_val}")
         
-        # Deallocate temp register
+        # Deallocate temp registers
         self.deallocate_register(radius_reg)
+        if fill_reg is not None:
+            self.deallocate_register(fill_reg)
 
     def generate_text(self, stmt: TextStmt):
         """Generate optimized Text rendering code using TEXT opcode with direct register assignment."""
@@ -2585,12 +2601,16 @@ class CodeGenerator:
         if end_reg == loop_reg or self.register_usage.get(end_reg, False):
             end_reg = self.allocate_register()
         self.register_usage[end_reg] = True
+        # Protect end_reg from _clear_temp_registers - it must persist across loop body
+        self.auto_free_registers.discard(end_reg)
 
         # Allocate step_reg if needed, avoiding conflicts
         if stmt.step:
             if step_reg == loop_reg or step_reg == end_reg or self.register_usage.get(step_reg, False):
                 step_reg = self.allocate_register()
             self.register_usage[step_reg] = True
+            # Protect step_reg from _clear_temp_registers - it must persist across loop body
+            self.auto_free_registers.discard(step_reg)
 
         # Initialize loop variable
         start_reg = self.generate_expression(stmt.start)
@@ -4197,9 +4217,19 @@ class CodeGenerator:
             y_reg = self.generate_expression(expr.arguments[1], "R2")
             radius_reg = self.generate_expression(expr.arguments[2], "R3")
             color_reg = self.generate_expression(expr.arguments[3], "R4")
+            # Optional 5th argument: filled (defaults to 1/filled)
+            if len(expr.arguments) >= 5:
+                fill_reg = self.generate_expression(expr.arguments[4], "R5")
+                fill_val = fill_reg
+            else:
+                fill_reg = None
+                fill_val = "1"  # default filled=True
             self.current_output.append(f"MOV VX, {x_reg}")
             self.current_output.append(f"MOV VY, {y_reg}")
-            self.current_output.append(f"SCIRC {radius_reg}, {color_reg}")
+            self.current_output.append(f"MOV VC, {color_reg}")
+            self.current_output.append(f"SCIRC {radius_reg}, {fill_val}")
+            if fill_reg is not None:
+                self.smart_deallocate(fill_reg, is_last_use=True)
         elif func_name == "TEXT":
             x_reg = self.generate_expression(expr.arguments[0], "R1")
             y_reg = self.generate_expression(expr.arguments[1], "R2")
@@ -4213,10 +4243,20 @@ class CodeGenerator:
             y1_reg = self.generate_expression(expr.arguments[1], "R2")
             x2_reg = self.generate_expression(expr.arguments[2], "R3")
             y2_reg = self.generate_expression(expr.arguments[3], "R4")
-            fill_reg = self.generate_expression(expr.arguments[4], "R5")
+            color_reg = self.generate_expression(expr.arguments[4], "R5")
+            # Optional 6th argument: filled (defaults to 1/filled)
+            if len(expr.arguments) >= 6:
+                fill_reg = self.generate_expression(expr.arguments[5], "R6")
+                fill_val = fill_reg
+            else:
+                fill_reg = None
+                fill_val = "1"  # default filled=True
             self.current_output.append(f"MOV VX, {x1_reg}")
             self.current_output.append(f"MOV VY, {y1_reg}")
-            self.current_output.append(f"SRECT {x2_reg}, {y2_reg}, {fill_reg}")
+            self.current_output.append(f"MOV VC, {color_reg}")
+            self.current_output.append(f"SRECT {x2_reg}, {y2_reg}, {fill_val}")
+            if fill_reg is not None:
+                self.smart_deallocate(fill_reg, is_last_use=True)
         elif func_name in {"FILL", "SORTA", "SORTD", "SEQ", "REVERSE", "SUM", "MEAN", "DIM"}:
             list_expr = expr.arguments[0] if expr.arguments else None
             list_name = list_expr.name if isinstance(list_expr, VariableExpr) else "L1"
