@@ -9,7 +9,7 @@ For x = 0 to 40
         PxlOn(rnd(), rnd(), rndr(0x01, 0x04))
     Next
 Next
-ScrRotate(1,0)
+//ScrRotate(1,0)
 
 SetLayer(2)
 For x = 0 to 20
@@ -17,7 +17,7 @@ For x = 0 to 20
         PxlOn(rnd(), rnd(), rndr(0x05, 0x09))
     Next
 Next
-ScrRotate(1,1)
+//ScrRotate(1,1)
 
 SetLayer(3)
 For x = 0 to 12
@@ -25,7 +25,7 @@ For x = 0 to 12
         PxlOn(rnd(), rnd(), rndr(0x0A, 0x0F))
     Next
 Next
-ScrRotate(1,2)
+//ScrRotate(1,2)
 
 Function scrollBG()
     SetLayer(1)
