@@ -71,8 +71,8 @@ class Parser:
         token = self.peek()
 
         if token.type == TokenType.CLRDRAW:
-            self.advance()
-            return ClrDrawStmt()
+            clrdraw_token = self.advance()
+            return self._mark_node(ClrDrawStmt(), token=clrdraw_token)
         elif token.type == TokenType.GLOBAL:
             return self.var_declaration_statement(VarScope.GLOBAL)
         elif token.type == TokenType.LOCAL:
@@ -112,13 +112,13 @@ class Parser:
         elif token.type == TokenType.PLAYWAVE:
             return self.play_wave_statement()
         elif token.type == TokenType.STOPSOUND:
-            self.advance()
-            return StopSoundStmt()
+            stopsound_token = self.advance()
+            return self._mark_node(StopSoundStmt(), token=stopsound_token)
         elif token.type == TokenType.SETCHANNEL:
             return self.set_channel_statement()
         elif token.type == TokenType.GETKEY:
-            self.advance()
-            return GetKeyStmt()
+            getkey_token = self.advance()
+            return self._mark_node(GetKeyStmt(), token=getkey_token)
         elif token.type == TokenType.SEROUT:
             return self.ser_out_statement()
         elif token.type == TokenType.SERIN:
@@ -132,8 +132,8 @@ class Parser:
         elif token.type == TokenType.DISP:
             return self.disp_statement()
         elif token.type == TokenType.PAUSE:
-            self.advance()
-            return PauseStmt()
+            pause_token = self.advance()
+            return self._mark_node(PauseStmt(), token=pause_token)
         elif token.type == TokenType.IF:
             return self.if_statement()
         elif token.type == TokenType.FOR:
@@ -160,7 +160,7 @@ class Parser:
 
     def pxl_on_statement(self) -> PxlOnStmt:
         """Parse PxlOn(x, y, color)"""
-        self.advance()  # consume PXLON
+        token = self.advance()  # consume PXLON
         self.consume(TokenType.LPAREN, "Expected '(' after PxlOn")
         x_expr = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after x")
@@ -168,21 +168,21 @@ class Parser:
         self.consume(TokenType.COMMA, "Expected ',' after y")
         color_expr = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after color")
-        return PxlOnStmt(x=x_expr, y=y_expr, color=color_expr)
+        return self._mark_node(PxlOnStmt(x=x_expr, y=y_expr, color=color_expr), token=token)
 
     def pxl_off_statement(self) -> PxlOffStmt:
         """Parse PxlOff(x, y)"""
-        self.advance()  # consume PXLOFF
+        token = self.advance()  # consume PXLOFF
         self.consume(TokenType.LPAREN, "Expected '(' after PxlOff")
         x = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after x")
         y = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after y")
-        return PxlOffStmt(x, y)
+        return self._mark_node(PxlOffStmt(x, y), token=token)
 
     def line_statement(self) -> LineStmt:
         """Parse Line(x1, y1, x2, y2, color)"""
-        self.advance()  # consume LINE
+        token = self.advance()  # consume LINE
         self.consume(TokenType.LPAREN, "Expected '(' after Line")
         x1 = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after x1")
@@ -194,11 +194,11 @@ class Parser:
         self.consume(TokenType.COMMA, "Expected ',' after y2")
         color = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after color")
-        return LineStmt(x1, y1, x2, y2, color)
+        return self._mark_node(LineStmt(x1, y1, x2, y2, color), token=token)
 
     def circle_statement(self) -> CircleStmt:
         """Parse Circle(x, y, radius, color)"""
-        self.advance()  # consume CIRCLE
+        token = self.advance()  # consume CIRCLE
         self.consume(TokenType.LPAREN, "Expected '(' after Circle")
         x = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after x")
@@ -208,11 +208,11 @@ class Parser:
         self.consume(TokenType.COMMA, "Expected ',' after radius")
         color = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after color")
-        return CircleStmt(x, y, radius, color)
+        return self._mark_node(CircleStmt(x, y, radius, color), token=token)
 
     def text_statement(self) -> TextStmt:
-        """Parse Text(x, y, "string", color)"""
-        self.advance()  # consume TEXT
+        """Parse Text(x, y, \"string\", color)"""
+        token = self.advance()  # consume TEXT
         self.consume(TokenType.LPAREN, "Expected '(' after Text")
         x = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after x")
@@ -222,57 +222,57 @@ class Parser:
         self.consume(TokenType.COMMA, "Expected ',' after text")
         color = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after color")
-        return TextStmt(x, y, text, color)
+        return self._mark_node(TextStmt(x, y, text, color), token=token)
 
     def set_layer_statement(self) -> SetLayerStmt:
         """Parse SetLayer(layer)"""
-        self.advance()  # consume SETLAYER
+        token = self.advance()  # consume SETLAYER
         self.consume(TokenType.LPAREN, "Expected '(' after SetLayer")
         layer = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after layer")
-        return SetLayerStmt(layer)
+        return self._mark_node(SetLayerStmt(layer), token=token)
 
     def srol_statement(self) -> SRolStmt:
         """Parse ScrRoll(axis, amount)."""
-        self.advance()  # consume SCRROLL
+        token = self.advance()  # consume SCRROLL
         self.consume(TokenType.LPAREN, "Expected '(' after ScrRoll")
         axis = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after axis")
         amount = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after amount")
-        return SRolStmt(axis=axis, amount=amount)
+        return self._mark_node(SRolStmt(axis=axis, amount=amount), token=token)
 
     def srot_statement(self) -> SRotStmt:
         """Parse ScrRotate(direction, amount)."""
-        self.advance()  # consume SCRROTATE
+        token = self.advance()  # consume SCRROTATE
         self.consume(TokenType.LPAREN, "Expected '(' after ScrRotate")
         direction = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after direction")
         amount = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after amount")
-        return SRotStmt(direction=direction, amount=amount)
+        return self._mark_node(SRotStmt(direction=direction, amount=amount), token=token)
 
     def sshft_statement(self) -> SShftStmt:
         """Parse ScrShift(axis, amount)."""
-        self.advance()  # consume SCRSHIFT
+        token = self.advance()  # consume SCRSHIFT
         self.consume(TokenType.LPAREN, "Expected '(' after ScrShift")
         axis = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after axis")
         amount = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after amount")
-        return SShftStmt(axis=axis, amount=amount)
+        return self._mark_node(SShftStmt(axis=axis, amount=amount), token=token)
 
     def sflip_statement(self) -> SFlipStmt:
         """Parse ScrFlip(axis)."""
-        self.advance()  # consume SCRFLIP
+        token = self.advance()  # consume SCRFLIP
         self.consume(TokenType.LPAREN, "Expected '(' after ScrFlip")
         axis = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after axis")
-        return SFlipStmt(axis=axis)
+        return self._mark_node(SFlipStmt(axis=axis), token=token)
 
     def sprite_on_statement(self) -> SpriteOnStmt:
         """Parse SpriteOn(spriteId, x, y)"""
-        self.advance()  # consume SPRITEON
+        token = self.advance()  # consume SPRITEON
         self.consume(TokenType.LPAREN, "Expected '(' after SpriteOn")
         sprite_id = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after spriteId")
@@ -280,19 +280,19 @@ class Parser:
         self.consume(TokenType.COMMA, "Expected ',' after x")
         y = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after y")
-        return SpriteOnStmt(sprite_id, x, y)
+        return self._mark_node(SpriteOnStmt(sprite_id, x, y), token=token)
 
     def sprite_off_statement(self) -> SpriteOffStmt:
         """Parse SpriteOff(spriteId)"""
-        self.advance()  # consume SPRITEOFF
+        token = self.advance()  # consume SPRITEOFF
         self.consume(TokenType.LPAREN, "Expected '(' after SpriteOff")
         sprite_id = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after spriteId")
-        return SpriteOffStmt(sprite_id)
+        return self._mark_node(SpriteOffStmt(sprite_id), token=token)
 
     def play_tone_statement(self) -> PlayToneStmt:
         """Parse PlayTone(frequency, duration, volume)"""
-        self.advance()  # consume PLAYTONE
+        token = self.advance()  # consume PLAYTONE
         self.consume(TokenType.LPAREN, "Expected '(' after PlayTone")
         frequency = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after frequency")
@@ -300,11 +300,11 @@ class Parser:
         self.consume(TokenType.COMMA, "Expected ',' after duration")
         volume = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after volume")
-        return PlayToneStmt(frequency, duration, volume)
+        return self._mark_node(PlayToneStmt(frequency, duration, volume), token=token)
 
     def play_wave_statement(self) -> PlayWaveStmt:
         """Parse PlayWave(waveform, frequency, volume)"""
-        self.advance()  # consume PLAYWAVE
+        token = self.advance()  # consume PLAYWAVE
         self.consume(TokenType.LPAREN, "Expected '(' after PlayWave")
         waveform = self.expression()
         self.consume(TokenType.COMMA, "Expected ',' after waveform")
@@ -312,51 +312,51 @@ class Parser:
         self.consume(TokenType.COMMA, "Expected ',' after frequency")
         volume = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after volume")
-        return PlayWaveStmt(waveform, frequency, volume)
+        return self._mark_node(PlayWaveStmt(waveform, frequency, volume), token=token)
 
     def set_channel_statement(self) -> SetChannelStmt:
         """Parse SetChannel(channel)"""
-        self.advance()  # consume SETCHANNEL
+        token = self.advance()  # consume SETCHANNEL
         self.consume(TokenType.LPAREN, "Expected '(' after SetChannel")
         channel = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after channel")
-        return SetChannelStmt(channel)
+        return self._mark_node(SetChannelStmt(channel), token=token)
 
     def ser_out_statement(self) -> SerOutStmt:
         """Parse SerOut(value) - transmit a byte over the serial port."""
-        self.advance()  # consume SEROUT
+        token = self.advance()  # consume SEROUT
         self.consume(TokenType.LPAREN, "Expected '(' after SerOut")
         value = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after value")
-        return SerOutStmt(value)
+        return self._mark_node(SerOutStmt(value), token=token)
 
     def ser_in_statement(self) -> SerInStmt:
         """Parse SerIn(variable) - read a byte from the serial port into a variable."""
-        self.advance()  # consume SERIN
+        token = self.advance()  # consume SERIN
         self.consume(TokenType.LPAREN, "Expected '(' after SerIn")
         var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
         self.consume(TokenType.RPAREN, "Expected ')' after variable")
-        return SerInStmt(var_token.lexeme)
+        return self._mark_node(SerInStmt(var_token.lexeme), token=token)
 
     def ser_stat_statement(self) -> SerStatStmt:
         """Parse SerStat(variable) - read serial status bits into a variable."""
-        self.advance()  # consume SERSTAT
+        token = self.advance()  # consume SERSTAT
         self.consume(TokenType.LPAREN, "Expected '(' after SerStat")
         var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
         self.consume(TokenType.RPAREN, "Expected ')' after variable")
-        return SerStatStmt(var_token.lexeme)
+        return self._mark_node(SerStatStmt(var_token.lexeme), token=token)
 
     def ser_ctrl_statement(self) -> SerCtrlStmt:
         """Parse SerCtrl(value) - set serial control bits."""
-        self.advance()  # consume SERCTRL
+        token = self.advance()  # consume SERCTRL
         self.consume(TokenType.LPAREN, "Expected '(' after SerCtrl")
         value = self.expression()
         self.consume(TokenType.RPAREN, "Expected ')' after value")
-        return SerCtrlStmt(value)
+        return self._mark_node(SerCtrlStmt(value), token=token)
 
     def input_statement(self) -> InputStmt:
-        """Parse Input "prompt", variable or Input(prompt, variable) or Input variable"""
-        self.advance()  # consume INPUT
+        """Parse Input \"prompt\", variable or Input(prompt, variable) or Input variable"""
+        token = self.advance()  # consume INPUT
 
         # Check if it's a function call syntax: input(prompt, variable)
         if self.check(TokenType.LPAREN):
@@ -366,9 +366,9 @@ class Parser:
             var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
             variable = var_token.lexeme
             self.consume(TokenType.RPAREN, "Expected ')' after variable")
-            return InputStmt(prompt, variable)
+            return self._mark_node(InputStmt(prompt, variable), token=token)
         else:
-            # TI-83/84 style: Input "prompt", variable or Input variable
+            # TI-83/84 style: Input \"prompt\", variable or Input variable
             if self.check(TokenType.STRING_LITERAL):
                 prompt = self.expression()  # Parse the string literal
                 self.consume(TokenType.COMMA, "Expected ',' after prompt")
@@ -380,13 +380,13 @@ class Parser:
                 var_token = self.consume(TokenType.IDENTIFIER, "Expected variable name")
                 variable = var_token.lexeme
 
-            return InputStmt(prompt, variable)
+            return self._mark_node(InputStmt(prompt, variable), token=token)
 
     def disp_statement(self) -> DispStmt:
-        """Parse Disp "text" or Disp expression"""
-        self.advance()  # consume DISP
+        """Parse Disp \"text\" or Disp expression"""
+        token = self.advance()  # consume DISP
         text = self.expression()
-        return DispStmt(text)
+        return self._mark_node(DispStmt(text), token=token)
 
     def assignment_statement(self) -> Statement:
         """Parse assignment, function call, or expression statement."""
@@ -538,16 +538,16 @@ class Parser:
         The lexer has already captured the ASM token, ASM_BLOCK token, and END token.
         """
         # Consume the ASM token
-        self.consume(TokenType.ASM, "Expected 'Asm'")
+        asm_token = self.consume(TokenType.ASM, "Expected 'Asm'")
         
         # Get the assembly code from the ASM_BLOCK token
-        asm_token = self.consume(TokenType.ASM_BLOCK, "Expected assembly code block")
-        assembly_code = asm_token.literal if asm_token.literal is not None else ""
+        block_token = self.consume(TokenType.ASM_BLOCK, "Expected assembly code block")
+        assembly_code = block_token.literal if block_token.literal is not None else ""
         
         # Consume the END token
         self.consume(TokenType.END, "Expected 'End' after assembly block")
         
-        return AsmBlockStmt(assembly_code=assembly_code)
+        return self._mark_node(AsmBlockStmt(assembly_code=assembly_code), token=asm_token)
 
     def expression(self) -> Expression:
         """Parse an expression."""

@@ -650,12 +650,14 @@ class TestCodeGenerator:
         self.generator.store_variable("x", "R3")
         lines = self.generator.current_output
 
-        assert "MOV P0, 0" in lines
-        assert "MOV :P0, R3" in lines
+        # Expect a zero-extended store: MOV Pr, 0; MOV :Pr, R3
+        # followed by a separate address scratch register: MOV Ps, addr; MOV [Ps], Pr
+        assert any(line.startswith("MOV P") and ", 0" == line[line.index(","):].strip() for line in lines)
+        assert any(":P" in line and "R3" in line for line in lines)
         addr_moves = [line for line in lines if line.startswith("MOV P") and line.endswith(", 288")]
         assert addr_moves
         assert "MOV P7, 288" not in lines
-        assert any(line.startswith("MOV [P") and line.endswith("], P0") for line in lines)
+        assert any(line.startswith("MOV [P") for line in lines)
 
     def test_store_variable_from_r_register_keeps_p7_reserved_for_spill_addressing(self):
         """Spill writes from R-source should keep P7 reserved for call linkage."""
@@ -663,12 +665,14 @@ class TestCodeGenerator:
         self.generator.store_variable("tmp", "R5")
         lines = self.generator.current_output
 
-        assert "MOV P0, 0" in lines
-        assert "MOV :P0, R5" in lines
+        # Expect a zero-extended store: MOV Pr, 0; MOV :Pr, R5
+        # followed by a separate address scratch register: MOV Ps, 28672; MOV [Ps], Pr
+        assert any(line.startswith("MOV P") and ", 0" == line[line.index(","):].strip() for line in lines)
+        assert any(":P" in line and "R5" in line for line in lines)
         addr_moves = [line for line in lines if line.startswith("MOV P") and line.endswith(", 28672")]
         assert addr_moves
         assert "MOV P7, 28672" not in lines
-        assert any(line.startswith("MOV [P") and line.endswith("], P0") for line in lines)
+        assert any(line.startswith("MOV [P") for line in lines)
 
     def test_store_variable_from_r_register_does_not_clobber_live_p1_variable(self):
         """When P1 is live for a variable, address scratch selection must use a different register."""

@@ -1,3 +1,6 @@
+**FIXES**
+
+
 **Pipeline Optimizations**
 Add --asm-only / --no-assemble mode in nobasic_compiler.py.
 Skip assembler invocation during iteration or test loops.

@@ -1,0 +1,23 @@
+// Test program to exercise spill/reload path with multiple variables
+// This program creates enough pressure to force spills and tests
+// correct spill/reload behavior
+A = 100
+B = 200
+C = 300
+D = 400
+E = 500
+F = 600
+G = 700
+H = 800
+I = 900
+J = 1000
+
+// Use all variables in expressions to force loads and stores
+Disp A + B
+Disp C + D
+Disp E + F
+Disp G + H
+Disp I + J
+Disp A + B + C + D + E
+Disp A * 2 + B * 2
+Disp (C + D) * (E + F)

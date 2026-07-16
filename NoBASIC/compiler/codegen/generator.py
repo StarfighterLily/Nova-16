@@ -4550,20 +4550,27 @@ class CodeGenerator:
             # All NoBASIC variables are 16-bit, so upgrade R register to P register
             # to avoid truncation when loading from spill slot
             if target_reg.startswith('R'):
-                # Use P0 as temporary for loading full 16-bit value
-                # P0 needs to be allocated since we're returning it
-                self.register_usage['P0'] = True
-                self.auto_free_registers.add('P0')
-                self.current_output.append(f"MOV P0, {spill_addr}")
-                self.current_output.append(f"MOV P0, [P0]")
-                # Return P0 so caller gets the full 16-bit value (P0 is now allocated)
+                # Pick a safe scratch register for the address load, avoiding
+                # clobbering P registers that currently hold live variable values.
+                addr_reg = self._select_address_scratch_reg(exclude=set())
+                self.current_output.append(f"MOV {addr_reg}, {spill_addr}")
+                # Allocate a fresh P register to hold the loaded 16-bit value.
+                # Prefer P0 as the default scratch but fall back to any free
+                # P register when P0 is already busy.
+                value_reg = self.allocate_p_register(['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6'])
+                self.current_output.append(f"MOV {value_reg}, [{addr_reg}]")
+                # addr_reg may be the same as value_reg if we couldn't get
+                # distinct registers; that's fine because the indirect load
+                # uses addr_reg only for the address before the read.
                 if self.debug_allocation:
-                    print(f"[LOAD] Allocated P0 for spilled '{name}'")
-                return 'P0'
+                    print(f"[LOAD] Upgraded spilled '{name}' to {value_reg} (addr scratch: {addr_reg})")
+                return value_reg
             else:
-                # For 16-bit P registers, read the full word
-                self.current_output.append(f"MOV P0, {spill_addr}")
-                self.current_output.append(f"MOV {target_reg}, [P0]")
+                # For 16-bit P registers, read the full word using a safe
+                # address scratch register (avoid clobbering live P regs).
+                addr_reg = self._select_address_scratch_reg(exclude={target_reg})
+                self.current_output.append(f"MOV {addr_reg}, {spill_addr}")
+                self.current_output.append(f"MOV {target_reg}, [{addr_reg}]")
             
             return target_reg
         
@@ -4571,21 +4578,22 @@ class CodeGenerator:
         addr = self.get_variable_address(name)
         if target_reg.startswith('R'):
             # For 8-bit R registers, read the low byte (stored at addr + 1)
-            # But NOTE: all NoBASIC variables are 16-bit, so we should upgrade to P register
-            # Use P0 as temporary for loading full 16-bit value
-            # P0 needs to be allocated since we're returning it
-            self.register_usage['P0'] = True
-            self.auto_free_registers.add('P0')
-            self.current_output.append(f"MOV P0, {addr}")
-            self.current_output.append(f"MOV P0, [P0]")
-            # Return P0 so caller gets the full 16-bit value (P0 is now allocated)
+            # But NOTE: all NoBASIC variables are 16-bit, so we should upgrade to P register.
+            # Use a safe address scratch register and allocate a fresh P register
+            # to hold the full 16-bit value without clobbering live state.
+            addr_reg = self._select_address_scratch_reg(exclude=set())
+            self.current_output.append(f"MOV {addr_reg}, {addr}")
+            value_reg = self.allocate_p_register(['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6'])
+            self.current_output.append(f"MOV {value_reg}, [{addr_reg}]")
             if self.debug_allocation:
-                print(f"[LOAD] Allocated P0 for non-spilled memory variable '{name}'")
-            return 'P0'
+                print(f"[LOAD] Upgraded non-spilled memory variable '{name}' to {value_reg} (addr scratch: {addr_reg})")
+            return value_reg
         else:
-            # For 16-bit P registers, read the full word
-            self.current_output.append(f"MOV P0, {addr}")
-            self.current_output.append(f"MOV {target_reg}, [P0]")
+            # For 16-bit P registers, read the full word using a safe
+            # address scratch register.
+            addr_reg = self._select_address_scratch_reg(exclude={target_reg})
+            self.current_output.append(f"MOV {addr_reg}, {addr}")
+            self.current_output.append(f"MOV {target_reg}, [{addr_reg}]")
         return target_reg
     
     def store_variable(self, name: str, source_reg: str):
@@ -4637,15 +4645,19 @@ class CodeGenerator:
             
             # All NoBASIC variables are 16-bit, so always write the full word to spill_addr
             if source_reg.startswith('R'):
-                # For 8-bit R registers, use P0 as intermediate for full 16-bit store
-                self.current_output.append(f"MOV P0, 0")
-                self.current_output.append(f"MOV :P0, {source_reg}")  # Move to LOW byte (not high!)
-                addr_reg = self._select_address_scratch_reg(exclude={'P0', source_reg})
+                # For 8-bit R registers, pick a safe P register to hold the
+                # zero-extended 16-bit value and a distinct scratch for the
+                # spill address, avoiding clobbers of live variable registers.
+                value_reg = self._select_address_scratch_reg(exclude={source_reg})
+                addr_reg = self._select_address_scratch_reg(exclude={source_reg, value_reg})
+                self.current_output.append(f"MOV {value_reg}, 0")
+                self.current_output.append(f"MOV :{value_reg}, {source_reg}")  # Move to LOW byte (not high!)
                 self.current_output.append(f"MOV {addr_reg}, {spill_addr}")
-                self.current_output.append(f"MOV [{addr_reg}], P0")
+                self.current_output.append(f"MOV [{addr_reg}], {value_reg}")
             else:
-                # For 16-bit P registers, avoid clobbering the source register when it is P0
-                addr_reg = 'P1' if source_reg == 'P0' else 'P0'
+                # For 16-bit P registers, pick a safe address scratch register
+                # that doesn't clobber the source register or live variable regs.
+                addr_reg = self._select_address_scratch_reg(exclude={source_reg})
                 self.current_output.append(f"MOV {addr_reg}, {spill_addr}")
                 self.current_output.append(f"MOV [{addr_reg}], {source_reg}")
             
@@ -4655,15 +4667,17 @@ class CodeGenerator:
         addr = self.get_variable_address(name)
         # All NoBASIC variables are 16-bit, so always write the full word
         if source_reg.startswith('R'):
-            # For 8-bit R registers, use P0 as intermediate for full 16-bit store
-            self.current_output.append(f"MOV P0, 0")
-            self.current_output.append(f"MOV :P0, {source_reg}")  # Move to LOW byte (not high!)
-            addr_reg = self._select_address_scratch_reg(exclude={'P0', source_reg})
+            # For 8-bit R registers, pick a safe P register for the
+            # zero-extended value and a distinct scratch for the address.
+            value_reg = self._select_address_scratch_reg(exclude={source_reg})
+            addr_reg = self._select_address_scratch_reg(exclude={source_reg, value_reg})
+            self.current_output.append(f"MOV {value_reg}, 0")
+            self.current_output.append(f"MOV :{value_reg}, {source_reg}")  # Move to LOW byte (not high!)
             self.current_output.append(f"MOV {addr_reg}, {addr}")
-            self.current_output.append(f"MOV [{addr_reg}], P0")
+            self.current_output.append(f"MOV [{addr_reg}], {value_reg}")
         else:
-            # For 16-bit P registers, avoid clobbering the source register when it is P0
-            addr_reg = 'P1' if source_reg == 'P0' else 'P0'
+            # For 16-bit P registers, pick a safe address scratch register.
+            addr_reg = self._select_address_scratch_reg(exclude={source_reg})
             self.current_output.append(f"MOV {addr_reg}, {addr}")
             self.current_output.append(f"MOV [{addr_reg}], {source_reg}")
 

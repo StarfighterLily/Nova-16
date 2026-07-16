@@ -126,6 +126,10 @@ class SilentSound:
     max_channels = 0
     sample_rate = 0
 
+    def __bool__(self) -> bool:
+        """SilentSound is always falsy - sound is disabled."""
+        return False
+
     def set_memory_reference(self, memory: Any) -> None:
         return
 

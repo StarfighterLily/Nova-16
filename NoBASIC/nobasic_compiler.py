@@ -520,13 +520,14 @@ def _prepare_output_file_path(output_file: Optional[str], resolved_source_file: 
     Returns:
         Resolved Path for the output file
     """
-    expected_suffix = '.ll' if target == 'llvm' else '.asm'
-    expected_name = "LLVM IR" if target == 'llvm' else "assembly"
+    is_llvm_target = target in ('llvm', 'sdl')
+    expected_suffix = '.ll' if is_llvm_target else '.asm'
+    expected_name = "LLVM IR" if is_llvm_target else "assembly"
     output_path = resolved_source_file.with_suffix(expected_suffix) if output_file is None else Path(output_file)
 
     if output_path.suffix.lower() != expected_suffix:
         raise CompilerError(
-            f"Output file must have {expected_suffix} extension ({expected_name} target '{target}'): {output_path}",
+            f"Output file must have {expected_suffix} extension for target '{target}': {output_path}",
             str(output_path),
             1,
             1,
@@ -534,7 +535,7 @@ def _prepare_output_file_path(output_file: Optional[str], resolved_source_file: 
 
     if output_path.exists() and output_path.is_dir():
         raise CompilerError(
-            f"Output path is a directory, expected .asm file: {output_path}",
+            f"Output path is a directory, expected {expected_suffix} file: {output_path}",
             str(output_path),
             1,
             1,

@@ -62,6 +62,8 @@ class Lexer:
     def scan_token(self):
         """Scan the next token from the source."""
         self.start_position = self.position
+        self.start_line = self.line
+        self.start_column = self.column
         char = self.advance()
 
         # Comments (must check before single char tokens)
@@ -126,7 +128,7 @@ class Lexer:
 
         # Unexpected
         else:
-            raise LexerError(f"Unexpected character: {char}", self.filename, self.line, self.column)
+            raise LexerError(f"Unexpected character: {char}", self.filename, self.start_line, self.start_column)
 
     def number(self):
         """Scan a number literal (supports decimal, hex 0x, binary 0b)."""
@@ -292,7 +294,7 @@ class Lexer:
         """Add a token to the token list."""
         # For all tokens, use the source text as lexeme to preserve case
         lexeme = self.source[self.start_position:self.position]
-        self.tokens.append(Token(token_type, lexeme, literal, self.line, self.column))
+        self.tokens.append(Token(token_type, lexeme, literal, self.start_line, self.start_column))
 
     def advance(self) -> str:
         """Advance to the next character."""
