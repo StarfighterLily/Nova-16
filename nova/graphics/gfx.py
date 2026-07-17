@@ -325,11 +325,10 @@ class GFX:
     def _set_pixel_fast(self, x, y, value):
         vl = self.VL
         if vl == 0:
-            old_val = self._compositor.layers[0][y, x]
             self._compositor.layers[0][y, x] = value
             self._compositor._screen[y, x] = value
-            self._compositor.update_pixel_count(0, old_val, value)
-        elif 1 <= vl <= 4:
+            return
+        if 1 <= vl <= 4:
             old_val = self._compositor.layers[vl][y, x]
             self._compositor.layers[vl][y, x] = value
             self._compositor.update_pixel_count(vl, old_val, value)

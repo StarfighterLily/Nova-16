@@ -68,11 +68,8 @@ class Operand:
     is_memory: bool = False
 
     def reset(self):
-        """Reset all fields to defaults for pool reuse."""
+        """Minimal reset for pool reuse — only fields that may hold stale values."""
         self.mode = 0
-        self.type = ''
-        self.reg_type = ''
-        self.reg_idx = 0
         self.value = 0
         self.size = 0
         self.address = 0
@@ -82,6 +79,8 @@ class Operand:
         self.is_register = False
         self.is_immediate = False
         self.is_memory = False
+        # type, reg_type, reg_idx are always set by every decode branch
+        # and do not need clearing for pool reuse
 
     @classmethod
     def register(cls, reg_type: str, reg_idx: int) -> 'Operand':

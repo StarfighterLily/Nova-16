@@ -601,10 +601,10 @@ class CPU:
         )
 
     def _has_enabled_async_interrupt_sources(self):
-        return bool(
-            self.interrupts[1] or self.interrupts[2] or
-            self.interrupts[3] or self.interrupts[4]
-        )
+        v = (self.interrupts[1] or self.interrupts[2] or
+             self.interrupts[3] or self.interrupts[4])
+        self._cached_async_sources = bool(v)
+        return self._cached_async_sources
 
     def _refresh_hw_breakpoint_state(self):
         self.has_hw_breakpoints = bool(
@@ -1322,16 +1322,16 @@ class CPU:
         if self.halted:
             return
         self.cycles += 1
-        if self.timer_device and self.bus:
-            self.bus.publish('cpu.tick', self.cycles)
+        if self.timer_device is not None:
+            self.timer_device._on_tick(self.cycles)
         if self.uart.host_bridge is not None and (self.cycles & 0x3F) == 0:
             self.uart.poll_host_bridge()
         pc = self.pc
         opcode = self.memory.fetch_opcode(pc)
         self.pc = (pc + 1) & 0xFFFF
         self._execute_instruction(opcode)
-        if self.bus:
-            self.bus.publish('cpu.post_step', self)
+        if self.intr_ctrl is not None:
+            self.intr_ctrl.check()
         if self.has_pending_interrupt_sources:
             self._check_pending_interrupts()
         elif self._has_enabled_async_interrupt_sources():
@@ -1357,7 +1357,7 @@ class CPU:
             self._current_mode_byte = 0
             self.operands = []
             instruction.execute(self)
-            if self.has_hw_breakpoints or self.flags_obj[0]:
+            if self.has_hw_breakpoints or self.flags_obj.trap_flag:
                 self._check_hw_breakpoints()
             return
 
@@ -1375,7 +1375,7 @@ class CPU:
             self.operands = []
 
         instruction.execute(self)
-        if self.has_hw_breakpoints or self.flags_obj[0]:
+        if self.has_hw_breakpoints or self.flags_obj.trap_flag:
             self._check_hw_breakpoints()
         if instruction.handler is not None:
             release_operands(self.operands)
