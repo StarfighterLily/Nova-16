@@ -48,7 +48,8 @@ class Memory:
     SCB_END = 0xF100
 
     # Instruction cache size (number of entries)
-    ICACHE_SIZE = 64
+    # Optimal value determined by cache_optimization_results.json (81,628 IPS at 128 vs 79,389 IPS at 64)
+    ICACHE_SIZE = 128
 
     def __init__(self, bus: Optional[EventBus] = None):
         self.bus = bus

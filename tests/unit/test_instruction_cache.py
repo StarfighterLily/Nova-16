@@ -18,8 +18,8 @@ class TestInstructionCache:
         """Verify that LRU evicts least-recently-used entries first."""
         mem = Memory()
         
-        # Fill cache with entries
-        for addr in range(0x1000, 0x1000 + 64):
+        # Fill cache to capacity
+        for addr in range(0x1000, 0x1000 + mem.ICACHE_SIZE):
             mem._icache[addr] = 0x90 + (addr & 0x0F)  # NOP-like opcodes
         
         # Access 0x1000 again - should be moved to end
@@ -33,7 +33,7 @@ class TestInstructionCache:
         # Add one more entry - should evict the LRU (first) entry
         mem.fetch_opcode(0x2000)
         
-        # 0x1001 should be evicted (it was first after 0x1000 was moved)
+        # The first entry (0x1001) should be evicted (it was first after 0x1000 was moved)
         assert 0x1001 not in mem._icache, "LRU: first entry should be evicted"
         assert 0x1000 in mem._icache, "LRU: recently accessed entry should remain"
 
@@ -122,7 +122,7 @@ class TestInstructionCachePerformance:
                         0x2040, 0x2050, 0x2060, 0x2070]
         
         # First, fill the cache with cold entries
-        for addr in range(0x3000, 0x3040):
+        for addr in range(0x3000, 0x3000 + mem.ICACHE_SIZE):
             mem.fetch_opcode(addr)
         
         # Now do many fetches to hot addresses (with jumps)
@@ -136,12 +136,15 @@ class TestInstructionCachePerformance:
         
         # With LRU, we should have good hit rate since hot addresses are reused
         # With FIFO, we'd have many misses since hot addresses would be evicted
-        total = mem._icache_hits + mem._icache_misses
-        hit_rate = mem._icache_hits / total if total > 0 else 0
+        # Calculate hit rate for just the hot loop (excluding cold fill)
+        loop_hits = mem._icache_hits
+        loop_misses = mem._icache_misses - initial_misses
+        loop_total = loop_hits + loop_misses
+        hit_rate = loop_hits / loop_total if loop_total > 0 else 0
         
         # LRU should give us > 90% hit rate for this pattern
         assert hit_rate > 0.9, \
-            f"LRU hit rate too low: {hit_rate:.2%} (hits={mem._icache_hits}, misses={mem._icache_misses})"
+            f"LRU hit rate too low: {hit_rate:.2%} (hits={loop_hits}, misses={loop_misses})"
 
 
 @pytest.mark.slow
@@ -160,7 +163,7 @@ class TestInstructionCacheBenchmark:
         cold_addresses = [0x5000 + i for i in range(0, 1000, 16)]
         
         # Fill cache with cold addresses first
-        for addr in cold_addresses[:64]:
+        for addr in cold_addresses[:mem.ICACHE_SIZE]:
             mem.fetch_opcode(addr)
         
         # Now interleave hot and cold accesses
@@ -202,7 +205,7 @@ def test_lru_vs_fifo_analysis():
     # LRU handles the "small hot set" case
     
     print("\nInstruction Cache Analysis:")
-    print("  Current cache: 64 entries")
+    print(f"  Current cache: {Memory.ICACHE_SIZE} entries")
     print("  Sequential bypass: Already implemented (avoids thrashing)")
     print("  LRU benefit: Non-sequential hot addresses stay cached")
     print("  Overhead: move_to_end() is O(1) in OrderedDict")

@@ -1,0 +1,4 @@
+# Symbol table
+# Format: <symbol> <value>
+MAIN 0x0000
+LOOP 0x0008
