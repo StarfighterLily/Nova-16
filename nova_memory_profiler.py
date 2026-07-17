@@ -1,383 +1,498 @@
 #!/usr/bin/env python3
 """
-Nova Memory Profiler - Performance analysis tool for Nova-16 memory system.
-Tracks memory access patterns, hotspots, and usage statistics.
+Nova-16 Memory Profiler — performance analysis tool for the memory subsystem.
+
+Tracks memory access patterns, hotspots, usage statistics across regions:
+  - Zero Page (0x0000-0x00FF)
+  - Interrupt Vectors (0x0100-0x011F)
+  - General Memory (0x0120-0xEFFF)
+  - Sprite Control Block (0xF000-0xF0FF)
+  - Stack Area (0xFF00-0xFFFF)
+
+Uses the current event-bus / interrupt-controller / timer architecture.
 """
 
-import sys
-import os
-import time
-import json
+from __future__ import annotations
+
 import argparse
-from typing import Dict, List, Optional, Tuple
+import json
+import os
+import sys
+import time
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
-from collections import defaultdict, Counter
 
-sys.path.append(os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(__file__))
 
-from nova_cpu import CPU
+import nova_cpu as cpu_mod
 from nova.memory import Memory
-from nova_gfx import GFX
-from nova_keyboard import NovaKeyboard
-from nova_sound import NovaSound
+import nova_gfx as gpu_mod
+import nova_sound as sound_mod
+import nova_keyboard as kbd_mod
+from nova.bus import EventBus, InterruptController
+from nova.peripherals.timer import Timer
+
 
 class MemoryProfiler:
-    """Memory performance profiler for Nova-16 emulator"""
+    """Standalone memory-performance profiler for the Nova-16 emulator.
 
-    def __init__(self, output_file: str = "memory_profile.json", enable_charts: bool = True):
+    Hooks into the Memory object via monkey-patching so that every
+    read/write is recorded without requiring changes to the core
+    memory implementation.
+    """
+
+    # Canonical region definitions (inclusive ranges)
+    REGIONS: Dict[str, Tuple[int, int]] = {
+        "Zero Page":         (0x0000, 0x00FF),
+        "Interrupt Vectors": (0x0100, 0x011F),
+        "General Memory":    (0x0120, 0xEFFF),
+        "Sprite Control":    (0xF000, 0xF0FF),
+        "Reserved High":     (0xF100, 0xFEFF),
+        "Stack Area":        (0xFF00, 0xFFFF),
+    }
+
+    def __init__(self, output_file: str = "memory_profile.json") -> None:
         self.output_file = output_file
-        self.enable_charts = enable_charts
 
-        # Profiling data structures
-        self.profile_data = {
-            'session_start': time.time(),
-            'total_cycles': 0,
-            'total_reads': 0,
-            'total_writes': 0,
-            'read_accesses': defaultdict(int),  # address -> count
-            'write_accesses': defaultdict(int),  # address -> count
-            'access_timestamps': defaultdict(list),  # address -> list of cycle numbers
-            'memory_regions': {
-                'zero_page': (0x0000, 0x00FF),
-                'interrupt_vectors': (0x0100, 0x011F),
-                'general_memory': (0x0120, 0xEFFF),
-                'sprite_control': (0xF000, 0xF0FF),
-                'stack_area': (0xFF00, 0xFFFF)
-            },
-            'region_stats': defaultdict(lambda: {'reads': 0, 'writes': 0}),
-            'hotspots': [],  # Top accessed addresses
-            'access_patterns': [],  # Sequential access patterns
-            'memory_bandwidth': 0,  # Estimated bytes transferred
-            'peak_memory_usage': 0,
-            'average_access_rate': 0
+        # ── profiling data ──────────────────────────────────────────
+        self.profile_data: Dict[str, Any] = {
+            "session_start": time.time(),
+            "total_cycles": 0,
+            "total_reads": 0,
+            "total_writes": 0,
+            "read_accesses": defaultdict(int),
+            "write_accesses": defaultdict(int),
+            "access_timestamps": defaultdict(list),
+            "region_stats": defaultdict(lambda: {"reads": 0, "writes": 0}),
+            "hotspots": [],
+            "access_patterns": [],
+            "memory_bandwidth": 0,
+            "peak_memory_usage": 0,
+            "average_access_rate": 0.0,
         }
 
-        # Memory regions for analysis
-        self.region_names = {
-            (0x0000, 0x00FF): 'Zero Page',
-            (0x0100, 0x011F): 'Interrupt Vectors',
-            (0x0120, 0xEFFF): 'General Memory',
-            (0xF000, 0xF0FF): 'Sprite Control',
-            (0xFF00, 0xFFFF): 'Stack Area'
-        }
-
-        # Hook into memory system
-        self.original_memory = None
+        # ── hook tracking ───────────────────────────────────────────
         self.profiling_enabled = False
-        
-        # Store original methods for restoration
-        self.original_read_byte = None
-        self.original_write_byte = None
-        self.original_read_word = None
-        self.original_write_word = None
+        self._original_memory: Optional[Memory] = None
+        self._original_read_byte = None
+        self._original_write_byte = None
+        self._original_read_word = None
+        self._original_write_word = None
+        self._original_write = None
+        # Fast-path hooks (used by CPU execution hot paths)
+        self._original_read_byte_fast = None
+        self._original_write_byte_fast = None
+        self._original_read_word_fast = None
+        self._original_write_word_fast = None
 
-    def enable_profiling(self, memory_system: Memory):
-        """Enable memory profiling by hooking into memory operations"""
+    # ------------------------------------------------------------------
+    # Hook management
+    # ------------------------------------------------------------------
+
+    def enable_profiling(self, memory_system: Memory) -> None:
+        """Monkey-patch a Memory instance to collect access metrics.
+
+        Hooks both the public methods AND the fast-path ``*_fast``
+        variants that the CPU uses during normal execution.
+        """
         if self.profiling_enabled:
             return
 
-        self.original_memory = memory_system
+        self._original_memory = memory_system
         self.profiling_enabled = True
 
-        # Store original methods
-        self.original_read_byte = memory_system.read_byte
-        self.original_write_byte = memory_system.write_byte
-        self.original_read_word = memory_system.read_word
-        self.original_write_word = memory_system.write_word
-        self.original_write = memory_system.write
+        # Save originals (public API)
+        self._original_read_byte = memory_system.read_byte
+        self._original_write_byte = memory_system.write_byte
+        self._original_read_word = memory_system.read_word
+        self._original_write_word = memory_system.write_word
+        self._original_write = memory_system.write
 
-        # Monkey patch memory methods to add profiling
-        original_read_byte = memory_system.read_byte
-        original_write_byte = memory_system.write_byte
-        original_read_word = memory_system.read_word
-        original_write_word = memory_system.write_word
-        original_write = memory_system.write
+        # Save originals (fast-path — used by CPU execution)
+        self._original_read_byte_fast = memory_system.read_byte_fast
+        self._original_write_byte_fast = memory_system.write_byte_fast
+        self._original_read_word_fast = memory_system.read_word_fast
+        self._original_write_word_fast = memory_system.write_word_fast
 
-        def profiled_read_byte(address):
-            if self.profiling_enabled:
-                self._record_read(address, 1)
-            return original_read_byte(address)
+        orig_rb = self._original_read_byte
+        orig_wb = self._original_write_byte
+        orig_rw = self._original_read_word
+        orig_ww = self._original_write_word
+        orig_w = self._original_write
 
-        def profiled_write_byte(address, value):
-            if self.profiling_enabled:
-                self._record_write(address, 1)
-            return original_write_byte(address, value)
+        orig_rbf = self._original_read_byte_fast
+        orig_wbf = self._original_write_byte_fast
+        orig_rwf = self._original_read_word_fast
+        orig_wwf = self._original_write_word_fast
 
-        def profiled_read_word(address):
-            if self.profiling_enabled:
-                self._record_read(address, 2)
-            return original_read_word(address)
+        def _rb(addr: int) -> int:
+            self._record_read(addr, 1)
+            return orig_rb(addr)
 
-        def profiled_write_word(address, value):
-            if self.profiling_enabled:
-                self._record_write(address, 2)
-            return original_write_word(address, value)
+        def _wb(addr: int, value: int) -> None:
+            self._record_write(addr, 1)
+            return orig_wb(addr, value)
 
-        def profiled_write(address, value, bytes=1):
-            if self.profiling_enabled:
-                self._record_write(address, bytes)
-            return original_write(address, value, bytes)
+        def _rw(addr: int) -> int:
+            self._record_read(addr, 2)
+            return orig_rw(addr)
 
-        memory_system.read_byte = profiled_read_byte
-        memory_system.write_byte = profiled_write_byte
-        memory_system.read_word = profiled_read_word
-        memory_system.write_word = profiled_write_word
-        memory_system.write = profiled_write
+        def _ww(addr: int, value: int) -> None:
+            self._record_write(addr, 2)
+            return orig_ww(addr, value)
 
-    def disable_profiling(self):
-        """Disable memory profiling and restore original methods"""
-        if not self.profiling_enabled:
+        def _w(addr: int, value: int, size: int = 1) -> None:
+            self._record_write(addr, size)
+            return orig_w(addr, value, size)
+
+        # Fast-path wrappers
+        def _rbf(addr: int) -> int:
+            self._record_read(addr, 1)
+            return orig_rbf(addr)
+
+        def _wbf(addr: int, value: int) -> None:
+            self._record_write(addr, 1)
+            return orig_wbf(addr, value)
+
+        def _rwf(addr: int) -> int:
+            self._record_read(addr, 2)
+            return orig_rwf(addr)
+
+        def _wwf(addr: int, value: int) -> None:
+            self._record_write(addr, 2)
+            return orig_wwf(addr, value)
+
+        memory_system.read_byte = _rb
+        memory_system.write_byte = _wb
+        memory_system.read_word = _rw
+        memory_system.write_word = _ww
+        memory_system.write = _w
+
+        memory_system.read_byte_fast = _rbf
+        memory_system.write_byte_fast = _wbf
+        memory_system.read_word_fast = _rwf
+        memory_system.write_word_fast = _wwf
+
+    def disable_profiling(self) -> None:
+        """Restore the original Memory methods (including fast-path)."""
+        if not self.profiling_enabled or self._original_memory is None:
             return
-
         self.profiling_enabled = False
-        
-        # Restore original methods
-        if self.original_memory and self.original_read_byte:
-            self.original_memory.read_byte = self.original_read_byte
-            self.original_memory.write_byte = self.original_write_byte
-            self.original_memory.read_word = self.original_read_word
-            self.original_memory.write_word = self.original_write_word
-            self.original_memory.write = self.original_write
 
-    def _record_read(self, address: int, size: int):
-        """Record a memory read operation"""
+        m = self._original_memory
+        if self._original_read_byte:
+            m.read_byte = self._original_read_byte
+        if self._original_write_byte:
+            m.write_byte = self._original_write_byte
+        if self._original_read_word:
+            m.read_word = self._original_read_word
+        if self._original_write_word:
+            m.write_word = self._original_write_word
+        if self._original_write:
+            m.write = self._original_write
+        if self._original_read_byte_fast:
+            m.read_byte_fast = self._original_read_byte_fast
+        if self._original_write_byte_fast:
+            m.write_byte_fast = self._original_write_byte_fast
+        if self._original_read_word_fast:
+            m.read_word_fast = self._original_read_word_fast
+        if self._original_write_word_fast:
+            m.write_word_fast = self._original_write_word_fast
+
+    # ------------------------------------------------------------------
+    # Recording helpers
+    # ------------------------------------------------------------------
+
+    def _record_read(self, address: int, size: int) -> None:
         try:
-            self.profile_data['total_reads'] += 1
-            self.profile_data['read_accesses'][address] += 1
-            self.profile_data['access_timestamps'][address].append(self.profile_data['total_cycles'])
-            self.profile_data['memory_bandwidth'] += size
+            self.profile_data["total_reads"] += 1
+            self.profile_data["read_accesses"][address] += 1
+            self.profile_data["access_timestamps"][address].append(
+                self.profile_data["total_cycles"]
+            )
+            self.profile_data["memory_bandwidth"] += size
 
-            # Update region stats
-            region = self._get_memory_region(address)
+            region = self._region_name(address)
             if region:
-                self.profile_data['region_stats'][region]['reads'] += 1
-        except Exception as e:
-            # Don't let profiling errors crash the emulator
-            if self.profiling_enabled:
-                print(f"Warning: Memory profiling read error at 0x{address:04X}: {e}")
+                self.profile_data["region_stats"][region]["reads"] += 1
+        except Exception:
+            pass  # profiling must never crash the emulator
 
-    def _record_write(self, address: int, size: int):
-        """Record a memory write operation"""
+    def _record_write(self, address: int, size: int) -> None:
         try:
-            self.profile_data['total_writes'] += 1
-            self.profile_data['write_accesses'][address] += 1
-            self.profile_data['access_timestamps'][address].append(self.profile_data['total_cycles'])
-            self.profile_data['memory_bandwidth'] += size
+            self.profile_data["total_writes"] += 1
+            self.profile_data["write_accesses"][address] += 1
+            self.profile_data["access_timestamps"][address].append(
+                self.profile_data["total_cycles"]
+            )
+            self.profile_data["memory_bandwidth"] += size
 
-            # Update region stats
-            region = self._get_memory_region(address)
+            region = self._region_name(address)
             if region:
-                self.profile_data['region_stats'][region]['writes'] += 1
-        except Exception as e:
-            # Don't let profiling errors crash the emulator
-            if self.profiling_enabled:
-                print(f"Warning: Memory profiling write error at 0x{address:04X}: {e}")
+                self.profile_data["region_stats"][region]["writes"] += 1
+        except Exception:
+            pass
 
-    def _get_memory_region(self, address: int) -> Optional[str]:
-        """Get the memory region name for an address"""
-        for (start, end), name in self.region_names.items():
-            if start <= address <= end:
+    @staticmethod
+    def _region_name(address: int) -> Optional[str]:
+        for name, (lo, hi) in MemoryProfiler.REGIONS.items():
+            if lo <= address <= hi:
                 return name
         return None
 
-    def update_cycle_count(self, cycles: int):
-        """Update the current cycle count for timestamping"""
-        self.profile_data['total_cycles'] = cycles
+    # ------------------------------------------------------------------
+    # Cycle tracking
+    # ------------------------------------------------------------------
 
-    def analyze_hotspots(self, top_n: int = 20):
-        """Analyze memory access hotspots"""
-        # Combine read and write accesses
-        total_accesses = defaultdict(int)
-        for addr, count in self.profile_data['read_accesses'].items():
-            total_accesses[addr] += count
-        for addr, count in self.profile_data['write_accesses'].items():
-            total_accesses[addr] += count
+    def update_cycle_count(self, cycles: int) -> None:
+        """Advance the profiler's cycle counter (called by the runner)."""
+        self.profile_data["total_cycles"] = cycles
 
-        # Get top accessed addresses
-        hotspots = sorted(total_accesses.items(), key=lambda x: x[1], reverse=True)[:top_n]
-        self.profile_data['hotspots'] = [
-            {'address': int(addr), 'total_accesses': count,
-             'reads': self.profile_data['read_accesses'][addr],
-             'writes': self.profile_data['write_accesses'][addr],
-             'region': self._get_memory_region(addr)}
-            for addr, count in hotspots
+    # ------------------------------------------------------------------
+    # Analysis
+    # ------------------------------------------------------------------
+
+    def analyze_hotspots(self, top_n: int = 20) -> None:
+        """Identify the most-accessed memory addresses."""
+        combined = defaultdict(int)
+        for addr, cnt in self.profile_data["read_accesses"].items():
+            combined[addr] += cnt
+        for addr, cnt in self.profile_data["write_accesses"].items():
+            combined[addr] += cnt
+
+        sorted_hot = sorted(combined.items(), key=lambda kv: kv[1], reverse=True)
+        self.profile_data["hotspots"] = [
+            {
+                "address": int(addr),
+                "total_accesses": cnt,
+                "reads": self.profile_data["read_accesses"][addr],
+                "writes": self.profile_data["write_accesses"][addr],
+                "region": self._region_name(addr),
+            }
+            for addr, cnt in sorted_hot[:top_n]
         ]
 
-    def analyze_access_patterns(self):
-        """Analyze memory access patterns for sequential accesses"""
-        patterns = []
-        
-        # Get all addresses that were accessed
-        all_addresses = set(self.profile_data['read_accesses'].keys()) | set(self.profile_data['write_accesses'].keys())
-        sorted_addresses = sorted(all_addresses)
-        
-        if not sorted_addresses:
-            self.profile_data['access_patterns'] = patterns
+    def analyze_access_patterns(self) -> None:
+        """Detect sequential-access runs in the address space."""
+        patterns: List[Dict[str, Any]] = []
+        all_addrs = (
+            set(self.profile_data["read_accesses"].keys())
+            | set(self.profile_data["write_accesses"].keys())
+        )
+        sorted_addrs = sorted(all_addrs)
+
+        if not sorted_addrs:
+            self.profile_data["access_patterns"] = patterns
             return
-            
-        # Look for sequential access patterns
-        current_pattern = {'start': sorted_addresses[0], 'length': 1, 'accesses': 0}
-        
-        for i in range(1, len(sorted_addresses)):
-            addr = sorted_addresses[i]
-            prev_addr = sorted_addresses[i-1]
-            
-            # Check if this is a sequential access (within 4 bytes for potential word/dword accesses)
-            if addr - prev_addr <= 4:
-                current_pattern['length'] += 1
-                current_pattern['accesses'] += (
-                    self.profile_data['read_accesses'].get(addr, 0) + 
-                    self.profile_data['write_accesses'].get(addr, 0)
+
+        current = {
+            "start": sorted_addrs[0],
+            "length": 1,
+            "accesses": (
+                self.profile_data["read_accesses"].get(sorted_addrs[0], 0)
+                + self.profile_data["write_accesses"].get(sorted_addrs[0], 0)
+            ),
+        }
+
+        for i in range(1, len(sorted_addrs)):
+            a, prev = sorted_addrs[i], sorted_addrs[i - 1]
+            if a - prev <= 4:  # tolerate word/dword gaps
+                current["length"] += 1
+                current["accesses"] += (
+                    self.profile_data["read_accesses"].get(a, 0)
+                    + self.profile_data["write_accesses"].get(a, 0)
                 )
             else:
-                # End current pattern if it's significant (more than 2 accesses)
-                if current_pattern['length'] > 2 and current_pattern['accesses'] > 10:
-                    patterns.append(current_pattern)
-                
-                # Start new pattern
-                current_pattern = {'start': addr, 'length': 1, 'accesses': 
-                    self.profile_data['read_accesses'].get(addr, 0) + 
-                    self.profile_data['write_accesses'].get(addr, 0)}
-        
-        # Don't forget the last pattern
-        if current_pattern['length'] > 2 and current_pattern['accesses'] > 10:
-            patterns.append(current_pattern)
-            
-        self.profile_data['access_patterns'] = patterns
+                if current["length"] > 2 and current["accesses"] > 10:
+                    patterns.append(current)
+                current = {
+                    "start": a,
+                    "length": 1,
+                    "accesses": (
+                        self.profile_data["read_accesses"].get(a, 0)
+                        + self.profile_data["write_accesses"].get(a, 0)
+                    ),
+                }
 
-    def generate_report(self):
-        """Generate comprehensive profiling report"""
+        if current["length"] > 2 and current["accesses"] > 10:
+            patterns.append(current)
+
+        self.profile_data["access_patterns"] = patterns
+
+    # ------------------------------------------------------------------
+    # Report generation & output
+    # ------------------------------------------------------------------
+
+    def generate_report(self) -> Dict[str, Any]:
+        """Compute derived metrics and return the full profile dict."""
         self.analyze_hotspots()
         self.analyze_access_patterns()
 
-        # Calculate additional metrics
-        total_accesses = self.profile_data['total_reads'] + self.profile_data['total_writes']
-        if self.profile_data['total_cycles'] > 0:
-            self.profile_data['average_access_rate'] = total_accesses / self.profile_data['total_cycles']
+        total = self.profile_data["total_reads"] + self.profile_data["total_writes"]
+        if self.profile_data["total_cycles"] > 0:
+            self.profile_data["average_access_rate"] = (
+                total / self.profile_data["total_cycles"]
+            )
 
-        # Memory usage estimation (non-zero bytes)
-        if self.original_memory:
-            non_zero_bytes = np.count_nonzero(self.original_memory.memory)
-            self.profile_data['peak_memory_usage'] = non_zero_bytes
+        if self._original_memory is not None:
+            self.profile_data["peak_memory_usage"] = int(
+                np.count_nonzero(self._original_memory.memory)
+            )
 
-        # Convert defaultdicts to regular dicts for JSON serialization
-        self.profile_data['read_accesses'] = {int(k): int(v) for k, v in self.profile_data['read_accesses'].items()}
-        self.profile_data['write_accesses'] = {int(k): int(v) for k, v in self.profile_data['write_accesses'].items()}
-        self.profile_data['access_timestamps'] = {int(k): [int(t) for t in v] for k, v in self.profile_data['access_timestamps'].items()}
-        self.profile_data['region_stats'] = {k: {'reads': int(v['reads']), 'writes': int(v['writes'])} for k, v in self.profile_data['region_stats'].items()}
+        # Make JSON-safe
+        self.profile_data["read_accesses"] = {
+            int(k): int(v)
+            for k, v in self.profile_data["read_accesses"].items()
+        }
+        self.profile_data["write_accesses"] = {
+            int(k): int(v)
+            for k, v in self.profile_data["write_accesses"].items()
+        }
+        self.profile_data["access_timestamps"] = {
+            int(k): [int(t) for t in v]
+            for k, v in self.profile_data["access_timestamps"].items()
+        }
+        self.profile_data["region_stats"] = {
+            str(k): {"reads": int(v["reads"]), "writes": int(v["writes"])}
+            for k, v in self.profile_data["region_stats"].items()
+        }
 
         return self.profile_data
 
-    def save_report(self, filename: Optional[str] = None):
-        """Save profiling report to file"""
-        if not filename:
-            filename = self.output_file
-
+    def save_report(self, filename: Optional[str] = None) -> None:
+        filename = filename or self.output_file
         try:
             report = self.generate_report()
-
-            with open(filename, 'w') as f:
-                json.dump(report, f, indent=2, default=self._json_serializer)
-
+            with open(filename, "w") as f:
+                json.dump(report, f, indent=2, default=_json_default)
             print(f"Memory profiling report saved to {filename}")
-        except Exception as e:
-            print(f"Error saving memory profiling report: {e}")
-            # Try to save with minimal data
+        except Exception as exc:
+            print(f"Error saving memory report: {exc}")
+            # Best-effort minimal write
             try:
-                minimal_report = {
-                    'error': str(e),
-                    'total_cycles': self.profile_data.get('total_cycles', 0),
-                    'total_reads': self.profile_data.get('total_reads', 0),
-                    'total_writes': self.profile_data.get('total_writes', 0)
+                minimal = {
+                    "error": str(exc),
+                    "total_cycles": self.profile_data.get("total_cycles", 0),
+                    "total_reads": self.profile_data.get("total_reads", 0),
+                    "total_writes": self.profile_data.get("total_writes", 0),
                 }
-                with open(filename, 'w') as f:
-                    json.dump(minimal_report, f, indent=2)
-                print(f"Minimal profiling report saved to {filename}")
-            except Exception as e2:
-                print(f"Failed to save even minimal report: {e2}")
+                with open(filename, "w") as f:
+                    json.dump(minimal, f, indent=2)
+            except Exception:
+                pass
 
-    def _json_serializer(self, obj):
-        """Custom JSON serializer for numpy types"""
-        if hasattr(obj, 'item'):
-            return obj.item()  # Convert numpy types to Python types
-        raise TypeError(f'Object of type {obj.__class__.__name__} is not JSON serializable')
-
-    def print_summary(self):
-        """Print a summary of profiling results"""
-        report = self.generate_report()
-
+    def print_summary(self) -> None:
+        r = self.generate_report()
         print("\n=== Nova-16 Memory Profiler Summary ===")
-        print(f"Total Cycles: {report['total_cycles']}")
-        print(f"Total Reads: {report['total_reads']}")
-        print(f"Total Writes: {report['total_writes']}")
-        print(f"Memory Bandwidth: {report['memory_bandwidth']} bytes")
-        print(f"Average Access Rate: {report['average_access_rate']:.2f} accesses/cycle")
-        print(f"Peak Memory Usage: {report['peak_memory_usage']} bytes")
+        print(f"Total Cycles:    {r['total_cycles']:,}")
+        print(f"Total Reads:     {r['total_reads']:,}")
+        print(f"Total Writes:    {r['total_writes']:,}")
+        print(f"Memory BW:       {r['memory_bandwidth']:,} bytes")
+        print(f"Access Rate:     {r['average_access_rate']:.2f} / cycle")
+        print(f"Peak Usage:      {r['peak_memory_usage']:,} bytes")
+        print()
+        print("--- Region Statistics ---")
+        for region, stats in r["region_stats"].items():
+            total = stats["reads"] + stats["writes"]
+            print(f"  {region}: {total:,} accesses  ({stats['reads']}R / {stats['writes']}W)")
+        print()
+        print("--- Top Hotspots ---")
+        for i, hs in enumerate(r["hotspots"][:10]):
+            print(
+                f"  {i+1}. 0x{hs['address']:04X}  ({hs['region']}): "
+                f"{hs['total_accesses']:,}  ({hs['reads']}R / {hs['writes']}W)"
+            )
 
-        print("\n--- Memory Region Statistics ---")
-        for region, stats in report['region_stats'].items():
-            total = stats['reads'] + stats['writes']
-            print(f"{region}: {total} accesses ({stats['reads']}R, {stats['writes']}W)")
 
-        print("\n--- Top Memory Hotspots ---")
-        for i, hotspot in enumerate(report['hotspots'][:10]):
-            addr = hotspot['address']
-            region = hotspot['region']
-            total = hotspot['total_accesses']
-            reads = hotspot['reads']
-            writes = hotspot['writes']
-            print(f"{i+1}. 0x{addr:04X} ({region}): {total} accesses ({reads}R, {writes}W)")
+def _json_default(obj: Any) -> Any:
+    if hasattr(obj, "item"):
+        return obj.item()
+    raise TypeError(f"Not JSON serializable: {type(obj).__name__}")
 
-def main():
-    parser = argparse.ArgumentParser(description='Nova-16 Memory Profiler')
-    parser.add_argument('program', help='Binary program file to profile')
-    parser.add_argument('--cycles', type=int, default=10000, help='Maximum cycles to run')
-    parser.add_argument('--output', default='memory_profile.json', help='Output file for profile data')
-    parser.add_argument('--summary', action='store_true', help='Print summary after profiling')
 
-    args = parser.parse_args()
+# ----------------------------------------------------------------------
+# Runner & CLI
+# ----------------------------------------------------------------------
 
-    # Initialize profiler
-    profiler = MemoryProfiler(output_file=args.output)
+def run_memory_profiler(
+    program_path: str,
+    max_cycles: int = 10000,
+    output_file: str = "memory_profile.json",
+    print_summary: bool = False,
+) -> None:
+    """Run a program under the memory profiler."""
 
-    # Set up Nova-16 system
-    memory = Memory()
-    gfx = GFX()
-    keyboard = NovaKeyboard()
-    sound = NovaSound()
-    cpu = CPU(memory, gfx, keyboard, sound)
+    # ── System init (modern architecture) ────────────────────────────
+    bus = EventBus()
+    mem = Memory(bus=bus)
+    gfx = gpu_mod.GFX()
+    kbd = kbd_mod.NovaKeyboard(bus=bus)
+    snd = sound_mod.NovaSound()
+    intr_ctrl = InterruptController(bus=bus, memory=mem)
+    timer_dev = Timer(bus=bus, interrupt_controller=intr_ctrl)
 
-    # Enable memory profiling
-    profiler.enable_profiling(memory)
+    cpu = cpu_mod.CPU(
+        mem, gfx, kbd, snd,
+        bus=bus, interrupt_controller=intr_ctrl, timer_device=timer_dev,
+    )
+    intr_ctrl.cpu = cpu
+    bus.subscribe("cpu.post_step", lambda _: intr_ctrl.check())
 
-    # Load program
-    entry_point = memory.load(args.program)
-    cpu.pc = entry_point
+    # ── Load program ─────────────────────────────────────────────────
+    entry = mem.load(program_path)
+    cpu.pc = entry
+    print(f"Loaded {program_path}, entry point: 0x{entry:04X}")
 
-    print(f"Starting memory profiling of {args.program}...")
-    print(f"Entry point: 0x{entry_point:04X}")
+    # ── Attach profiler ──────────────────────────────────────────────
+    profiler = MemoryProfiler(output_file=output_file)
+    profiler.enable_profiling(mem)
 
-    # Run profiling
+    print(f"Profiling memory for up to {max_cycles:,} cycles …")
+
     cycles = 0
     try:
-        while not cpu.halted and cycles < args.cycles:
+        while not cpu.halted and cycles < max_cycles:
             profiler.update_cycle_count(cycles)
             cpu.step()
             cycles += 1
 
             if cycles % 1000 == 0:
-                print(f"Executed {cycles} cycles...")
+                print(f"  {cycles:,} cycles …")
 
     except KeyboardInterrupt:
-        print("Profiling interrupted by user")
+        print("\nProfiling interrupted by user")
+    except Exception:
+        print(f"\nError at cycle {cycles}, PC=0x{cpu.pc:04X}")
+        raise
 
-    print(f"Profiling completed after {cycles} cycles")
+    print(f"\nProfiling completed after {cycles:,} cycles")
 
-    # Generate and save report
     profiler.save_report()
-
-    if args.summary:
+    if print_summary:
         profiler.print_summary()
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="Nova-16 Memory Profiler")
+    p.add_argument("program", help=".bin program to profile")
+    p.add_argument("--cycles", type=int, default=10000, help="Max cycles")
+    p.add_argument("--output", default="memory_profile.json", help="Output JSON")
+    p.add_argument("--summary", action="store_true", help="Print summary")
+
+    args = p.parse_args()
+    if not os.path.exists(args.program):
+        print(f"Error: program '{args.program}' not found")
+        sys.exit(1)
+
+    run_memory_profiler(
+        program_path=args.program,
+        max_cycles=args.cycles,
+        output_file=args.output,
+        print_summary=args.summary,
+    )
+
 
 if __name__ == "__main__":
     main()

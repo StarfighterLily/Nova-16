@@ -7,17 +7,21 @@ video register changes, memory mapping, and detailed visual output tracking.
 
 import sys
 import os
-sys.path.append(os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(__file__))
 
-from nova_cpu import CPU
-from nova.memory import Memory
-from nova_gfx import GFX
-from nova_keyboard import NovaKeyboard
-from nova_sound import NovaSound
+from pathlib import Path
 import argparse
 import json
 from typing import Dict, List, Set, Tuple, Optional
 import numpy as np
+
+from nova_cpu import CPU
+from nova.memory import Memory
+import nova_gfx as gpu_mod
+import nova_keyboard as kbd_mod
+import nova_sound as sound_mod
+from nova.bus import EventBus, InterruptController
+from nova.peripherals.timer import Timer
 
 class GraphicsState:
     """Tracks detailed graphics state for debugging"""
@@ -370,7 +374,10 @@ class AdvancedGraphicsMonitor:
             print(f"Failed to export debug data: {e}")
 
 def run_graphics_monitor(program_path, monitor_config=None, max_cycles=10000, export_prefix=None):
-    """Run Nova with advanced graphics monitoring and analysis"""
+    """Run Nova with advanced graphics monitoring and analysis.
+    
+    Uses the current event-bus / interrupt-controller / timer architecture.
+    """
     
     # Configure monitor
     if monitor_config is None:
@@ -382,12 +389,19 @@ def run_graphics_monitor(program_path, monitor_config=None, max_cycles=10000, ex
             'check_interval': 50  # Check every 50 cycles instead of 100
         }
     
-    # Initialize components
-    memory = Memory()
-    gfx = GFX()
-    keyboard = NovaKeyboard()
-    sound = NovaSound()
-    cpu = CPU(memory, gfx, keyboard, sound)
+    # Initialize components with modern event-bus architecture
+    bus = EventBus()
+    memory = Memory(bus=bus)
+    gfx = gpu_mod.GFX()
+    keyboard = kbd_mod.NovaKeyboard(bus=bus)
+    sound = sound_mod.NovaSound()
+    intr_ctrl = InterruptController(bus=bus, memory=memory)
+    timer_dev = Timer(bus=bus, interrupt_controller=intr_ctrl)
+
+    cpu = CPU(memory, gfx, keyboard, sound,
+              bus=bus, interrupt_controller=intr_ctrl, timer_device=timer_dev)
+    intr_ctrl.cpu = cpu
+    bus.subscribe("cpu.post_step", lambda _: intr_ctrl.check())
     
     # Initialize advanced monitor
     monitor = AdvancedGraphicsMonitor(
