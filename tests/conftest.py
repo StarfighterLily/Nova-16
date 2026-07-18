@@ -164,3 +164,62 @@ def assert_register_equals(cpu, register, expected_value):
 def opcode_value(name):
     """Return the current opcode/register encoding for a mnemonic from opcodes.py."""
     return OPCODE_VALUES[name]
+
+
+def enc(mnemonic, *specs):
+    """Encode a single prefixed-operand instruction from a mnemonic and operand specs.
+
+    Each spec is one of:
+        ('reg', 'R0')            - register direct
+        ('imm8', 0x12)           - 8-bit immediate
+        ('imm16', 0x1234)        - 16-bit immediate
+        ('mem_direct', 0x2000)   - [0x2000]
+        ('mem_indirect', 'P0')   - [P0]
+        ('mem_indexed', 'P0', 4) - [P0+4]
+
+    Building programs through this helper (rather than hand-encoded hex
+    bytes) keeps tests correct if opcode numbers or register codes ever
+    change, and avoids hand-encoding mistakes in mode-byte arithmetic.
+    """
+    opcode = opcode_value(mnemonic)
+    if not specs:
+        return [opcode]
+
+    mode_byte = 0
+    direct_bit = 0
+    indexed_bit = 0
+    payload = []
+
+    for idx, spec in enumerate(specs):
+        kind = spec[0]
+        if kind == 'reg':
+            mode = 0
+            payload.append(opcode_value(spec[1]))
+        elif kind == 'imm8':
+            mode = 1
+            payload.append(spec[1] & 0xFF)
+        elif kind == 'imm16':
+            mode = 2
+            val = spec[1] & 0xFFFF
+            payload.append((val >> 8) & 0xFF)
+            payload.append(val & 0xFF)
+        elif kind == 'mem_direct':
+            mode = 3
+            direct_bit = 1
+            val = spec[1] & 0xFFFF
+            payload.append((val >> 8) & 0xFF)
+            payload.append(val & 0xFF)
+        elif kind == 'mem_indirect':
+            mode = 3
+            payload.append(opcode_value(spec[1]))
+        elif kind == 'mem_indexed':
+            mode = 3
+            indexed_bit = 1
+            payload.append(opcode_value(spec[1]))
+            payload.append(spec[2] & 0xFF)
+        else:
+            raise ValueError(f"Unknown operand kind: {kind}")
+        mode_byte |= (mode << (idx * 2))
+
+    mode_byte |= (indexed_bit << 6) | (direct_bit << 7)
+    return [opcode, mode_byte] + payload

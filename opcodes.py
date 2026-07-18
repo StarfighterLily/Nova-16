@@ -119,13 +119,13 @@ opcodes = [
     ("SED",                "0x4B", 0), # Set decimal flag # implemented
     ("CLD",                "0x4C", 0), # Clear decimal flag # implemented
     ("CLA",                "0x4D", 0), # Clear auxiliary carry # implemented
-    ("BCDA",               "0x4E", 1), # BCD add with carry # implemented
-    ("BCDS",               "0x4F", 1), # BCD subtract with carry # implemented
-    ("BCDCMP",             "0x50", 1), # BCD compare # implemented
+    ("BCDA",               "0x4E", 2), # BCD add with carry # implemented
+    ("BCDS",               "0x4F", 2), # BCD subtract with carry # implemented
+    ("BCDCMP",             "0x50", 2), # BCD compare # implemented
     ("BCD2BIN",            "0x51", 1), # BCD to binary # implemented
     ("BIN2BCD",            "0x52", 1), # Binary to BCD # implemented
-    ("BCDADD",             "0x53", 1), # BCD add immediate # implemented
-    ("BCDSUB",             "0x54", 1), # BCD subtract immediate # implemented
+    ("BCDADD",             "0x53", 2), # BCD add immediate # implemented
+    ("BCDSUB",             "0x54", 2), # BCD subtract immediate # implemented
 
     # Sprite operations
     ("SPBLIT",             "0x55", 1), # Blit sprite # implemented

@@ -1688,14 +1688,17 @@ class TestCPUInterruptOperations:
 
     def test_iret_instruction(self, cpu):
         """Test IRET (interrupt return) instruction."""
-        # Set up interrupt context manually
+        # Set up interrupt context manually, matching the real entry order
+        # (see _trigger_interrupt / _int): flags pushed first (deeper on the
+        # stack), PC pushed second (top of stack, at the current SP).
         return_addr = 0x0100
-        flags_value = 0x00FF  # Some flags
+        flags_value = 0x00FE  # Some flags (bit 0 / Trap left clear so IRET
+                               # doesn't immediately re-trigger a single-step
+                               # breakpoint interrupt on return)
 
-        # Simulate interrupt entry (push PC and flags)
-        cpu.Pregisters[8] = 0xFFFB  # SP (after pushing PC and flags)
-        cpu.memory.write_word(0xFFFB, flags_value)  # Flags (pushed first)
-        cpu.memory.write_word(0xFFFD, return_addr)  # Return address (pushed second)
+        cpu.Pregisters[8] = 0xFFFB  # SP (after pushing flags and PC)
+        cpu.memory.write_word(0xFFFB, return_addr)  # PC (pushed second, top of stack)
+        cpu.memory.write_word(0xFFFD, flags_value)  # Flags (pushed first, deeper)
 
         # Set up handler that returns
         handler_addr = 0x2000
@@ -1706,7 +1709,7 @@ class TestCPUInterruptOperations:
         cpu.step()
 
         # Should have returned to original address
-        assert cpu.pc == 0x00FF  # IRET reads flags from SP, not return address
+        assert cpu.pc == return_addr
         # SP should be restored
         assert cpu.Pregisters[8] == 0xFFFF
 

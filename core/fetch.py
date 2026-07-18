@@ -315,14 +315,16 @@ def calculate_memory_address(operand: Operand, regfile) -> int:
             # Direct indexed [imm16 + offset]
             return (operand.address + operand.index) & 0xFFFF
         else:
-            # Register indexed [reg + offset]
+            # Register indexed [reg + offset]. Both assemblers
+            # (nova_assembler.py, nova/assembler/codegen.py) encode this
+            # offset byte as a signed two's-complement displacement for
+            # every register, not just SP/FP -- e.g. [P0-4] assembles the
+            # same way as [FP-4] -- and nova_disassembler.py decodes it as
+            # signed universally too. The offset must be sign-extended here
+            # to match, for every register.
             base = regfile.get(operand.reg_type, operand.reg_idx)
-            # SP (P8) and FP (P9) use signed offset for stack-relative addressing
-            if operand.reg_idx in (8, 9) and operand.reg_type == 'P':
-                signed_offset = operand.index if operand.index < 128 else operand.index - 256
-                return (base + signed_offset) & 0xFFFF
-            else:
-                return (base + operand.index) & 0xFFFF
+            signed_offset = operand.index if operand.index < 128 else operand.index - 256
+            return (base + signed_offset) & 0xFFFF
 
     return 0
 

@@ -449,6 +449,10 @@ NO_OPERAND_OPCODES: set = {
     0xAA,  # ENATRAP
     0xAB,  # DISATRAP
     0x46,  # KEYCLEAR
+    0x4B,  # SED
+    0x4C,  # CLD
+    0x4D,  # CLA
+    0x9C,  # LEAVE
 }
 
 

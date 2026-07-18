@@ -495,13 +495,28 @@ def _cmp(cpu, values) -> int:
 # Stack
 # ------------------------------------------------------------------------------
 
+def _push_pop_width(op) -> int:
+    """Return 8 or 16 — the natural width of a PUSH/POP operand.
+
+    R registers and imm8 are byte-sized; P registers and imm16 are
+    word-sized. Memory operands default to word width, matching
+    ``_write_result``'s default for single-operand instructions (it infers
+    source size from ``cpu.operands[0]`` when there's no second operand).
+    """
+    if op.is_register:
+        return 16 if op.reg_type == 'P' else 8
+    if op.is_immediate:
+        return op.size
+    return 16
+
+
 def _push(cpu, values) -> int:
     """PUSH: push value onto stack."""
     sp = cpu.regfile.get('P', 8)
     op = cpu.operands[0]
-    if op.is_register and op.reg_type == 'P':
+    if _push_pop_width(op) == 16:
         sp = (sp - 2) & 0xFFFF
-        cpu.memory.write_word_fast(sp, values[0])
+        cpu.memory.write_word_fast(sp, values[0] & 0xFFFF)
     else:
         sp = (sp - 1) & 0xFFFF
         cpu.memory.write_byte_fast(sp, values[0] & 0xFF)
@@ -513,7 +528,7 @@ def _pop(cpu, values) -> int:
     """POP: pop value from stack."""
     sp = cpu.regfile.get('P', 8)
     op = cpu.operands[0]
-    if op.is_register and op.reg_type == 'P':
+    if _push_pop_width(op) == 16:
         if sp >= 0xFFFE:
             raise RuntimeError(f"Stack underflow: SP=0x{sp:04X}")
         value = cpu.memory.read_word_fast(sp)
@@ -733,9 +748,9 @@ def _int(cpu, values) -> None:
     flags_value = cpu.flags_obj.pack()
     sp = cpu.regfile.get('P', 8)
     sp = (sp - 2) & 0xFFFF
-    cpu.memory.write_word(sp, cpu.pc)
-    sp = (sp - 2) & 0xFFFF
     cpu.memory.write_word(sp, flags_value)
+    sp = (sp - 2) & 0xFFFF
+    cpu.memory.write_word(sp, cpu.pc)
     cpu.regfile.set('P', 8, sp)
     cpu.flags_obj[5] = 0
     vector_addr = 0x0100 + (values[0] * 4)
@@ -1281,7 +1296,7 @@ def _strcat(cpu, values) -> int:
 
 
 def _strcmp(cpu, values) -> int:
-    """STRCMP: compare two strings up to length."""
+    """STRCMP: compare two strings up to length, stopping at a shared null terminator."""
     str1 = values[0]
     str2 = values[1]
     length = values[2]
@@ -1291,6 +1306,8 @@ def _strcmp(cpu, values) -> int:
         char2 = cpu.memory.read_byte((str2 + i) & 0xFFFF)
         if char1 != char2:
             result = -1 if char1 < char2 else 1
+            break
+        if char1 == 0:
             break
     cpu.regfile.set('R', 0, result & 0xFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, 0, 16, is_sub=False)
@@ -1420,6 +1437,11 @@ def _strext(cpu, values) -> int:
                 match = False
                 break
             needle_pos += 1
+        # A needle longer than max_len must not count as matched just because
+        # the comparison loop hit the max_len cap — only a genuine match up
+        # to the needle's own null terminator counts.
+        if match and cpu.memory.read_byte((needle + needle_pos) & 0xFFFF) != 0:
+            match = False
         if match:
             found = True
             break
@@ -1455,6 +1477,8 @@ def _strexti(cpu, values) -> int:
                 match = False
                 break
             needle_pos += 1
+        if match and cpu.memory.read_byte((needle + needle_pos) & 0xFFFF) != 0:
+            match = False
         if match:
             found = True
             break
@@ -1517,18 +1541,19 @@ def _memtest(cpu, values) -> int:
 
 
 def _memmove(cpu, values) -> int:
-    """MEMMOVE: copy memory block handling overlap."""
+    """MEMMOVE: copy memory block handling overlap.
+
+    Stages through a temporary buffer rather than picking a copy direction
+    from a raw ``dest < source`` comparison — that comparison ignores the
+    64KB address-space wraparound, so ranges that overlap only because they
+    wrap past 0xFFFF/0x0000 would pick the wrong direction and corrupt data.
+    """
     dest = values[0]
     source = values[1]
     length = values[2]
-    if dest < source:
-        for i in range(length):
-            data = cpu.memory.read_byte((source + i) & 0xFFFF)
-            cpu.memory.write_byte((dest + i) & 0xFFFF, data)
-    else:
-        for i in range(length - 1, -1, -1):
-            data = cpu.memory.read_byte((source + i) & 0xFFFF)
-            cpu.memory.write_byte((dest + i) & 0xFFFF, data)
+    data = [cpu.memory.read_byte((source + i) & 0xFFFF) for i in range(length)]
+    for i, byte in enumerate(data):
+        cpu.memory.write_byte((dest + i) & 0xFFFF, byte)
     return dest
 
 
