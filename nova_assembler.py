@@ -47,6 +47,17 @@ class InstructionSet:
         self.low_byte_registers: Dict[str, str] = {}
         self._load_opcodes()
 
+    # Mnemonics that are simultaneously a register code (usable as an
+    # operand, e.g. "MOV SA, 5") AND a genuine standalone one-operand
+    # instruction with a real CPU handler (core/exec_handlers.py's
+    # _sa/_sf/_sv/_sw/_vm/_vl/_tt/_tm/_tc/_ts/_vx/_vy, all registered in
+    # core/exec.py's HANDLER_INSTRUCTIONS). The rest of reg_names below
+    # (BANK, C0, C1, MX, MY, MB, SP, FP, VC, and the R/P registers) have no
+    # standalone-opcode handler on the CPU, so they stay register-only.
+    DUAL_PURPOSE_INSTRUCTIONS = {
+        "SA", "SF", "SV", "SW", "VM", "VL", "TT", "TM", "TC", "TS", "VX", "VY"
+    }
+
     def _load_opcodes(self):
         """Load and organize opcodes from opcodes.py"""
         reg_names = {f"R{i}" for i in range(10)} | {f"P{i}" for i in range(10)} | {
@@ -62,6 +73,8 @@ class InstructionSet:
 
             if mnemonic in reg_names:
                 self.registers[mnemonic] = opcode_str
+                if mnemonic in self.DUAL_PURPOSE_INSTRUCTIONS:
+                    self.instructions[mnemonic] = (opcode_str, size)
             elif mnemonic.endswith(':'):  # High byte
                 self.high_byte_registers[mnemonic] = opcode_str
             elif mnemonic.startswith(':'):  # Low byte
@@ -914,8 +927,9 @@ class Assembler:
 
             # Calculate instruction size
             if line.instruction:
-                if line.instruction in self.instruction_set.registers:
-                    continue  # Skip standalone registers
+                if (line.instruction in self.instruction_set.registers
+                        and line.instruction not in self.instruction_set.instructions):
+                    continue  # Skip register-only mnemonics (no standalone opcode form)
 
                 instr_info = self.instruction_set.get_instruction_info(line.instruction)
                 if instr_info and instr_info[1] == 0:
@@ -1014,8 +1028,9 @@ class Assembler:
                     self.errors.append(f"Line {line.line_num}: {e}")
                 continue
 
-            # Skip standalone registers
-            if line.instruction in self.instruction_set.registers:
+            # Skip register-only mnemonics (no standalone opcode form)
+            if (line.instruction in self.instruction_set.registers
+                    and line.instruction not in self.instruction_set.instructions):
                 continue
 
             try:

@@ -6,6 +6,9 @@ and reproducing the wrong behavior against the live CPU, then fixed. These
 tests pin the fix down so the bug class can't silently come back.
 """
 
+import inspect
+import re
+
 import pytest
 
 from tests.conftest import run_cpu_cycles, opcode_value, enc
@@ -452,3 +455,196 @@ class TestStrextNeedleLongerThanMaxLen:
             result.append(b)
             i += 1
         assert bytes(result) == b"HELLO"
+
+
+class TestHandlerOperandIndexBounds:
+    """Regression for SW/VY (see TestSpecialRegisterOpcodes below): both
+    handlers unconditionally indexed ``values[1]`` despite their opcode
+    being declared ``num_operands=1`` in HANDLER_INSTRUCTIONS, so every
+    execution raised IndexError. ``_execute_handler`` in core/exec.py only
+    ever builds a ``values`` tuple of exactly ``num_operands`` entries (see
+    the ``n_ops == 1``/``n_ops == 2``/etc. branches), so any handler that
+    reads ``values[N]`` unconditionally with N >= num_operands is always
+    broken, not just in some edge case.
+
+    This scans every handler's source for literal ``values[N]`` indexing
+    (skipping uses already guarded by an explicit ``len(values) > N`` check,
+    which several variadic-looking handlers use legitimately) and fails if
+    any unguarded index falls outside the opcode's declared operand count,
+    so this whole bug class can't silently reappear for any opcode.
+    """
+
+    def test_no_handler_indexes_values_beyond_its_declared_operand_count(self):
+        violations = []
+        for opcode, inst in sorted(HANDLER_INSTRUCTIONS.items()):
+            if inst.handler is None or inst.handler.__module__ != 'core.exec_handlers':
+                continue
+            try:
+                src = inspect.getsource(inst.handler)
+            except (TypeError, OSError):
+                continue
+
+            # Drop any 'values[N] if len(values) > M else ...' branch text
+            # from consideration on the guarded side; the ternary's fallback
+            # (post-'else') is what actually executes when len(values) is
+            # small, so only *that* side needs to stay in bounds. Rather
+            # than parse the ternary precisely, conservatively treat any
+            # values[N] textually preceded on the same line by a matching
+            # 'len(values) > N' guard as safe, and flag everything else.
+            for lineno, line in enumerate(src.splitlines(), start=1):
+                guarded_indices = {int(m) for m in re.findall(r'len\(values\)\s*>\s*(\d+)', line)}
+                for m in re.finditer(r'values\[(\d+)\]', line):
+                    idx = int(m.group(1))
+                    if idx in guarded_indices:
+                        continue
+                    if idx >= inst.num_operands:
+                        violations.append(
+                            f"0x{opcode:02X} {inst.name} ({inst.handler.__name__}): "
+                            f"unguarded values[{idx}] but num_operands={inst.num_operands} "
+                            f"(line {lineno}: {line.strip()!r})"
+                        )
+
+        assert not violations, "Handlers indexing values[] out of bounds:\n" + "\n".join(violations)
+
+
+class TestSpecialRegisterOpcodes:
+    """Regression + first-ever coverage for the dedicated single-operand
+    special-register opcodes (SA/SF/SV/SW/VM/VL/VX/VY/TT/TM/TC/TS). None of
+    these had any test exercising the *opcode* form (as opposed to using
+    the register name as a MOV operand, e.g. ``MOV TT, 42``), which is why
+    two independent bugs went unnoticed:
+
+    - SW (0xE0) and VY (0xFE) handlers indexed ``values[1]`` on a
+      1-operand instruction, raising IndexError on every execution
+      (see TestHandlerOperandIndexBounds).
+    - TT/TM/TC/TS (0xE3-0xE6) wrote to ``cpu.timer[...]``, a list
+      attribute that was never defined anywhere on the CPU class (the
+      real timer state lives in ``cpu.timer_device``, an optional
+      peripheral only wired up via the ``cpu_with_timer`` fixture / a
+      real event bus), so these opcodes raised AttributeError
+      unconditionally -- even when no timer was attached, since the
+      crash happened before any None-check could apply.
+    """
+
+    def test_sw_opcode_sets_sound_waveform_register(self, cpu, memory):
+        program = enc('SW', ('imm8', 0x85)) + enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 1)
+        assert cpu.sound.SW == 0x85
+
+    def test_vy_opcode_sets_video_y_register(self, cpu, memory):
+        program = enc('VY', ('imm8', 100)) + enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 1)
+        assert cpu.gfx.Vregisters[1] == 100
+
+    def test_vx_opcode_sets_video_x_register(self, cpu, memory):
+        program = enc('VX', ('imm8', 50)) + enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 1)
+        assert cpu.gfx.Vregisters[0] == 50
+
+    def test_sa_sf_sv_opcodes_set_sound_registers(self, cpu, memory):
+        program = enc('SA', ('imm16', 0x1234)) + \
+            enc('SF', ('imm8', 0x42)) + \
+            enc('SV', ('imm8', 0x07)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 3)
+        assert cpu.sound.SA == 0x1234
+        assert cpu.sound.SF == 0x42
+        assert cpu.sound.SV == 0x07
+
+    def test_vm_vl_opcodes_set_graphics_mode_registers(self, cpu, memory):
+        program = enc('VM', ('imm8', 1)) + \
+            enc('VL', ('imm8', 3)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 2)
+        assert cpu.gfx.VM == 1
+        assert cpu.gfx.VL == 3
+
+    def test_tt_tm_tc_ts_opcodes_do_not_crash_without_timer_device(self, cpu, memory):
+        """Without a wired timer peripheral, these must be safe no-ops --
+        matching the register-code path's documented no-op behavior in
+        CPU._register_externals when timer_device is None -- not crash."""
+        program = enc('TT', ('imm8', 1)) + \
+            enc('TM', ('imm8', 2)) + \
+            enc('TC', ('imm8', 3)) + \
+            enc('TS', ('imm8', 4)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 4)
+        assert cpu.pc != 0  # executed past all four without raising
+
+    def test_tt_tm_ts_opcodes_write_through_to_timer_device(self, cpu_with_timer, memory):
+        """TC is checked separately: enabling it resets the counter (see
+        Timer._set_control), which would make TT's written value
+        unobservable if both were checked together after running."""
+        cpu = cpu_with_timer
+        program = enc('TT', ('imm8', 10)) + \
+            enc('TM', ('imm8', 20)) + \
+            enc('TS', ('imm8', 4)) + \
+            enc('HLT')
+        memory.load_program(program)
+        cpu.pc = 0
+        run_cpu_cycles(cpu, 3)
+        assert cpu.timer_device.regs[0] == 10
+        assert cpu.timer_device.regs[1] == 20
+        assert cpu.timer_device.regs[3] == 4
+
+    def test_tc_opcode_writes_through_and_enables_timer(self, cpu_with_timer, memory):
+        cpu = cpu_with_timer
+        program = enc('TC', ('imm8', 3)) + enc('HLT')  # enable + interrupt-enable
+        memory.load_program(program)
+        cpu.pc = 0
+        run_cpu_cycles(cpu, 1)
+        assert cpu.timer_device.regs[2] == 3
+        assert cpu.timer_device._enabled is True
+        assert cpu.timer_device._interrupt_enabled is True
+
+
+class TestDirectIndexedOffsetSignedness:
+    """Regression: core/fetch.py::calculate_memory_address sign-extended the
+    offset byte of a register-indexed operand ([reg+offset]) for every
+    register (see TestIndexedAddressingSignedOffset above) but treated the
+    *identical* offset byte as an unsigned 0..255 value for the
+    direct-indexed form ([addr16+offset]) specifically.
+
+    nova_disassembler.py decodes the direct-indexed offset as signed
+    two's-complement (``if offset > 127: offset -= 256``) for both forms
+    uniformly, so a direct-indexed operand with offset byte 0xFC disassembles
+    as ``[0x2000-4]`` but, before this fix, actually computed
+    ``0x2000 + 0xFC = 0x20FC`` instead of ``0x2000 - 4 = 0x1FFC`` --
+    the same "disassembly says signed, execution says unsigned" mismatch
+    already fixed once for the register-indexed case.
+    """
+
+    def test_direct_indexed_negative_offset_reads_correct_address(self, cpu, memory):
+        memory.write_byte(0x1FFC, 0x77)
+        memory.write_byte(0x20FC, 0xAA)  # trap value at the old, wrong address
+        program = enc('MOV', ('reg', 'R0'), ('mem_direct_indexed', 0x2000, -4)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 1)
+        assert cpu.Rregisters[0] == 0x77
+
+    def test_direct_indexed_negative_offset_write_targets_correct_address(self, cpu, memory):
+        program = enc('MOV', ('reg', 'R1'), ('imm8', 0x99)) + \
+            enc('MOV', ('mem_direct_indexed', 0x2000, -4), ('reg', 'R1')) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 2)
+        assert memory.read_byte(0x1FFC) == 0x99
+        assert memory.read_byte(0x20FC) == 0, "must not have written at the unsigned +252 address"
+
+    def test_direct_indexed_positive_offset_unaffected(self, cpu, memory):
+        """Sanity check: small positive direct-indexed offsets (the only
+        form the primary assembler/NoBASIC codegen currently emit) must
+        still resolve exactly as before."""
+        memory.write_byte(0x2008, 0x42)
+        program = enc('MOV', ('reg', 'R0'), ('mem_direct_indexed', 0x2000, 8)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 1)
+        assert cpu.Rregisters[0] == 0x42

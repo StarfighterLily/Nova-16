@@ -2024,8 +2024,8 @@ def _sv(cpu, values) -> int:
 
 def _sw(cpu, values) -> int:
     """SW: sound waveform/control register."""
-    cpu.sound.SW = values[1] if len(values) > 1 else values[1]
-    return values[1]
+    cpu.sound.SW = values[0] & 0xFF
+    return values[0]
 
 
 def _vm(cpu, values) -> int:
@@ -2041,26 +2041,37 @@ def _vl(cpu, values) -> int:
 
 
 def _tt(cpu, values) -> int:
-    """TT: timer counter register."""
-    cpu.timer[0] = values[0] & 0xFFFF
+    """TT: timer counter register.
+
+    Routed through cpu.timer_device (the real backing store, also used by
+    the register-code path for ``MOV TT, ...``) rather than a ``cpu.timer``
+    list attribute, which was never defined on CPU and made this opcode
+    raise AttributeError unconditionally. Matches _register_externals'
+    no-op-when-unwired behavior when no timer peripheral is attached.
+    """
+    if cpu.timer_device is not None:
+        cpu.timer_device.set_register(0, values[0])
     return values[0]
 
 
 def _tm(cpu, values) -> int:
     """TM: timer match register."""
-    cpu.timer[1] = values[0] & 0xFFFF
+    if cpu.timer_device is not None:
+        cpu.timer_device.set_register(1, values[0])
     return values[0]
 
 
 def _tc(cpu, values) -> int:
     """TC: timer control register."""
-    cpu.timer[2] = values[0] & 0xFF
+    if cpu.timer_device is not None:
+        cpu.timer_device.set_register(2, values[0])
     return values[0]
 
 
 def _ts(cpu, values) -> int:
     """TS: timer speed register."""
-    cpu.timer[3] = values[0] & 0xFF
+    if cpu.timer_device is not None:
+        cpu.timer_device.set_register(3, values[0])
     return values[0]
 
 
@@ -2073,4 +2084,4 @@ def _vx(cpu, values) -> int:
 def _vy(cpu, values) -> int:
     """VY: video Y coordinate register."""
     cpu.gfx.Vregisters[1] = values[0] & 0xFF
-    return values[1]
+    return values[0]

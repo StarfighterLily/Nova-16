@@ -1129,16 +1129,14 @@ class CPU:
                     base_addr = self.Rregisters[idx]
                 else:
                     raise Exception(f"Invalid register type {typ} for indexed addressing")
-                if idx in [8, 9]:
-                    signed_offset = index if index < 128 else index - 256
-                    addr = (base_addr + signed_offset) & 0xFFFF
-                else:
-                    addr = (base_addr + index) & 0xFFFF
+                signed_offset = index if index < 128 else index - 256
+                addr = (base_addr + signed_offset) & 0xFFFF
                 return self.memory.read_word(addr)
             elif direct and indexed:
                 addr = self.fetch_word()
                 index = self.fetch_byte()
-                final_addr = (addr + index) & 0xFFFF
+                signed_offset = index if index < 128 else index - 256
+                final_addr = (addr + signed_offset) & 0xFFFF
                 return self.memory.read_word(final_addr)
         else:
             raise Exception(f"Invalid mode bits: {mode_bits}")
@@ -1193,7 +1191,8 @@ class CPU:
                 elif direct and indexed:
                     addr = self.fetch_word()
                     index = self.fetch_byte()
-                    operand['address'] = (addr + index) & 0xFFFF
+                    signed_offset = index if index < 128 else index - 256
+                    operand['address'] = (addr + signed_offset) & 0xFFFF
                     operand['index'] = index
             operands.append(operand)
         return operands
@@ -1212,7 +1211,9 @@ class CPU:
                 address = self.Pregisters[operand['reg_idx']] if operand['reg_type'] == 'P' else self.Rregisters[operand['reg_idx']]
             elif 'indexed' in operand:
                 base = self.Pregisters[operand['reg_idx']] if operand['reg_type'] == 'P' else self.Rregisters[operand['reg_idx']]
-                address = (base + operand['index']) & 0xFFFF
+                index = operand['index']
+                signed_offset = index if index < 128 else index - 256
+                address = (base + signed_offset) & 0xFFFF
             else:
                 raise Exception("Invalid memory operand")
             if dest_operand and dest_operand['type'] == 'register':
@@ -1235,7 +1236,9 @@ class CPU:
                 address = self.Pregisters[operand['reg_idx']] if operand['reg_type'] == 'P' else self.Rregisters[operand['reg_idx']]
             elif 'indexed' in operand:
                 base = self.Pregisters[operand['reg_idx']] if operand['reg_type'] == 'P' else self.Rregisters[operand['reg_idx']]
-                address = (base + operand['index']) & 0xFFFF
+                index = operand['index']
+                signed_offset = index if index < 128 else index - 256
+                address = (base + signed_offset) & 0xFFFF
             else:
                 raise Exception("Invalid memory operand")
             if source_operand and source_operand['type'] == 'immediate':
@@ -1312,15 +1315,13 @@ class CPU:
                     base_addr = self.Rregisters[idx]
                 else:
                     raise Exception(f"Invalid register type {typ} for indexed addressing")
-                if idx in [8, 9]:
-                    signed_offset = index if index < 128 else index - 256
-                    return (base_addr + signed_offset) & 0xFFFF
-                else:
-                    return (base_addr + index) & 0xFFFF
+                signed_offset = index if index < 128 else index - 256
+                return (base_addr + signed_offset) & 0xFFFF
             elif direct and indexed:
                 addr = self.fetch_word()
                 index = self.fetch_byte()
-                return (addr + index) & 0xFFFF
+                signed_offset = index if index < 128 else index - 256
+                return (addr + signed_offset) & 0xFFFF
         else:
             raise Exception(f"Invalid mode bits: {mode_bits}")
 

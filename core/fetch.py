@@ -334,8 +334,12 @@ def calculate_memory_address(operand: Operand, regfile) -> int:
             signed_offset = operand.index if operand.index < 128 else operand.index - 256
             return (base + signed_offset) & 0xFFFF
         else:
-            # Direct indexed [imm16 + offset]
-            return (operand.address + operand.index) & 0xFFFF
+            # Direct indexed [imm16 + offset]. nova_disassembler.py decodes
+            # this offset byte as a signed two's-complement displacement
+            # (same as the register-indexed case above), so the CPU must
+            # sign-extend it too or [addr-N] silently computes addr+(256-N).
+            signed_offset = operand.index if operand.index < 128 else operand.index - 256
+            return (operand.address + signed_offset) & 0xFFFF
 
     else:
         # Direct memory [imm16]
