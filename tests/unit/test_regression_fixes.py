@@ -323,6 +323,91 @@ class TestIndexedAddressingSignedOffset:
         assert cpu.Pregisters[1] == 0xFFFE
 
 
+class TestDirectIndexedZeroPageAddressing:
+    """Regression: core/fetch.py::calculate_memory_address distinguished a
+    direct-indexed operand ([addr16+offset]) from a register-indexed operand
+    ([reg+offset]) by checking ``if operand.address:`` -- truthiness, not
+    ``is not None``. Zero-page base addresses (e.g. ``[0x0000+4]``) are a
+    documented fast path (see docs/NOVA_PROFILER_README.md) and legitimately
+    leave ``operand.address == 0``, so the check misfired and fell into the
+    register-indexed branch instead.
+
+    Worse, ``core/fetch.py::_decode_memory_ref`` never cleared
+    ``reg_type``/``reg_idx`` on direct/direct-indexed operands, relying on a
+    stated invariant ("every decode branch sets them") that was false for
+    those two branches. Operand objects are pooled and reused
+    (``_acquire_operand``/``_release_operand``), so a direct-indexed operand
+    decoded right after a register-indexed one inherited that operand's
+    stale reg_type/reg_idx. Combined with the truthiness bug, a zero-page
+    direct-indexed reference silently computed its address from whatever
+    register a *prior, unrelated* instruction happened to index through,
+    instead of from the literal address in the instruction stream.
+
+    Fixed by keying the branch off ``operand.indirect``/``operand.indexed``/
+    ``operand.reg_type`` (never truthy-ambiguous) and by explicitly clearing
+    reg_type/reg_idx in the direct decode branches.
+    """
+
+    # Programs are loaded away from address 0x0000 so the zero-page trap/
+    # target bytes under test can't be clobbered by the program bytes
+    # themselves (the default load address is 0x0000).
+    LOAD_ADDR = 0x0200
+
+    def _load(self, cpu, memory, program):
+        memory.load_program(program, self.LOAD_ADDR)
+        cpu.pc = self.LOAD_ADDR
+
+    def test_zero_page_direct_indexed_ignores_stale_pooled_register(self, cpu, memory):
+        # Trap value at the address the bug would wrongly compute
+        # (P0=0x1234, so the old code would resolve [0x0000+4] as [P0+4] = 0x1238).
+        memory.write_byte(0x1238, 0xAA)
+        # Correct target: literal zero-page address 0x0000 + offset 4.
+        memory.write_byte(0x0004, 0x99)
+
+        program = enc('MOV', ('reg', 'P0'), ('imm16', 0x1234)) + \
+            enc('MOV', ('reg', 'R0'), ('mem_indexed', 'P0', 4)) + \
+            enc('MOV', ('reg', 'R1'), ('mem_direct_indexed', 0x0000, 4)) + \
+            enc('HLT')
+        self._load(cpu, memory, program)
+        run_cpu_cycles(cpu, 3)
+
+        assert cpu.Rregisters[1] == 0x99, (
+            "MOV R1, [0x0000+4] must read the literal zero-page address, "
+            "not a stale register-indexed address left in the operand pool"
+        )
+
+    def test_zero_page_direct_indexed_write_targets_literal_address(self, cpu, memory):
+        memory.write_byte(0x0000, 0)
+        program = enc('MOV', ('reg', 'P0'), ('imm16', 0x1234)) + \
+            enc('MOV', ('reg', 'R0'), ('mem_indexed', 'P0', 4)) + \
+            enc('MOV', ('reg', 'R1'), ('imm8', 0x55)) + \
+            enc('MOV', ('mem_direct_indexed', 0x0000, 0), ('reg', 'R1')) + \
+            enc('HLT')
+        self._load(cpu, memory, program)
+        run_cpu_cycles(cpu, 4)
+
+        assert memory.read_byte(0x0000) == 0x55
+        assert memory.read_byte(0x1234) == 0, "must not have written through the stale P0-based address"
+
+    def test_plain_direct_zero_page_still_correct(self, cpu, memory):
+        """Sanity check: [0x0000] with no offset must still resolve to address 0."""
+        memory.write_byte(0x0000, 0x77)
+        program = enc('MOV', ('reg', 'R0'), ('mem_direct', 0x0000)) + \
+            enc('HLT')
+        self._load(cpu, memory, program)
+        run_cpu_cycles(cpu, 1)
+        assert cpu.Rregisters[0] == 0x77
+
+    def test_direct_indexed_nonzero_base_unaffected(self, cpu, memory):
+        """Sanity check: non-zero-page direct-indexed addressing still works."""
+        memory.write_byte(0x2008, 0x42)
+        program = enc('MOV', ('reg', 'R0'), ('mem_direct_indexed', 0x2000, 8)) + \
+            enc('HLT')
+        self._load(cpu, memory, program)
+        run_cpu_cycles(cpu, 1)
+        assert cpu.Rregisters[0] == 0x42
+
+
 class TestStrextNeedleLongerThanMaxLen:
     """Regression: STREXT/STREXTI's inner matching loop was bounded by
     ``max_len`` and treated hitting that cap as a successful match, even

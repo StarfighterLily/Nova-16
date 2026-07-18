@@ -176,6 +176,7 @@ def enc(mnemonic, *specs):
         ('mem_direct', 0x2000)   - [0x2000]
         ('mem_indirect', 'P0')   - [P0]
         ('mem_indexed', 'P0', 4) - [P0+4]
+        ('mem_direct_indexed', 0x2000, 4) - [0x2000+4]
 
     Building programs through this helper (rather than hand-encoded hex
     bytes) keeps tests correct if opcode numbers or register codes ever
@@ -216,6 +217,14 @@ def enc(mnemonic, *specs):
             mode = 3
             indexed_bit = 1
             payload.append(opcode_value(spec[1]))
+            payload.append(spec[2] & 0xFF)
+        elif kind == 'mem_direct_indexed':
+            mode = 3
+            direct_bit = 1
+            indexed_bit = 1
+            val = spec[1] & 0xFFFF
+            payload.append((val >> 8) & 0xFF)
+            payload.append(val & 0xFF)
             payload.append(spec[2] & 0xFF)
         else:
             raise ValueError(f"Unknown operand kind: {kind}")

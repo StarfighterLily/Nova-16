@@ -23,7 +23,7 @@ from collections import defaultdict
 
 REGISTER_NAMES = {
     'R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9',
-    'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'SP', 'FP',
+    'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'SP', 'FP',
     'VX', 'VY', 'VM', 'VL', 'VC', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS', 'C0', 'C1'
 }
 
@@ -217,8 +217,8 @@ class LiveRangeScheduler:
             # Determine what variables are defined and used
             defines, uses = self._analyze_operands(opcode, operands)
             
-            is_jump = opcode in ['JMP', 'JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO', 'JLT', 'JLE', 'JGT', 'JGE', 'LOOPZ']
-            is_call = opcode in ['CALL', 'CALLZ', 'CALLNZ', 'RET', 'RETN', 'HLT']
+            is_jump = opcode in ['JMP', 'JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO', 'JLT', 'JLE', 'JGT', 'JGE', 'LOOPZ', 'BR', 'BRZ', 'BRNZ']
+            is_call = opcode in ['CALL', 'CALLZ', 'CALLNZ', 'RET', 'RETN', 'HLT', 'INT', 'IRET']
             has_side_effect = opcode in SIDE_EFFECT_OPCODES or any('[' in op or ']' in op for op in operands)
             
             instr = IRInstruction(
@@ -251,7 +251,8 @@ class LiveRangeScheduler:
                  'INC', 'DEC', 'CMP', 'TEST', 'NOT', 'NEG', 'WHILE', 'RETN',
                  'MEMTEST', 'MEMCMP']
         flag_reading = ['JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO',
-                   'JLT', 'JLE', 'JGT', 'JGE', 'CALLZ', 'CALLNZ', 'LOOPZ']
+                   'JLT', 'JLE', 'JGT', 'JGE', 'CALLZ', 'CALLNZ', 'LOOPZ',
+                   'BRZ', 'BRNZ']
         
         if opcode in flag_modifying:
             defines.add('FLAGS')  # Virtual register for flags

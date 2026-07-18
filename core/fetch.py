@@ -232,6 +232,11 @@ def _decode_memory_ref(memory, addr: int, direct: int, indexed: int,
         op.address = (high << 8) | low
         op.indirect = False
         op.indexed = False
+        # Pooled operands may carry a stale reg_type/reg_idx from a prior
+        # register-indexed decode; clear it so calculate_memory_address()
+        # can't mistake this for a register-based operand.
+        op.reg_type = ''
+        op.reg_idx = 0
 
     elif not direct and not indexed:
         # Register indirect [reg]
@@ -269,6 +274,9 @@ def _decode_memory_ref(memory, addr: int, direct: int, indexed: int,
         op.indirect = False
         op.indexed = True
         op.index = offset
+        # See note above: clear any stale reg_type/reg_idx from pool reuse.
+        op.reg_type = ''
+        op.reg_idx = 0
 
     return op
 
@@ -301,20 +309,20 @@ def calculate_memory_address(operand: Operand, regfile) -> int:
     if operand.type != 'memory':
         raise ValueError(f"Cannot calculate address for operand type '{operand.type}'")
 
-    if operand.address and not operand.indexed:
-        # Direct memory [imm16]
-        return operand.address & 0xFFFF
-
-    elif operand.indirect:
+    if operand.indirect:
         # Register indirect [reg]
         base = regfile.get(operand.reg_type, operand.reg_idx)
         return base & 0xFFFF
 
     elif operand.indexed:
-        if operand.address:
-            # Direct indexed [imm16 + offset]
-            return (operand.address + operand.index) & 0xFFFF
-        else:
+        # Distinguish register-indexed [reg+offset] from direct-indexed
+        # [addr16+offset] via reg_type (only ever set on register-based
+        # operands -- see _decode_memory_ref), NOT via `operand.address`
+        # truthiness. Zero-page base addresses (e.g. [0x0000+4]) are valid
+        # and legitimately leave operand.address == 0, so a truthy check
+        # previously misclassified them as register-indexed and read a
+        # stale/pooled reg_type -- silently computing the wrong address.
+        if operand.reg_type:
             # Register indexed [reg + offset]. Both assemblers
             # (nova_assembler.py, nova/assembler/codegen.py) encode this
             # offset byte as a signed two's-complement displacement for
@@ -325,8 +333,13 @@ def calculate_memory_address(operand: Operand, regfile) -> int:
             base = regfile.get(operand.reg_type, operand.reg_idx)
             signed_offset = operand.index if operand.index < 128 else operand.index - 256
             return (base + signed_offset) & 0xFFFF
+        else:
+            # Direct indexed [imm16 + offset]
+            return (operand.address + operand.index) & 0xFFFF
 
-    return 0
+    else:
+        # Direct memory [imm16]
+        return operand.address & 0xFFFF
 
 
 def release_operands(operands: List[Operand]):

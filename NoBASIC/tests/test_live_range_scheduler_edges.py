@@ -163,6 +163,85 @@ class TestLiveRangeSchedulerEdges:
         assert self.scheduler._move_reduces_pressure(0, 1) is False
 
 
+class TestRelativeBranchSchedulingRegression:
+    """Regression: BR/BRZ/BRNZ (relative branches, reachable from NoBASIC
+    inline ``asm`` blocks -- see generator.py::generate_asm_block, which
+    splices raw assembly text straight into the instruction stream the
+    scheduler reorders) were absent from both ``is_jump`` and
+    ``flag_reading`` in ``_parse_ir``/``_analyze_operands``. The scheduler
+    therefore treated them as ordinary, freely-movable instructions: they
+    could be hoisted ahead of the flag-setting instruction they depend on,
+    or ordinary instructions could be hoisted past them -- silently
+    rewriting control flow. Confirmed by scheduling a CMP/MOV/BRZ/MOV/label
+    sequence with liveness data attached (mirroring what generator.py
+    actually passes); pre-fix, BRZ was hoisted to the very first line.
+    """
+
+    def setup_method(self):
+        self.scheduler = LiveRangeScheduler(debug=False)
+
+    def test_brz_is_not_hoisted_ahead_of_the_flags_it_reads(self):
+        code = [
+            "CMP R0, R1",
+            "MOV R2, 5",
+            "BRZ target",
+            "MOV R3, 1",
+            "target:",
+        ]
+        result = self.scheduler.schedule(code, variable_lifetimes={"R2": (0, 4)})
+
+        brz_idx = next(i for i, l in enumerate(result) if l.startswith("BRZ"))
+        cmp_idx = next(i for i, l in enumerate(result) if l.startswith("CMP"))
+        mov_r3_idx = next(i for i, l in enumerate(result) if "MOV R3" in l)
+
+        # BRZ must still read the flags CMP set, and the fall-through
+        # instruction (MOV R3, 1) must still only run when BRZ doesn't branch.
+        assert cmp_idx < brz_idx, "BRZ must not be hoisted ahead of the CMP that sets its flags"
+        assert brz_idx < mov_r3_idx, "MOV R3 must not be hoisted ahead of the branch that guards it"
+
+    def test_brnz_blocks_reordering_like_a_conditional_jump(self):
+        instr = IRInstruction(index=0, opcode="MOV", operands=["R0", "1"], defines={"R0"})
+        brnz = IRInstruction(index=1, opcode="BRNZ", operands=["L0"], is_jump=True)
+        assert instr.can_move_after(brnz) is False
+
+    def test_br_is_classified_as_jump_and_reads_no_flags(self):
+        parsed = LiveRangeScheduler()._parse_ir(["BR target", "target:"])
+        br_instr = parsed[0]
+        assert br_instr.is_jump is True
+        # Unconditional branch: doesn't read FLAGS (unlike BRZ/BRNZ).
+        assert "FLAGS" not in br_instr.uses
+
+    def test_brz_brnz_are_flagged_as_flag_readers(self):
+        parsed = LiveRangeScheduler()._parse_ir(["BRZ target", "BRNZ target", "target:"])
+        assert "FLAGS" in parsed[0].uses
+        assert "FLAGS" in parsed[1].uses
+
+    def test_int_is_treated_as_a_call_boundary(self):
+        parsed = LiveRangeScheduler()._parse_ir(["INT 5"])
+        assert parsed[0].is_call is True
+
+
+class TestP8P9RegisterNameRecognition:
+    """Regression: REGISTER_NAMES only listed 'SP'/'FP', not the equivalent
+    raw 'P8'/'P9' mnemonics that core/regfile.py maps to the same physical
+    registers and that nova_assembler.py accepts as valid operand text.
+    Code using 'P8'/'P9' directly (e.g. inline asm) was invisible to
+    dependency tracking -- both as a define and a use.
+    """
+
+    def test_p8_p9_recognized_as_registers(self):
+        scheduler = LiveRangeScheduler()
+        assert scheduler._extract_register("P8") == "P8"
+        assert scheduler._extract_register("P9") == "P9"
+
+    def test_p8_dependency_tracked_like_sp(self):
+        scheduler = LiveRangeScheduler()
+        parsed = scheduler._parse_ir(["MOV P8, 100", "MOV R0, P8"])
+        defines, uses = parsed[0].defines, parsed[1].uses
+        assert "P8" in defines
+        assert "P8" in uses
+
+
 class TestSpillMinimizerEdges:
     def test_suggest_optimizations_threshold_buckets(self):
         minimizer = SpillMinimizer(debug=False)
