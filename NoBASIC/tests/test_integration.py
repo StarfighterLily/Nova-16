@@ -174,9 +174,9 @@ class TestIntegration:
             compile_nobasic(str(source_file))
             bin_file = source_file.with_suffix('.bin')
             
-            # Try to run with nova.py headless
+            # Try to run with nova_main.py headless (renamed from nova.py in f580318)
             result = subprocess.run(
-                ['python', 'nova.py', '--headless', str(bin_file), '--cycles', '1000'],
+                ['python', 'nova_main.py', '--headless', str(bin_file), '--cycles', '1000'],
                 cwd=Path(__file__).parent.parent.parent,  # Root Nova directory
                 capture_output=True,
                 text=True
@@ -222,12 +222,18 @@ class TestIntegration:
         y = sqrt(16) * abs(-3)
         z = int(3.14) + round(2.7)
         """
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             source_file = Path(tmpdir) / "math.nobasic"
             source_file.write_text(source)
-            
-            compile_nobasic(str(source_file))
+
+            # Optimizations disabled: all arguments here are literals, so the
+            # default optimizer's constant folder (see
+            # optimizations.py::_fold_builtin_call) would fold these calls
+            # away entirely before they ever become SIN/COS opcodes -- this
+            # test wants to see the opcodes codegen emits, not the optimizer's
+            # output.
+            compile_nobasic(str(source_file), enable_optimizations=False)
             
             asm_file = source_file.with_suffix('.asm')
             assert asm_file.exists()
@@ -465,7 +471,10 @@ class TestIntegration:
             source_file = Path(tmpdir) / "math_comprehensive.nobasic"
             source_file.write_text(source)
 
-            compile_nobasic(str(source_file))
+            # Optimizations disabled: constant folding would fold most of
+            # these literal-argument calls away before they become opcodes
+            # (see test_math_library_integration above for details).
+            compile_nobasic(str(source_file), enable_optimizations=False)
 
             asm_file = source_file.with_suffix('.asm')
             assert asm_file.exists()

@@ -42,6 +42,23 @@ class CodeGenerator:
     LIVE_RANGE_SCHEDULER_MAX_LINES = 384
     LIVE_RANGE_SCHEDULER_MAX_WORK = 24576
 
+    # Builtins whose CPU opcode (core/exec_handlers.py) operates on
+    # fixed-point (x256) or otherwise routinely-wide values -- their result
+    # (and, for the in-place unary ones, their argument) can exceed 255 in
+    # ordinary use (e.g. DEG(90), or any SIN/COS/TAN output up to +-256).
+    # Must be kept in sync with the `unary_math_ops` dict in
+    # generate_function_call(). Used to force the working register to a
+    # 16-bit P register instead of the default 8-bit R register the generic
+    # allocator would otherwise hand out for a non-string expression --
+    # without this, `x = intgr(a)` for a in e.g. [256, 65535] silently
+    # truncates `a` to its low byte via `MOV R#, <P-register>` before the
+    # opcode ever runs.
+    WIDE_RESULT_MATH_BUILTINS = frozenset({
+        "SIN", "COS", "TAN", "SQRT", "ABS", "ATAN", "ASIN", "ACOS",
+        "DEG", "RAD", "FLOOR", "CEIL", "ROUND", "TRUNC", "FRAC",
+        "INTGR", "INT", "LOG", "EXP",
+    })
+
     def __init__(self, debug_allocation: bool = False, enable_optimizations: bool = True,
                  enable_peephole: bool = True, enable_live_range_scheduling: bool = True):
         self.output: List[str] = []
@@ -3035,6 +3052,26 @@ class CodeGenerator:
                 self.current_output.append(f"MOV {target_reg}, {temp_reg}")
             self.deallocate_register(temp_reg)
 
+    def _widen_to_p_register_if_needed(self, target_reg: str, value: int) -> str:
+        """If `value` doesn't fit in an 8-bit R register (>255 or negative)
+        but `target_reg` is one, swap to a free P register and return it.
+
+        R registers are treated as unsigned 8-bit throughout codegen;
+        widening an R-register-held negative/large value into a P register
+        later (e.g. `MOV P2, R1`) zero-extends rather than sign-extends, so
+        values that don't fit must be placed directly into a P register
+        from the start. Returns `target_reg` unchanged when no widening is
+        needed.
+        """
+        if not (value > 255 or value < 0) or not target_reg.startswith('R'):
+            return target_reg
+
+        self.deallocate_register(target_reg)
+        for reg in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']:
+            if not self.register_usage.get(reg, False):
+                return self.allocate_register(reg)
+        raise RuntimeError(f"No available P registers for 16-bit value {value}")
+
     def generate_expression(self, expr: Expression, preferred_reg: str = None) -> str:
         """Generate code for an expression and return the register containing the result."""
         if self.expr_simplifier is not None:
@@ -3045,7 +3082,17 @@ class CodeGenerator:
 
         # Check if this expression will produce a string address (needs P register)
         needs_p_register = self.is_string_expression(expr)
-        
+
+        # Fixed-point math builtins (SIN, INTGR, DEG, ...) need a 16-bit
+        # working register: their argument/result routinely exceeds 255,
+        # and the generic allocator below would otherwise happily hand out
+        # an 8-bit R register, silently truncating the value on the
+        # `MOV R#, <arg>` that precedes the opcode. See
+        # WIDE_RESULT_MATH_BUILTINS for details.
+        if (isinstance(expr, FunctionCallExpr)
+                and expr.name.upper() in self.WIDE_RESULT_MATH_BUILTINS):
+            needs_p_register = True
+
         # If we need a P register but preferred_reg is an R register, ignore the preference
         if needs_p_register and preferred_reg and preferred_reg.startswith('R'):
             preferred_reg = None
@@ -3080,21 +3127,8 @@ class CodeGenerator:
             if isinstance(expr, LiteralExpr):
                 if expr.data_type.name == "NUMBER":  # Use .name to get enum name
                     literal_value = self._normalize_numeric_literal(expr.value)
-                    # Check if we need a P register for this value (> 255 or negative)
-                    if (literal_value > 255 or literal_value < 0) and target_reg.startswith('R'):
-                        # Value doesn't fit in 8 bits, need a P register
-                        self.deallocate_register(target_reg)
-                        # Find any available P register
-                        p_reg = None
-                        for reg in ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']:
-                            if not self.register_usage.get(reg, False):
-                                p_reg = reg
-                                break
-                        if p_reg:
-                            target_reg = self.allocate_register(p_reg)
-                        else:
-                            raise RuntimeError(f"No available P registers for 16-bit literal {literal_value}")
-                    
+                    target_reg = self._widen_to_p_register_if_needed(target_reg, literal_value)
+
                     # Optimize for common values
                     if literal_value == 0:
                         self.current_output.append(f"XOR {target_reg}, {target_reg}")  # Zero register
@@ -3482,6 +3516,7 @@ class CodeGenerator:
             folded_value = self.fold_unary_constant(expr.operator, expr.expression.value)
             if folded_value is not None:
                 folded_emit_value = self._normalize_numeric_literal(folded_value)
+                target_reg = self._widen_to_p_register_if_needed(target_reg, folded_emit_value)
                 self.current_output.append(f"; Constant folded: {expr.operator}({expr.expression.value}) = {folded_value}")
                 self.current_output.append(f"MOV {target_reg}, {folded_emit_value}")
                 return target_reg

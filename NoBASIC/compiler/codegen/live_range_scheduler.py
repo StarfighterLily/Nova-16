@@ -246,10 +246,30 @@ class LiveRangeScheduler:
         defines = set()
         uses = set()
         
-        # Track flag register dependencies
-        flag_modifying = ['ADD', 'SUB', 'AND', 'OR', 'XOR', 'SHL', 'SHR',
-                 'INC', 'DEC', 'CMP', 'TEST', 'NOT', 'NEG', 'WHILE', 'RETN',
-                 'MEMTEST', 'MEMCMP']
+        # Track flag register dependencies.
+        # This list must mirror every opcode whose handler in
+        # core/exec_handlers.py calls _set_arith_flags/_set_logic_flags or
+        # writes cpu.flags_obj directly (verified against core/exec.py's
+        # opcode->handler table). An opcode missing here is invisible to the
+        # scheduler's dependency graph -- it will happily reorder a
+        # flag-setting instruction away from the JZ/JS/etc. that reads its
+        # result, silently corrupting conditional logic. See
+        # feedback_nova_flag_scheduler memory for the MEMTEST/MEMCPY family
+        # bug that originally motivated this check; STRCMP and the
+        # transcendental/rotate/bit-test opcodes below had the same gap.
+        flag_modifying = ['ADD', 'SUB', 'MUL', 'DIV', 'MOD', 'ADC', 'SBC',
+                 'MULH', 'DIVH', 'MIN', 'MAX', 'AND', 'OR', 'XOR', 'NOT',
+                 'SHL', 'SHR', 'SAR', 'ROL', 'ROR', 'RCL', 'RCR', 'BSET', 'BCLR', 'BFLIP',
+                 'BTST', 'INC', 'DEC', 'NEG', 'ABS', 'CMP', 'TEST', 'WHILE',
+                 'RETN', 'MEMTEST', 'MEMCMP', 'MOVZ', 'MOVNZ', 'XCHNG',
+                 'SWAP', 'LEA', 'FMUL', 'FDIV', 'STRCMP', 'STRFIND',
+                 'STRFINDI', 'STRLEN', 'BTOI', 'ITOS', 'STOI', 'RND', 'RNDR',
+                 'CLZ', 'CTZ', 'POPCNT', 'SQRT', 'POWR', 'LOG', 'EXP', 'SIN',
+                 'COS', 'TAN', 'ATAN', 'ASIN', 'ACOS', 'DEG', 'RAD', 'FLOOR',
+                 'CEIL', 'ROUND', 'TRUNC', 'FRAC', 'INTGR', 'ITOF', 'FTOI',
+                 'CLA', 'CLD', 'SED', 'INT', 'DISATRAP', 'ENATRAP',
+                 'BCDA', 'BCDS', 'BCDADD', 'BCDSUB', 'BCDCMP', 'BCD2BIN',
+                 'BIN2BCD']
         flag_reading = ['JZ', 'JNZ', 'JC', 'JNC', 'JS', 'JNS', 'JO', 'JNO',
                    'JLT', 'JLE', 'JGT', 'JGE', 'CALLZ', 'CALLNZ', 'LOOPZ',
                    'BRZ', 'BRNZ']
@@ -342,6 +362,32 @@ class LiveRangeScheduler:
             add_use(operands[1])
             add_use(operands[2])
             add_use(operands[3])
+
+        # XCHNG a, b: both operands are swapped in place, so both are
+        # simultaneously read and written (unlike the generic dest,src
+        # fallback below, where only the first operand is written).
+        elif opcode == 'XCHNG' and len(operands) >= 2:
+            add_define(operands[0])
+            add_use(operands[0])
+            add_define(operands[1])
+            add_use(operands[1])
+
+        # Fallback for every opcode not given bespoke handling above
+        # (transcendental/rotate/bit-test/BCD/conversion ops, etc: see the
+        # flag_modifying comment for the class of bug this closes). Treat
+        # the first operand as both read and written -- correct for the
+        # dominant "dest, src" and unary in-place shapes used by this ISA,
+        # and merely conservative (extra dependency edges, never fewer)
+        # where an opcode is actually write-only in its first operand.
+        # Remaining operands are treated as reads. An unhandled opcode
+        # previously got NO dependency tracking at all, letting the
+        # scheduler freely reorder it away from instructions that touch its
+        # operands or the flags it sets.
+        elif operands:
+            add_define(operands[0])
+            add_use(operands[0])
+            for op in operands[1:]:
+                add_use(op)
 
         return defines, uses
     

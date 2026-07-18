@@ -31,6 +31,20 @@ class TestCodeGenerator:
         self.analyzer.analyze(program)
         return self.generator.generate(program)
 
+    def generate_code_unoptimized(self, source: str) -> str:
+        """Helper for codegen-shape tests: uses a fresh CodeGenerator with
+        optimizations disabled so constant folding can't fold away the
+        builtin call being tested (e.g. `a = 45: x = SIN(a)` would otherwise
+        get folded to a plain MOV, since `a` is a compile-time constant --
+        see optimizations.py::_fold_builtin_call). These tests care about
+        which opcode a builtin lowers to, not about the optimizer's output.
+        """
+        tokens = self.lexer.tokenize(source)
+        program = self.parser.parse(tokens)
+        self.analyzer.analyze(program)
+        generator = CodeGenerator(enable_optimizations=False)
+        return generator.generate(program)
+
     def has_boolean_materialization_pattern(self, code: str) -> bool:
         """Detect comparison-to-boolean materialization blocks used by older lowering."""
         return bool(
@@ -292,7 +306,7 @@ class TestCodeGenerator:
 
     def test_function_call(self):
         """Test function call code generation."""
-        code = self.generate_code("a = 30\nx = sin(a)")
+        code = self.generate_code_unoptimized("a = 30\nx = sin(a)")
         lines = code.strip().split("\n")
         # Should generate SIN instruction
         assert any("SIN" in line for line in lines)
@@ -317,11 +331,11 @@ class TestCodeGenerator:
     def test_function_call_codegen(self):
         """Test code generation for various function calls."""
         # Test math functions that have hardware support
-        code = self.generate_code("a = 30\nx = sin(a)")
+        code = self.generate_code_unoptimized("a = 30\nx = sin(a)")
         lines = code.strip().split("\n")
         assert any("SIN" in line for line in lines)
 
-        code = self.generate_code("a = 45\nx = cos(a)")
+        code = self.generate_code_unoptimized("a = 45\nx = cos(a)")
         lines = code.strip().split("\n")
         assert any("COS" in line for line in lines)
 
@@ -783,7 +797,7 @@ class TestCodeGenerator:
 
     def test_advanced_math_codegen(self):
         """Test code generation for advanced math functions."""
-        code = self.generate_code("a = 2\nb = 3\nx = powr(a, b)\nc = 16\ny = sqrt(c)\nd = 100\nz = log(d)")
+        code = self.generate_code_unoptimized("a = 2\nb = 3\nx = powr(a, b)\nc = 16\ny = sqrt(c)\nd = 100\nz = log(d)")
         lines = code.strip().split("\n")
         assert "POWR" in "".join(lines)
         assert "SQRT" in "".join(lines)
@@ -1057,7 +1071,7 @@ class TestCodeGenerator:
 
     def test_function_call_optimization(self):
         """Test function call optimization."""
-        code = self.generate_code("a = 0\nx = sin(a)")
+        code = self.generate_code_unoptimized("a = 0\nx = sin(a)")
         lines = code.strip().split("\n")
         # sin(0) could potentially be optimized to 0
         assert any("SIN" in line for line in lines)
@@ -1130,20 +1144,20 @@ class TestCodeGenerator:
         """Test trigonometric function code generation."""
         functions = ["sin", "cos", "tan"]
         for func in functions:
-            code = self.generate_code(f"a = 45\nx = {func}(a)")
+            code = self.generate_code_unoptimized(f"a = 45\nx = {func}(a)")
             lines = code.strip().split("\n")
             assert any(func.upper() in line for line in lines)
 
     def test_math_functions_sqrt_abs(self):
         """Test sqrt and abs function code generation."""
-        code = self.generate_code("a = 16\nb = -5\nx = sqrt(a)\ny = abs(b)")
+        code = self.generate_code_unoptimized("a = 16\nb = -5\nx = sqrt(a)\ny = abs(b)")
         lines = code.strip().split("\n")
         assert any("SQRT" in line for line in lines)
         assert any("ABS" in line for line in lines)
 
     def test_math_functions_min_max(self):
         """Test min and max function code generation."""
-        code = self.generate_code("a = 10\nb = 20\nc = 5\nd = 15\nx = min(a, b)\ny = max(c, d)")
+        code = self.generate_code_unoptimized("a = 10\nb = 20\nc = 5\nd = 15\nx = min(a, b)\ny = max(c, d)")
         lines = code.strip().split("\n")
         assert any("MIN" in line for line in lines)
         assert any("MAX" in line for line in lines)
@@ -1158,13 +1172,13 @@ class TestCodeGenerator:
         """Test inverse trigonometric functions."""
         functions = ["atan", "asin", "acos"]
         for func in functions:
-            code = self.generate_code(f"a = 128\nx = {func}(a)")
+            code = self.generate_code_unoptimized(f"a = 128\nx = {func}(a)")
             lines = code.strip().split("\n")
             assert any(func.upper() in line for line in lines)
 
     def test_math_functions_deg_rad(self):
         """Test degree/radian conversion functions."""
-        code = self.generate_code("a = 90\nb = 180\nx = deg(b)\ny = rad(a)")
+        code = self.generate_code_unoptimized("a = 90\nb = 180\nx = deg(b)\ny = rad(a)")
         lines = code.strip().split("\n")
         assert any("DEG" in line for line in lines)
         assert any("RAD" in line for line in lines)
@@ -1173,20 +1187,20 @@ class TestCodeGenerator:
         """Test rounding functions."""
         functions = ["floor", "ceil", "round", "trunc"]
         for func in functions:
-            code = self.generate_code(f"a = 314\ny = {func}(a)")
+            code = self.generate_code_unoptimized(f"a = 314\ny = {func}(a)")
             lines = code.strip().split("\n")
             assert any(func.upper() in line for line in lines)
 
     def test_math_functions_frac_intgr(self):
         """Test fractional and integer part functions."""
-        code = self.generate_code("a = 314\nx = frac(a)\ny = intgr(a)")
+        code = self.generate_code_unoptimized("a = 314\nx = frac(a)\ny = intgr(a)")
         lines = code.strip().split("\n")
         assert any("FRAC" in line for line in lines)
         assert any("INTGR" in line for line in lines)
 
     def test_math_functions_power_log_exp(self):
         """Test power, logarithm, and exponential functions."""
-        code = self.generate_code("a = 2\nb = 3\nc = 10\nd = 256\nx = powr(a, b)\ny = log(c)\nz = exp(d)")
+        code = self.generate_code_unoptimized("a = 2\nb = 3\nc = 10\nd = 256\nx = powr(a, b)\ny = log(c)\nz = exp(d)")
         lines = code.strip().split("\n")
         assert any("POWR" in line for line in lines)
         assert any("LOG" in line for line in lines)

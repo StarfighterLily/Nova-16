@@ -445,7 +445,7 @@ def _prepare_output_file_path(output_file: Optional[str], resolved_source_file: 
 
     if output_path.suffix.lower() != expected_suffix:
         raise CompilerError(
-            f"Output file must have {expected_suffix} extension: {output_path}",
+            f"Output file must have {expected_suffix} extension for target 'nova': {output_path}",
             str(output_path),
             1,
             1,
@@ -634,7 +634,6 @@ def main():
             enable_live_range_scheduling = False
         elif arg == "--debug-optimizations":
             debug_optimizations = True
-            enable_optimizations = True  # Debug implies optimizations enabled
         elif arg == "--output":
             if i + 1 < len(sys.argv):
                 output_file = sys.argv[i + 1]
@@ -650,6 +649,12 @@ def main():
             sys.exit(1)
         
         i += 1
+
+    # Debug-optimizations implies optimizations enabled, regardless of
+    # whether --disable-optimizations appeared before or after it on the
+    # command line: debug output only makes sense when optimizations run.
+    if debug_optimizations:
+        enable_optimizations = True
 
     compile_nobasic(source_file, output_file, verbose, enable_optimizations, debug_optimizations,
                     enable_peephole, enable_live_range_scheduling)

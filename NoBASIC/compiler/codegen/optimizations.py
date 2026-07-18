@@ -692,56 +692,79 @@ class ExpressionSimplifier:
         try:
             values = [a.value for a in args]
 
-            # Unary math functions
+            # Unary math functions.
+            #
+            # These formulas must match core/exec_handlers.py's runtime
+            # opcode handlers (_sin, _cos, _tan, etc) EXACTLY. This fold is
+            # purely an optimization: NoBASIC source that happens to have a
+            # constant-foldable argument must produce the identical result
+            # to the same source with a non-foldable argument, which falls
+            # through to the real SIN/COS/.../opcode at runtime. Previously
+            # several of these (SIN/COS/TAN/ATAN/ASIN/ACOS/DEG/RAD/FLOOR/
+            # CEIL/ROUND/TRUNC/FRAC/INTGR/LOG) used different unit
+            # conventions or fixed-point scaling than the runtime opcodes --
+            # e.g. `x = 45: y = SIN(x)` (not foldable) and `y = SIN(45)`
+            # (foldable) silently produced different values for the same
+            # input. Confirmed against exec_handlers.py's ground truth.
             if name in ("SIN", "COS", "TAN", "SQRT", "ABS", "ATAN", "ASIN", "ACOS",
                         "DEG", "RAD", "FLOOR", "CEIL", "ROUND", "TRUNC", "FRAC",
                         "INTGR", "INT", "LOG", "EXP"):
+                import math
                 v = values[0]
                 if name == "SIN":
-                    import math; return LiteralExpr(int(math.sin(math.radians(v)) * 256), DataType.NUMBER)
+                    return LiteralExpr(int(math.sin(v / 256.0) * 256), DataType.NUMBER)
                 if name == "COS":
-                    import math; return LiteralExpr(int(math.cos(math.radians(v)) * 256), DataType.NUMBER)
+                    return LiteralExpr(int(math.cos(v / 256.0) * 256), DataType.NUMBER)
                 if name == "TAN":
-                    import math
-                    rad = math.radians(v)
-                    cos_v = math.cos(rad)
-                    if abs(cos_v) < 1e-10:
-                        return None  # division by zero, can't fold
-                    return LiteralExpr(int(math.tan(rad) * 256), DataType.NUMBER)
+                    # _tan takes its operand as raw radians (no /256 scaling)
+                    # and scales the result by 1000, not 256.
+                    try:
+                        return LiteralExpr(int(math.tan(v) * 1000), DataType.NUMBER)
+                    except (ValueError, OverflowError):
+                        return None  # can't fold; runtime handler falls back to 0
                 if name == "SQRT":
                     if v < 0: return None
                     return LiteralExpr(int(v ** 0.5), DataType.NUMBER)
                 if name == "ABS":
                     return LiteralExpr(abs(v), DataType.NUMBER)
                 if name == "ATAN":
-                    import math; return LiteralExpr(int(math.degrees(math.atan(v / 256.0)) * 256), DataType.NUMBER)
+                    return LiteralExpr(int(math.atan(v / 256.0) * 256), DataType.NUMBER)
                 if name == "ASIN":
-                    import math
-                    ratio = max(-1.0, min(1.0, v / 256.0))
-                    return LiteralExpr(int(math.degrees(math.asin(ratio)) * 256), DataType.NUMBER)
+                    try:
+                        return LiteralExpr(int(math.asin(v / 256.0) * 256), DataType.NUMBER)
+                    except ValueError:
+                        return None  # out of [-1, 1] domain; runtime handler falls back to 0
                 if name == "ACOS":
-                    import math
-                    ratio = max(-1.0, min(1.0, v / 256.0))
-                    return LiteralExpr(int(math.degrees(math.acos(ratio)) * 256), DataType.NUMBER)
+                    try:
+                        return LiteralExpr(int(math.acos(v / 256.0) * 256), DataType.NUMBER)
+                    except ValueError:
+                        return None  # out of [-1, 1] domain; runtime handler falls back to 0
                 if name == "DEG":
-                    return LiteralExpr(int(v * 180 / 3.14159265), DataType.NUMBER)
+                    # _deg converts plain degrees -> fixed-point (x256) radians.
+                    return LiteralExpr(int((v * math.pi / 180.0) * 256), DataType.NUMBER)
                 if name == "RAD":
-                    return LiteralExpr(int(v * 3.14159265 / 180), DataType.NUMBER)
-                if name in ("FLOOR", "INTGR", "INT"):
-                    return LiteralExpr(int(v), DataType.NUMBER)
+                    # _rad converts fixed-point (x256) radians -> plain degrees.
+                    return LiteralExpr(int((v / 256.0) * 180.0 / math.pi), DataType.NUMBER)
+                if name == "FLOOR":
+                    return LiteralExpr(int(math.floor(v / 256.0)), DataType.NUMBER)
                 if name == "CEIL":
-                    return LiteralExpr(v, DataType.NUMBER)  # integer input → no-op
+                    return LiteralExpr(int(math.ceil(v / 256.0)), DataType.NUMBER)
                 if name == "ROUND":
-                    return LiteralExpr(v, DataType.NUMBER)
+                    return LiteralExpr(int(round(v / 256.0)), DataType.NUMBER)
                 if name == "TRUNC":
-                    return LiteralExpr(v, DataType.NUMBER)
+                    # Truncate toward zero (matches _trunc: int(v / 256.0),
+                    # not v // 256 which floors toward -infinity).
+                    return LiteralExpr(int(v / 256.0), DataType.NUMBER)
                 if name == "FRAC":
-                    return LiteralExpr(0, DataType.NUMBER)  # integer → fractional part is 0
+                    # Same sign as v, consistent with TRUNC (matches _frac's
+                    # math.fmod, not v % 256 which floors).
+                    return LiteralExpr(int(math.fmod(v, 256)), DataType.NUMBER)
+                if name in ("INTGR", "INT"):
+                    return LiteralExpr(int(v / 256.0), DataType.NUMBER)
                 if name == "LOG":
                     if v <= 0: return None
-                    import math; return LiteralExpr(int(math.log(v) * 256), DataType.NUMBER)
+                    return LiteralExpr(int(math.log(v / 256.0) * 256), DataType.NUMBER)
                 if name == "EXP":
-                    import math
                     result = int(math.exp(v / 256.0) * 256)
                     return LiteralExpr(max(0, min(65535, result)), DataType.NUMBER)
 

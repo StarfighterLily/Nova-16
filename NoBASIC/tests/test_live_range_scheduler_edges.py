@@ -242,6 +242,102 @@ class TestP8P9RegisterNameRecognition:
         assert "P8" in uses
 
 
+class TestFlagAndRegisterTrackingCoverage:
+    """Regression: `flag_modifying` and the operand dest/src elif chain only
+    covered a small hand-picked subset of opcodes that actually set CPU
+    flags or write/read registers (verified against core/exec_handlers.py,
+    which is ground truth -- see feedback_nova_flag_scheduler memory for the
+    original MEMTEST/MEMCPY-family instance of this bug class). Opcodes
+    missing from both lists got *zero* dependency tracking: the scheduler
+    was free to reorder them arbitrarily relative to the flags they set or
+    the registers they read/write. STRCMP, NEG/ABS/MUL/DIV/etc, and XCHNG
+    are representative examples of opcodes that were completely invisible
+    pre-fix.
+    """
+
+    def setup_method(self):
+        self.scheduler = LiveRangeScheduler(debug=False)
+
+    def test_strcmp_defines_flags_and_uses_all_three_operands(self):
+        defines, uses = self.scheduler._analyze_operands("STRCMP", ["R1", "R2", "R3"])
+        assert "FLAGS" in defines
+        assert uses == {"R1", "R2", "R3"}
+
+    def test_unary_arithmetic_opcodes_define_and_use_their_operand(self):
+        for opcode in ("NEG", "ABS", "SQRT", "SIN", "CLZ", "CTZ", "POPCNT", "STRLEN"):
+            defines, uses = self.scheduler._analyze_operands(opcode, ["R0"])
+            assert "FLAGS" in defines, f"{opcode} should define FLAGS"
+            assert "R0" in defines, f"{opcode} should define its operand register"
+            assert "R0" in uses, f"{opcode} should use its operand register (in-place op)"
+
+    def test_dest_src_opcodes_track_both_registers(self):
+        for opcode in ("MUL", "DIV", "MOD", "ADC", "SBC", "MULH", "DIVH",
+                       "MIN", "MAX", "ROL", "ROR", "RCL", "RCR",
+                       "BSET", "BCLR", "BFLIP"):
+            defines, uses = self.scheduler._analyze_operands(opcode, ["R0", "R1"])
+            assert "FLAGS" in defines, f"{opcode} should define FLAGS"
+            assert "R0" in defines, f"{opcode} should define its dest register"
+            assert {"R0", "R1"}.issubset(uses), f"{opcode} should use both operands"
+
+    def test_btst_is_compare_like_no_define_via_fallback_but_sets_flags(self):
+        # BTST only sets the zero flag; it never writes back a value, but the
+        # generic dest,src fallback conservatively marks operand 0 as defined
+        # too. That's an over-approximation (safe: extra dependency edges
+        # only reduce reordering opportunities, never cause incorrect ones).
+        defines, uses = self.scheduler._analyze_operands("BTST", ["R0", "3"])
+        assert "FLAGS" in defines
+        assert "R0" in uses
+
+    def test_xchng_defines_and_uses_both_operands(self):
+        defines, uses = self.scheduler._analyze_operands("XCHNG", ["R0", "R1"])
+        assert "FLAGS" in defines
+        assert {"R0", "R1"}.issubset(defines)
+        assert {"R0", "R1"}.issubset(uses)
+
+    def test_cmp_not_reordered_after_strcmp_flags_waw(self):
+        """Full-pipeline regression: pre-fix, STRCMP had empty defines/uses,
+        so an earlier unrelated CMP (which does define FLAGS) had no
+        detected hazard against it and could be legally hoisted to occur
+        between STRCMP and the JZ reading its result -- silently replacing
+        the comparison JZ branches on.
+        """
+        code = [
+            "CMP R6, R7",
+            "STRCMP R1, R2, R3",
+            "JZ equal",
+            "MOV R4, 1",
+            "equal:",
+        ]
+        result = self.scheduler.schedule(code, variable_lifetimes={"R6": (0, 4)})
+
+        cmp_idx = next(i for i, l in enumerate(result) if l.startswith("CMP"))
+        strcmp_idx = next(i for i, l in enumerate(result) if l.startswith("STRCMP"))
+        assert cmp_idx < strcmp_idx, (
+            "CMP must not be reordered after STRCMP: doing so would overwrite "
+            "the flags the following JZ depends on"
+        )
+
+    def test_neg_register_dependency_blocks_reordering(self):
+        """Full-pipeline regression: pre-fix, NEG's register operand wasn't
+        tracked at all (it was absent from the dest,src elif chain), so
+        `MOV R0, 5` could be legally hoisted after `NEG R0`, changing the
+        sign of the value later read into R1.
+        """
+        code = [
+            "MOV R0, 5",
+            "NEG R0",
+            "MOV R1, R0",
+        ]
+        result = self.scheduler.schedule(code, variable_lifetimes={"R0": (0, 2)})
+
+        mov_idx = next(i for i, l in enumerate(result) if l == "MOV R0, 5")
+        neg_idx = next(i for i, l in enumerate(result) if l.startswith("NEG"))
+        assert mov_idx < neg_idx, (
+            "MOV R0, 5 must not be reordered after NEG R0: doing so changes "
+            "the sign of the value R1 receives"
+        )
+
+
 class TestSpillMinimizerEdges:
     def test_suggest_optimizations_threshold_buckets(self):
         minimizer = SpillMinimizer(debug=False)

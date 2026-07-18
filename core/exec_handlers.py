@@ -916,10 +916,11 @@ def _sqrt(cpu, values) -> int:
 
 def _log(cpu, values) -> int:
     """LOG: natural logarithm (fixed-point)."""
-    if values[0] <= 0:
+    v = _to_signed_16(values[0])
+    if v <= 0:
         result = 0
     else:
-        result = int(math.log(values[0] / 256.0) * 256)
+        result = int(math.log(v / 256.0) * 256)
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
@@ -927,8 +928,9 @@ def _log(cpu, values) -> int:
 
 def _exp(cpu, values) -> int:
     """EXP: exponential (fixed-point)."""
+    v = _to_signed_16(values[0])
     try:
-        result = int(math.exp(values[0] / 256.0) * 256)
+        result = int(math.exp(v / 256.0) * 256)
     except Exception:
         result = 0xFFFF
     _write_result(cpu, 0, result & 0xFFFF)
@@ -938,7 +940,8 @@ def _exp(cpu, values) -> int:
 
 def _sin(cpu, values) -> int:
     """SIN: sine (fixed-point radians)."""
-    result = int(math.sin(values[0] / 256.0) * 256)
+    v = _to_signed_16(values[0])
+    result = int(math.sin(v / 256.0) * 256)
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
@@ -946,7 +949,8 @@ def _sin(cpu, values) -> int:
 
 def _cos(cpu, values) -> int:
     """COS: cosine (fixed-point radians)."""
-    result = int(math.cos(values[0] / 256.0) * 256)
+    v = _to_signed_16(values[0])
+    result = int(math.cos(v / 256.0) * 256)
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
@@ -954,8 +958,9 @@ def _cos(cpu, values) -> int:
 
 def _tan(cpu, values) -> int:
     """TAN: tangent (scaled by 1000)."""
+    v = _to_signed_16(values[0])
     try:
-        result = int(math.tan(values[0]) * 1000)
+        result = int(math.tan(v) * 1000)
     except Exception:
         result = 0
     _write_result(cpu, 0, result & 0xFFFF)
@@ -965,7 +970,8 @@ def _tan(cpu, values) -> int:
 
 def _atan(cpu, values) -> int:
     """ATAN: arctangent (fixed-point)."""
-    result = int(math.atan(values[0] / 256.0) * 256)
+    v = _to_signed_16(values[0])
+    result = int(math.atan(v / 256.0) * 256)
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
@@ -973,8 +979,9 @@ def _atan(cpu, values) -> int:
 
 def _asin(cpu, values) -> int:
     """ASIN: arcsine (fixed-point)."""
+    v = _to_signed_16(values[0])
     try:
-        result = int(math.asin(values[0] / 256.0) * 256)
+        result = int(math.asin(v / 256.0) * 256)
     except Exception:
         result = 0
     _write_result(cpu, 0, result & 0xFFFF)
@@ -984,8 +991,9 @@ def _asin(cpu, values) -> int:
 
 def _acos(cpu, values) -> int:
     """ACOS: arccosine (fixed-point)."""
+    v = _to_signed_16(values[0])
     try:
-        result = int(math.acos(values[0] / 256.0) * 256)
+        result = int(math.acos(v / 256.0) * 256)
     except Exception:
         result = 0
     _write_result(cpu, 0, result & 0xFFFF)
@@ -995,7 +1003,8 @@ def _acos(cpu, values) -> int:
 
 def _deg(cpu, values) -> int:
     """DEG: degrees to radians (fixed-point)."""
-    result = int((values[0] * math.pi / 180.0) * 256)
+    v = _to_signed_16(values[0])
+    result = int((v * math.pi / 180.0) * 256)
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
@@ -1003,7 +1012,8 @@ def _deg(cpu, values) -> int:
 
 def _rad(cpu, values) -> int:
     """RAD: radians to degrees."""
-    result = int((values[0] / 256.0) * 180.0 / math.pi)
+    v = _to_signed_16(values[0])
+    result = int((v / 256.0) * 180.0 / math.pi)
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
@@ -1011,7 +1021,8 @@ def _rad(cpu, values) -> int:
 
 def _floor(cpu, values) -> int:
     """FLOOR: floor of fixed-point value."""
-    result = int(math.floor(values[0] / 256.0))
+    v = _to_signed_16(values[0])
+    result = int(math.floor(v / 256.0))
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
@@ -1019,7 +1030,8 @@ def _floor(cpu, values) -> int:
 
 def _ceil(cpu, values) -> int:
     """CEIL: ceiling of fixed-point value."""
-    result = int(math.ceil(values[0] / 256.0))
+    v = _to_signed_16(values[0])
+    result = int(math.ceil(v / 256.0))
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
@@ -1027,31 +1039,36 @@ def _ceil(cpu, values) -> int:
 
 def _round(cpu, values) -> int:
     """ROUND: round fixed-point value."""
-    result = int(round(values[0] / 256.0))
+    v = _to_signed_16(values[0])
+    result = int(round(v / 256.0))
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
 
 
 def _trunc(cpu, values) -> int:
-    """TRUNC: truncate fixed-point value."""
-    result = values[0] // 256
+    """TRUNC: truncate fixed-point value toward zero."""
+    v = _to_signed_16(values[0])
+    result = int(v / 256.0)
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
 
 
 def _frac(cpu, values) -> int:
-    """FRAC: fractional part of fixed-point value."""
-    result = values[0] % 256
+    """FRAC: fractional part of fixed-point value (same sign as the input,
+    i.e. consistent with TRUNC: v == TRUNC(v) * 256 + FRAC(v))."""
+    v = _to_signed_16(values[0])
+    result = int(math.fmod(v, 256))
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF
 
 
 def _intgr(cpu, values) -> int:
-    """INTGR: integer part of fixed-point value."""
-    result = values[0] // 256
+    """INTGR: integer part of fixed-point value toward zero (alias of TRUNC)."""
+    v = _to_signed_16(values[0])
+    result = int(v / 256.0)
     _write_result(cpu, 0, result & 0xFFFF)
     _set_arith_flags(cpu, result & 0xFFFF, 0, values[0], 16, is_sub=False)
     return result & 0xFFFF

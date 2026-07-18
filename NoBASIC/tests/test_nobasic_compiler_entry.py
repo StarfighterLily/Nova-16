@@ -857,8 +857,9 @@ def test_main_parses_flags_and_calls_compile(monkeypatch, tmp_path):
     assert called["args"][0] == str(source_file)
     assert called["args"][1] == str(output_file)
     assert called["args"][2] is True  # verbose
-    assert called["kwargs"].get("target") == "nova"
-    assert called["kwargs"].get("enable_linking") is True
+    # target/enable_linking were parameters of a since-removed multi-backend
+    # (LLVM) compile_nobasic; the current single-target (Nova-16) signature
+    # doesn't accept them -- see d289bbe "LLVM removed....for now =P".
 
 
 def test_main_parses_disable_flags_and_calls_compile(monkeypatch, tmp_path):
@@ -894,8 +895,9 @@ def test_main_parses_disable_flags_and_calls_compile(monkeypatch, tmp_path):
         False,
         False,
     )
-    assert called["kwargs"].get("target") == "nova"
-    assert called["kwargs"].get("enable_linking") is True
+    # target/enable_linking were parameters of a since-removed multi-backend
+    # (LLVM) compile_nobasic; the current single-target (Nova-16) signature
+    # doesn't accept them -- see d289bbe "LLVM removed....for now =P".
 
 
 @pytest.mark.parametrize(
@@ -934,8 +936,9 @@ def test_main_honors_flag_ordering_and_debug_invariant(
     assert called["args"][0] == str(source_file)
     assert called["args"][3] == expected_enable_optimizations
     assert called["args"][4] == expected_debug_optimizations
-    assert called["kwargs"].get("target") == "nova"
-    assert called["kwargs"].get("enable_linking") is True
+    # target/enable_linking were parameters of a since-removed multi-backend
+    # (LLVM) compile_nobasic; the current single-target (Nova-16) signature
+    # doesn't accept them -- see d289bbe "LLVM removed....for now =P".
 
 
 def test_compile_nobasic_defaults_match_explicitly_enabled_post_generation_optimizations(tmp_path, monkeypatch):

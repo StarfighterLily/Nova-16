@@ -2,6 +2,7 @@
 Unit tests for nova_cpu.py - Nova-16 CPU core.
 """
 
+import math
 import pytest
 import numpy as np
 from tests.conftest import assert_register_equals, run_cpu_cycles
@@ -2592,6 +2593,121 @@ class TestMathFunctions:
 
         cpu.step()
         assert_register_equals(cpu, 'R0', 0)
+
+
+class TestMathFunctionsNegativeFixedPointInputs:
+    """Regression: SIN/COS/TAN/ATAN/ASIN/ACOS/DEG/RAD/FLOOR/CEIL/ROUND/
+    TRUNC/FRAC/INTGR/LOG/EXP read their operand as a raw unsigned 16-bit
+    register value with no sign extension, unlike SQRT/ABS (which already
+    called _to_signed_16 -- see core/exec_handlers.py). A negative
+    fixed-point value like -100 (stored as 0xFF9C) was silently treated as
+    +65436, e.g. FLOOR(-100/256) = FLOOR(-0.39) should be -1 but the
+    unfixed handler computed floor(65436/256) = floor(255.6) = 255. Found
+    via a NoBASIC-level test comparing constant-folded vs runtime SIN/COS/
+    etc results for negative arguments (test_math_builtin_folding.py) --
+    the constant folder already treated its literal argument as signed, so
+    it silently disagreed with the (buggy) runtime opcode for any negative
+    input. Fixed by sign-extending the operand in every affected handler.
+    """
+
+    NEG100_U16 = 0xFF9C  # -100 as an unsigned 16-bit register value
+
+    def test_floor_of_negative_fixed_point_rounds_toward_negative_infinity(self, cpu):
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x67)  # FLOOR
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        assert_register_equals(cpu, 'P0', int(math.floor(-100 / 256.0)) & 0xFFFF)
+
+    def test_ceil_of_negative_fixed_point(self, cpu):
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x68)  # CEIL
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        assert_register_equals(cpu, 'P0', int(math.ceil(-100 / 256.0)) & 0xFFFF)
+
+    def test_round_of_negative_fixed_point(self, cpu):
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x69)  # ROUND
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        assert_register_equals(cpu, 'P0', int(round(-100 / 256.0)) & 0xFFFF)
+
+    def test_trunc_of_negative_fixed_point_rounds_toward_zero(self, cpu):
+        """-100/256 == -0.39: TRUNC must give 0 (toward zero), not -1
+        (floor toward -infinity)."""
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x6A)  # TRUNC
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 0)
+
+    def test_intgr_of_negative_fixed_point_matches_trunc(self, cpu):
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x6C)  # INTGR
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 0)
+
+    def test_frac_of_negative_fixed_point_keeps_sign_of_input(self, cpu):
+        """FRAC must be consistent with TRUNC: v == TRUNC(v)*256 + FRAC(v).
+        Since TRUNC(-100/256) == 0, FRAC(-100) must be -100 (as u16),
+        not the floor-modulo 156 that `-100 % 256` would give in Python."""
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x6B)  # FRAC
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        assert_register_equals(cpu, 'P0', (-100) & 0xFFFF)
+
+    def test_log_of_negative_fixed_point_falls_back_to_zero(self, cpu):
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x5D)  # LOG
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        assert_register_equals(cpu, 'P0', 0)
+
+    def test_sin_of_negative_fixed_point_radians(self, cpu):
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x5F)  # SIN
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        expected = int(math.sin(-100 / 256.0) * 256) & 0xFFFF
+        assert_register_equals(cpu, 'P0', expected)
+
+    def test_atan_of_negative_fixed_point(self, cpu):
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x62)  # ATAN
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        expected = int(math.atan(-100 / 256.0) * 256) & 0xFFFF
+        assert_register_equals(cpu, 'P0', expected)
+
+    def test_deg_of_negative_degrees(self, cpu):
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x65)  # DEG
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        expected = int((-100 * math.pi / 180.0) * 256) & 0xFFFF
+        assert_register_equals(cpu, 'P0', expected)
+
+    def test_tan_of_negative_raw_radians(self, cpu):
+        cpu.Pregisters[0] = self.NEG100_U16
+        cpu.memory.write_byte(0x0000, 0x61)  # TAN
+        cpu.memory.write_byte(0x0001, 0x00)
+        cpu.memory.write_byte(0x0002, 0xF1)  # P0
+        cpu.step()
+        expected = int(math.tan(-100) * 1000) & 0xFFFF
+        assert_register_equals(cpu, 'P0', expected)
 
 
 class TestInstructionCache:

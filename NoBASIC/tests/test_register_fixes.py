@@ -275,7 +275,13 @@ class TestSpillPolicyRegression:
 
     def test_game_no_struct_state_vars_do_not_alias(self):
         """Critical state variables in game sample must not alias in the same register."""
-        source_path = Path(__file__).parent.parent / "game_no_struct.nobasic"
+        # game_no_struct.nobasic was removed in commit 55963dc ("Cleanup") when
+        # game.nobasic was rewritten to use structs (player.oldx etc, which
+        # this test can't see -- it checks flat variable names). "clean
+        # copies/game.nobasic" still uses the flat oldx/oldy/x/y variables
+        # this regression is about, so it's the fixture that keeps testing
+        # the same thing the original file did.
+        source_path = Path(__file__).parent.parent / "clean copies" / "game.nobasic"
         source = source_path.read_text(encoding="utf-8")
 
         asm, generator = parse_and_generate(source)
