@@ -132,6 +132,16 @@ JGT greater
 - **Interrupt vector table** at 0x0100-0x011F (8 vectors × 4 bytes each)
 - **Hardware stack**: Memory-based stack using SP register, grows downward from 0xFFFF
 - **Big-endian byte ordering**: MSB stored at lower address
+- **Bank-switched memory window** at 0x8000-0xBFFF (16KB): the `BANK` register
+  (0-15, default 0) selects which physical page is visible in this window.
+  Bank 0 is the base 64KB memory itself (pass-through — reading/writing the
+  window while `BANK=0` is byte-identical to a system with no banking at
+  all). Banks 1-15 are separate 16KB pages of additional RAM, giving ~304KB
+  of total physical capacity while the CPU remains a 16-bit-address,
+  64KB-at-once machine. Addresses outside 0x8000-0xBFFF always target base
+  memory regardless of the current bank. Switch banks with plain register
+  access — `MOV BANK, imm8` or `MOV BANK, R0` — like `SA`/`VM`/`TT` and the
+  other external registers; there is no dedicated bank-select instruction.
 
 ### Stack Implementation
 - **Stack Pointer (SP)**: P8 register points to the top of the stack

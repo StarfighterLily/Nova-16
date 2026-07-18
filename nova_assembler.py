@@ -53,7 +53,8 @@ class InstructionSet:
             "VX", "VY", "VM", "VC", "VL", "TT", "TM", "TC", "TS",
             "C0", "C1",
             "MX", "MY", "MB",
-            "SP", "FP", "SA", "SF", "SV", "SW"
+            "SP", "FP", "SA", "SF", "SV", "SW",
+            "BANK"
         }
 
         for mnemonic, opcode_str, size in opcodes:
@@ -490,7 +491,8 @@ class OperandClassifier:
             ':P0', ':P1', ':P2', ':P3', ':P4', ':P5', ':P6', ':P7', ':P8', ':P9',
             'VX', 'VY', 'VM', 'VC', 'VL', 'TT', 'TM', 'TC', 'TS', 'C0', 'C1',
             'MX', 'MY', 'MB',
-            'SP', 'FP', 'SA', 'SF', 'SV', 'SW'
+            'SP', 'FP', 'SA', 'SF', 'SV', 'SW',
+            'BANK'
         }
 
         if operand in valid_registers:

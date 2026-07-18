@@ -659,6 +659,7 @@ These are special register access instructions, operands are values to set/get.
 - **FP** (0xFC): 1 operand - Frame Pointer
 - **VX** (0xFD): 1 operand - Video X coordinate
 - **VY** (0xFE): 1 operand - Video Y coordinate
+- **BANK** (0xC2): 1 operand - Bank select (0-15) for the 0x8000-0xBFFF windowed memory expansion. Bank 0 (default) is the base memory itself; banks 1-15 are separate 16KB pages.
 
 ## Notes
 - Decimal immediates are undecorated, hex is prefixed with '0x'.

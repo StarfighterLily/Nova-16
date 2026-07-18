@@ -632,3 +632,121 @@ class TestMemoryCacheRemoved:
 
         assert "0000: 00 AA" in captured.out
         assert "0100: 00 00 BB" in captured.out
+
+
+class TestBankSwitching:
+    """Bank-switched memory expansion: 16 banks, 16KB window at 0x8000-0xBFFF."""
+
+    def test_default_bank_is_zero(self, memory):
+        assert memory.current_bank == 0
+
+    def test_bank0_is_passthrough_identity(self, memory):
+        """Bank 0 writes go straight into the base array — no shadow copy."""
+        memory.write_byte(0x8000, 0xAB)
+        assert memory.memory[0x8000] == 0xAB
+        assert memory.read_byte(0x8000) == 0xAB
+
+    def test_bank_switch_isolates_window_writes(self, memory):
+        memory.write_byte(0x8000, 0x11)  # bank 0 marker
+
+        memory.set_bank(1)
+        memory.write_byte(0x8000, 0x22)  # bank 1 marker, same address
+        assert memory.read_byte(0x8000) == 0x22
+
+        memory.set_bank(0)
+        assert memory.read_byte(0x8000) == 0x11  # bank 0 unaffected
+
+        memory.set_bank(1)
+        assert memory.read_byte(0x8000) == 0x22  # bank 1 persisted
+
+    def test_bank_write_does_not_touch_base_memory(self, memory):
+        memory.set_bank(2)
+        memory.write_byte(0x8500, 0x99)
+        assert memory.memory[0x8500] == 0x00  # raw base array untouched
+
+    def test_bank_clamping(self, memory):
+        memory.set_bank(255)
+        assert memory.current_bank == 15
+
+        memory.set_bank(-5)
+        assert memory.current_bank == 0
+
+    def test_window_boundary_addresses(self, memory):
+        memory.set_bank(1)
+
+        # Just below the window: always base memory.
+        memory.write_byte(0x7FFF, 0xAA)
+        assert memory.memory[0x7FFF] == 0xAA
+
+        # Just above the window: always base memory.
+        memory.write_byte(0xC000, 0xBB)
+        assert memory.memory[0xC000] == 0xBB
+
+        # Window edges: redirected while bank != 0.
+        memory.write_byte(0x8000, 0xCC)
+        memory.write_byte(0xBFFF, 0xDD)
+        assert memory.memory[0x8000] == 0x00
+        assert memory.memory[0xBFFF] == 0x00
+        assert memory.read_byte(0x8000) == 0xCC
+        assert memory.read_byte(0xBFFF) == 0xDD
+
+    def test_word_write_straddles_window_end(self, memory):
+        """A word write spanning the window boundary resolves each byte independently."""
+        memory.set_bank(1)
+        memory.write_word(0xBFFF, 0x1234)
+
+        # High byte (0xBFFF) lands in bank 1's page.
+        assert memory.memory[0xBFFF] == 0x00
+        assert memory.read_byte(0xBFFF) == 0x12
+
+        # Low byte (0xC000) lands in base memory, outside the window.
+        assert memory.memory[0xC000] == 0x34
+
+    def test_bank_switch_invalidates_icache(self, memory):
+        memory.load_program([0xFF] * 10, 0x0000)
+        for addr in range(10):
+            memory.fetch_opcode(addr)
+        assert memory.get_cache_stats()['lru_cache_size'] > 0
+
+        memory.set_bank(1)
+        assert memory.get_cache_stats()['lru_cache_size'] == 0
+
+    def test_reset_clears_banks_and_current_bank(self, memory):
+        memory.set_bank(3)
+        memory.write_byte(0x8000, 0x77)
+
+        memory.reset()
+
+        assert memory.current_bank == 0
+        memory.set_bank(3)
+        assert memory.read_byte(0x8000) == 0x00
+
+    def test_read_bytes_direct_respects_bank(self, memory):
+        memory.write_bytes_direct(0x8000, [1, 2, 3, 4])  # bank 0
+        memory.set_bank(1)
+        memory.write_bytes_direct(0x8000, [5, 6, 7, 8])
+
+        assert memory.read_bytes_direct(0x8000, 4) == [5, 6, 7, 8]
+        memory.set_bank(0)
+        assert memory.read_bytes_direct(0x8000, 4) == [1, 2, 3, 4]
+
+    def test_write_bytes_direct_spanning_window_boundary(self, memory):
+        memory.set_bank(1)
+        memory.write_bytes_direct(0xBFFE, [0xAA, 0xBB, 0xCC, 0xDD])
+
+        # 0xBFFE, 0xBFFF fall inside the window (bank 1); 0xC000, 0xC001 don't.
+        assert memory.read_byte(0xBFFE) == 0xAA
+        assert memory.read_byte(0xBFFF) == 0xBB
+        assert memory.memory[0xC000] == 0xCC
+        assert memory.memory[0xC001] == 0xDD
+
+    def test_regions_outside_window_unaffected_by_bank(self, memory):
+        memory.write_byte(0x0050, 0x11)   # zero page
+        memory.write_word(0x0100, 0x2222)  # IVT
+        memory.write_byte(0xF000, 0x33)   # SCB
+
+        memory.set_bank(5)
+
+        assert memory.read_byte(0x0050) == 0x11
+        assert memory.read_word(0x0100) == 0x2222
+        assert memory.read_byte(0xF000) == 0x33

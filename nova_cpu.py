@@ -18,7 +18,7 @@ class CPU:
     # Frozen set of register types served by RegisterFile dispatch
     _REGFILE_TYPES = frozenset({'R', 'P', 'P_high', 'P_low', 'SP', 'FP', 'V', 'VL',
                                 'TT', 'TM', 'TC', 'TS', 'C0', 'C1', 'MX', 'MY', 'MB',
-                                'SA', 'SF', 'SV', 'SW'})
+                                'SA', 'SF', 'SV', 'SW', 'BANK'})
 
     RTC_EPOCH_UNIX = int(datetime(2018, 7, 17, tzinfo=timezone.utc).timestamp())
 
@@ -620,6 +620,11 @@ class CPU:
         gfx = self.gfx
         mouse = self.mouse
         tdev = self.timer_device
+        mem = self.memory
+
+        rf.register_external('BANK',
+            getter=lambda idx: int(mem.current_bank),
+            setter=lambda idx, v: mem.set_bank(int(v) & 0xFF))
 
         if snd:
             rf.register_external('SA',
@@ -1006,6 +1011,7 @@ class CPU:
 
     def _build_register_lookup_table(self):
         lookup = {}
+        lookup[0xC2] = (0, 'BANK')
         lookup[0xC3] = (0, 'C0')
         lookup[0xC4] = (0, 'C1')
         lookup[0xC5] = (0, 'MX')

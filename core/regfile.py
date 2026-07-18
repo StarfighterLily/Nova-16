@@ -21,6 +21,9 @@ def _build_register_code_map() -> dict[int, tuple[int, str]]:
     """
     lookup: dict[int, tuple[int, str]] = {}
 
+    # Bank-switch register (0x8000-0xBFFF windowed memory expansion)
+    lookup[0xC2] = (0, 'BANK')
+
     # Real-time clock registers
     lookup[0xC3] = (0, 'C0')
     lookup[0xC4] = (0, 'C1')

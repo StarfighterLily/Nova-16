@@ -5,3 +5,4 @@ Bring back R register pairing:
 
 -Memory
 Consider memory banking techniques to expand beyond the 64k memory without too much effort
+  [DONE: BANK register (0xC2), 16KB window at 0x8000-0xBFFF, 16 banks (~304KB total)]

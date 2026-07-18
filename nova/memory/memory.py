@@ -47,6 +47,15 @@ class Memory:
     SCB_START = 0xF000
     SCB_END = 0xF100
 
+    # Bank-switched memory window (BANK register, see core/regfile.py).
+    # Bank 0 is a pass-through to the base 64KB array below (no shadow copy);
+    # banks 1-15 are separate pages only reachable while BANK != 0, giving
+    # ~240KB of additional RAM without changing the base 64KB address space.
+    WINDOW_START = 0x8000
+    WINDOW_END = 0xC000
+    WINDOW_SIZE = WINDOW_END - WINDOW_START   # 0x4000 (16 KB)
+    NUM_BANKS = 16
+
     # Instruction cache size (number of entries)
     # Optimal value determined by cache_optimization_results.json (81,628 IPS at 128 vs 79,389 IPS at 64)
     ICACHE_SIZE = 128
@@ -65,6 +74,14 @@ class Memory:
         self._scb_start = self.SCB_START
         self._scb_end = self.SCB_END
 
+        # Bank pages for the windowed memory expansion. Index 0 is allocated
+        # but never used (bank 0 reads/writes go straight to self._mem), which
+        # keeps the redirect check a plain truthiness test on _current_bank.
+        self._bank_pages = [bytearray(self.WINDOW_SIZE) for _ in range(self.NUM_BANKS)]
+        self._current_bank = 0
+        self._window_start = self.WINDOW_START
+        self._window_end = self.WINDOW_END
+
         # LRU instruction cache: maps address -> opcode byte
         # Only caches opcode fetches (not operand reads)
         # Uses OrderedDict for O(1) LRU eviction via move_to_end()
@@ -79,6 +96,25 @@ class Memory:
         self._icache_hits: int = 0
         self._icache_misses: int = 0
 
+    # ── Bank switching ───────────────────────────────────────────────────
+
+    @property
+    def current_bank(self) -> int:
+        """The bank currently visible in the 0x8000-0xBFFF window (0-15)."""
+        return self._current_bank
+
+    def set_bank(self, value: int) -> None:
+        """Switch the active bank for the windowed region.
+
+        Clamps to [0, NUM_BANKS-1] and always invalidates the instruction
+        cache, since any cached opcode fetched from within the window is
+        bank-dependent. This is the only sanctioned way to change banks —
+        ``_current_bank`` has no public setter — so a bank switch can never
+        skip cache invalidation.
+        """
+        self._current_bank = max(0, min(self.NUM_BANKS - 1, int(value)))
+        self.invalidate_icache()
+
     # ── Byte reads ─────────────────────────────────────────────────────
 
     def read_byte(self, address: int) -> int:
@@ -86,6 +122,8 @@ class Memory:
         if address < 0 or address >= self.size:
             raise IndexError(f"Address out of bounds: 0x{address:04X}")
 
+        if self._current_bank and self._window_start <= address < self._window_end:
+            return self._bank_pages[self._current_bank][address - self._window_start]
         if address < self._hot_end:
             return self._hot[address]
         return self._mem[address]
@@ -95,6 +133,8 @@ class Memory:
 
         Caller MUST ensure address is in range 0..SIZE-1.
         """
+        if self._current_bank and self._window_start <= address < self._window_end:
+            return self._bank_pages[self._current_bank][address - self._window_start]
         if address < self._hot_end:
             return self._hot[address]
         return self._mem[address]
@@ -111,7 +151,13 @@ class Memory:
                 f"0x{self.size:04X}"
             )
 
-        return list(self._mem[address:address + count])
+        # Fast path: bank 0, or the range doesn't touch the window at all.
+        if (not self._current_bank
+                or address >= self._window_end
+                or address + count <= self._window_start):
+            return list(self._mem[address:address + count])
+
+        return [self.read_byte_fast(address + i) for i in range(count)]
 
     # ── Word reads (big-endian) ─────────────────────────────────────────
 
@@ -149,7 +195,10 @@ class Memory:
             raise IndexError(f"Address out of bounds: 0x{address:04X}")
 
         val = int(value) & 0xFF
-        self._mem[address] = val
+        if self._current_bank and self._window_start <= address < self._window_end:
+            self._bank_pages[self._current_bank][address - self._window_start] = val
+        else:
+            self._mem[address] = val
 
         # Invalidate instruction cache for this address (it may have been cached)
         if address in self._icache:
@@ -161,11 +210,14 @@ class Memory:
 
     def write_byte_fast(self, address: int, value: int):
         """Fast-path single-byte write — no bounds check, no SCB notification.
-        
+
         Caller MUST ensure address is in range 0..SIZE-1 and that the write
         does NOT target the SCB region (0xF000-0xF0FF).
         """
-        self._mem[address] = value & 0xFF
+        if self._current_bank and self._window_start <= address < self._window_end:
+            self._bank_pages[self._current_bank][address - self._window_start] = value & 0xFF
+        else:
+            self._mem[address] = value & 0xFF
 
     def write_bytes_direct(self, address: int, data):
         """Write multiple bytes directly to memory.
@@ -182,9 +234,16 @@ class Memory:
         if not data:
             return
 
-        self._mem[address:address + len(data)] = bytes(
-            (int(byte) & 0xFF) for byte in data
-        )
+        # Fast path: bank 0, or the range doesn't touch the window at all.
+        if (not self._current_bank
+                or address >= self._window_end
+                or address + len(data) <= self._window_start):
+            self._mem[address:address + len(data)] = bytes(
+                (int(byte) & 0xFF) for byte in data
+            )
+        else:
+            for i, byte in enumerate(data):
+                self.write_byte_fast(address + i, int(byte) & 0xFF)
 
         # Invalidate instruction cache for the written range
         for addr in range(address, address + len(data)):
@@ -213,19 +272,22 @@ class Memory:
             if (address + 1) < self._scb_end:
                 self.bus.publish('memory.scb_written', address + 1)
 
-        # Big-endian: high byte first, low byte second
-        self._mem[address] = (val >> 8) & 0xFF
-        self._mem[address + 1] = val & 0xFF
+        # Big-endian: high byte first, low byte second. Routed through
+        # write_byte_fast (rather than a direct _mem slice) so a word write
+        # straddling the window boundary (e.g. address 0xBFFF) resolves each
+        # byte against its own bank/base-memory target independently.
+        self.write_byte_fast(address, (val >> 8) & 0xFF)
+        self.write_byte_fast(address + 1, val & 0xFF)
 
     def write_word_fast(self, address: int, value: int):
         """Fast-path 16-bit big-endian write — no bounds check, no SCB notification.
-        
+
         Caller MUST ensure address is in range 0..SIZE-2 and that the write
         does NOT target the SCB region.
         """
         val = int(value) & 0xFFFF
-        self._mem[address] = int((val >> 8) & 0xFF)
-        self._mem[address + 1] = int(val & 0xFF)
+        self.write_byte_fast(address, (val >> 8) & 0xFF)
+        self.write_byte_fast(address + 1, val & 0xFF)
 
     # ── Instruction cache ───────────────────────────────────────────────
 
@@ -499,6 +561,9 @@ class Memory:
     def reset(self):
         """Clear backing memory, cache, and statistics; publish ``memory.reset`` event."""
         self._mem[:] = bytes(len(self._mem))
+        for page in self._bank_pages:
+            page[:] = bytes(len(page))
+        self._current_bank = 0
         self._icache.clear()
         self._icache_hits = 0
         self._icache_misses = 0

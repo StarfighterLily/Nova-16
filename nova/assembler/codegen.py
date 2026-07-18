@@ -51,6 +51,7 @@ for mnemonic, opcode_str, _ in __import__("opcodes").opcodes:
         "MX", "MY", "MB",
         "SP", "FP", "SA", "SF", "SV", "SW",
         "PA", "PB", "PC", "PD",
+        "BANK",
     }:
         REGISTER_CODES[mnemonic.upper()] = int(opcode_str, 16)
 

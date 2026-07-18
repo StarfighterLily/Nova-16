@@ -262,6 +262,7 @@ opcodes = [
     # Mouse control
     ("MOUSECTRL",          "0xB3", 1), # Enable or disable host mouse input and interrupts # implemented
 
+    ("BANK",               "0xC2", 1), # Bank select (0-15) for 0x8000-0xBFFF windowed memory expansion
     ("C0",                 "0xC3", 1), # RTC seconds low word (epoch 2018-07-17 UTC)
     ("C1",                 "0xC4", 1), # RTC seconds high word (epoch 2018-07-17 UTC)
     ("MX",                 "0xC5", 1), # Mouse X position
