@@ -19,7 +19,6 @@ Optimization Phase (Performance):
 
 from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
-from collections import OrderedDict
 
 import numpy as np
 
@@ -82,10 +81,17 @@ class Memory:
         self._window_start = self.WINDOW_START
         self._window_end = self.WINDOW_END
 
-        # LRU instruction cache: maps address -> opcode byte
-        # Only caches opcode fetches (not operand reads)
-        # Uses OrderedDict for O(1) LRU eviction via move_to_end()
-        self._icache: OrderedDict = OrderedDict()
+        # Instruction cache: maps address -> opcode byte, for non-sequential
+        # opcode fetches only (sequential PC advance bypasses the cache
+        # entirely — see fetch_opcode()). Real branch-target working sets in
+        # practice are small and stable (loop back-edges hit the same handful
+        # of addresses repeatedly), so this is a plain dict with clear-on-full
+        # eviction rather than a strict LRU: benchmarking against
+        # performance_benchmark.bin showed OrderedDict.move_to_end() on every
+        # cache hit cost more than the occasional full-clear this trades it
+        # for (plain dict beat both the LRU version and no cache at all,
+        # at every cache size tested).
+        self._icache: dict = {}
         self._icache_max = self.ICACHE_SIZE
         
         # Sequential fetch tracking (optimization for linear code)
@@ -292,15 +298,16 @@ class Memory:
     # ── Instruction cache ───────────────────────────────────────────────
 
     def fetch_opcode(self, address: int) -> int:
-        """Fetch an opcode byte with LRU instruction caching.
-        
+        """Fetch an opcode byte with instruction caching.
+
         For sequential code execution (PC increments by 1), this method
         skips the cache entirely to avoid unnecessary overhead. Cache is
         only used for non-sequential fetches (jumps, calls, etc.).
-        
-        Uses LRU (Least Recently Used) eviction: most-recently-used entries
-        are moved to the end of the OrderedDict, so eviction always removes
-        the least-recently-used entry.
+
+        Eviction is clear-on-full rather than strict LRU: branch-target
+        working sets are small and stable in practice, so a full clear
+        rarely fires after warmup, and every cache hit avoids the
+        per-access reordering cost a real LRU would pay.
         """
         # Check if this is a sequential fetch (next address after last fetch)
         if self._last_fetch_pc is not None and address == (self._last_fetch_pc + 1) & 0xFFFF:
@@ -309,12 +316,10 @@ class Memory:
             opcode = self.read_byte_fast(address)
             self._last_fetch_pc = address
             return opcode
-        
+
         # Non-sequential or first fetch - check cache
         cached = self._icache.get(address)
         if cached is not None:
-            # Cache hit - LRU: move to end (most recently used)
-            self._icache.move_to_end(address)
             self._icache_hits += 1
             self._last_fetch_pc = address
             return cached
@@ -323,11 +328,10 @@ class Memory:
         opcode = self.read_byte_fast(address)
         self._icache_misses += 1
 
-        # Add to cache (LRU eviction if full)
+        # Add to cache (clear-on-full eviction)
         if self._icache_max > 0:
             if len(self._icache) >= self._icache_max:
-                # Remove least-recently-used entry (first item in OrderedDict)
-                self._icache.popitem(last=False)
+                self._icache.clear()
             self._icache[address] = opcode
         self._last_fetch_pc = address
 

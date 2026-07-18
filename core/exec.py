@@ -155,7 +155,18 @@ def _resolve_single_operand(op, cpu) -> int:
     the old _resolve_operands loop.
     """
     if op.is_register:
-        return cpu.regfile.get(op.reg_type, op.reg_idx)
+        # R and P are the overwhelming majority of register operands and
+        # are stored as plain lists on the CPU (cpu.Rregisters/Pregisters
+        # alias regfile.R/P) — index directly instead of going through
+        # regfile.get()'s dict-dispatch + callable indirection. Every other
+        # register type (external/peripheral-backed) still goes through the
+        # regular dispatch so callback semantics are unaffected.
+        rt = op.reg_type
+        if rt == 'R':
+            return cpu.Rregisters[op.reg_idx]
+        if rt == 'P':
+            return cpu.Pregisters[op.reg_idx]
+        return cpu.regfile.get(rt, op.reg_idx)
     if op.is_immediate:
         return op.value
     if op.is_memory:

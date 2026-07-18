@@ -14,28 +14,33 @@ from nova.bus import EventBus
 class TestInstructionCache:
     """Test instruction cache behavior and performance."""
 
-    def test_lru_eviction_order(self):
-        """Verify that LRU evicts least-recently-used entries first."""
+    def test_cache_full_clear_eviction(self):
+        """Verify clear-on-full eviction: a hit on a full cache keeps all
+        entries (no per-access reordering cost), and a miss on a full cache
+        clears the whole cache before inserting the new entry.
+
+        This replaced strict LRU eviction after benchmarking showed
+        OrderedDict.move_to_end() on every cache hit cost more than the
+        occasional full-clear it was traded for — real branch-target working
+        sets (loop back-edges) are small and stable, so full clears are rare
+        in practice. See nova/memory/memory.py fetch_opcode().
+        """
         mem = Memory()
-        
+
         # Fill cache to capacity
         for addr in range(0x1000, 0x1000 + mem.ICACHE_SIZE):
             mem._icache[addr] = 0x90 + (addr & 0x0F)  # NOP-like opcodes
-        
-        # Access 0x1000 again - should be moved to end
+
+        # A hit on a full cache must not evict or reorder anything.
         _ = mem.fetch_opcode(0x1000)
-        
-        # The LRU order should now have 0x1000 at the end
-        # Check that the first key is NOT 0x1000
-        first_key = next(iter(mem._icache))
-        assert first_key != 0x1000, "LRU: accessed entry should be moved to end"
-        
-        # Add one more entry - should evict the LRU (first) entry
+        assert len(mem._icache) == mem.ICACHE_SIZE
+        assert 0x1001 in mem._icache, "hit on a full cache must not evict other entries"
+
+        # A miss on a full cache clears the whole cache, then inserts the new entry.
         mem.fetch_opcode(0x2000)
-        
-        # The first entry (0x1001) should be evicted (it was first after 0x1000 was moved)
-        assert 0x1001 not in mem._icache, "LRU: first entry should be evicted"
-        assert 0x1000 in mem._icache, "LRU: recently accessed entry should remain"
+        assert len(mem._icache) == 1
+        assert 0x2000 in mem._icache
+        assert 0x1000 not in mem._icache, "miss on a full cache must clear stale entries"
 
     def test_cache_statistics(self):
         """Verify cache hit/miss statistics are tracked correctly."""

@@ -41,7 +41,16 @@ def _write_result(cpu, operand_index: int, value: int,
     """
     op = cpu.operands[operand_index]
     if op.is_register:
-        cpu.regfile.set(op.reg_type, op.reg_idx, value)
+        # Fast path for R/P — see matching note in core/exec.py's
+        # _resolve_single_operand. Masking mirrors RegisterFile's own
+        # 'R'/'P' set dispatchers exactly (& 0xFF / & 0xFFFF).
+        rt = op.reg_type
+        if rt == 'R':
+            cpu.Rregisters[op.reg_idx] = value & 0xFF
+        elif rt == 'P':
+            cpu.Pregisters[op.reg_idx] = value & 0xFFFF
+        else:
+            cpu.regfile.set(rt, op.reg_idx, value)
     elif op.is_memory:
         addr = calculate_memory_address(op, cpu.regfile)
         if source_size is None:
