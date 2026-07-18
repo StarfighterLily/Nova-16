@@ -16,6 +16,3 @@ Not direct speedup, but improves optimization ROI quickly.
 
 **Additions**
 Peek/poke instructions for memory ops.
-
-**Aftermarket**
-Convert IR to LLVM IR to target other architectures

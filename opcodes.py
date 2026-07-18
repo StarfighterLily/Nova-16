@@ -105,7 +105,7 @@ opcodes = [
     ("KEYIN",              "0x43", 1), # Read key # implemented
     ("KEYSTAT",            "0x44", 1), # Check key status # implemented
     ("KEYCOUNT",           "0x45", 1), # Get key count # implemented
-    ("KEYCLEAR",           "0x46", 1), # Clear keyboard buffer # implemented
+    ("KEYCLEAR",           "0x46", 0), # Clear keyboard buffer # implemented
     ("KEYCTRL",            "0x47", 1), # Keyboard control # implemented
 
     # Random operations
@@ -116,9 +116,9 @@ opcodes = [
     ("MEMCPY",             "0x4A", 3), # Memory copy # implemented
 
     # BCD operations
-    ("SED",                "0x4B", 1), # Set decimal flag # implemented
-    ("CLD",                "0x4C", 1), # Clear decimal flag # implemented
-    ("CLA",                "0x4D", 1), # Clear auxiliary carry # implemented
+    ("SED",                "0x4B", 0), # Set decimal flag # implemented
+    ("CLD",                "0x4C", 0), # Clear decimal flag # implemented
+    ("CLA",                "0x4D", 0), # Clear auxiliary carry # implemented
     ("BCDA",               "0x4E", 1), # BCD add with carry # implemented
     ("BCDS",               "0x4F", 1), # BCD subtract with carry # implemented
     ("BCDCMP",             "0x50", 1), # BCD compare # implemented
