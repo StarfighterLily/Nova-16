@@ -97,6 +97,13 @@ INSTRUCTIONS = {
     "SERIN", "SEROUT", "SERSTAT", "SERCTRL",
     "MOUSECTRL",
     "SETBP", "CLRBP", "ENABRK", "DISBRK", "ENATRAP", "DISATRAP",
+    # Reserved opcodes with no CPU handler yet (see opcodes.py's
+    # "# unimplemented" tags and codegen.UNIMPLEMENTED_INSTRUCTIONS). Listed
+    # here so a line using one of these mnemonics still tokenizes as an
+    # Instruction and hits codegen's clear "not implemented" error, instead
+    # of silently tokenizing as an unrecognized IDENT and vanishing from the
+    # assembled output with no diagnostic at all.
+    "SMIX", "SECHO", "SREVERB", "SFILTER",
 }
 
 # Register tokens recognized by the lexer.  Includes special registers and

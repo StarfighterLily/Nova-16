@@ -12,6 +12,16 @@ from typing import Callable, Dict, List, Tuple, Optional, Union
 from opcodes import opcodes
 
 
+# Mnemonics present in opcodes.py (so the CPU allocated an opcode byte for
+# them and the assembler would otherwise happily encode them) but marked
+# "# unimplemented" there — core/exec.py's HANDLER_INSTRUCTIONS has no
+# handler for these, so the CPU raises a raw "Unknown opcode" exception at
+# execution time. Rejecting them here turns a cryptic runtime crash into a
+# clear assembly-time error. Keep in sync with the "# unimplemented" tags in
+# opcodes.py if that ever changes.
+UNIMPLEMENTED_INSTRUCTIONS = {"SMIX", "SECHO", "SREVERB", "SFILTER"}
+
+
 @dataclass
 class AssemblyLine:
     """Represents a parsed line of assembly code"""
@@ -846,6 +856,12 @@ class CodeGenerator:
         """Generate machine code for an instruction"""
         if not asm_line.instruction:
             return []
+
+        if asm_line.instruction.upper() in UNIMPLEMENTED_INSTRUCTIONS:
+            raise ValueError(
+                f"{asm_line.instruction} is not implemented on this CPU "
+                f"(line {asm_line.line_num})"
+            )
 
         instr_info = self.instruction_set.get_instruction_info(asm_line.instruction)
         if not instr_info:

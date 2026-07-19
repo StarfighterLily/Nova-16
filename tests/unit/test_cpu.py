@@ -3053,6 +3053,53 @@ class TestEnhancedArithmeticInstructions:
         assert_register_equals(cpu, 'P0', 6)  # 10 - 3 - 1 = 6
         assert cpu.flags[6] == 0  # No borrow
 
+    def test_adc_overflow_flag_carry_folded_into_operand_edge_case(self, cpu):
+        """Regression test: ADC's overflow flag must not corrupt when
+        src + carry crosses a byte boundary on its own (src=0x7F, carry=1).
+
+        Folding carry into the source operand before running it through the
+        two's-complement overflow formula ((op1^op2)&sign / (op1^result)&sign)
+        flips the "source" sign bit purely from the +1 carry, independent of
+        the actual operands' signs. Concretely: R0=0x00, R1=0x7F, carry=1.
+        True signed sum is 0 + 127 + 1 = 128, which does NOT fit in a signed
+        8-bit result (-128..127), so overflow must be set.
+        """
+        cpu.Rregisters[0] = 0x00
+        cpu.Rregisters[1] = 0x7F
+        cpu.flags[6] = 1  # Set carry flag
+
+        # ADC R0, R1
+        cpu.memory.write_byte(0x0000, 0x87)  # ADC
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+        cpu.memory.write_byte(0x0003, 0xE8)  # R1
+
+        cpu.step()
+        assert_register_equals(cpu, 'R0', 0x80)  # 0 + 127 + 1 = 128
+        assert cpu.flags[2] == 1  # Overflow flag must be set
+
+    def test_sbc_overflow_flag_carry_folded_into_operand_edge_case(self, cpu):
+        """Regression test: SBC's overflow flag must not corrupt when
+        src + carry crosses a byte boundary on its own (src=0x7F, carry=1).
+
+        R0=0xFF (-1 signed), R1=0x7F (127), carry=1. True signed result is
+        -1 - 127 - 1 = -129, which does NOT fit in -128..127, so overflow
+        must be set.
+        """
+        cpu.Rregisters[0] = 0xFF
+        cpu.Rregisters[1] = 0x7F
+        cpu.flags[6] = 1  # Set carry flag
+
+        # SBC R0, R1
+        cpu.memory.write_byte(0x0000, 0x88)  # SBC
+        cpu.memory.write_byte(0x0001, 0x00)  # Mode: both register
+        cpu.memory.write_byte(0x0002, 0xE7)  # R0
+        cpu.memory.write_byte(0x0003, 0xE8)  # R1
+
+        cpu.step()
+        assert_register_equals(cpu, 'R0', 0x7F)  # (-1 - 127 - 1) mod 256 = 0x7F
+        assert cpu.flags[2] == 1  # Overflow flag must be set
+
     def test_mulh(self, cpu):
         """Test MULH instruction."""
         cpu.Pregisters[0] = 0x1000  # 4096

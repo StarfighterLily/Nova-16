@@ -34,6 +34,15 @@ def _load_opcodes() -> Dict[str, Tuple[int, int]]:
 
 INSTRUCTION_INFO = _load_opcodes()
 
+# Mnemonics present in opcodes.py (so the CPU allocated an opcode byte for
+# them) but marked "# unimplemented" there — core/exec.py's
+# HANDLER_INSTRUCTIONS has no handler for these, so the CPU raises a raw
+# "Unknown opcode" exception at execution time. Rejecting them here turns a
+# cryptic runtime crash into a clear assembly-time error. Keep in sync with
+# nova_assembler.py's UNIMPLEMENTED_INSTRUCTIONS and the "# unimplemented"
+# tags in opcodes.py if that ever changes.
+UNIMPLEMENTED_INSTRUCTIONS = {"SMIX", "SECHO", "SREVERB", "SFILTER"}
+
 # Register codes from opcodes.py
 REGISTER_CODES: Dict[str, int] = {}
 for mnemonic, opcode_str, _ in __import__("opcodes").opcodes:
@@ -142,7 +151,17 @@ def classify_operand(text: str, symbols: SymbolTable) -> str:
             if 0 <= val <= 0xFF:
                 return OperandType.IMMEDIATE8
             return OperandType.IMMEDIATE16
-        if -128 <= val <= 127:
+        # Negative values must always be encoded as a full 16-bit two's
+        # complement immediate, matching nova_assembler.py. IMMEDIATE8 stores
+        # a single raw byte with no sign-extension at decode time, so e.g.
+        # -2 stored as a lone 0xFE loses its sign bit entirely when moved
+        # into a 16-bit P register (becomes 254, not 65534/0xFFFE). Register
+        # writes already mask down to the destination's actual width, so
+        # using IMMEDIATE16 here is also safe for 8-bit R-register
+        # destinations.
+        if val < 0:
+            return OperandType.IMMEDIATE16
+        if val <= 127:
             return OperandType.IMMEDIATE8
         return OperandType.IMMEDIATE16
     except CodeGenError:
@@ -354,6 +373,8 @@ def generate_instruction(inst: Instruction, symbols: SymbolTable,
                          location: int) -> List[int]:
     """Encode an instruction into machine-code bytes."""
     mnemonic = inst.mnemonic.upper()
+    if mnemonic in UNIMPLEMENTED_INSTRUCTIONS:
+        raise CodeGenError(f"{mnemonic} is not implemented on this CPU")
     if mnemonic not in INSTRUCTION_INFO:
         raise CodeGenError(f"Unknown instruction: {mnemonic}")
 

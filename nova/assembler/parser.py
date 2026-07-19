@@ -11,6 +11,7 @@ conditionals.
 """
 
 import os
+from dataclasses import replace
 from typing import List, Set, Tuple
 
 from .lexer import Token, TokenKind, tokenize, tokens_to_lines, line_text
@@ -21,6 +22,19 @@ class ParseError(Exception):
     """Error during parsing."""
     pass
 
+
+# Mnemonics that are simultaneously a register code (usable as an operand,
+# e.g. "MOV SA, 5") AND a genuine standalone one-operand instruction with a
+# real CPU handler (core/exec_handlers.py's _sa/_sf/_sv/_sw/_vm/_vl/_tt/_tm/
+# _tc/_ts/_vx/_vy). The lexer classifies them as TokenKind.REGISTER by
+# default (see lexer.REGISTER_TOKENS), so a standalone instruction line like
+# "SA 0x1234" would hit the "must be a mnemonic" check below as a non-
+# mnemonic token and be silently discarded as an unrecognized line -- no
+# error, the instruction just vanishes from the output. Matches
+# nova_assembler.py's InstructionSet.DUAL_PURPOSE_INSTRUCTIONS.
+DUAL_PURPOSE_INSTRUCTIONS = {
+    "SA", "SF", "SV", "SW", "VM", "VL", "TT", "TM", "TC", "TS", "VX", "VY"
+}
 
 # Directives that emit data bytes
 DATA_DIRECTIVES = {"DB", "DW", "DEFSTR", "DS", "DEFWORD", "DEFBYTE"}
@@ -216,6 +230,15 @@ def _parse_line(line: List[Token]) -> List[IRNode]:
         i += 1
         if i >= len(line):
             return nodes
+
+    # Retag a leading dual-purpose register/instruction token (SA, TT, VX, ...)
+    # as a mnemonic. Left as REGISTER it falls through every branch below as
+    # an unrecognized line and the instruction silently disappears from the
+    # assembled output with no error. See DUAL_PURPOSE_INSTRUCTIONS above.
+    if (line[i].kind == TokenKind.REGISTER
+            and line[i].value.upper() in DUAL_PURPOSE_INSTRUCTIONS):
+        line = list(line)
+        line[i] = replace(line[i], kind=TokenKind.MNEMONIC)
 
     # A bare identifier followed by EQU is a symbol definition without a colon.
     if (line[i].kind == TokenKind.IDENT

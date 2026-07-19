@@ -253,22 +253,32 @@ def _abs(cpu, values) -> int:
 
 
 def _adc(cpu, values) -> int:
-    """ADC: dst + src + carry."""
+    """ADC: dst + src + carry.
+
+    The overflow formula in ``set_from_operation`` compares the sign bits of
+    op1/op2 to the sign bit of the (unmasked) result. Folding carry into op2
+    before that comparison (op2 + carry) can flip op2's sign bit purely from
+    the carry addition — e.g. width=8, src=0x7F, carry=1 gives op2=0x80 —
+    which corrupts the overflow flag even though the arithmetic result itself
+    stays correct. Pass the raw src so only genuine sign bits are compared;
+    ``result`` already has carry folded in exactly.
+    """
     carry = 1 if cpu.flags_obj.check_C() else 0
     result = values[0] + values[1] + carry
     _write_result(cpu, 0, result)
     width = _operand_width(cpu)
-    _set_arith_flags(cpu, result, values[0], values[1] + carry, width, is_sub=False)
+    _set_arith_flags(cpu, result, values[0], values[1], width, is_sub=False)
     return result
 
 
 def _sbc(cpu, values) -> int:
-    """SBC: dst - src - carry."""
+    """SBC: dst - src - carry. See _adc for why raw src (not src + carry) is
+    passed to the overflow formula."""
     carry = 1 if cpu.flags_obj.check_C() else 0
     result = values[0] - values[1] - carry
     _write_result(cpu, 0, result)
     width = _operand_width(cpu)
-    _set_arith_flags(cpu, result, values[0], values[1] + carry, width, is_sub=True)
+    _set_arith_flags(cpu, result, values[0], values[1], width, is_sub=True)
     return result
 
 
