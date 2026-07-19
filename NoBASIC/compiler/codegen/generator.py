@@ -114,10 +114,29 @@ class CodeGenerator:
         self.register_pressure: Dict[int, int] = {}  # program_point -> register demand
         self.max_register_pressure = 0
         
-        # Preferred register order for allocation (R registers first, then P registers)
+        # Preferred register order for allocation (P registers first, then R
+        # registers as a pressure-relief fallback).
+        #
+        # NoBASIC's only scalar numeric type is NUMBER, always a full 16-bit
+        # signed value -- R registers are unsigned-8-bit at the CPU level
+        # (core/exec_handlers.py's DIV/MOD/NOT/shift/etc. mask and interpret
+        # values purely by the destination register's width, with no
+        # separate sign-awareness). Defaulting general expression evaluation
+        # to R registers here meant a value that happened to live in a P
+        # register (e.g. a negative loop counter) got silently narrowed to
+        # its unsigned low byte via a plain `MOV R#, P#` before ordinary
+        # arithmetic even ran -- e.g. `x = i / 2` for a P-register-resident
+        # i = -7 computed 249 // 2 = 124 instead of -7 // 2 = -3, purely
+        # because the temp register the DIV operands landed in was 8-bit.
+        # R registers remain available here as a fallback for when every P
+        # register is already live (deep expression nesting / high pressure)
+        # rather than removed outright, to avoid hard allocation failures;
+        # that fallback path can still narrow a wide value in rare
+        # high-pressure cases, but is no longer the default. See
+        # feedback_nova_independent_implementations_drift memory.
         self.allocation_order = [
+            'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6',
             'R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9',
-            'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6'
         ]
         
         # Preferred register order for variable allocation (P registers for 16-bit)
@@ -361,7 +380,18 @@ class CodeGenerator:
         raise RuntimeError(error_msg)
 
     def allocate_p_register(self, preferred_regs: Optional[List[str]] = None) -> str:
-        """Allocate a 16-bit P register only (never falls back to R registers)."""
+        """Allocate a 16-bit P register only (never falls back to R registers).
+
+        On exhaustion, tries to dynamically spill a register-resident
+        variable that's provably dead from this point forward (see
+        _evict_dead_variable_for_p_register) before giving up. NoBASIC now
+        treats every NUMBER as a full 16-bit value (see
+        feedback_nova_independent_implementations_drift memory), which
+        raised how often the ~7 P registers alone need to cover both live
+        variables and expression temporaries -- this keeps genuinely complex
+        expressions compiling (at the cost of a slower memory round-trip)
+        instead of hard-failing where the old R+P combined pool had slack.
+        """
         if preferred_regs is None:
             preferred_regs = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P0']
 
@@ -382,8 +412,55 @@ class CodeGenerator:
                 self._debug_register_state()
             return reg
 
+        evicted = self._evict_dead_variable_for_p_register(preferred_regs)
+        if evicted is not None:
+            self.register_usage[evicted] = True
+            self.auto_free_registers.add(evicted)
+            self._update_allocation_stats()
+            self.mark_temp_live(evicted)
+            return evicted
+
         self.allocation_stats['allocation_failures'] += 1
         raise RuntimeError("Register exhaustion: No available P registers for 16-bit operation")
+
+    def _evict_dead_variable_for_p_register(self, preferred_regs: List[str]) -> Optional[str]:
+        """Free a P register by spilling a register-resident variable that is
+        provably not live going forward from the current program point.
+
+        Reuses the exact live_at_point/program_counter-based "blocked"
+        computation allocate_register() already relies on for interference
+        safety -- a variable's register is only a candidate here if it is
+        NOT in that blocked set, i.e. the existing liveness data says
+        nothing will read it via var_reg again. That makes this safe to
+        clobber: once evicted, the variable becomes a normal spilled
+        variable and future reads/writes go through load_variable/
+        store_variable's existing spill-slot path, exactly as if it had
+        been statically spilled by the pre-pass allocator. Returns None
+        (does nothing) if every P-register-resident variable is still live,
+        rather than guessing -- clobbering a still-needed variable would
+        silently corrupt its value.
+        """
+        live_vars = self.live_at_point.get(self.program_counter, set())
+        blocked = {self.var_reg.get(v) for v in live_vars if v in self.var_reg}
+        blocked.discard(None)
+
+        for name, reg in list(self.var_reg.items()):
+            if not reg.startswith('P'):
+                continue
+            if reg not in preferred_regs:
+                continue
+            if reg in blocked:
+                continue
+
+            self.allocate_spill_slot(name)
+            del self.var_reg[name]
+            self.store_variable(name, reg)
+            self.deallocate_register(reg)
+            if self.debug_allocation:
+                print(f"[SPILL] Dynamically spilled '{name}' from {reg} to relieve P-register pressure")
+            return reg
+
+        return None
     
     def _update_allocation_stats(self):
         """Update statistics about register allocation."""
@@ -1893,8 +1970,14 @@ class CodeGenerator:
         self.current_output.append("KEYIN R0")    # Read key (returns 0 if buffer empty)
 
     def generate_ser_out(self, stmt: SerOutStmt):
-        """Generate SerOut(value) - transmit a byte over the serial port (SEROUT)."""
-        val_reg = self.generate_expression(stmt.value)
+        """Generate SerOut(value) - transmit a byte over the serial port (SEROUT).
+
+        Prefers an R register: the UART data register is genuinely 8-bit
+        hardware (nova_uart.py's write_data masks to & 0xFF), unlike a plain
+        NoBASIC NUMBER value, so there's no width-correctness reason to
+        default to a P register here.
+        """
+        val_reg = self.generate_expression(stmt.value, "R1")
         self.current_output.append(f"SEROUT {val_reg}")
         self.smart_deallocate(val_reg, is_last_use=True)
 
@@ -1909,8 +1992,12 @@ class CodeGenerator:
         self.store_variable(stmt.variable, "R0")
 
     def generate_ser_ctrl(self, stmt: SerCtrlStmt):
-        """Generate SerCtrl(value) - set serial control bits (SERCTRL)."""
-        val_reg = self.generate_expression(stmt.value)
+        """Generate SerCtrl(value) - set serial control bits (SERCTRL).
+
+        Prefers an R register: the UART control register is genuinely 8-bit
+        hardware, unlike a plain NoBASIC NUMBER value -- see generate_ser_out.
+        """
+        val_reg = self.generate_expression(stmt.value, "R1")
         self.current_output.append(f"SERCTRL {val_reg}")
         self.smart_deallocate(val_reg, is_last_use=True)
 
@@ -2190,8 +2277,14 @@ class CodeGenerator:
                 context={"constants": self.expr_constant_values},
             )
         
-        # Generate the value - prefer a P register for strings, R1 for numeric temps
-        preferred_reg = "P1" if is_string_assignment else "R1"
+        # Generate the value into a P register. NUMBER is NoBASIC's only
+        # scalar numeric type and is always a full 16-bit signed value (see
+        # feedback_nova_independent_implementations_drift memory) -- an R1
+        # default here silently narrowed the RHS of every plain assignment
+        # (e.g. `x = i / 2` for a negative/wide `i`) to its unsigned low
+        # byte before the expression's own opcode (DIV, NOT, shift, ...)
+        # ever ran.
+        preferred_reg = "P1"
         value_reg = self.generate_expression(expr_to_generate, preferred_reg)
 
         if isinstance(stmt.variable, VariableExpr):
@@ -3181,6 +3274,71 @@ class CodeGenerator:
                 self.deallocate_register(target_reg)
             raise
 
+    def _emit_signed_div(self, target_reg: str, right_result: str) -> None:
+        """Emit a signed '/' (truncating toward zero) using the CPU's unsigned
+        DIV opcode (core/exec_handlers.py's _div does raw `//` on the operands'
+        bit pattern -- there is no signed divide instruction in the ISA).
+        NoBASIC's only numeric type is a signed 16-bit NUMBER, so `-7 / 2`
+        must produce -3, not the unsigned quotient of the raw pattern 0xFFF9.
+
+        Branches on both operand signs (no scratch register needed, so this
+        doesn't add to register pressure): takes the absolute value of
+        whichever operand(s) are negative, runs the unsigned DIV, then
+        negates the result iff exactly one operand was negative (XOR of the
+        two signs) -- mirroring the sign each branch already determined.
+        """
+        left_pos = self.new_label()
+        neg_neg = self.new_label()
+        pos_pos = self.new_label()
+        done = self.new_label()
+
+        self.current_output.append(f"CMP {target_reg}, 0")
+        self.current_output.append(f"JGE {left_pos}")
+        self.current_output.append(f"NEG {target_reg}")
+        self.current_output.append(f"CMP {right_result}, 0")
+        self.current_output.append(f"JGE {neg_neg}")
+        self.current_output.append(f"NEG {right_result}")
+        self.current_output.append(f"DIV {target_reg}, {right_result}")
+        self.current_output.append(f"JMP {done}")
+        self.current_output.append(f"{neg_neg}:")
+        self.current_output.append(f"DIV {target_reg}, {right_result}")
+        self.current_output.append(f"NEG {target_reg}")
+        self.current_output.append(f"JMP {done}")
+        self.current_output.append(f"{left_pos}:")
+        self.current_output.append(f"CMP {right_result}, 0")
+        self.current_output.append(f"JGE {pos_pos}")
+        self.current_output.append(f"NEG {right_result}")
+        self.current_output.append(f"DIV {target_reg}, {right_result}")
+        self.current_output.append(f"NEG {target_reg}")
+        self.current_output.append(f"JMP {done}")
+        self.current_output.append(f"{pos_pos}:")
+        self.current_output.append(f"DIV {target_reg}, {right_result}")
+        self.current_output.append(f"{done}:")
+
+    def _emit_signed_mod(self, target_reg: str, right_result: str) -> None:
+        """Emit a signed '%'/MOD (C-style truncating, matching TRUNC/FRAC's
+        convention elsewhere in this codegen: result has the same sign as
+        the dividend) using the CPU's unsigned MOD opcode. See _emit_signed_div
+        for why a raw MOD on a negative operand's bit pattern is wrong.
+        """
+        right_ok = self.new_label()
+        left_ok = self.new_label()
+        done = self.new_label()
+
+        self.current_output.append(f"CMP {right_result}, 0")
+        self.current_output.append(f"JGE {right_ok}")
+        self.current_output.append(f"NEG {right_result}")
+        self.current_output.append(f"{right_ok}:")
+        self.current_output.append(f"CMP {target_reg}, 0")
+        self.current_output.append(f"JGE {left_ok}")
+        self.current_output.append(f"NEG {target_reg}")
+        self.current_output.append(f"MOD {target_reg}, {right_result}")
+        self.current_output.append(f"NEG {target_reg}")
+        self.current_output.append(f"JMP {done}")
+        self.current_output.append(f"{left_ok}:")
+        self.current_output.append(f"MOD {target_reg}, {right_result}")
+        self.current_output.append(f"{done}:")
+
     def generate_binary_expression(self, expr: BinaryExpr, target_reg: str) -> str:
         """Generate optimized code for binary expressions with immediate register freeing."""
         # **OPTIMIZATION: Constant Folding**
@@ -3337,17 +3495,13 @@ class CodeGenerator:
                 self.current_output.append(f"MOV {target_reg}, {left_result}")
                 self.current_output.append(f"MUL {target_reg}, {right_result}")
         elif expr.operator == "/":
-            if left_result == target_reg:
-                self.current_output.append(f"DIV {target_reg}, {right_result}")
-            else:
+            if left_result != target_reg:
                 self.current_output.append(f"MOV {target_reg}, {left_result}")
-                self.current_output.append(f"DIV {target_reg}, {right_result}")
+            self._emit_signed_div(target_reg, right_result)
         elif expr.operator == "%" or expr.operator == "MOD":
-            if left_result == target_reg:
-                self.current_output.append(f"MOD {target_reg}, {right_result}")
-            else:
+            if left_result != target_reg:
                 self.current_output.append(f"MOV {target_reg}, {left_result}")
-                self.current_output.append(f"MOD {target_reg}, {right_result}")
+            self._emit_signed_mod(target_reg, right_result)
         elif expr.operator == "&" or expr.operator == "AND":
             if left_result == target_reg:
                 self.current_output.append(f"AND {target_reg}, {right_result}")

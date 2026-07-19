@@ -763,9 +763,13 @@ class TestCodeGenerator:
         """Test that registers are allocated efficiently."""
         code = self.generate_code("a = 1\nb = 2\nc = a + b\nd = c * 2")
         lines = code.strip().split("\n")
-        # Should reuse registers when possible
-        r1_count = sum(1 for line in lines if "R1" in line)
-        assert r1_count > 0  # R1 should be used
+        # Should reuse registers when possible. NoBASIC's only numeric type
+        # is a 16-bit NUMBER (see feedback_nova_independent_implementations_
+        # drift memory), so the default scratch register for expression
+        # evaluation is P1, not R1 -- R registers are unsigned-8-bit at the
+        # CPU level and are no longer the general-purpose default.
+        p1_count = sum(1 for line in lines if "P1" in line)
+        assert p1_count > 0  # P1 should be used
 
     def test_memory_address_allocation(self):
         """Test that variables are allocated correctly."""

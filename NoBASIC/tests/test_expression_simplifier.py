@@ -99,7 +99,14 @@ class TestExpressionSimplifierIntegration:
     def test_codegen_uses_constant_propagation_between_assignments(self):
         code = self.generate_code("a = 5\nb = a + 3")
 
-        assert re.search(r"MOV\s+\w+,\s*8\b", code) or ("MOV R1, 1" in code and "SHL R1, 3" in code)
+        # Powers of two (8 here) are strength-reduced to a shift, into
+        # whatever register generate_expression's default scratch is -- P1
+        # for a plain numeric assignment (see feedback_nova_independent_
+        # implementations_drift memory), not the old hardcoded R1.
+        shift_match = re.search(r"MOV\s+(\w+),\s*1\b[^\n]*\n\s*SHL\s+(\w+),\s*3\b", code)
+        assert re.search(r"MOV\s+\w+,\s*8\b", code) or (
+            shift_match is not None and shift_match.group(1) == shift_match.group(2)
+        )
 
     def test_codegen_elides_add_zero_operation(self):
         code = self.generate_code("x = 9\ny = x + 0")
