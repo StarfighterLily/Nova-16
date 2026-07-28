@@ -495,3 +495,130 @@ class TestBcdArithmetic:
         run_cpu_cycles(cpu, 3)
         assert cpu.zero_flag == False
         assert cpu.flags[6] == 1  # Carry (borrow)
+
+    def test_bcdadd_sets_bcd_carry_on_overflow(self, cpu, memory):
+        # 95 + 38 = 133 decimal: masking to a byte must not suppress the
+        # BCD carry flag (regression for masking-before-check ordering bug).
+        program = enc('SED') + \
+            enc('MOV', ('reg', 'R0'), ('imm8', 0x95)) + \
+            enc('MOV', ('reg', 'R1'), ('imm8', 0x38)) + \
+            enc('BCDADD', ('reg', 'R0'), ('reg', 'R1')) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 4)
+        assert cpu.Rregisters[0] == 0x33
+        assert cpu.flags_obj[10] == 1  # A (BCD carry)
+
+    def test_bcda_sets_bcd_carry_on_overflow(self, cpu, memory):
+        program = enc('SED') + \
+            enc('CLA') + \
+            enc('MOV', ('reg', 'R0'), ('imm8', 0x95)) + \
+            enc('MOV', ('reg', 'R1'), ('imm8', 0x38)) + \
+            enc('BCDA', ('reg', 'R0'), ('reg', 'R1')) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 5)
+        assert cpu.Rregisters[0] == 0x33
+        assert cpu.flags_obj[10] == 1  # A (BCD carry)
+
+    def test_bcdsub_sets_bcd_borrow_on_underflow(self, cpu, memory):
+        # 15 - 42: a genuine borrow, must not be masked away to C=0.
+        program = enc('SED') + \
+            enc('MOV', ('reg', 'R0'), ('imm8', 0x15)) + \
+            enc('MOV', ('reg', 'R1'), ('imm8', 0x42)) + \
+            enc('BCDSUB', ('reg', 'R0'), ('reg', 'R1')) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 4)
+        assert cpu.flags_obj[10] == 1  # A (BCD borrow)
+
+    def test_bcds_sets_bcd_borrow_on_underflow(self, cpu, memory):
+        program = enc('SED') + \
+            enc('CLA') + \
+            enc('MOV', ('reg', 'R0'), ('imm8', 0x15)) + \
+            enc('MOV', ('reg', 'R1'), ('imm8', 0x42)) + \
+            enc('BCDS', ('reg', 'R0'), ('reg', 'R1')) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 5)
+        assert cpu.flags_obj[10] == 1  # A (BCD borrow)
+
+
+class TestSblendAppliesToDrawing:
+    """SBLEND previously decoded and stored a blend mode that no drawing
+    primitive ever consulted (docs/TODO item 4) -- SWRITE and every SLINE/
+    SRECT/SCIRC/CHAR/SFILL draw always overwrote raw, unblended values.
+    These exercise the real opcode path end-to-end and confirm the active
+    blend mode (additive, mode 1) is now actually applied by each primitive,
+    while mode 0 (the default) still overwrites exactly as before."""
+
+    def test_sblend_default_mode_still_overwrites(self, cpu, memory):
+        program = enc('VX', ('imm8', 10)) + enc('VY', ('imm8', 10)) + \
+            enc('SWRITE', ('imm8', 100)) + \
+            enc('SWRITE', ('imm8', 50)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 4)
+        assert cpu.gfx.screen[10, 10] == 50
+
+    def test_sblend_additive_mode_applies_to_swrite(self, cpu, memory):
+        # existing=100, new=50, alpha=255 -> 100 + ((50*255+127)//255) = 150
+        program = enc('VX', ('imm8', 10)) + enc('VY', ('imm8', 10)) + \
+            enc('SWRITE', ('imm8', 100)) + \
+            enc('SBLEND', ('imm8', 1)) + \
+            enc('SWRITE', ('imm8', 50)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 5)
+        assert cpu.gfx.screen[10, 10] == 150
+
+    def test_sblend_additive_mode_applies_to_sfill(self, cpu, memory):
+        program = enc('VL', ('imm8', 1)) + \
+            enc('SFILL', ('imm8', 64)) + \
+            enc('SBLEND', ('imm8', 1)) + \
+            enc('SFILL', ('imm8', 16)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 4)
+        layer1 = cpu.gfx.get_layer_buffer_by_num(1)
+        assert bool((layer1 == 80).all())
+
+    def test_sblend_additive_mode_applies_to_sline(self, cpu, memory):
+        program = enc('VX', ('imm8', 5)) + enc('VY', ('imm8', 5)) + \
+            enc('MOV', ('reg', 'VC'), ('imm8', 100)) + \
+            enc('SLINE', ('imm8', 5), ('imm8', 5)) + \
+            enc('SBLEND', ('imm8', 1)) + \
+            enc('MOV', ('reg', 'VC'), ('imm8', 50)) + \
+            enc('SLINE', ('imm8', 5), ('imm8', 5)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 7)
+        assert cpu.gfx.screen[5, 5] == 150
+
+    def test_sblend_additive_mode_applies_to_srect(self, cpu, memory):
+        program = enc('VX', ('imm8', 5)) + enc('VY', ('imm8', 5)) + \
+            enc('MOV', ('reg', 'VC'), ('imm8', 100)) + \
+            enc('SRECT', ('imm8', 8), ('imm8', 8), ('imm8', 1)) + \
+            enc('SBLEND', ('imm8', 1)) + \
+            enc('MOV', ('reg', 'VC'), ('imm8', 50)) + \
+            enc('SRECT', ('imm8', 8), ('imm8', 8), ('imm8', 1)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 7)
+        assert cpu.gfx.screen[6, 6] == 150
+
+    def test_sblend_additive_mode_applies_to_scirc(self, cpu, memory):
+        program = enc('VX', ('imm8', 20)) + enc('VY', ('imm8', 20)) + \
+            enc('MOV', ('reg', 'VC'), ('imm8', 100)) + \
+            enc('SCIRC', ('imm8', 4), ('imm8', 1)) + \
+            enc('SBLEND', ('imm8', 1)) + \
+            enc('MOV', ('reg', 'VC'), ('imm8', 50)) + \
+            enc('SCIRC', ('imm8', 4), ('imm8', 1)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 7)
+        # The midpoint circle-fill algorithm can touch the same pixel more
+        # than once per draw, so an exact additive sum isn't guaranteed --
+        # but a raw (unblended) overwrite would leave this at exactly 50.
+        # Additive blending only ever moves a pixel up toward 255.
+        assert cpu.gfx.screen[20, 20] > 100

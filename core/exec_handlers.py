@@ -805,9 +805,10 @@ def _bcda(cpu, values) -> int:
             result += 0x06
         if ((result >> 4) & 0x0F) > 9:
             result += 0x60
+    carry = result > 0x99
     result &= 0xFF
     _write_result(cpu, 0, result)
-    cpu.flags_obj.set_from_bcd(result, result > 0x99)
+    cpu.flags_obj.set_from_bcd(result, carry)
     return result
 
 
@@ -821,9 +822,10 @@ def _bcds(cpu, values) -> int:
             result -= 0x06
         if ((result >> 4) & 0x0F) > 9:
             result -= 0x60
+    borrow = result < 0
     result &= 0xFF
     _write_result(cpu, 0, result)
-    cpu.flags_obj.set_from_bcd(result, result < 0)
+    cpu.flags_obj.set_from_bcd(result, borrow)
     return result
 
 
@@ -886,9 +888,10 @@ def _bcdadd(cpu, values) -> int:
             result += 0x06
         if ((result >> 4) & 0x0F) > 9:
             result += 0x60
+    carry = result > 0x99
     result &= 0xFF
     _write_result(cpu, 0, result)
-    cpu.flags_obj.set_from_bcd(result, result > 0x99)
+    cpu.flags_obj.set_from_bcd(result, carry)
     return result
 
 
@@ -900,9 +903,10 @@ def _bcdsub(cpu, values) -> int:
             result -= 0x06
         if ((result >> 4) & 0x0F) > 9:
             result -= 0x60
+    borrow = result < 0
     result &= 0xFF
     _write_result(cpu, 0, result)
-    cpu.flags_obj.set_from_bcd(result, result < 0)
+    cpu.flags_obj.set_from_bcd(result, borrow)
     return result
 
 

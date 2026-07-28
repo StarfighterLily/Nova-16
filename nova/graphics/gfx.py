@@ -238,9 +238,12 @@ class GFX:
             layer_num = self.VL
         target = self.get_layer_buffer_by_num(layer_num)
         if target is not None:
-            target.fill(value)
+            if self._blitter.blend_enabled:
+                target[:, :] = self._blitter.blend_array(target, value)
+            else:
+                target.fill(value)
             if layer_num == 0:
-                self._compositor._screen.fill(value)
+                self._compositor._screen[:, :] = target[:, :]
             self._compositor.mark_dirty(layer_num)
 
     # ── Blitting / VRAM ────────────────────────────────────────────────
@@ -315,39 +318,21 @@ class GFX:
                 x = addr % self.width
                 y = addr // self.width
                 if 0 <= x < self.width and 0 <= y < self.height:
-                    self._set_pixel_fast(x, y, value)
+                    self._set_pixel_to_layer(x, y, value)
         else:
             x = int(self.Vregisters[0])
             y = int(self.Vregisters[1])
             if 0 <= x < self.width and 0 <= y < self.height:
-                self._set_pixel_fast(x, y, value)
-
-    def _set_pixel_fast(self, x, y, value):
-        vl = self.VL
-        if vl == 0:
-            self._compositor.layers[0][y, x] = value
-            self._compositor._screen[y, x] = value
-            return
-        if 1 <= vl <= 4:
-            old_val = self._compositor.layers[vl][y, x]
-            self._compositor.layers[vl][y, x] = value
-            self._compositor.update_pixel_count(vl, old_val, value)
-            self._compositor.mark_dirty(vl)
-        elif 5 <= vl <= 8:
-            old_val = self._compositor.layers[vl][y, x]
-            self._compositor.layers[vl][y, x] = value
-            self._compositor.update_pixel_count(vl, old_val, value)
-            self._compositor.mark_dirty(vl)
+                self._set_pixel_to_layer(x, y, value)
 
     def _set_pixel_to_layer(self, x, y, value, layer=None):
-        """Set pixel to a specific layer (or current VL if layer=None)."""
+        """Set pixel to a specific layer (or current VL if layer=None).
+
+        Routes through the Blitter so the active SBLEND blend mode is
+        applied consistently everywhere a single pixel is written.
+        """
         target = layer if layer is not None else self.VL
-        if target == 0:
-            self._compositor.layers[0][y, x] = value
-            self._compositor._screen[y, x] = value
-        elif 1 <= target <= 8:
-            self._compositor.layers[target][y, x] = value
-            self._compositor.mark_dirty(target)
+        self._blitter._set_pixel_to_layer(x, y, value, target, self._compositor)
 
     # ── Transformations ────────────────────────────────────────────────
 
@@ -545,6 +530,7 @@ class GFX:
         if target is None:
             return
         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        blend = self._blitter.blend_enabled
         dx = abs(x2 - x1)
         dy = abs(y2 - y1)
         sx = 1 if x1 < x2 else -1
@@ -553,7 +539,7 @@ class GFX:
         x, y = x1, y1
         while True:
             if 0 <= x < self.width and 0 <= y < self.height:
-                target[y, x] = color
+                target[y, x] = self._blitter.blend_pixel(target[y, x], color) if blend else color
             if x == x2 and y == y2:
                 break
             e2 = 2 * err
@@ -573,13 +559,24 @@ class GFX:
         y1 = max(0, min(y1, self.height - 1))
         x2 = max(0, min(x2, self.width - 1))
         y2 = max(0, min(y2, self.height - 1))
+        blend = self._blitter.blend_enabled
         if filled:
-            target[y1:y2 + 1, x1:x2 + 1] = color
+            if blend:
+                region = target[y1:y2 + 1, x1:x2 + 1]
+                target[y1:y2 + 1, x1:x2 + 1] = self._blitter.blend_array(region, color)
+            else:
+                target[y1:y2 + 1, x1:x2 + 1] = color
         else:
-            target[y1, x1:x2 + 1] = color
-            target[y2, x1:x2 + 1] = color
-            target[y1:y2 + 1, x1] = color
-            target[y1:y2 + 1, x2] = color
+            if blend:
+                target[y1, x1:x2 + 1] = self._blitter.blend_array(target[y1, x1:x2 + 1], color)
+                target[y2, x1:x2 + 1] = self._blitter.blend_array(target[y2, x1:x2 + 1], color)
+                target[y1:y2 + 1, x1] = self._blitter.blend_array(target[y1:y2 + 1, x1], color)
+                target[y1:y2 + 1, x2] = self._blitter.blend_array(target[y1:y2 + 1, x2], color)
+            else:
+                target[y1, x1:x2 + 1] = color
+                target[y2, x1:x2 + 1] = color
+                target[y1:y2 + 1, x1] = color
+                target[y1:y2 + 1, x2] = color
         self._compositor.mark_dirty(self.VL)
 
     def draw_circle(self, center_x, center_y, radius, color, filled=True):
@@ -587,6 +584,14 @@ class GFX:
         if target is None:
             return
         center_x, center_y, radius = int(center_x), int(center_y), int(radius)
+        blend = self._blitter.blend_enabled
+
+        def _set(row, col):
+            if blend:
+                target[row, col] = self._blitter.blend_pixel(target[row, col], color)
+            else:
+                target[row, col] = color
+
         if filled:
             x = radius
             y = 0
@@ -595,15 +600,15 @@ class GFX:
                 for i in range(center_x - x, center_x + x + 1):
                     if 0 <= i < self.width:
                         if 0 <= center_y + y < self.height:
-                            target[center_y + y, i] = color
+                            _set(center_y + y, i)
                         if 0 <= center_y - y < self.height:
-                            target[center_y - y, i] = color
+                            _set(center_y - y, i)
                 for i in range(center_x - y, center_x + y + 1):
                     if 0 <= i < self.width:
                         if 0 <= center_y + x < self.height:
-                            target[center_y + x, i] = color
+                            _set(center_y + x, i)
                         if 0 <= center_y - x < self.height:
-                            target[center_y - x, i] = color
+                            _set(center_y - x, i)
                 y += 1
                 err += 1 + 2 * y
                 if 2 * (err - x) + 1 > 0:
@@ -622,7 +627,7 @@ class GFX:
                 ]
                 for px, py in points:
                     if 0 <= px < self.width and 0 <= py < self.height:
-                        target[py, px] = color
+                        _set(py, px)
                 y += 1
                 err += 1 + 2 * y
                 if 2 * (err - x) + 1 > 0:
@@ -695,10 +700,18 @@ class GFX:
         dest_x0, dest_y0, dest_x1, dest_y1, src_x0, src_y0, src_x1, src_y1 = visible_region
         visible_matrix = char_matrix[src_y0:src_y1, src_x0:src_x1]
         target_slice = target_buffer[dest_y0:dest_y1, dest_x0:dest_x1]
+        if not self._blitter.blend_enabled:
+            if background is None:
+                target_slice[visible_matrix] = color
+            else:
+                target_slice[:, :] = np.where(visible_matrix, color, background)
+            return True
         if background is None:
-            target_slice[visible_matrix] = color
+            blended = self._blitter.blend_array(target_slice, color)
+            target_slice[visible_matrix] = blended[visible_matrix]
         else:
-            target_slice[:, :] = np.where(visible_matrix, color, background)
+            new_values = np.where(visible_matrix, color, background)
+            target_slice[:, :] = self._blitter.blend_array(target_slice, new_values)
         return True
 
     def _get_font_char_data(self, char):

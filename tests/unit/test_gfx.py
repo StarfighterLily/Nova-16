@@ -176,6 +176,34 @@ class TestGraphicsBlending:
         assert graphics.blend_pixel(0, 0) == 0
         assert graphics.blend_pixel(255, 0) == 255
 
+    @pytest.mark.parametrize(
+        ("mode", "existing", "new", "alpha"),
+        [
+            (0, 12, 200, 255),
+            (1, 240, 30, 255),
+            (1, 100, 50, 128),
+            (2, 10, 50, 255),
+            (2, 100, 30, 128),
+            (3, 255, 255, 255),
+            (3, 200, 100, 128),
+            (4, 0, 255, 255),
+            (4, 128, 128, 255),
+        ],
+    )
+    def test_blend_array_matches_blend_pixel(self, graphics, mode, existing, new, alpha):
+        """The vectorized blend_array used by fill/rect/char drawing must agree,
+        pixel-for-pixel, with the scalar blend_pixel used by SWRITE/SLINE/SCIRC."""
+        graphics.blend_mode = mode
+        graphics.blend_alpha = alpha
+        existing_arr = np.full((4, 4), existing, dtype=np.uint8)
+
+        result = graphics._blitter.blend_array(existing_arr, new)
+
+        assert result.shape == (4, 4)
+        assert result.dtype == np.uint8
+        assert int(result[0, 0]) == graphics.blend_pixel(existing, new)
+        assert bool((result == result[0, 0]).all())
+
 
 class TestGraphicsLayers:
     """Test graphics layer operations."""
@@ -868,6 +896,24 @@ class TestGraphicsText:
 
         assert graphics.screen[10, 10] == 200
         assert graphics.screen[10, 27] == 201
+
+    def test_draw_char_applies_active_blend_mode(self, graphics, monkeypatch):
+        """CHAR previously wrote raw color values regardless of SBLEND
+        (docs/TODO item 4); additive mode should now combine with the
+        pixel already on the layer instead of overwriting it."""
+        full_font = [0] * (256 * 8)
+        glyph_start = 0x41 * 8
+        full_font[glyph_start:glyph_start + 8] = [0xFF] * 8
+        monkeypatch.setattr(nova_gfx, "font_data", full_font)
+
+        graphics.clear()
+        graphics.draw_char_to_screen(0x41, 10, 10, 100)
+
+        graphics.blend_mode = 1  # Additive
+        graphics.draw_char_to_screen(0x41, 10, 10, 50)
+
+        # existing=100, new=50, alpha=255 -> 100 + ((50*255+127)//255) = 150
+        assert graphics.screen[10, 10] == 150
 
     def test_draw_char_legacy_font_mapping(self, graphics, monkeypatch):
         """Legacy 224-glyph table keeps index 0 mapped to character code 32."""

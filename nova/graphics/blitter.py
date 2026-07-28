@@ -94,6 +94,37 @@ class Blitter:
         else:
             return new
 
+    def blend_array(self, existing: np.ndarray, new) -> np.ndarray:
+        """Vectorized equivalent of blend_pixel() for numpy array/slice regions.
+
+        `new` may be a scalar or an array broadcastable against `existing`.
+        Mirrors blend_pixel's per-mode formulas exactly so batched drawing
+        primitives (fill, rect, char) produce the same result a per-pixel
+        blend_pixel() loop would.
+        """
+        existing = np.asarray(existing, dtype=np.int32)
+        new = np.asarray(new, dtype=np.int32)
+        alpha = max(0, min(255, int(self._blend_alpha)))
+
+        if self._blend_mode == 1:  # Additive
+            result = existing + ((new * alpha + 127) // 255)
+            result = np.minimum(255, result)
+        elif self._blend_mode == 2:  # Subtractive
+            result = existing - ((new * alpha + 127) // 255)
+            result = np.maximum(0, result)
+        elif self._blend_mode == 3:  # Multiply
+            result = (existing * new * alpha + 32512) // 65025
+            result = np.minimum(255, result)
+        elif self._blend_mode == 4:  # Screen
+            inv_existing = 255 - existing
+            inv_new = 255 - new
+            result = 255 - ((inv_existing * inv_new * alpha + 32512) // 65025)
+            result = np.clip(result, 0, 255)
+        else:  # Normal (overwrite) / unknown mode
+            result = new
+
+        return np.broadcast_to(result, existing.shape).astype(np.uint8)
+
     def set_blend_mode(self, mode: int):
         """Set blend mode with bounds checking."""
         self.blend_mode = max(0, min(4, int(mode)))
@@ -112,10 +143,10 @@ class Blitter:
         if not self.blend_enabled:
             # Fast path: no blending
             if vl == 0:
-                old_val = compositor.layers[0][y, x]
+                # Layer 0 is always composited unconditionally, so its pixel
+                # count is never consulted — skip tracking it (measured hot path).
                 compositor.layers[0][y, x] = value
                 compositor._screen[y, x] = value
-                compositor.update_pixel_count(0, old_val, value)
             elif 1 <= vl <= 4:
                 old_val = compositor.layers[vl][y, x]
                 compositor.layers[vl][y, x] = value
@@ -130,12 +161,10 @@ class Blitter:
 
         # Slow path: full blending
         if vl == 0:
-            old_val = compositor.layers[0][y, x]
-            existing = old_val
+            existing = compositor.layers[0][y, x]
             blended = self.blend_pixel(existing, value)
             compositor.layers[0][y, x] = blended
             compositor._screen[y, x] = blended
-            compositor.update_pixel_count(0, old_val, blended)
         elif 1 <= vl <= 4:
             old_val = compositor.layers[vl][y, x]
             existing = old_val
