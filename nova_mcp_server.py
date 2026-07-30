@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import traceback
 from typing import Any
@@ -310,7 +311,14 @@ async def handle_call_tool(name: str, arguments: dict[str, Any] | None):
             result_text = json.dumps({"error": f"Unknown tool: {name}"})
         else:
             handler = globals()[handler_name]
-            result_text = handler(args) if args else handler()
+            # Dispatch based on the handler's actual signature, not on whether
+            # this particular call happened to pass any arguments — tools whose
+            # params are all optional (e.g. cpu_step, cpu_run) are commonly
+            # invoked with an empty/omitted arguments dict, which previously
+            # caused a truthiness check here to call handler() and raise
+            # "missing 1 required positional argument" (swallowed by the
+            # except below, so Step/Run silently did nothing).
+            result_text = handler(args) if inspect.signature(handler).parameters else handler()
         return [TextContent(type="text", text=result_text)]
     except SystemExit as exc:
         error_text = json.dumps({"error": f"Tool exited with code {exc.code}", "traceback": traceback.format_exc()})
