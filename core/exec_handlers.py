@@ -805,6 +805,7 @@ def _bcda(cpu, values) -> int:
             result += 0x06
         if ((result >> 4) & 0x0F) > 9:
             result += 0x60
+    # Carry check must run BEFORE masking to 8 bits — result may be 3 digits
     carry = result > 0x99
     result &= 0xFF
     _write_result(cpu, 0, result)
@@ -822,6 +823,7 @@ def _bcds(cpu, values) -> int:
             result -= 0x06
         if ((result >> 4) & 0x0F) > 9:
             result -= 0x60
+    # Borrow check must run BEFORE masking to 8 bits — result may be negative
     borrow = result < 0
     result &= 0xFF
     _write_result(cpu, 0, result)
@@ -888,6 +890,7 @@ def _bcdadd(cpu, values) -> int:
             result += 0x06
         if ((result >> 4) & 0x0F) > 9:
             result += 0x60
+    # Carry check must run BEFORE masking to 8 bits — result may be 3 digits
     carry = result > 0x99
     result &= 0xFF
     _write_result(cpu, 0, result)
@@ -903,6 +906,7 @@ def _bcdsub(cpu, values) -> int:
             result -= 0x06
         if ((result >> 4) & 0x0F) > 9:
             result -= 0x60
+    # Borrow check must run BEFORE masking to 8 bits — result may be negative
     borrow = result < 0
     result &= 0xFF
     _write_result(cpu, 0, result)

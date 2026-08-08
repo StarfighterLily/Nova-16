@@ -845,10 +845,15 @@ class CodeGenerator:
                 val = int(symbol_val, 16)
             else:
                 val = int(symbol_val)
-            # For branch instructions, calculate relative offset
-            if bit_width == 16 and val > 0x7FFF:  # Likely a branch instruction
-                val = val - 0  # Would need location_counter passed in
-            return val
+            # Note: BR/BRZ/BRNZ encode relative offsets, not absolute addresses.
+            # Calculate offset as: target - (current_location + instruction_size)
+            # instruction_size = opcode(1) + mode_byte(1) + imm16(2) = 4 bytes
+            instruction_size = 4
+            offset = val - (location_counter + instruction_size)
+            # Convert to signed 16-bit value
+            if offset < 0:
+                offset = offset & 0xFFFF
+            return offset
         else:
             raise ValueError(f"Undefined symbol: {operand}")
 

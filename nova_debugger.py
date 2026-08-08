@@ -284,22 +284,26 @@ class NovaDebugger:
         print("Running until breakpoint...")
         steps = 0
         max_steps = 100000  # Prevent infinite loops
-        
+
         while steps < max_steps:
-            if self.cpu.pc in self.breakpoints:
-                print(f"Breakpoint hit at 0x{self.cpu.pc:04X}")
-                self.print_current_instruction()
-                break
-                
+            # Step at least once before checking breakpoints, so resuming from
+            # a breakpoint actually executes the current instruction instead of
+            # immediately re-hitting the same address.
+
             if self.cpu.halted:
                 print("Program halted")
                 break
-                
+
             try:
                 self.cpu.step()
                 steps += 1
             except Exception as e:
                 print(f"Error during execution at PC 0x{self.cpu.pc:04X}: {e}")
+                break
+
+            if self.cpu.pc in self.breakpoints:
+                print(f"Breakpoint hit at 0x{self.cpu.pc:04X}")
+                self.print_current_instruction()
                 break
                 
         if steps >= max_steps:

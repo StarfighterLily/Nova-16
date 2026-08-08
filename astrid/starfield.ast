@@ -1,0 +1,57 @@
+void setup() {
+	sti();
+	set_vmode(1);           // Memory mode
+	set_pos(0, 0);         // VX = 0, VY = 0
+	set_pointers(0x0000, 0xFFFF); // P0 = START, P1 = FINISH
+	set_timer(0, 255, 80, 3);     // TT, TM, TS, TC
+}
+
+void draw_stars(int layer, int start, int finish, int step, int color_min, int color_max) {
+	int p, x, y, color;
+	set_layer(layer);
+	for (p = start; p <	finish; p += step) {
+		int rnd = random();
+		x = (rnd >> 8) & 0xFF;
+		y = rnd & 0xFF;
+		color = random_range(color_min, color_max);
+		set_pos(x, y);
+		write_screen(color);
+	}
+}
+
+void draw_text() {
+	set_layer(5);
+	set_vmode(0);
+	set_pos(101, 123);
+	write_text("StarField", 0x15); // Shadow
+	set_pos(100, 124);
+	write_text("StarField", 0x1F); // Main
+}
+
+void main() {
+	setup();
+
+	// Layer 1: many dim stars
+	draw_stars(1, 0x0000, 0xFFFF, 20, 0x00, 0x06);
+
+	// Layer 2: fewer, brighter stars
+	draw_stars(2, 0x0000, 0xFFFF, 52, 0x07, 0x0A);
+
+	// Layer 3: fewest, brightest stars
+	draw_stars(3, 0x0000, 0xFFFF, 88, 0x0B, 0x0F);
+
+	draw_text();
+
+	while (1) {
+		// Infinite loop
+	}
+}
+
+// Timer interrupt handler (vector at 0x0100)
+void timer_interrupt() {
+	for (int layer = 1; layer <= 3; layer++) {
+		set_layer(layer);
+		scroll_x(layer);
+	}
+	iret();
+}

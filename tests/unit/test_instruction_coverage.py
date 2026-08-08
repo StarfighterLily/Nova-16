@@ -187,34 +187,113 @@ class TestConditionalJumpFamily:
 
 class TestRelativeBranches:
     def test_br_unconditional(self, cpu, memory):
-        br_instr = enc('BR', ('imm16', 6))
+        # BR branches to PC + signed offset, where offset is relative to the
+        # instruction *after* the BR (opcode + mode + imm16 = 4 bytes).
+        # BR + MOV marker + HLT = 1+1+2 + 1+1+1 + 1 = 8 bytes total.
+        # Jump over the marker: target = 4 (after BR), offset = 4 - 4 = 0
+        # Actually let's jump to HLT: target = 7, offset = 7 - 4 = 3
+        target = 7
+        offset = target - 4  # relative to PC after BR
+        br_instr = enc('BR', ('imm16', offset))
         program = br_instr + enc('MOV', ('reg', 'R9'), ('imm8', 0xAA)) + enc('HLT')
         memory.load_program(program)
         cpu.pc = 0
         run_cpu_cycles(cpu, 1)
-        # offset is relative to PC right after the BR instruction (opcode +
-        # mode byte + 2-byte imm16 = 4 bytes)
-        assert cpu.pc == len(br_instr) + 6
+        assert cpu.pc == target
+
+    def test_br_forward(self, cpu, memory):
+        # Jump forward over some instructions
+        # Program: BR fwd; MOV R9,0xAA; NOP; NOP; HLT (target)
+        target = 6  # HLT at address 6
+        offset = target - 4
+        program = enc('BR', ('imm16', offset)) + \
+            enc('MOV', ('reg', 'R9'), ('imm8', 0xAA)) + \
+            enc('NOP') + enc('NOP') + enc('HLT')
+        memory.load_program(program)
+        cpu.pc = 0
+        run_cpu_cycles(cpu, 1)
+        assert cpu.pc == target
+
+    def test_br_backward(self, cpu, memory):
+        # Verify BR backward offset with a simple counted loop.
+        # R0 starts at 0, increments to 2, then BRZ exits.
+        #
+        # Actual enc() byte layout (verified from enc helper output):
+        #   0-3  : MOV R0,0   (4 bytes)
+        #   4-6  : INC R0     (3 bytes)
+        #   7-10 : CMP R0,2   (4 bytes)
+        #  11-14 : BRZ done   (4 bytes)
+        #  15-18 : BR loop    (4 bytes)
+        #  19    : HLT        (1 byte)
+        program = enc('MOV', ('reg', 'R0'), ('imm8', 0)) + \
+            enc('INC', ('reg', 'R0')) + \
+            enc('CMP', ('reg', 'R0'), ('imm8', 2))
+        loop_top = 4  # INC is at address 4
+        # BRZ at address 11. After it PC = 15. Target = 19. offset = 19-15 = 4
+        program += enc('BRZ', ('imm16', 4))
+        # BR at address 15. After it PC = 19. Target = 4. offset = 4-19 = -15
+        backward_offset = loop_top - (len(program) + 4)
+        program += enc('BR', ('imm16', backward_offset)) + enc('HLT')
+        memory.load_program(program)
+        cpu.pc = 0
+        for _ in range(20):
+            if cpu.halted:
+                break
+            cpu.step()
+        # Loop runs twice: R0 goes 0->1->2, then BRZ exits. Final R0=2.
+        assert cpu.halted
+        assert cpu.Rregisters[0] == 2
 
     def test_brz_taken_when_zero(self, cpu, memory):
+        # BRZ branches to PC + offset when Z flag is set
+        # CMP sets Z; BRZ taken; MOV marker skipped; HLT reached
+        target = 6
+        offset = target - 4
         program = enc('MOV', ('reg', 'R0'), ('imm8', 0)) + \
             enc('CMP', ('reg', 'R0'), ('imm8', 0)) + \
-            enc('BRZ', ('imm16', 4)) + \
+            enc('BRZ', ('imm16', offset)) + \
             enc('MOV', ('reg', 'R9'), ('imm8', 0xAA)) + \
             enc('HLT')
         memory.load_program(program)
         run_cpu_cycles(cpu, 3)
         assert cpu.Rregisters[9] == 0  # jump skipped the marker MOV
 
-    def test_brnz_taken_when_not_zero(self, cpu, memory):
+    def test_brz_not_taken_when_not_zero(self, cpu, memory):
+        # BRZ falls through when Z flag is clear, executing the marker.
+        # Need 4 cycles: MOV, CMP, BRZ (not taken), MOV marker.
         program = enc('MOV', ('reg', 'R0'), ('imm8', 1)) + \
             enc('CMP', ('reg', 'R0'), ('imm8', 0)) + \
-            enc('BRNZ', ('imm16', 4)) + \
+            enc('BRZ', ('imm16', 3)) + \
+            enc('MOV', ('reg', 'R9'), ('imm8', 0xAA)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 4)
+        assert cpu.Rregisters[9] == 0xAA  # marker executed
+
+    def test_brnz_taken_when_not_zero(self, cpu, memory):
+        # BRNZ branches to PC + offset when Z flag is clear
+        target = 6
+        offset = target - 4
+        program = enc('MOV', ('reg', 'R0'), ('imm8', 1)) + \
+            enc('CMP', ('reg', 'R0'), ('imm8', 0)) + \
+            enc('BRNZ', ('imm16', offset)) + \
             enc('MOV', ('reg', 'R9'), ('imm8', 0xAA)) + \
             enc('HLT')
         memory.load_program(program)
         run_cpu_cycles(cpu, 3)
-        assert cpu.Rregisters[9] == 0
+        assert cpu.Rregisters[9] == 0  # jump skipped the marker MOV
+
+    def test_brnz_not_taken_when_zero(self, cpu, memory):
+        # BRNZ falls through when Z flag is set, executing the marker.
+        # Need 4 cycles: MOV, CMP, BRNZ (not taken), MOV marker.
+        program = enc('MOV', ('reg', 'R0'), ('imm8', 0)) + \
+            enc('CMP', ('reg', 'R0'), ('imm8', 0)) + \
+            enc('BRNZ', ('imm16', 3)) + \
+            enc('MOV', ('reg', 'R9'), ('imm8', 0xAA)) + \
+            enc('HLT')
+        memory.load_program(program)
+        run_cpu_cycles(cpu, 4)
+        assert cpu.Rregisters[9] == 0xAA  # marker executed
 
 
 class TestLoop:

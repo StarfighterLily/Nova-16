@@ -220,10 +220,10 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 ## Stack Operations
 - **PUSH** (0x18): 1 operand - Push to stack
   - Operands: value
-  - Side Effects: Pushes value to stack, SP -= 2
+  - Side Effects: Pushes value to stack, SP -= 1 for 8-bit operands (R register or imm8), SP -= 2 for 16-bit operands (P register, imm16, or memory)
 - **POP** (0x19): 1 operand - Pop from stack
   - Operands: dest
-  - Side Effects: Pops value to dest, SP += 2
+  - Side Effects: Pops value to dest, SP += 1 for 8-bit operands (R register or imm8), SP += 2 for 16-bit operands (P register, imm16, or memory)
 - **PUSHF** (0x1A): 0 operands - Push flags
   - Operands: None
   - Side Effects: Pushes flags to stack, SP -= 2
@@ -285,15 +285,18 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
   - Side Effects: PC = target if (S != O) or Z set
 
 ## Control Flow - Branches (Relative)
-- **BR** (0x2B): 1 operand - Branch (relative jump)
-  - Operands: offset
-  - Side Effects: PC += offset
+- **BR** (0x2B): 1 operand - Relative branch
+  - Operands: signed_offset (16-bit)
+  - Side Effects: PC = PC_after_instruction + signed_offset
+  - Notes: Unconditional branch. Offset is relative to the instruction pointer after this instruction completes (opcode + mode byte + immediate = 4 bytes). Positive offsets branch forward, negative offsets branch backward. Encoding uses signed two's complement 16-bit immediate.
 - **BRZ** (0x2C): 1 operand - Branch if zero
-  - Operands: offset
-  - Side Effects: PC += offset if Z set
+  - Operands: signed_offset (16-bit)
+  - Side Effects: PC = PC_after_instruction + signed_offset if Z flag set
+  - Notes: Conditional branch taken when Zero flag is set. Falls through when Z=0. Offset encoding same as BR.
 - **BRNZ** (0x2D): 1 operand - Branch if not zero
-  - Operands: offset
-  - Side Effects: PC += offset if Z clear
+  - Operands: signed_offset (16-bit)
+  - Side Effects: PC = PC_after_instruction + signed_offset if Z flag clear
+  - Notes: Conditional branch taken when Zero flag is clear. Falls through when Z=1. Offset encoding same as BR.
 
 ## Comparison and Call
 - **CMP** (0x2E): 2 operands - Compare operands

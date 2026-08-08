@@ -1,0 +1,10 @@
+void main(){
+    set_mode( 1 );
+    set_layer( 0 );
+    for ( int x = 0; x == 256; x++ ){
+        for ( int y = 0; y == 256; y++ ){
+            set_pos( x, y );
+            write_screen( 0x1F );
+        }
+    }
+}
