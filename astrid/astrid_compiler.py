@@ -1,10 +1,13 @@
-
 # Astrid Compiler CLI: Compile Astrid source to Nova-16 assembly
 import sys
 import os
-from astrid_lexer import Lexer
-from astrid_parser import Parser
-from astrid_codegen import CodeGenerator
+
+# Add parent directory to path so astrid package can be imported
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from astrid.lexer.lexer import Lexer
+from astrid.parser.parser import Parser
+from astrid.codegen.codegen import CodeGenerator
 
 def main():
     import argparse

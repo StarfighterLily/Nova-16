@@ -1,0 +1,4 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+foo 0x1021

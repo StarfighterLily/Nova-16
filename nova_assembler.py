@@ -699,8 +699,18 @@ class CodeGenerator:
 
         return mode_byte
 
-    def encode_operand(self, operand: str, operand_type: str, symbol_table: Dict[str, str], location_counter: int) -> List[int]:
-        """Encode operand for prefixed system"""
+    def encode_operand(self, operand: str, operand_type: str, symbol_table: Dict[str, str], location_counter: int, instruction_name: str = "") -> List[int]:
+        """Encode operand for prefixed system.
+
+        Args:
+            operand: The operand string to encode.
+            operand_type: The classified operand type.
+            symbol_table: Symbol table for label resolution.
+            location_counter: Current assembly location for relative offset calc.
+            instruction_name: The instruction mnemonic, used to determine
+                              whether symbol references should be absolute
+                              (CALL, JMP, etc.) or relative (BR, BRZ, BRNZ).
+        """
         operand = operand.strip()
 
         if operand_type == OperandType.REGISTER:
@@ -714,11 +724,11 @@ class CodeGenerator:
                 raise ValueError(f"Unknown register: {operand}")
 
         elif operand_type == OperandType.IMMEDIATE8:
-            val = self._parse_immediate_value(operand, symbol_table, 8)
+            val = self._parse_immediate_value(operand, symbol_table, 8, location_counter, instruction_name)
             return [val & 0xFF]
 
         elif operand_type == OperandType.IMMEDIATE16:
-            val = self._parse_immediate_value(operand, symbol_table, 16)
+            val = self._parse_immediate_value(operand, symbol_table, 16, location_counter, instruction_name)
             return [(val >> 8) & 0xFF, val & 0xFF]
 
         elif operand_type == OperandType.REGISTER_INDIRECT:
@@ -816,8 +826,20 @@ class CodeGenerator:
         else:
             raise ValueError(f"Unsupported operand type: {operand_type}")
 
-    def _parse_immediate_value(self, operand: str, symbol_table: Dict[str, str], bit_width: int) -> int:
-        """Parse an immediate value"""
+    # Instructions that use relative offsets instead of absolute addresses.
+    # BR/BRZ/BRNZ add the offset to the current PC, so the encoded value is
+    # (target - (pc_after_instruction)). All other instructions (CALL, JMP,
+    # etc.) take an absolute address as their operand.
+    _RELATIVE_BRANCH_INSTRUCTIONS = {'BR', 'BRZ', 'BRNZ'}
+
+    def _parse_immediate_value(self, operand: str, symbol_table: Dict[str, str], bit_width: int,
+                               location_counter: int = 0, instruction_name: str = "") -> int:
+        """Parse an immediate value.
+
+        For BR/BRZ/BRNZ, symbol references are encoded as relative offsets
+        (target - (location_counter + instruction_size)). For all other
+        instructions (CALL, JMP, etc.) symbol references are absolute addresses.
+        """
         if operand.startswith('0x'):
             return int(operand, 16)
         elif self.classifier.patterns['char_literal'].match(operand):
@@ -845,15 +867,20 @@ class CodeGenerator:
                 val = int(symbol_val, 16)
             else:
                 val = int(symbol_val)
-            # Note: BR/BRZ/BRNZ encode relative offsets, not absolute addresses.
-            # Calculate offset as: target - (current_location + instruction_size)
-            # instruction_size = opcode(1) + mode_byte(1) + imm16(2) = 4 bytes
-            instruction_size = 4
-            offset = val - (location_counter + instruction_size)
-            # Convert to signed 16-bit value
-            if offset < 0:
-                offset = offset & 0xFFFF
-            return offset
+
+            # BR/BRZ/BRNZ use relative offsets; other instructions use absolute addresses.
+            if instruction_name.upper() in self._RELATIVE_BRANCH_INSTRUCTIONS:
+                # Calculate offset as: target - (current_location + instruction_size)
+                # instruction_size = opcode(1) + mode_byte(1) + imm16(2) = 4 bytes
+                instruction_size = 4
+                offset = val - (location_counter + instruction_size)
+                # Convert to signed 16-bit value
+                if offset < 0:
+                    offset = offset & 0xFFFF
+                return offset
+
+            # Non-branch instructions use the absolute symbol address directly.
+            return val
         else:
             raise ValueError(f"Undefined symbol: {operand}")
 
@@ -891,7 +918,7 @@ class CodeGenerator:
         # Encode operands
         for i, operand in enumerate(asm_line.operands):
             if i < len(operand_types):
-                operand_bytes = self.encode_operand(operand, operand_types[i], symbol_table, location_counter)
+                operand_bytes = self.encode_operand(operand, operand_types[i], symbol_table, location_counter, asm_line.instruction)
                 result.extend(operand_bytes)
 
         return result

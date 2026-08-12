@@ -1,9 +1,12 @@
 # Astrid Language Code Generator
-# File: astrid_codegen.py
+# File: astrid/codegen/codegen.py
 # Translates Astrid AST to Nova-16 assembly code
 
 from typing import List, Dict, Optional, Set
-from astrid_parser import *
+from astrid.parser.parser import (
+    Program, FunctionDef, VarDecl, Assignment, Return, If, While, For, FuncCall,
+    Expression, Number, StringLiteral, Identifier, BinaryOp, UnaryOp, PostfixOp
+)
 
 class CodeGenerator:
     """Generates Nova-16 assembly code from Astrid AST"""
@@ -52,7 +55,7 @@ class CodeGenerator:
         # Emit interrupt vector FIRST at 0x0100 (before functions)
         if any(func.name == 'timer_interrupt' for func in ast.functions):
             self.assembly.append("ORG 0x0100")
-            self.assembly.append("    CALL func_timer_interrupt")
+            self.assembly.append("    DW func_timer_interrupt")
             self.assembly.append("")
 
         # Generate all functions and data AFTER interrupt vector
@@ -74,7 +77,7 @@ class CodeGenerator:
             self.assembly.append(f"{label}: DEFSTR \"{value}\"")
         self.assembly.append("")
 
-    def find_local_vars(self, statements: List[ASTNode]) -> List[VarDecl]:
+    def find_local_vars(self, statements: List) -> List[VarDecl]:
         """Recursively find all VarDecl nodes in a list of statements."""
         decls = []
         for stmt in statements:
@@ -100,21 +103,29 @@ class CodeGenerator:
 
     def _emit_local_load(self, reg: str, name: str):
         offset = self._get_local_offset(name)
-        self.emit(f"    MOV P2, FP")
-        if offset > 0:
-            self.emit(f"    ADD P2, {offset}")
+        if self.current_function == 'timer_interrupt':
+            # Interrupt handler uses SP-relative locals (no ENTER/FP)
+            self.emit(f"    MOV {reg}, [SP-{-offset}]")
         else:
-            self.emit(f"    SUB P2, {-offset}")
-        self.emit(f"    MOV {reg}, [P2]")
+            self.emit(f"    MOV P2, FP")
+            if offset > 0:
+                self.emit(f"    ADD P2, {offset}")
+            else:
+                self.emit(f"    SUB P2, {-offset}")
+            self.emit(f"    MOV {reg}, [P2]")
 
     def _emit_local_store(self, name: str, src_reg: str):
         offset = self._get_local_offset(name)
-        self.emit(f"    MOV P2, FP")
-        if offset > 0:
-            self.emit(f"    ADD P2, {offset}")
+        if self.current_function == 'timer_interrupt':
+            # Interrupt handler uses SP-relative locals (no ENTER/FP)
+            self.emit(f"    MOV [SP-{-offset}], {src_reg}")
         else:
-            self.emit(f"    SUB P2, {-offset}")
-        self.emit(f"    MOV [P2], {src_reg}")
+            self.emit(f"    MOV P2, FP")
+            if offset > 0:
+                self.emit(f"    ADD P2, {offset}")
+            else:
+                self.emit(f"    SUB P2, {-offset}")
+            self.emit(f"    MOV [P2], {src_reg}")
 
     def generate_function(self, func_def: FunctionDef):
         self.functions[func_def.name] = {
@@ -129,29 +140,31 @@ class CodeGenerator:
         self.assembly.append(f"; Function: {func_def.name}")
         self.assembly.append(f"func_{func_def.name}:")
         
+        all_local_decls = self.find_local_vars(func_def.body)
+        locals_size = len(all_local_decls)
+        
         if func_def.name == 'timer_interrupt':
-            all_local_decls = self.find_local_vars(func_def.body)
-            locals_size = len(all_local_decls)
-            self.assembly.append(f"    ENTER {locals_size}")
-            
-            for i, decl in enumerate(all_local_decls):
-                self.local_vars[decl.name] = {'offset': -(i + 1)}
+            # Interrupt handlers must NOT use ENTER/LEAVE because the CPU
+            # already pushed PC and flags on the stack. Use direct SP
+            # manipulation instead so IRET can find the saved context.
+            if locals_size > 0:
+                self.assembly.append(f"    SUB SP, {locals_size} ; Allocate locals")
         else:
-            all_local_decls = self.find_local_vars(func_def.body)
-            locals_size = len(all_local_decls)
             self.assembly.append(f"    ENTER {locals_size}")
 
-            for i, param in enumerate(func_def.params):
-                self.local_vars[param.name] = {'offset': i + 4}
+        for i, param in enumerate(func_def.params):
+            self.local_vars[param.name] = {'offset': i + 4}
 
-            for i, decl in enumerate(all_local_decls):
-                self.local_vars[decl.name] = {'offset': -(i + 1)}
+        for i, decl in enumerate(all_local_decls):
+            self.local_vars[decl.name] = {'offset': -(i + 1)}
 
         # Store locals_size for iret() cleanup
         self._timer_interrupt_locals_size = locals_size if func_def.name == 'timer_interrupt' else 0
+        self._emitted_return = False
         self.generate_block(func_def.body)
 
-        if func_def.return_type == 'void':
+        # Only emit implicit return if the function didn't already return (e.g. via iret)
+        if func_def.return_type == 'void' and not self._emitted_return:
             self.assembly.append("; Implicit return for void function")
             self.assembly.append("    MOV SP, FP")
             self.assembly.append("    POP FP")
@@ -160,7 +173,7 @@ class CodeGenerator:
         self.assembly.append("")
         self.current_function = None
 
-    def generate_block(self, body: List[ASTNode]):
+    def generate_block(self, body: List):
         for statement in body:
             if isinstance(statement, list):
                 self.generate_block(statement)
@@ -178,9 +191,12 @@ class CodeGenerator:
                 self.generate_for(statement)
             elif isinstance(statement, FuncCall):
                 if statement.name == 'iret' and self.current_function == 'timer_interrupt':
+                    # Special handling for iret: don't emit normal epilogue
                     if hasattr(self, '_timer_interrupt_locals_size') and self._timer_interrupt_locals_size > 0:
-                        self.emit(f"    ADD SP, {self._timer_interrupt_locals_size} ; Deallocate locals before RET")
-                    self.emit("    RET")
+                        self.emit(f"    ADD SP, {self._timer_interrupt_locals_size} ; Deallocate locals before IRET")
+                    self.emit("    IRET")
+                    self._emitted_return = True
+                    return  # Exit function after IRET
                 else:
                     self.generate_call(statement)
             elif isinstance(statement, Expression):
@@ -223,6 +239,7 @@ class CodeGenerator:
         self.emit("    MOV SP, FP")
         self.emit("    POP FP")
         self.emit("    RET")
+        self._emitted_return = True
 
     def generate_if(self, if_stmt: If):
         self.emit_comment("If statement")
