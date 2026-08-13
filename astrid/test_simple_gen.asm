@@ -33,12 +33,12 @@ for_start_0:
         MOV R5, [P2]
         MOV R6, 128
         CMP R5, R6
-        JLT cmp_true_3
+        JLT cmp_true_2
         MOV R5, 0
-        JMP cmp_end_4
-cmp_true_3:
+        JMP cmp_end_3
+cmp_true_2:
         MOV R5, 1
-cmp_end_4:
+cmp_end_3:
         CMP R5, 0
         JZ for_end_1
 ; For loop
@@ -47,20 +47,20 @@ cmp_end_4:
         MOV P2, FP
         SUB P2, 2
         MOV [P2], R7
-for_start_5:
+for_start_4:
         MOV P2, FP
         SUB P2, 2
         MOV R8, [P2]
         MOV R9, 128
         CMP R8, R9
-        JLT cmp_true_8
+        JLT cmp_true_6
         MOV R8, 0
-        JMP cmp_end_9
-cmp_true_8:
+        JMP cmp_end_7
+cmp_true_6:
         MOV R8, 1
-cmp_end_9:
+cmp_end_7:
         CMP R8, 0
-        JZ for_end_6
+        JZ for_end_5
 ; Call to set_pos
         MOV P2, FP
         SUB P2, 2
@@ -79,7 +79,6 @@ cmp_end_9:
         CALL builtin_write_screen
         ; Args consumed by callee
         MOV R4, R0
-for_continue_7:
         MOV P2, FP
         SUB P2, 2
         MOV R5, [P2]
@@ -88,9 +87,8 @@ for_continue_7:
         MOV P2, FP
         SUB P2, 2
         MOV [P2], R5
-        JMP for_start_5
-for_end_6:
-for_continue_2:
+        JMP for_start_4
+for_end_5:
         MOV P2, FP
         SUB P2, 1
         MOV R7, [P2]

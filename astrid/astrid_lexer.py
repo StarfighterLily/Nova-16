@@ -1,6 +1,6 @@
-# Astrid Language Lexer (Draft)
-# File: astrid_lexer.py
-
+"""Astrid Language Lexer (Enhanced)
+File: astrid_lexer.py
+# Enhanced lexer with all Astrid language constructs including do, switch, case, default
 import re
 from typing import List, Tuple, Optional
 
@@ -12,14 +12,16 @@ TOKEN_TYPES = [
 # Keywords in Astrid
 KEYWORDS = {
     'int', 'char', 'void', 'if', 'else', 'while', 'for', 'break', 'continue', 'return',
+    'do', 'switch', 'case', 'default',
     # Add built-in function names if you want to highlight them
 }
 
 # Operators and delimiters
 OPERATORS = {
-    '+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=', '=', '+=', '-=', '*=', '/=', '&&', '||', '!', '&', '|', '^', '~', '<<', '>>'
+    '+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=', '=', '+=', '-=', '*=', '/=', '&=', '|=', '^=', '<<=', '>>=', '&&', '||', '!', '&', '|', '^', '~', '<<', '>>',
+    '++', '--', '->',
 }
-DELIMITERS = {'(', ')', '{', '}', '[', ']', ';', ',', '.'}
+DELIMITERS = {'(', ')', '{', '}', '[', ']', ';', ',', '.', ':'}
 
 # Token class
 token_specification = [
@@ -28,8 +30,8 @@ token_specification = [
     ('STRING',   r'"(\\.|[^"\\])*"'),
     ('CHAR',     r'\'(\\.|[^\\\'])\''),
     ('COMMENT',  r'//.*|/\*(.|\n)*?\*/'),
-    ('OP',       r'==|!=|<=|>=|<<|>>|\+=|-=|\*=|/=|\+\+|--|&&|\|\||[+\-*/%&|^~!=<>]'),
-    ('DELIM',    r'[(){}\[\];,\.]'),
+    ('OP',       r'==|!=|<=|>=|<<=|>>=|<<|>>|\+=|-=|\*=|/=|&=|\|=|\^=|\+\+|--|\&\&|\|\||[+\-*/%&|^!~=<>]'),
+    ('DELIM',    r'[(){}\[\];,.:]'),
     ('SKIP',     r'[ \t\r\n]+'),
     ('MISMATCH', r'.'),
 ]

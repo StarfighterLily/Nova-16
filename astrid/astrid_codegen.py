@@ -272,7 +272,8 @@ class CodeGenerator:
 
         if for_stmt.update:
             self.generate_block([for_stmt.update])
-            
+
+        # Jump back to start label for loop continuation
         self.emit(f"    JMP {start_label}")
         self.emit_label(end_label)
 

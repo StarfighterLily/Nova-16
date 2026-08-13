@@ -258,7 +258,8 @@ def initialize_system(enable_sound=True, uart_config=None):
 
 ### File Organization
 - `asm/` - Assembly examples and tests
-- `NoBASIC/` - High-level language compiler (optional)
+- `NoBASIC/` - High-level BASIC-type language compiler (optional)
+- `astrid/` - High-level C-type language compiler (optional)
 - `tests/` - Test suite organized by component
 - `docs/` - Documentation
 - `nova/` - Core modules (memory, graphics, peripherals, bus)
@@ -267,8 +268,9 @@ def initialize_system(enable_sound=True, uart_config=None):
 
 ### Code Generation Pipeline
 1. **Assembly** (`.asm`) → **Binary** (`.bin` + `.org` + `.sym`)
-2. **NoBASIC** (`.nb`) → **Assembly** (`.asm`) → **Binary** (`.bin`)
-3. **Binary Loading**: Uses `.org` file for segment-aware loading if present
+2. **NoBASIC** (`.nb`) → **Assembly** (`.asm`) → **Binary** (`.bin` + `.org` + `.sym`)
+3. **NoBASIC** (`.ast`) → **Assembly** (`.asm`) → **Binary** (`.bin` + `.org` + `.sym`)
+4. **Binary Loading**: Uses `.org` file for segment-aware loading if present
 
 ### Assembler Features
 - 2-pass assembly (labels resolved in pass 2)

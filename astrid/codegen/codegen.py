@@ -4,8 +4,10 @@
 
 from typing import List, Dict, Optional, Set
 from astrid.parser.parser import (
-    Program, FunctionDef, VarDecl, Assignment, Return, If, While, For, FuncCall,
-    Expression, Number, StringLiteral, Identifier, BinaryOp, UnaryOp, PostfixOp
+    Program, FunctionDef, VarDecl, Assignment, Return, If, While, DoWhile, For, FuncCall,
+    Switch, Case,
+    Expression, Number, StringLiteral, CharLiteral, Identifier, BinaryOp, UnaryOp, PostfixOp,
+    Break, Continue
 )
 
 class CodeGenerator:
@@ -22,6 +24,8 @@ class CodeGenerator:
         self.reg_counter = 0 
         self.current_function = None
         self.builtin_functions = self._init_builtins()
+        # Stack of (start_label, end_label) for break/continue support
+        self.loop_stack = []
 
     def _init_builtins(self) -> Dict[str, str]:
         """Initialize built-in function to assembly mappings"""
@@ -91,10 +95,17 @@ class CodeGenerator:
                     decls.extend(self.find_local_vars(stmt.else_body))
             elif isinstance(stmt, While):
                 decls.extend(self.find_local_vars(stmt.body))
+            elif isinstance(stmt, DoWhile):
+                decls.extend(self.find_local_vars(stmt.body))
             elif isinstance(stmt, For):
                 if isinstance(stmt.init, list):
                     decls.extend(stmt.init)
                 decls.extend(self.find_local_vars(stmt.body))
+            elif isinstance(stmt, Switch):
+                for case in stmt.cases:
+                    decls.extend(self.find_local_vars(case.body))
+                if stmt.default_body:
+                    decls.extend(self.find_local_vars(stmt.default_body))
         return decls
 
     def _get_local_offset(self, name: str) -> int:
@@ -187,8 +198,16 @@ class CodeGenerator:
                 self.generate_if(statement)
             elif isinstance(statement, While):
                 self.generate_while(statement)
+            elif isinstance(statement, DoWhile):
+                self.generate_do_while(statement)
+            elif isinstance(statement, Switch):
+                self.generate_switch(statement)
             elif isinstance(statement, For):
                 self.generate_for(statement)
+            elif isinstance(statement, Break):
+                self.generate_break()
+            elif isinstance(statement, Continue):
+                self.generate_continue()
             elif isinstance(statement, FuncCall):
                 if statement.name == 'iret' and self.current_function == 'timer_interrupt':
                     # Special handling for iret: don't emit normal epilogue
@@ -213,14 +232,35 @@ class CodeGenerator:
 
     def generate_assignment(self, assignment: Assignment):
         self.emit_comment(f"Assignment to {assignment.name}")
-        if isinstance(assignment.value, BinaryOp) and assignment.value.op in ['+=', '-=']:
-            op_map = {'+=': 'ADD', '-=': 'SUB'}
+        # Check for compound assignment pattern: x = x <op> rhs
+        # The parser decomposes x += y into Assignment('x', BinaryOp(Identifier('x'), '+', y))
+        if (isinstance(assignment.value, BinaryOp) and
+            isinstance(assignment.value.left, Identifier) and
+            assignment.value.left.name == assignment.name):
+            op = assignment.value.op
             var_reg = self.get_register()
             self._emit_local_load(var_reg, assignment.name)
-            rhs_reg = self.generate_expression(assignment.value.right)
-            self.emit(f"    {op_map[assignment.value.op]} {var_reg}, {rhs_reg}")
+            if op in ['<<', '>>']:
+                # Shift operations: amount must be a constant (parser requires this)
+                if not isinstance(assignment.value.right, Number):
+                    raise TypeError("Shift amount must be a constant integer for this compiler version.")
+                shift_amount = int(assignment.value.right.value, 0)
+                op_mnemonic = "SHR" if op == '>>' else "SHL"
+                self.emit_comment(f"Compound shift {op_mnemonic} by {shift_amount}")
+                for _ in range(shift_amount):
+                    self.emit(f"    {op_mnemonic} {var_reg}")
+            else:
+                rhs_reg = self.generate_expression(assignment.value.right)
+                if op == '+': self.emit(f"    ADD {var_reg}, {rhs_reg}")
+                elif op == '-': self.emit(f"    SUB {var_reg}, {rhs_reg}")
+                elif op == '*': self.emit(f"    MUL {var_reg}, {rhs_reg}")
+                elif op == '/': self.emit(f"    DIV {var_reg}, {rhs_reg}")
+                elif op == '&': self.emit(f"    AND {var_reg}, {rhs_reg}")
+                elif op == '|': self.emit(f"    OR {var_reg}, {rhs_reg}")
+                elif op == '^': self.emit(f"    XOR {var_reg}, {rhs_reg}")
+                else: raise SyntaxError(f"Unknown compound operator '{op}'")
+                self.free_register()
             self._emit_local_store(assignment.name, var_reg)
-            self.free_register()
             self.free_register()
         else:
             reg = self.generate_expression(assignment.value)
@@ -260,6 +300,8 @@ class CodeGenerator:
         self.emit_comment("While loop")
         start_label = self.generate_label("while_start")
         end_label = self.generate_label("while_end")
+        # For while loops, continue jumps to the start (condition check)
+        self.loop_stack.append((start_label, end_label))
         self.emit_label(start_label)
         reg = self.generate_expression(while_stmt.cond)
         self.emit(f"    CMP {reg}, 0")
@@ -268,11 +310,16 @@ class CodeGenerator:
         self.generate_block(while_stmt.body)
         self.emit(f"    JMP {start_label}")
         self.emit_label(end_label)
+        self.loop_stack.pop()
 
     def generate_for(self, for_stmt: For):
         self.emit_comment("For loop")
         start_label = self.generate_label("for_start")
         end_label = self.generate_label("for_end")
+        # For for loops, continue jumps to the update expression
+        # We use a separate continue_label that points to the update section
+        continue_label = self.generate_label("for_continue")
+        self.loop_stack.append((continue_label, end_label))
 
         if for_stmt.init:
             self.generate_block([for_stmt.init])
@@ -287,11 +334,87 @@ class CodeGenerator:
 
         self.generate_block(for_stmt.body)
 
+        # Continue target: update expression
+        self.emit_label(continue_label)
         if for_stmt.update:
             self.generate_block([for_stmt.update])
             
         self.emit(f"    JMP {start_label}")
         self.emit_label(end_label)
+        self.loop_stack.pop()
+
+    def generate_do_while(self, stmt: DoWhile):
+        """Generate code for do-while loop: do { body } while (cond);"""
+        self.emit_comment("Do-While loop")
+        start_label = self.generate_label("dowhile_start")
+        end_label = self.generate_label("dowhile_end")
+        # For do-while, continue jumps to the start of the loop body
+        self.loop_stack.append((start_label, end_label))
+        self.emit_label(start_label)
+        self.generate_block(stmt.body)
+        reg = self.generate_expression(stmt.cond)
+        self.emit(f"    CMP {reg}, 0")
+        self.free_register()
+        self.emit(f"    JNZ {start_label}")  # Loop back if condition is true
+        self.emit_label(end_label)
+        self.loop_stack.pop()
+
+    def generate_switch(self, stmt: Switch):
+        """Generate code for switch/case statement.
+
+        Compiles to a series of comparisons (CMP/JZ) against each case value.
+        Supports break and C-style fall-through between cases (no break).
+        """
+        self.emit_comment("Switch statement")
+        end_label = self.generate_label("switch_end")
+        # Push loop context so break inside switch exits to end_label.
+        # No continue target (None) because continue is not valid in switch.
+        self.loop_stack.append((None, end_label))
+
+        reg = self.generate_expression(stmt.expr)
+
+        # Pre-generate labels for each case body
+        case_labels = [self.generate_label("case") for _ in stmt.cases]
+
+        # Emit comparisons for each case value
+        for i, case in enumerate(stmt.cases):
+            case_val_reg = self.generate_expression(case.value)
+            self.emit(f"    CMP {reg}, {case_val_reg}")
+            self.free_register()  # free case_val_reg
+            self.emit(f"    JZ {case_labels[i]}")
+
+        # If no case matched, go to default or end
+        if stmt.default_body:
+            self.generate_block(stmt.default_body)
+            self.emit(f"    JMP {end_label}")
+        else:
+            self.emit(f"    JMP {end_label}")
+
+        # Emit case bodies (fall-through is natural between consecutive cases)
+        for i, case in enumerate(stmt.cases):
+            self.emit_label(case_labels[i])
+            self.generate_block(case.body)
+
+        self.emit_label(end_label)
+        self.loop_stack.pop()
+
+    def generate_break(self):
+        """Generate assembly for a break statement - jump to loop end."""
+        if not self.loop_stack:
+            raise RuntimeError("break statement outside of loop")
+        _, end_label = self.loop_stack[-1]
+        self.emit_comment("break")
+        self.emit(f"    JMP {end_label}")
+
+    def generate_continue(self):
+        """Generate assembly for a continue statement - jump to loop continue target."""
+        if not self.loop_stack:
+            raise RuntimeError("continue statement outside of loop")
+        continue_label, _ = self.loop_stack[-1]
+        if continue_label is None:
+            raise RuntimeError("continue statement is not valid inside a switch")
+        self.emit_comment("continue")
+        self.emit(f"    JMP {continue_label}")
 
     def generate_expression(self, expr: Expression) -> str:
         if isinstance(expr, Number):
@@ -302,6 +425,10 @@ class CodeGenerator:
             reg = self.get_register()
             label = self.get_string_label(expr.value)
             self.emit(f"    MOV {reg}, {label}")
+            return reg
+        elif isinstance(expr, CharLiteral):
+            reg = self.get_register()
+            self.emit(f"    MOV {reg}, {expr.char_value}")
             return reg
         elif isinstance(expr, Identifier):
             reg = self.get_register()

@@ -8,97 +8,35 @@ start:
 
 ; Function: main
 func_main:
-    ENTER 2
-; Call to set_mode
-        MOV R0, 1
-        PUSH R0
-        CALL builtin_set_vmode
-        ; Args consumed by callee
-        MOV R1, R0
-; Call to set_layer
-        MOV R2, 0
-        PUSH R2
-        CALL builtin_set_layer
-        ; Args consumed by callee
-        MOV R3, R0
+    ENTER 1
 ; For loop
-; var x = ...
-        MOV R4, 0
+; var i = ...
+        MOV R0, 0
         MOV P2, FP
         SUB P2, 1
-        MOV [P2], R4
+        MOV [P2], R0
 for_start_0:
         MOV P2, FP
         SUB P2, 1
-        MOV R5, [P2]
-        MOV R6, 128
-        CMP R5, R6
-        JLT cmp_true_3
-        MOV R5, 0
-        JMP cmp_end_4
-cmp_true_3:
-        MOV R5, 1
-cmp_end_4:
-        CMP R5, 0
-        JZ for_end_1
-; For loop
-; var y = ...
-        MOV R7, 0
-        MOV P2, FP
-        SUB P2, 2
-        MOV [P2], R7
-for_start_5:
-        MOV P2, FP
-        SUB P2, 2
-        MOV R8, [P2]
-        MOV R9, 128
-        CMP R8, R9
-        JLT cmp_true_8
-        MOV R8, 0
-        JMP cmp_end_9
-cmp_true_8:
-        MOV R8, 1
-cmp_end_9:
-        CMP R8, 0
-        JZ for_end_6
-; Call to set_pos
-        MOV P2, FP
-        SUB P2, 2
-        MOV R0, [P2]
-        PUSH R0
-        MOV P2, FP
-        SUB P2, 1
         MOV R1, [P2]
-        PUSH R1
-        CALL builtin_set_pos
-        ; Args consumed by callee
-        MOV R2, R0
-; Call to write_screen
-        MOV R3, 0x1F
-        PUSH R3
-        CALL builtin_write_screen
-        ; Args consumed by callee
-        MOV R4, R0
-for_continue_7:
-        MOV P2, FP
-        SUB P2, 2
-        MOV R5, [P2]
-        MOV R6, R5
-        INC R5
-        MOV P2, FP
-        SUB P2, 2
-        MOV [P2], R5
-        JMP for_start_5
-for_end_6:
-for_continue_2:
+        MOV R2, 3
+        CMP R1, R2
+        JLT cmp_true_2
+        MOV R1, 0
+        JMP cmp_end_3
+cmp_true_2:
+        MOV R1, 1
+cmp_end_3:
+        CMP R1, 0
+        JZ for_end_1
         MOV P2, FP
         SUB P2, 1
-        MOV R7, [P2]
-        MOV R8, R7
-        INC R7
+        MOV R3, [P2]
+        MOV R4, R3
+        INC R3
         MOV P2, FP
         SUB P2, 1
-        MOV [P2], R7
+        MOV [P2], R3
         JMP for_start_0
 for_end_1:
 ; Implicit return for void function

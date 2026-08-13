@@ -1,5 +1,6 @@
 # Astrid Language Lexer
 # File: astrid/lexer/lexer.py
+# Enhanced with keywords for do-while, switch/case, and additional operators
 
 import re
 from typing import List, Optional
@@ -12,13 +13,16 @@ TOKEN_TYPES = [
 # Keywords in Astrid
 KEYWORDS = {
     'int', 'char', 'void', 'if', 'else', 'while', 'for', 'break', 'continue', 'return',
+    'do', 'switch', 'case', 'default',
 }
 
 # Operators and delimiters
 OPERATORS = {
-    '+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=', '=', '+=', '-=', '*=', '/=', '&&', '||', '!', '&', '|', '^', '~', '<<', '>>'
+    '+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=', '=', '+=', '-=', '*=', '/=',
+    '&=', '|=', '^=', '<<=', '>>=', '&&', '||', '!', '&', '|', '^', '~', '<<', '>>',
+    '++', '--', '->',
 }
-DELIMITERS = {'(', ')', '{', '}', '[', ']', ';', ',', '.'}
+DELIMITERS = {'(', ')', '{', '}', '[', ']', ';', ',', '.', ':'}
 
 # Token class
 token_specification = [
@@ -27,8 +31,8 @@ token_specification = [
     ('STRING',   r'"(\\.|[^"\\])*"'),
     ('CHAR',     r'\'(\\.|[^\\\'])\''),
     ('COMMENT',  r'//.*|/\*(.|\n)*?\*/'),
-    ('OP',       r'==|!=|<=|>=|<<|>>|\+=|-=|\*=|/=|\+\+|--|&&|\|\||[+\-*/%&|^~!=<>]'),
-    ('DELIM',    r'[(){}\[\];,\.]'),
+    ('OP',       r'==|!=|<=|>=|<<=|>>=|<<|>>|&&|\|\||\+\+|--|\+=|-=|\*=|/=|&=|\|=|\^=|\-\>|\|\||[+\-*/%&|^!~=<>]'),
+    ('DELIM',    r'[(){}\[\];,.:]'),
     ('SKIP',     r'[ \t\r\n]+'),
     ('MISMATCH', r'.'),
 ]
@@ -40,7 +44,7 @@ class Token:
         self.value = value
         self.line = line
         self.column = column
-    
+
     def __repr__(self):
         return f"Token({self.type}, {self.value!r}, {self.line}, {self.column})"
 
@@ -48,7 +52,7 @@ class Lexer:
     def __init__(self, code: str):
         self.code = code
         self.tokens: List[Token] = []
-    
+
     def tokenize(self) -> List[Token]:
         line_num = 1
         line_start = 0
@@ -82,3 +86,5 @@ class Lexer:
                 line_start = mo.end()
         self.tokens.append(Token('EOF', '', line_num, 1))
         return self.tokens
+
+

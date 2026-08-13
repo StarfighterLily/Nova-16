@@ -2,12 +2,15 @@
 import os
 import sys
 
+# Add project root to path so we can import nova_main and astrid modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add astrid directory to path so we can import astrid_compiler
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from nova_main import initialize_system
 
 
-def run_binary(bin_path, max_cycles=100000):
+def run_binary(bin_path, max_cycles=2000000):
     """Run a binary headlessly and return (proc, cycles)."""
     proc, mem, gfx, kbd, snd = initialize_system(enable_sound=False)
     entry_point = mem.load(bin_path)
