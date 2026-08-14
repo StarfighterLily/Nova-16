@@ -94,8 +94,6 @@ if __name__ == '__main__':
         x += 1;
         return x;
     }
-    '''
-    lexer = Lexer(code)
     tokens = lexer.tokenize()
     for token in tokens:
         print(token)

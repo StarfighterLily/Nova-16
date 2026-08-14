@@ -17,6 +17,7 @@ class CodeGenerator:
         self.assembly = []
         self.global_vars = {}
         self.local_vars = {}
+        self.var_types = {}  # name -> 'int' (16-bit, 2 bytes) or 'char' (8-bit)
         self.functions = {}
         self.strings = {}
         self.string_counter = 0
@@ -60,6 +61,8 @@ class CodeGenerator:
         if any(func.name == 'timer_interrupt' for func in ast.functions):
             self.assembly.append("ORG 0x0100")
             self.assembly.append("    DW func_timer_interrupt")
+            # Skip past the interrupt vector table (0x0100-0x011F, 8 vectors x 4 bytes)
+            self.assembly.append("ORG 0x0120")
             self.assembly.append("")
 
         # Generate all functions and data AFTER interrupt vector
@@ -108,15 +111,28 @@ class CodeGenerator:
                     decls.extend(self.find_local_vars(stmt.default_body))
         return decls
 
+    def _var_size(self, name: str) -> int:
+        """Return storage size in bytes for a variable (2 for int, 1 for char)."""
+        return 2 if self.var_types.get(name) == 'int' else 1
+
+    def _is_int_var(self, name: str) -> bool:
+        return self.var_types.get(name) == 'int'
+
     def _get_local_offset(self, name: str) -> int:
         offset = self.local_vars[name]['offset']
         return offset
 
     def _emit_local_load(self, reg: str, name: str):
         offset = self._get_local_offset(name)
+        is_int = self._is_int_var(name)
+        var_size = 2 if is_int else 1
         if self.current_function == 'timer_interrupt':
-            # Interrupt handler uses SP-relative locals (no ENTER/FP)
-            self.emit(f"    MOV {reg}, [SP-{-offset}]")
+            # Interrupt handler uses SP-relative locals (no ENTER/FP).
+            # After "SUB SP, N", the first local (offset=-size) is at SP+0,
+            # the second (offset=-2*size) is at SP+size, etc.
+            # In general the byte offset from SP is: -(offset) - var_size.
+            sp_offset = -offset - var_size
+            self.emit(f"    MOV {reg}, [SP+{sp_offset}]")
         else:
             self.emit(f"    MOV P2, FP")
             if offset > 0:
@@ -127,9 +143,13 @@ class CodeGenerator:
 
     def _emit_local_store(self, name: str, src_reg: str):
         offset = self._get_local_offset(name)
+        is_int = self._is_int_var(name)
+        var_size = 2 if is_int else 1
         if self.current_function == 'timer_interrupt':
-            # Interrupt handler uses SP-relative locals (no ENTER/FP)
-            self.emit(f"    MOV [SP-{-offset}], {src_reg}")
+            # Interrupt handler uses SP-relative locals (no ENTER/FP) — see
+            # _emit_local_load for the offset formula.
+            sp_offset = -offset - var_size
+            self.emit(f"    MOV [SP+{sp_offset}], {src_reg}")
         else:
             self.emit(f"    MOV P2, FP")
             if offset > 0:
@@ -147,30 +167,50 @@ class CodeGenerator:
         
         self.current_function = func_def.name
         self.local_vars = {}
+        self.var_types = {}
         
         self.assembly.append(f"; Function: {func_def.name}")
         self.assembly.append(f"func_{func_def.name}:")
         
         all_local_decls = self.find_local_vars(func_def.body)
-        locals_size = len(all_local_decls)
+        
+        # Compute stack frame size: each int var/param takes 2 bytes, char takes 1
+        # Params: int params use 2 bytes each, char params use 1 byte
+        param_size = 0
+        for param in func_def.params:
+            self.var_types[param.name] = param.var_type
+            param_size += 2 if param.var_type == 'int' else 1
+        
+        local_size = 0
+        for decl in all_local_decls:
+            self.var_types[decl.name] = decl.var_type
+            local_size += 2 if decl.var_type == 'int' else 1
         
         if func_def.name == 'timer_interrupt':
             # Interrupt handlers must NOT use ENTER/LEAVE because the CPU
             # already pushed PC and flags on the stack. Use direct SP
             # manipulation instead so IRET can find the saved context.
-            if locals_size > 0:
-                self.assembly.append(f"    SUB SP, {locals_size} ; Allocate locals")
+            if local_size > 0:
+                self.assembly.append(f"    SUB SP, {local_size} ; Allocate locals")
         else:
-            self.assembly.append(f"    ENTER {locals_size}")
+            self.assembly.append(f"    ENTER {local_size}")
 
-        for i, param in enumerate(func_def.params):
-            self.local_vars[param.name] = {'offset': i + 4}
+        # Param offsets: after ENTER pushes FP (2 bytes) and CALL pushes ret addr (2 bytes),
+        # params are at positive offsets from FP starting at +4.
+        param_offset = 4
+        for param in func_def.params:
+            self.local_vars[param.name] = {'offset': param_offset}
+            param_offset += 2 if param.var_type == 'int' else 1
 
-        for i, decl in enumerate(all_local_decls):
-            self.local_vars[decl.name] = {'offset': -(i + 1)}
+        # Local offsets: start at -2 going down (2 bytes per slot for simplicity;
+        # char vars also get 2 bytes to keep word access alignment simple)
+        local_offset = 0
+        for decl in all_local_decls:
+            local_offset += 2 if decl.var_type == 'int' else 1
+            self.local_vars[decl.name] = {'offset': -local_offset}
 
         # Store locals_size for iret() cleanup
-        self._timer_interrupt_locals_size = locals_size if func_def.name == 'timer_interrupt' else 0
+        self._timer_interrupt_locals_size = local_size if func_def.name == 'timer_interrupt' else 0
         self._emitted_return = False
         self.generate_block(func_def.body)
 
@@ -541,38 +581,47 @@ class CodeGenerator:
             self.emit(f"    ; Args consumed by callee")
 
         result_reg = self.get_register()
-        self.emit(f"    MOV {result_reg}, R0")
+        if call.name == 'random':
+            # RND writes a 16-bit result to P0; read it back as a 16-bit value.
+            self.emit(f"    MOV {result_reg}, P0")
+        else:
+            self.emit(f"    MOV {result_reg}, R0")
         return result_reg
 
     def generate_builtins(self):
         self.assembly.append("; Built-in Function Implementations")
         self.emit_label("builtin_set_vmode")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    MOV VM, R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    MOV VM, P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_set_layer")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    MOV VL, R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    MOV VL, P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_set_pos")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    POP R2"); self.emit("    MOV VX, R2"); self.emit("    MOV VY, R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    MOV VX, P1"); self.emit("    MOV VY, P2"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_write_screen")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    SWRITE R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SWRITE P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_read_screen")
-        self.emit("    SREAD R0"); self.emit("    RET")
+        self.emit("    SREAD P0"); self.emit("    RET")
         self.emit_label("builtin_scroll_x")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    SROLX R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SROL 0, 1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_scroll_y")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    SROLY R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SROL 1, 1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_set_pointers")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    POP R2")
-        self.emit("    MOV P2, R2"); self.emit("    MOV P1, R1"); self.emit("    MOV P0, P2"); self.emit("    PUSH P0"); self.emit("    RET")
+        # All pushes/pops are P (2 bytes) for 16-bit ABI consistency.
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2")
+        self.emit("    MOV P0, P1"); self.emit("    MOV P1, P2"); self.emit("    PUSH P3"); self.emit("    RET")
         self.emit_label("builtin_write_text")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    POP R2"); self.emit("    TEXT R2, R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
+        self.emit("    MOV VC, P2"); self.emit("    TEXT P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_set_font")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_sound_play")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    POP R2"); self.emit("    POP R3"); self.emit("    SPLAY R3, R2, R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P3"); self.emit("    SPLAY P3, P2, P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_sound_stop")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    SPLAY R1, 0, 0"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SPLAY P1, 0, 0"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_set_timer")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    POP R2"); self.emit("    POP R3"); self.emit("    POP R4"); self.emit("    MOV TT, R4"); self.emit("    MOV TM, R3"); self.emit("    MOV TS, R2"); self.emit("    MOV TC, R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P3"); self.emit("    POP P4")
+        # Args pushed in reversed source order: stack top->bottom after POP P0 is
+        # [arg0=TT, arg1=TM, arg2=TS, arg3=TC]. So POP P1=TT, P2=TM, P3=TS, P4=TC.
+        self.emit("    MOV TT, P1"); self.emit("    MOV TM, P2"); self.emit("    MOV TS, P3"); self.emit("    MOV TC, P4"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_sti")
         self.emit("    STI"); self.emit("    RET")
         self.emit_label("builtin_cli")
@@ -580,9 +629,18 @@ class CodeGenerator:
         self.emit_label("builtin_iret")
         self.emit("    IRET"); self.emit("    RET")
         self.emit_label("builtin_random")
-        self.emit("    RND R0"); self.emit("    RET")
+        self.emit("    RND P0"); self.emit("    RET")
         self.emit_label("builtin_random_range")
-        self.emit("    POP P0"); self.emit("    POP R1"); self.emit("    POP R2"); self.emit("    RNDR R0, R2, R1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
+        # Args pushed in reversed source order: stack has [color_min, color_max] on top.
+        # POP P1=color_min, POP P2=color_max. RNDR dest, min, max.
+        self.emit("    RNDR P0, P1, P2"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_key_available")
+        self.emit("    KEYSTAT P0"); self.emit("    RET")
+        self.emit_label("builtin_key_read")
+        self.emit("    KEYIN P0"); self.emit("    RET")
+        self.emit_label("builtin_key_clear")
+        self.emit("    KEYCLEAR"); self.emit("    RET")
         self.emit_label("builtin_halt")
         self.emit("    HLT"); self.emit("    RET")
 
@@ -608,7 +666,10 @@ class CodeGenerator:
         return label
 
     def get_register(self) -> str:
-        reg = f"R{self.reg_counter % 10}"
+        # Use P0-P7 as 16-bit expression temporaries. P8 is SP and P9 is FP,
+        # so they must never be used for general temporaries or arithmetic
+        # results (e.g. MOV P9, 3 would clobber the frame pointer).
+        reg = f"P{self.reg_counter % 8}"
         self.reg_counter += 1
         return reg
 
