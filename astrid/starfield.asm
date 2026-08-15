@@ -13,18 +13,15 @@ ORG 0x0120
 ; Function: setup
 func_setup:
     ENTER 0
-; Call to sti
-        CALL builtin_sti
-        MOV P0, R0
 ; Call to set_vmode
-        MOV P1, 1
-        PUSH P1
+        MOV P0, 1
+        PUSH P0
         CALL builtin_set_vmode
         ; Args consumed by callee
-        MOV P2, R0
+        MOV P1, R0
 ; Call to set_pos
-        MOV P3, 0
-        PUSH P3
+        MOV P2, 0
+        PUSH P2
         MOV P4, 0
         PUSH P4
         CALL builtin_set_pos
@@ -38,18 +35,6 @@ func_setup:
         CALL builtin_set_pointers
         ; Args consumed by callee
         MOV P0, R0
-; Call to set_timer
-        MOV P1, 3
-        PUSH P1
-        MOV P2, 80
-        PUSH P2
-        MOV P3, 255
-        PUSH P3
-        MOV P4, 0
-        PUSH P4
-        CALL builtin_set_timer
-        ; Args consumed by callee
-        MOV P5, R0
 ; Implicit return for void function
     MOV SP, FP
     POP FP
@@ -59,110 +44,72 @@ func_setup:
 func_draw_stars:
     ENTER 10
 ; Call to set_layer
-        MOV P2, FP
-        ADD P2, 4
-        MOV P6, [P2]
-        PUSH P6
+        MOV P1, [FP+4]
+        PUSH P1
         CALL builtin_set_layer
         ; Args consumed by callee
-        MOV P7, R0
+        MOV P2, R0
 ; For loop
 ; Assignment to p
-        MOV P2, FP
-        ADD P2, 6
-        MOV P0, [P2]
-        MOV P2, FP
-        SUB P2, 2
-        MOV [P2], P0
+        MOV P4, [FP+6]
+        MOV [FP-2], P4
 for_start_0:
-        MOV P2, FP
-        SUB P2, 2
-        MOV P1, [P2]
-        MOV P2, FP
-        ADD P2, 8
-        MOV P2, [P2]
-        CMP P1, P2
-        JLT cmp_true_3
-        MOV P1, 0
+        MOV P5, [FP-2]
+        MOV P6, [FP+8]
+        CMP P6, P5
+        JNC cmp_true_3
+        MOV P5, 0
         JMP cmp_end_4
 cmp_true_3:
-        MOV P1, 1
+        MOV P5, 1
 cmp_end_4:
-        CMP P1, 0
+        CMP P5, 0
         JZ for_end_1
 ; var rnd = ...
 ; Call to random
         CALL builtin_random
-        MOV P3, P0
-        MOV P2, FP
-        SUB P2, 10
-        MOV [P2], P3
+        MOV P7, P0
+        MOV [FP-10], P7
 ; Assignment to x
 ; Optimized high-byte access: (val >> 8) & 0xFF
-        MOV P2, FP
-        SUB P2, 10
-        MOV P4, [P2]
-        MOV P5, P4:
-        MOV P2, FP
-        SUB P2, 4
-        MOV [P2], P5
+        MOV P0, [FP-10]
+        MOV P1, P0:
+        MOV [FP-4], P1
 ; Assignment to y
 ; Optimized low-byte access: val & 0xFF
-        MOV P2, FP
-        SUB P2, 10
-        MOV P6, [P2]
-        MOV P7, :P6
-        MOV P2, FP
-        SUB P2, 6
-        MOV [P2], P7
+        MOV P2, [FP-10]
+        MOV P4, :P2
+        MOV [FP-6], P4
 ; Assignment to color
 ; Call to random_range
-        MOV P2, FP
-        ADD P2, 14
-        MOV P0, [P2]
-        PUSH P0
-        MOV P2, FP
-        ADD P2, 12
-        MOV P1, [P2]
-        PUSH P1
+        MOV P5, [FP+14]
+        PUSH P5
+        MOV P6, [FP+12]
+        PUSH P6
         CALL builtin_random_range
         ; Args consumed by callee
-        MOV P2, R0
-        MOV P2, FP
-        SUB P2, 8
-        MOV [P2], P2
+        MOV P7, P0
+        MOV [FP-8], P7
 ; Call to set_pos
-        MOV P2, FP
-        SUB P2, 6
-        MOV P3, [P2]
-        PUSH P3
-        MOV P2, FP
-        SUB P2, 4
-        MOV P4, [P2]
-        PUSH P4
+        MOV P0, [FP-6]
+        PUSH P0
+        MOV P1, [FP-4]
+        PUSH P1
         CALL builtin_set_pos
         ; Args consumed by callee
-        MOV P5, R0
+        MOV P2, R0
 ; Call to write_screen
-        MOV P2, FP
-        SUB P2, 8
-        MOV P6, [P2]
-        PUSH P6
+        MOV P4, [FP-8]
+        PUSH P4
         CALL builtin_write_screen
         ; Args consumed by callee
-        MOV P7, R0
+        MOV P5, R0
 for_continue_2:
 ; Assignment to p
-        MOV P2, FP
-        SUB P2, 2
-        MOV P0, [P2]
-        MOV P2, FP
-        ADD P2, 10
-        MOV P1, [P2]
-        ADD P0, P1
-        MOV P2, FP
-        SUB P2, 2
-        MOV [P2], P0
+        MOV P6, [FP-2]
+        MOV P7, [FP+10]
+        ADD P6, P7
+        MOV [FP-2], P6
         JMP for_start_0
 for_end_1:
 ; Implicit return for void function
@@ -174,33 +121,33 @@ for_end_1:
 func_draw_text:
     ENTER 0
 ; Call to set_layer
-        MOV P2, 5
-        PUSH P2
+        MOV P0, 5
+        PUSH P0
         CALL builtin_set_layer
         ; Args consumed by callee
-        MOV P3, R0
+        MOV P1, R0
 ; Call to set_vmode
-        MOV P4, 0
-        PUSH P4
+        MOV P2, 0
+        PUSH P2
         CALL builtin_set_vmode
         ; Args consumed by callee
-        MOV P5, R0
+        MOV P4, R0
 ; Call to set_pos
-        MOV P6, 123
+        MOV P5, 123
+        PUSH P5
+        MOV P6, 101
         PUSH P6
-        MOV P7, 101
-        PUSH P7
         CALL builtin_set_pos
         ; Args consumed by callee
-        MOV P0, R0
+        MOV P7, R0
 ; Call to write_text
-        MOV P1, 0x15
+        MOV P0, 0x15
+        PUSH P0
+        MOV P1, str_5
         PUSH P1
-        MOV P2, str_5
-        PUSH P2
         CALL builtin_write_text
         ; Args consumed by callee
-        MOV P3, R0
+        MOV P2, R0
 ; Call to set_pos
         MOV P4, 124
         PUSH P4
@@ -229,60 +176,75 @@ func_main:
         CALL func_setup
         MOV P2, R0
 ; Call to draw_stars
-        MOV P3, 0x06
-        PUSH P3
-        MOV P4, 0x00
+        MOV P4, 0x06
         PUSH P4
-        MOV P5, 20
+        MOV P5, 0x00
         PUSH P5
-        MOV P6, 0xFFFF
+        MOV P6, 32
         PUSH P6
-        MOV P7, 0x0000
+        MOV P7, 0xFFFF
         PUSH P7
-        MOV P0, 1
+        MOV P0, 0x0000
         PUSH P0
-        CALL func_draw_stars
-        ; Args consumed by callee
-        MOV P1, R0
-; Call to draw_stars
-        MOV P2, 0x0A
-        PUSH P2
-        MOV P3, 0x07
-        PUSH P3
-        MOV P4, 52
-        PUSH P4
-        MOV P5, 0xFFFF
-        PUSH P5
-        MOV P6, 0x0000
-        PUSH P6
-        MOV P7, 2
-        PUSH P7
-        CALL func_draw_stars
-        ; Args consumed by callee
-        MOV P0, R0
-; Call to draw_stars
-        MOV P1, 0x0F
+        MOV P1, 1
         PUSH P1
-        MOV P2, 0x0B
-        PUSH P2
-        MOV P3, 88
-        PUSH P3
-        MOV P4, 0xFFFF
-        PUSH P4
-        MOV P5, 0x0000
-        PUSH P5
-        MOV P6, 3
-        PUSH P6
         CALL func_draw_stars
         ; Args consumed by callee
-        MOV P7, R0
+        MOV P2, R0
+; Call to draw_stars
+        MOV P4, 0x0A
+        PUSH P4
+        MOV P5, 0x07
+        PUSH P5
+        MOV P6, 128
+        PUSH P6
+        MOV P7, 0xFFFF
+        PUSH P7
+        MOV P0, 0x0000
+        PUSH P0
+        MOV P1, 2
+        PUSH P1
+        CALL func_draw_stars
+        ; Args consumed by callee
+        MOV P2, R0
+; Call to draw_stars
+        MOV P4, 0x0F
+        PUSH P4
+        MOV P5, 0x0B
+        PUSH P5
+        MOV P6, 256
+        PUSH P6
+        MOV P7, 0xFFFF
+        PUSH P7
+        MOV P0, 0x0000
+        PUSH P0
+        MOV P1, 3
+        PUSH P1
+        CALL func_draw_stars
+        ; Args consumed by callee
+        MOV P2, R0
 ; Call to draw_text
         CALL func_draw_text
-        MOV P0, R0
+        MOV P4, R0
+; Call to sti
+        CALL builtin_sti
+        MOV P5, R0
+; Call to set_timer
+        MOV P6, 3
+        PUSH P6
+        MOV P7, 80
+        PUSH P7
+        MOV P0, 255
+        PUSH P0
+        MOV P1, 0
+        PUSH P1
+        CALL builtin_set_timer
+        ; Args consumed by callee
+        MOV P2, R0
 ; While loop
 while_start_6:
-        MOV P1, 1
-        CMP P1, 0
+        MOV P4, 1
+        CMP P4, 0
         JZ while_end_7
         JMP while_start_6
 while_end_7:
@@ -296,37 +258,37 @@ func_timer_interrupt:
     SUB SP, 2 ; Allocate locals
 ; For loop
 ; var layer = ...
-        MOV P2, 1
-        MOV [SP+0], P2
+        MOV P5, 1
+        MOV [SP+0], P5
 for_start_8:
-        MOV P3, [SP+0]
-        MOV P4, 3
-        CMP P3, P4
-        JLE cmp_true_11
-        MOV P3, 0
+        MOV P6, [SP+0]
+        MOV P7, 3
+        CMP P7, P6
+        JNC cmp_true_11
+        MOV P6, 0
         JMP cmp_end_12
 cmp_true_11:
-        MOV P3, 1
+        MOV P6, 1
 cmp_end_12:
-        CMP P3, 0
+        CMP P6, 0
         JZ for_end_9
 ; Call to set_layer
-        MOV P5, [SP+0]
-        PUSH P5
+        MOV P0, [SP+0]
+        PUSH P0
         CALL builtin_set_layer
         ; Args consumed by callee
-        MOV P6, R0
+        MOV P1, R0
 ; Call to scroll_x
-        MOV P7, [SP+0]
-        PUSH P7
+        MOV P2, [SP+0]
+        PUSH P2
         CALL builtin_scroll_x
         ; Args consumed by callee
-        MOV P0, R0
+        MOV P4, R0
 for_continue_10:
-        MOV P1, [SP+0]
-        MOV P2, P1
-        INC P1
-        MOV [SP+0], P1
+        MOV P5, [SP+0]
+        MOV P6, P5
+        INC P5
+        MOV [SP+0], P5
         JMP for_start_8
 for_end_9:
         ADD SP, 2 ; Deallocate locals before IRET
@@ -439,11 +401,11 @@ builtin_random:
         RND P0
         RET
 builtin_random_range:
-        POP P0
+        POP P3
         POP P1
         POP P2
         RNDR P0, P1, P2
-        PUSH P0
+        PUSH P3
         RET
 builtin_key_available:
         KEYSTAT P0

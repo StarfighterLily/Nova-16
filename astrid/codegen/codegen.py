@@ -134,12 +134,10 @@ class CodeGenerator:
             sp_offset = -offset - var_size
             self.emit(f"    MOV {reg}, [SP+{sp_offset}]")
         else:
-            self.emit(f"    MOV P2, FP")
-            if offset > 0:
-                self.emit(f"    ADD P2, {offset}")
-            else:
-                self.emit(f"    SUB P2, {-offset}")
-            self.emit(f"    MOV {reg}, [P2]")
+            # Use [FP+offset] direct indexed addressing. This avoids
+            # clobbering P2, which get_register() may have already
+            # allocated as an expression temporary.
+            self.emit(f"    MOV {reg}, [FP{offset:+d}]")
 
     def _emit_local_store(self, name: str, src_reg: str):
         offset = self._get_local_offset(name)
@@ -151,12 +149,10 @@ class CodeGenerator:
             sp_offset = -offset - var_size
             self.emit(f"    MOV [SP+{sp_offset}], {src_reg}")
         else:
-            self.emit(f"    MOV P2, FP")
-            if offset > 0:
-                self.emit(f"    ADD P2, {offset}")
-            else:
-                self.emit(f"    SUB P2, {-offset}")
-            self.emit(f"    MOV [P2], {src_reg}")
+            # Use [FP+offset] direct indexed addressing. This avoids
+            # clobbering P2, which get_register() may have already
+            # allocated as an expression temporary.
+            self.emit(f"    MOV [FP{offset:+d}], {src_reg}")
 
     def generate_function(self, func_def: FunctionDef):
         self.functions[func_def.name] = {
@@ -521,16 +517,36 @@ class CodeGenerator:
             elif op == '/': self.emit(f"    DIV {left_reg}, {right_reg}")
             elif op == '%': self.emit(f"    MOD {left_reg}, {right_reg}")
             elif op in ['==', '!=', '>', '<', '>=', '<=']:
-                self.emit(f"    CMP {left_reg}, {right_reg}")
-                jmp_map = {'==': 'JZ', '!=': 'JNZ', '>': 'JGT', '<': 'JLT', '>=': 'JGE', '<=': 'JLE'}
+                # Use unsigned comparisons (JC/JNC) based on carry flag for
+                # <, >, <=, >=.  After CMP a,b (a-b), carry = 1 (borrow) iff
+                # a < b (unsigned).  For > and <= we swap operands so a single
+                # conditional jump suffices.
                 true_label = self.generate_label("cmp_true")
                 end_label = self.generate_label("cmp_end")
-                self.emit(f"    {jmp_map[op]} {true_label}")
+                if op == '==':
+                    self.emit(f"    CMP {left_reg}, {right_reg}")
+                    self.emit(f"    JZ {true_label}")
+                elif op == '!=':
+                    self.emit(f"    CMP {left_reg}, {right_reg}")
+                    self.emit(f"    JNZ {true_label}")
+                elif op == '<':
+                    self.emit(f"    CMP {left_reg}, {right_reg}")
+                    self.emit(f"    JC {true_label}")     # borrow → left < right (unsigned)
+                elif op == '>=':
+                    self.emit(f"    CMP {left_reg}, {right_reg}")
+                    self.emit(f"    JNC {true_label}")   # no borrow → left >= right (unsigned)
+                elif op == '>':
+                    self.emit(f"    CMP {right_reg}, {left_reg}")
+                    self.emit(f"    JC {true_label}")     # borrow of (right-left) → right < left → left > right (unsigned)
+                elif op == '<=':
+                    self.emit(f"    CMP {right_reg}, {left_reg}")
+                    self.emit(f"    JNC {true_label}")   # no borrow → right >= left → left <= right (unsigned)
                 self.emit(f"    MOV {left_reg}, 0")
                 self.emit(f"    JMP {end_label}")
                 self.emit_label(true_label)
                 self.emit(f"    MOV {left_reg}, 1")
                 self.emit_label(end_label)
+
             elif op == '&&': self.emit(f"    AND {left_reg}, {right_reg}")
             elif op == '||': self.emit(f"    OR {left_reg}, {right_reg}")
             elif op == '&': self.emit(f"    AND {left_reg}, {right_reg}")
@@ -581,8 +597,8 @@ class CodeGenerator:
             self.emit(f"    ; Args consumed by callee")
 
         result_reg = self.get_register()
-        if call.name == 'random':
-            # RND writes a 16-bit result to P0; read it back as a 16-bit value.
+        if call.name in ('random', 'random_range'):
+            # RND/RNDR writes a 16-bit result to P0; read it back as a 16-bit value.
             self.emit(f"    MOV {result_reg}, P0")
         else:
             self.emit(f"    MOV {result_reg}, R0")
@@ -631,10 +647,13 @@ class CodeGenerator:
         self.emit_label("builtin_random")
         self.emit("    RND P0"); self.emit("    RET")
         self.emit_label("builtin_random_range")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
-        # Args pushed in reversed source order: stack has [color_min, color_max] on top.
-        # POP P1=color_min, POP P2=color_max. RNDR dest, min, max.
-        self.emit("    RNDR P0, P1, P2"); self.emit("    PUSH P0"); self.emit("    RET")
+        # Save return address in P3 (not P0, since RNDR will write its result to P0).
+        # Stack: [ret_addr, color_max, color_min] (top = last pushed = color_min)
+        # builtins with P0 as destination use P3 for the return address (see
+        # builtin_set_pointers for the same pattern).
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2")
+        self.emit("    RNDR P0, P1, P2")
+        self.emit("    PUSH P3"); self.emit("    RET")
         self.emit_label("builtin_key_available")
         self.emit("    KEYSTAT P0"); self.emit("    RET")
         self.emit_label("builtin_key_read")
@@ -665,13 +684,20 @@ class CodeGenerator:
         self.label_counter += 1
         return label
 
-    def get_register(self) -> str:
+    def get_register(self, exclude: set = None) -> str:
         # Use P0-P7 as 16-bit expression temporaries. P8 is SP and P9 is FP,
         # so they must never be used for general temporaries or arithmetic
         # results (e.g. MOV P9, 3 would clobber the frame pointer).
-        reg = f"P{self.reg_counter % 8}"
-        self.reg_counter += 1
-        return reg
+        # P3 is reserved for DIV remainder storage (the CPU's DIV instruction
+        # unconditionally writes the remainder to P3), so we exclude P3.
+        excluded = {3} | (exclude or set())
+        for _ in range(20):  # try up to 20 times
+            idx = self.reg_counter % 8
+            self.reg_counter += 1
+            if idx not in excluded:
+                return f"P{idx}"
+        # fallback (should never happen)
+        return "P0"
 
     def free_register(self):
         pass

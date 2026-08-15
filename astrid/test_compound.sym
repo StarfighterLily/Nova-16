@@ -1,0 +1,26 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+func_main 0x100F
+builtin_set_vmode 0x1050
+builtin_set_layer 0x105E
+builtin_set_pos 0x106C
+builtin_write_screen 0x1081
+builtin_read_screen 0x108E
+builtin_scroll_x 0x1092
+builtin_scroll_y 0x10A0
+builtin_set_pointers 0x10AE
+builtin_write_text 0x10C3
+builtin_set_font 0x10D7
+builtin_sound_play 0x10E1
+builtin_sound_stop 0x10F2
+builtin_set_timer 0x10FD
+builtin_sti 0x1120
+builtin_cli 0x1122
+builtin_iret 0x1124
+builtin_random 0x1126
+builtin_random_range 0x112A
+builtin_key_available 0x113C
+builtin_key_read 0x1140
+builtin_key_clear 0x1144
+builtin_halt 0x1146

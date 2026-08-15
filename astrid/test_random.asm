@@ -8,37 +8,16 @@ start:
 
 ; Function: main
 func_main:
-    ENTER 0
-; Call to set_mode
-        MOV P0, 1
-        PUSH P0
-        CALL builtin_set_vmode
-        ; Args consumed by callee
-        MOV P1, R0
-; Call to set_layer
-        MOV P2, 0
-        PUSH P2
-        CALL builtin_set_layer
-        ; Args consumed by callee
-        MOV P3, R0
-; Call to set_pos
-        MOV P4, 5
-        PUSH P4
-        MOV P5, 5
-        PUSH P5
-        CALL builtin_set_pos
-        ; Args consumed by callee
-        MOV P6, R0
-; Call to write_screen
-        MOV P7, 0x1F
-        PUSH P7
-        CALL builtin_write_screen
-        ; Args consumed by callee
-        MOV P0, R0
-; Implicit return for void function
-    MOV SP, FP
-    POP FP
-    RET
+    ENTER 2
+; var x = ...
+; Optimized low-byte access: val & 0xFF
+; Call to random
+        CALL builtin_random
+        MOV P0, P0
+        MOV P1, :P0
+        MOV P2, FP
+        SUB P2, 2
+        MOV [P2], P1
 
 ; Built-in Function Implementations
 builtin_set_vmode:
@@ -142,11 +121,11 @@ builtin_random:
         RND P0
         RET
 builtin_random_range:
-        POP P3
+        POP P0
         POP P1
         POP P2
         RNDR P0, P1, P2
-        PUSH P3
+        PUSH P0
         RET
 builtin_key_available:
         KEYSTAT P0

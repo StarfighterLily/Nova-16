@@ -5,7 +5,7 @@ Pay attention to tool call requirements and tool call errors to ensure proper to
 This environment is a Windows 10 desktop running VSCodium, using the Cline VSCode plugin.
 If an edit tool call fails, ensure you supply the 'diff' and 'path' parameters.
 If a search tool call fails, ensure you supply the 'regex' parameter.
-If an execute_command tool call fails, ensure you supply the 'command' parameter.
+If an execute_command tool call fails, ensure you supply the 'command' and 'requires_approval' parameters.
 If a read_file tool call fails, ensure you supply the 'path' parameter.
 If a list_files tool call fails, ensure you supply the 'path' parameter.
 Create new high-coverage tests to verify correct behavior.
