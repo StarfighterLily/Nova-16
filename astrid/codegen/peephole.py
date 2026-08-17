@@ -203,9 +203,18 @@ class PeepholeOptimizer:
         if not self._is_copy_propagation_safe_register(temp_reg):
             return None
 
-        source_reg = self._normalize_register_name(load.operands[1])
-        dest_reg = self._normalize_register_name(store.operands[0])
+        source = load.operands[1]
+        dest = store.operands[0]
+        if '[' in source or ']' in source:
+            return None
+        if not self._is_register_operand(temp_reg) or not self._is_register_operand(dest):
+            return None
+
+        source_reg = self._normalize_register_name(source)
+        dest_reg = self._normalize_register_name(dest)
         if source_reg and dest_reg and not self._same_register_family(source_reg, dest_reg):
+            return None
+        if source_reg and temp_reg and not self._same_register_family(source_reg, self._normalize_register_name(temp_reg)):
             return None
 
         if self._is_register_used(temp_reg, index + 2, min(index + 5, len(self.instructions))):
@@ -274,10 +283,19 @@ class PeepholeOptimizer:
 
         if not self._is_copy_propagation_safe_register(temp_reg):
             return None
+        if '[' in source or ']' in source:
+            return None
+        if not self._is_register_operand(temp_reg) or not self._is_register_operand(dest) or not self._is_register_operand(source):
+            return None
 
         source_reg = self._normalize_register_name(source)
         dest_reg = self._normalize_register_name(dest)
+        temp_family = self._normalize_register_name(temp_reg)
         if source_reg and dest_reg and not self._same_register_family(source_reg, dest_reg):
+            return None
+        if temp_family and dest_reg and not self._same_register_family(temp_family, dest_reg):
+            return None
+        if source_reg and temp_family and not self._same_register_family(source_reg, temp_family):
             return None
 
         if self._is_register_used(temp_reg, index + 2, min(index + 5, len(self.instructions))):
@@ -288,6 +306,14 @@ class PeepholeOptimizer:
         return [optimized], 2
 
     # ===== Helper Methods =====
+
+    def _is_register_operand(self, operand):
+        cleaned = operand.strip().upper()
+        if not cleaned:
+            return False
+        if cleaned.startswith('[') or cleaned.endswith(']'):
+            return False
+        return bool(re.fullmatch(r'(?:R[0-9]|P[0-9]|SP|FP|VX|VY|VM|VL|VC|SA|SF|SV|SW|TT|TM|TC|TS|C[01])', cleaned))
 
     def _normalize_register_name(self, operand):
         cleaned = operand.strip().strip('[]')

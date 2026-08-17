@@ -186,7 +186,61 @@ class LiveRangeScheduler:
             inst.dependents = set()
 
     def _analyze_liveness(self, variable_lifetimes: Dict[str, Tuple[int, int]]):
-        pass
+        # Perform a simple dataflow liveness analysis over IRInstructions.
+        # Build label -> index mapping for jump targets.
+        label_to_index: Dict[str, int] = {}
+        for idx, inst in enumerate(self.instructions):
+            if inst.is_label and inst.operands:
+                label_to_index[inst.operands[0]] = idx
+
+        # Build successors for each instruction (conservative): next instruction
+        # is always a successor; jump targets are added when present.
+        successors: Dict[int, Set[int]] = {i: set() for i in range(len(self.instructions))}
+        for i, inst in enumerate(self.instructions):
+            # Next instruction
+            if i + 1 < len(self.instructions):
+                successors[i].add(i + 1)
+
+            # If instruction is a jump/call and contains label operands, add those
+            if inst.is_jump and inst.operands:
+                for op in inst.operands:
+                    # operand may be a label name
+                    if op in label_to_index:
+                        successors[i].add(label_to_index[op])
+
+        # Initialize live_in/live_out sets
+        live_in: List[Set[str]] = [set() for _ in self.instructions]
+        live_out: List[Set[str]] = [set() for _ in self.instructions]
+
+        # Iterative fixed-point computation
+        changed = True
+        iterations = 0
+        while changed and iterations < 2000:
+            changed = False
+            iterations += 1
+            for i in range(len(self.instructions) - 1, -1, -1):
+                inst = self.instructions[i]
+                # live_out = union of live_in of successors
+                new_live_out = set()
+                for s in successors.get(i, set()):
+                    if s < len(live_in):
+                        new_live_out |= live_in[s]
+
+                # live_in = uses U (live_out - defines)
+                new_live_in = set(inst.uses) | (new_live_out - set(inst.defines))
+
+                if new_live_out != live_out[i] or new_live_in != live_in[i]:
+                    live_out[i] = new_live_out
+                    live_in[i] = new_live_in
+                    changed = True
+
+        # Attach computed liveness to instructions and populate pressure hints
+        for i, inst in enumerate(self.instructions):
+            inst.live_in = live_in[i]
+            inst.live_out = live_out[i]
+            inst.pressure_hint = len(live_out[i])
+
+        self.optimizations_applied['liveness_analyzed'] += 1
 
     def _schedule_instructions(self):
         # naive scheduling placeholder: do nothing

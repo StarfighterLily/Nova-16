@@ -8,6 +8,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from nova_main import initialize_system
+from astrid.parser.parser import BinaryOp, Number
+from astrid.codegen.optimizations import (
+    ExpressionSimplifier,
+    FunctionInliner,
+    RegisterColoringPass,
+    HotSpillAnalyzer,
+    RegisterPressureMonitor,
+)
+from astrid.codegen.codegen import CodeGenerator
 
 
 def run_binary(bin_path, max_cycles=2000000):
@@ -56,6 +65,61 @@ def compile_and_run(source, expected_r0=None):
             path = source_path.replace('.ast', ext)
             if os.path.exists(path):
                 os.unlink(path)
+
+
+def test_optimization_passes_api():
+    """Verify NoBASIC optimization passes are available and usable."""
+    expr = ExpressionSimplifier()
+    folded = expr.simplify(BinaryOp(Number("1"), "+", Number("2")))
+    assert hasattr(folded, 'value')
+
+    # Register coloring should assign a valid mapping for a small interference set.
+    graph = {'a': {'b'}, 'b': {'a'}}
+    mapping = RegisterColoringPass(graph, ['P0', 'P1']).color_graph()
+    assert set(mapping) == {'a', 'b'}
+
+    # Hot spills should map hot vars to zero-page addresses with the right sizing.
+    hot = HotSpillAnalyzer({'x': 0x0100}, {'x': 10, 'y': 3}, debug=False)
+    hot_spills = hot.identify_hot_spills(threshold_percentile=50.0)
+    assert 'x' in hot_spills
+
+    # Pressure monitoring should expose the same diagnostics as the NoBASIC compiler.
+    pressure = RegisterPressureMonitor({0: {'a'}, 1: {'a', 'b'}}, available_registers=1)
+    stats = pressure.analyze_pressure()
+    assert stats['max_pressure'] >= 1
+
+    # Function inlining should recognize tiny helper functions.
+    function = FunctionInliner(max_statements=3)
+    assert function.analyze([]) == set()
+
+    # The Astrid compiler should default to the same peephole-on behavior as NoBASIC.
+    assert CodeGenerator().enable_peephole is True
+
+
+def test_optimization_config_and_wiring():
+    """Astrid should expose the same optimization toggles and config defaults as NoBASIC."""
+    generator = CodeGenerator(enable_optimizations=False, enable_live_range_scheduling=False)
+    assert generator.enable_optimizations is False
+    assert generator.enable_peephole is True  # peephole is still independent from the master switch
+    assert generator.enable_live_range is False
+    assert generator.opt_config['enable_expression_simplification'] is True
+
+    generator = CodeGenerator(debug_optimizations=True)
+    assert generator.opt_config['debug_optimizations'] is True
+    assert generator.enable_optimizations is True
+
+
+def test_live_range_scheduler_budget_gate():
+    """Astrid should skip expensive live-range scheduling when code size or work estimate exceeds NoBASIC budgets."""
+    generator = CodeGenerator()
+    schedule_ok, reason = generator._should_run_live_range_scheduler(["MOV P0, 1"] * 20)
+    assert schedule_ok is True
+    assert "within budget" in reason.lower()
+
+    oversized = ["MOV P0, 1"] * (generator.LIVE_RANGE_SCHEDULER_MAX_LINES + 5)
+    schedule_ok, reason = generator._should_run_live_range_scheduler(oversized)
+    assert schedule_ok is False
+    assert "line count" in reason.lower()
 
 
 def test_break_statement():

@@ -313,3 +313,449 @@ class FunctionInliner:
             return False
         # simple control flow check
         return True
+
+    def inline_functions(self, functions: List[FunctionDef], inlineable_names: Optional[Set[str]] = None) -> List[FunctionDef]:
+        """Return a copy of the function list with a conservative set of calls inlined.
+
+        Only void functions are inlined in statement position. This keeps the
+        expansion safe and avoids rewriting value-producing expression calls.
+        """
+        if inlineable_names is None:
+            inlineable_names = self.analyze(functions)
+        if not functions or not inlineable_names:
+            return functions
+
+        function_map = {fn.name: fn for fn in functions}
+        result: List[FunctionDef] = []
+        for func in functions:
+            if func.name in inlineable_names:
+                result.append(func)
+                continue
+            result.append(self._inline_function(func, inlineable_names, function_map))
+        return result
+
+    def _inline_function(self, func: FunctionDef, inlineable_names: Set[str], function_map: Dict[str, FunctionDef]) -> FunctionDef:
+        def rewrite(node):
+            if isinstance(node, list):
+                rewritten: List[Any] = []
+                for item in node:
+                    rewritten.extend(rewrite(item))
+                return rewritten
+            if isinstance(node, FuncCall) and node.name in inlineable_names:
+                callee = function_map.get(node.name)
+                if callee is None or callee.return_type != 'void':
+                    return [node]
+                mapping = {param.name: arg for param, arg in zip(callee.params, node.args)}
+                expanded: List[Any] = []
+                for stmt in callee.body:
+                    expanded.extend(self._substitute(stmt, mapping))
+                return expanded
+            if isinstance(node, VarDecl):
+                if node.value is not None:
+                    node.value = self._substitute(node.value, {})
+                return [node]
+            if isinstance(node, Assignment):
+                node.value = self._substitute(node.value, {})
+                return [node]
+            if isinstance(node, Return):
+                if node.value is not None:
+                    node.value = self._substitute(node.value, {})
+                return [node]
+            if isinstance(node, If):
+                node.cond = self._substitute(node.cond, {})
+                node.then_body = rewrite(node.then_body)
+                if node.else_body:
+                    node.else_body = rewrite(node.else_body)
+                return [node]
+            if isinstance(node, While):
+                node.cond = self._substitute(node.cond, {})
+                node.body = rewrite(node.body)
+                return [node]
+            if isinstance(node, DoWhile):
+                node.cond = self._substitute(node.cond, {})
+                node.body = rewrite(node.body)
+                return [node]
+            if isinstance(node, For):
+                if node.init is not None:
+                    node.init = self._substitute(node.init, {})
+                if node.cond is not None:
+                    node.cond = self._substitute(node.cond, {})
+                if node.update is not None:
+                    node.update = self._substitute(node.update, {})
+                node.body = rewrite(node.body)
+                return [node]
+            if isinstance(node, Switch):
+                node.expr = self._substitute(node.expr, {})
+                for case in node.cases:
+                    case.value = self._substitute(case.value, {})
+                    case.body = rewrite(case.body)
+                if node.default_body:
+                    node.default_body = rewrite(node.default_body)
+                return [node]
+            return [node]
+
+        func.body = rewrite(func.body)
+        return func
+
+    def _substitute(self, node: Any, mapping: Dict[str, Any]) -> Any:
+        if isinstance(node, list):
+            return [self._substitute(item, mapping) for item in node]
+        if isinstance(node, Identifier) and node.name in mapping:
+            return mapping[node.name]
+        if isinstance(node, BinaryOp):
+            node.left = self._substitute(node.left, mapping)
+            node.right = self._substitute(node.right, mapping)
+            return node
+        if isinstance(node, UnaryOp):
+            node.right = self._substitute(node.right, mapping)
+            return node
+        if isinstance(node, PostfixOp):
+            node.left = self._substitute(node.left, mapping)
+            return node
+        if isinstance(node, FuncCall):
+            node.args = [self._substitute(arg, mapping) for arg in node.args]
+            return node
+        return node
+
+
+@dataclass
+class RegisterColoringPass:
+    """Greedy graph-coloring pass for local variable register assignment."""
+    interference_graph: Dict[str, Set[str]]
+    available_registers: List[str]
+    debug: bool = False
+
+    def __post_init__(self):
+        self.color_map: Dict[str, str] = {}
+        self.color_usage: Dict[str, int] = defaultdict(int)
+
+    def color_graph(self) -> Dict[str, str]:
+        var_degrees = sorted(
+            self.interference_graph.items(),
+            key=lambda item: (-len(item[1]), item[0]),
+        )
+
+        for var, neighbors in var_degrees:
+            used_colors = {self.color_map[n] for n in neighbors if n in self.color_map}
+            for reg in self.available_registers:
+                if reg in used_colors:
+                    continue
+                self.color_map[var] = reg
+                self.color_usage[reg] += 1
+                break
+
+        if self.debug:
+            print(f"[COLORING] colored {len(self.color_map)} variables")
+
+        return self.color_map
+
+
+@dataclass
+class HotSpillAnalyzer:
+    """Identify high-frequency spilled variables for zero-page placement."""
+    spill_slots: Dict[str, int]
+    access_counts: Dict[str, int] = field(default_factory=Counter)
+    debug: bool = False
+    zero_page_base: int = 0x0080
+    zero_page_size: int = 128
+
+    def __post_init__(self):
+        self.hot_spills: Dict[str, int] = {}
+        self.zp_allocation: List[Tuple[str, int]] = []
+        self.next_zp_addr = self.zero_page_base
+
+    def identify_hot_spills(self, threshold_percentile: float = 75.0) -> Dict[str, int]:
+        if not self.access_counts:
+            return {}
+
+        sorted_counts = sorted(self.access_counts.values(), reverse=True)
+        threshold_idx = max(0, int(len(sorted_counts) * (1 - threshold_percentile / 100.0)))
+        threshold = sorted_counts[threshold_idx] if sorted_counts else 0
+
+        candidates = [
+            (var, count) for var, count in self.access_counts.items()
+            if var in self.spill_slots and count >= threshold
+        ]
+        candidates.sort(key=lambda item: item[1], reverse=True)
+
+        for var, count in candidates:
+            if self.next_zp_addr + 2 > self.zero_page_base + self.zero_page_size:
+                break
+            zp_addr = self.next_zp_addr
+            self.hot_spills[var] = zp_addr
+            self.zp_allocation.append((var, zp_addr))
+            self.next_zp_addr += 2
+
+        if self.debug:
+            print(f"[HOT_SPILL] migrated {len(self.hot_spills)} variables to zero page")
+        return self.hot_spills
+
+    def should_use_zero_page(self, var: str) -> bool:
+        return var in self.hot_spills
+
+    def get_zero_page_address(self, var: str) -> Optional[int]:
+        return self.hot_spills.get(var)
+
+
+@dataclass
+class RegisterPressureMonitor:
+    """Monitor live-variable pressure and identify likely register-allocation bottlenecks."""
+    live_at_point: Dict[int, Set[str]]
+    available_registers: int
+    debug: bool = False
+
+    def __post_init__(self):
+        self.pressure_history: List[Tuple[int, int]] = []
+        self.pressure_peaks: List[Tuple[int, int]] = []
+        self.bottleneck_regions: List[Tuple[int, int, int]] = []
+
+    def analyze_pressure(self) -> Dict[str, Any]:
+        pressure_by_point: Dict[int, int] = {}
+        max_pressure = 0
+        max_pressure_point = 0
+
+        for point, live_vars in self.live_at_point.items():
+            pressure = len(live_vars)
+            pressure_by_point[point] = pressure
+            self.pressure_history.append((point, pressure))
+
+            if pressure > max_pressure:
+                max_pressure = pressure
+                max_pressure_point = point
+
+            if pressure > self.available_registers:
+                self.pressure_peaks.append((point, pressure))
+
+        self.pressure_history.sort(key=lambda item: item[0])
+        self.pressure_peaks.sort(key=lambda item: item[0])
+        self._identify_bottlenecks()
+
+        stats = {
+            'max_pressure': max_pressure,
+            'max_pressure_point': max_pressure_point,
+            'available_registers': self.available_registers,
+            'pressure_exceeds_available': len(self.pressure_peaks),
+            'avg_pressure': (
+                sum(value for _, value in self.pressure_history) / len(self.pressure_history)
+                if self.pressure_history else 0
+            ),
+            'bottleneck_regions': self.bottleneck_regions,
+        }
+
+        if self.debug:
+            print(f"\n[PRESSURE] Register Pressure Analysis:")
+            print(f"  Maximum pressure: {max_pressure}/{self.available_registers} (at point {max_pressure_point})")
+            print(f"  Average pressure: {stats['avg_pressure']:.1f}")
+            print(f"  Exceeds available: {len(self.pressure_peaks)} program points")
+            print(f"  Bottleneck regions: {len(self.bottleneck_regions)}")
+
+        return stats
+
+    def _identify_bottlenecks(self):
+        if not self.pressure_peaks:
+            self.bottleneck_regions = []
+            return
+
+        regions: List[Tuple[int, int, int]] = []
+        current_start = self.pressure_peaks[0][0]
+        current_peak = self.pressure_peaks[0][1]
+
+        for i in range(1, len(self.pressure_peaks)):
+            point, pressure = self.pressure_peaks[i]
+            prev_point = self.pressure_peaks[i - 1][0]
+            if point - prev_point > 10:
+                regions.append((current_start, prev_point, current_peak))
+                current_start = point
+                current_peak = pressure
+            else:
+                current_peak = max(current_peak, pressure)
+
+        regions.append((current_start, self.pressure_peaks[-1][0], current_peak))
+        self.bottleneck_regions = regions
+
+    def get_pressure_report(self) -> str:
+        stats = self.analyze_pressure()
+        return (
+            "\nRegister Pressure Report\n"
+            "========================\n"
+            f"Maximum Pressure:       {stats['max_pressure']}/{stats['available_registers']}\n"
+            f"Average Pressure:       {stats['avg_pressure']:.1f}\n"
+            f"Pressure Exceeded At:   {stats['pressure_exceeds_available']} points\n"
+            f"Bottleneck Regions:     {len(self.bottleneck_regions)}\n\n"
+            "Recommendations:\n"
+            "- High pressure often indicates the need to split larger expressions\n"
+            "- Prefer smaller variable lifetimes and reuse registers when possible\n"
+            "- Consider hot-spill placement for loop-heavy code\n"
+        )
+
+
+@dataclass
+class DynamicSpillAllocator:
+    """Conservative spill-slot allocator that matches the NoBASIC compiler's spill policy."""
+    spill_slots: Dict[str, int]
+    access_counts: Dict[str, int] = field(default_factory=Counter)
+    debug: bool = False
+    zero_page_base: int = 0x0080
+    zero_page_size: int = 128
+
+    def __post_init__(self):
+        self.allocations: Dict[str, int] = {}
+        self.next_zp_addr = self.zero_page_base
+
+    def allocate(self) -> Dict[str, int]:
+        if not self.access_counts:
+            return {}
+
+        ranked = sorted(self.access_counts.items(), key=lambda item: item[1], reverse=True)
+        for var, _ in ranked:
+            if var not in self.spill_slots:
+                continue
+            if self.next_zp_addr + 2 > self.zero_page_base + self.zero_page_size:
+                break
+            self.allocations[var] = self.next_zp_addr
+            self.next_zp_addr += 2
+
+        if self.debug:
+            print(f"[SPILL] allocated {len(self.allocations)} hot spill slots")
+        return self.allocations
+
+    def get_address(self, var: str) -> Optional[int]:
+        return self.allocations.get(var)
+
+
+@dataclass
+class StrengthReducer:
+    """Reduce multiplication by powers of 2 to left shifts for better performance."""
+    debug: bool = False
+
+    @staticmethod
+    def _is_power_of_two(n: int) -> bool:
+        """Check if n is a power of 2."""
+        return n > 0 and (n & (n - 1)) == 0
+
+    @staticmethod
+    def _log2(n: int) -> int:
+        """Calculate log2 of a power of 2."""
+        return (n - 1).bit_length()
+
+    def reduce(self, expr: Any) -> Any:
+        """Reduce multiplication by powers of 2 to shifts in the AST."""
+        result = self._reduce_node(expr)
+        if self.debug and result is not expr:
+            print(f"[STRENGTH_RED] Reduced multiplication by power of 2")
+        return result
+
+    def _reduce_node(self, expr: Any) -> Any:
+        """Recursively reduce expressions in the AST."""
+        if isinstance(expr, BinaryOp):
+            left = self._reduce_node(expr.left)
+            right = self._reduce_node(expr.right)
+
+            # Try strength reduction on multiplication by powers of 2
+            if expr.op == '*':
+                reduction = self._try_reduce_multiply(left, right)
+                if reduction is not None:
+                    return reduction
+
+            return BinaryOp(left, expr.op, right)
+
+        elif isinstance(expr, UnaryOp):
+            return UnaryOp(expr.op, self._reduce_node(expr.right))
+
+        elif isinstance(expr, PostfixOp):
+            return PostfixOp(self._reduce_node(expr.left), expr.op)
+
+        elif isinstance(expr, FuncCall):
+            return FuncCall(expr.name, [self._reduce_node(arg) for arg in expr.args])
+
+        elif isinstance(expr, list):
+            return [self._reduce_node(item) for item in expr]
+
+        elif isinstance(expr, VarDecl):
+            if expr.value is not None:
+                expr.value = self._reduce_node(expr.value)
+            return expr
+
+        elif isinstance(expr, Assignment):
+            expr.value = self._reduce_node(expr.value)
+            return expr
+
+        elif isinstance(expr, Return):
+            if expr.value is not None:
+                expr.value = self._reduce_node(expr.value)
+            return expr
+
+        elif isinstance(expr, If):
+            expr.cond = self._reduce_node(expr.cond)
+            expr.then_body = self._reduce_node(expr.then_body)
+            if expr.else_body:
+                expr.else_body = self._reduce_node(expr.else_body)
+            return expr
+
+        elif isinstance(expr, While):
+            expr.cond = self._reduce_node(expr.cond)
+            expr.body = self._reduce_node(expr.body)
+            return expr
+
+        elif isinstance(expr, DoWhile):
+            expr.cond = self._reduce_node(expr.cond)
+            expr.body = self._reduce_node(expr.body)
+            return expr
+
+        elif isinstance(expr, For):
+            if expr.init is not None:
+                expr.init = self._reduce_node(expr.init)
+            if expr.cond is not None:
+                expr.cond = self._reduce_node(expr.cond)
+            if expr.update is not None:
+                expr.update = self._reduce_node(expr.update)
+            expr.body = self._reduce_node(expr.body)
+            return expr
+
+        elif isinstance(expr, Switch):
+            expr.expr = self._reduce_node(expr.expr)
+            for case in expr.cases:
+                case.value = self._reduce_node(case.value)
+                case.body = self._reduce_node(case.body)
+            if expr.default_body:
+                expr.default_body = self._reduce_node(expr.default_body)
+            return expr
+
+        return expr
+
+    def _try_reduce_multiply(self, left: Any, right: Any) -> Optional[BinaryOp]:
+        """Try to reduce left * right to left << log2(right) when right is a power of 2."""
+        # Check if right operand is a power of 2 literal
+        right_val = _num_value(right)
+        if right_val is not None and self._is_power_of_two(right_val):
+            shift_amount = self._log2(right_val)
+            return BinaryOp(left, "<<", Number(str(shift_amount)))
+
+        # Check if left operand is a power of 2 literal (commutative)
+        left_val = _num_value(left)
+        if left_val is not None and self._is_power_of_two(left_val):
+            shift_amount = self._log2(left_val)
+            return BinaryOp(right, "<<", Number(str(shift_amount)))
+
+        return None
+
+
+def get_optimization_config() -> Dict[str, Any]:
+    """Get default optimization configuration matching the NoBASIC compiler."""
+    return {
+        'enable_graph_coloring': True,
+        'enable_hot_spill_migration': True,
+        'enable_register_pressure_monitoring': True,
+        'enable_dynamic_spill_allocation': True,
+        'enable_expression_simplification': True,
+        'enable_function_inlining': True,
+        'enable_strength_reduction': True,
+        'inlining_max_statements': 8,
+        'inlining_min_call_sites': 2,
+        'debug_optimizations': False,
+        'pressure_threshold_percentile': 75.0,
+        'zero_page_base': 0x0080,
+        'zero_page_size': 128,
+        'spill_base': 0x7000,
+        'spill_size': 512,
+    }

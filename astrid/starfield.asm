@@ -34,10 +34,10 @@ func_draw_stars:
 ENTER 14
 ; var start = ...
 MOV P6, 0
-MOV [FP-10], P6
+MOV [0x0088], P6
 ; var finish = ...
 MOV P7, 65535
-MOV [FP-12], P7
+MOV [0x008A], P7
 ; Call to set_layer
 MOV P0, [FP+4]
 PUSH P0
@@ -46,11 +46,11 @@ CALL builtin_set_layer
 MOV P1, R0
 ; For loop
 ; Assignment to p
-MOV P2, [FP-10]
-MOV [FP-2], P2
+MOV P2, [0x0088]
+MOV [0x0080], P2
 for_start_0:
-MOV P4, [FP-2]
-MOV P5, [FP-12]
+MOV P4, [0x0080]
+MOV P5, [0x008A]
 CMP P5, P4
 JNC cmp_true_3
 MOV P4, 0
@@ -64,17 +64,17 @@ JZ for_end_1
 ; Call to random
 CALL builtin_random
 MOV P6, P0
-MOV [FP-14], P6
+MOV [0x008C], P6
 ; Assignment to x
 ; Optimized high-byte access: (val >> 8) & 0xFF
-MOV P7, [FP-14]
+MOV P7, [0x008C]
 MOV P0, P7:
-MOV [FP-4], P0
+MOV [0x0082], P0
 ; Assignment to y
-; Optimized low-byte access: val & 0xFF
-MOV P1, [FP-14]
-MOV P2, :P1
-MOV [FP-6], P2
+MOV P1, 0xFF
+MOV P2, [0x008C]
+AND P1, P2
+MOV [0x0084], P1
 ; Assignment to color
 ; Call to random_range
 MOV P4, [FP+10]
@@ -84,33 +84,33 @@ PUSH P5
 CALL builtin_random_range
 ; Args consumed by callee
 MOV P6, P0
-MOV [FP-8], P6
+MOV [0x0086], P6
 ; Call to set_pos
-MOV P7, [FP-6]
+MOV P7, [0x0084]
 PUSH P7
-MOV P0, [FP-4]
+MOV P0, [0x0082]
 PUSH P0
 CALL builtin_set_pos
 ; Args consumed by callee
 MOV P1, R0
 ; Call to write_screen
-MOV P2, [FP-8]
+MOV P2, [0x0086]
 PUSH P2
 CALL builtin_write_screen
 ; Args consumed by callee
 MOV P4, R0
 for_continue_2:
 ; Wrap-check: save p before update
-MOV P5, [FP-2]
+MOV P5, [0x0080]
 PUSH P5
 ; Assignment to p
-MOV P6, [FP-2]
+MOV P6, [0x0080]
 MOV P7, [FP+6]
 ADD P6, P7
-MOV [FP-2], P6
+MOV [0x0080], P6
 ; Wrap-check: compare p new vs old
 POP P0
-MOV P1, [FP-2]
+MOV P1, [0x0080]
 CMP P1, P0
 JC for_end_1
 JMP for_start_0
@@ -267,8 +267,8 @@ CALL builtin_set_layer
 ; Args consumed by callee
 MOV P5, R0
 ; If statement
-MOV P6, [SP+0]
-MOV P7, 1
+MOV P6, 1
+MOV P7, [SP+0]
 CMP P6, P7
 JZ cmp_true_15
 MOV P6, 0
@@ -286,8 +286,8 @@ CALL builtin_scroll_x
 MOV P1, R0
 if_end_13:
 ; If statement
-MOV P2, [SP+0]
-MOV P4, 2
+MOV P2, 2
+MOV P4, [SP+0]
 CMP P2, P4
 JZ cmp_true_19
 MOV P2, 0
@@ -311,8 +311,8 @@ CALL builtin_scroll_x
 MOV P0, R0
 if_end_17:
 ; If statement
-MOV P1, [SP+0]
-MOV P2, 3
+MOV P1, 3
+MOV P2, [SP+0]
 CMP P1, P2
 JZ cmp_true_23
 MOV P1, 0

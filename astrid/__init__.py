@@ -8,11 +8,20 @@ from .lexer.lexer import Lexer, Token  # type: ignore
 from .parser.parser import Parser, Program  # type: ignore
 from .codegen.codegen import CodeGenerator  # type: ignore
 from .codegen.peephole import PeepholeOptimizer  # type: ignore
-from .codegen.optimizations import ExpressionSimplifier, FunctionInliner  # type: ignore
+from .codegen.optimizations import (
+    ExpressionSimplifier,
+    FunctionInliner,
+    RegisterColoringPass,
+    HotSpillAnalyzer,
+    RegisterPressureMonitor,
+    DynamicSpillAllocator,
+    get_optimization_config,
+)  # type: ignore
 from .codegen.live_range_scheduler import LiveRangeScheduler  # type: ignore
 
 __all__ = [
-	'Lexer', 'Token', 'Parser', 'Program', 'CodeGenerator',
-	'PeepholeOptimizer', 'ExpressionSimplifier', 'FunctionInliner',
-	'LiveRangeScheduler',
+    'Lexer', 'Token', 'Parser', 'Program', 'CodeGenerator',
+    'PeepholeOptimizer', 'ExpressionSimplifier', 'FunctionInliner',
+    'RegisterColoringPass', 'HotSpillAnalyzer', 'RegisterPressureMonitor',
+    'DynamicSpillAllocator', 'LiveRangeScheduler', 'get_optimization_config',
 ]
