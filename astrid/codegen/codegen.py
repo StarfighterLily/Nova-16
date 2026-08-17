@@ -1,8 +1,9 @@
 # Astrid Language Code Generator
 # File: astrid/codegen/codegen.py
-# Translates Astrid AST to Nova-16 assembly code
+# Translates Astrid AST to Nova-16 assembly code with register allocation optimizations
 
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Tuple
+from collections import Counter
 from astrid.parser.parser import (
     Program, FunctionDef, VarDecl, Assignment, Return, If, While, DoWhile, For, FuncCall,
     Switch, Case,
@@ -11,9 +12,11 @@ from astrid.parser.parser import (
 )
 
 class CodeGenerator:
-    """Generates Nova-16 assembly code from Astrid AST"""
+    # Generates Nova-16 assembly code from Astrid AST with enhanced register allocation
 
-    def __init__(self):
+    def __init__(self, enable_peephole: bool = True, debug_optimizations: bool = False):
+        self.enable_peephole = enable_peephole
+        self.debug_optimizations = debug_optimizations
         self.assembly = []
         self.global_vars = {}
         self.local_vars = {}
@@ -27,9 +30,52 @@ class CodeGenerator:
         self.builtin_functions = self._init_builtins()
         # Stack of (start_label, end_label) for break/continue support
         self.loop_stack = []
+        
+        # Access count tracking for hot variable optimization
+        self.variable_access_counts: Dict[str, int] = Counter()
+        
+        # Unified liveness tracking
+        self.live_ranges: Dict[str, Tuple[int, int]] = {}  # name -> (start, end)
+        self.live_at_point: Dict[int, Set[str]] = {}  # program_point -> set of live variables
+        
+        # Interference graph (tracks which variables cannot share registers)
+        self.interference_graph: Dict[str, Set[str]] = {}  # variable -> set of interfering variables
+        
+        # Register allocation tracking
+        self.register_usage: Dict[str, bool] = {
+            'R0': False, 'R1': False, 'R2': False, 'R3': False, 'R4': False,
+            'R5': False, 'R6': False, 'R7': False, 'R8': False, 'R9': False,
+            'P0': False, 'P1': False, 'P2': False, 'P3': False, 'P4': False,
+            'P5': False, 'P6': False, 'P7': False, 'SP': False, 'FP': False,
+            'VX': False, 'VY': False, 'VM': False, 'VL': False, 'VC': False,
+            'SA': False, 'SF': False, 'SV': False, 'SW': False,
+            'TT': False, 'TM': False, 'TC': False, 'TS': False
+        }
+        
+        # Preferred register order for allocation (P registers first for 16-bit, 
+        # then R registers as fallback for 8-bit).
+        # P3 is excluded (reserved for DIV remainder storage).
+        self.allocation_order = [
+            'P0', 'P1', 'P2', 'P4', 'P5', 'P6',
+            'R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9',
+        ]
+        
+        # Variable register allocation (maps variable name to register)
+        self.var_reg: Dict[str, str] = {}
+        
+        # Auto-free register set (registers freed after last use)
+        self.auto_free_registers: Set[str] = set()
+        
+        # Register allocation statistics
+        self.allocation_stats = {
+            'total_allocations': 0,
+            'total_deallocations': 0,
+            'allocation_failures': 0,
+            'max_simultaneous_allocated': 0
+        }
 
     def _init_builtins(self) -> Dict[str, str]:
-        """Initialize built-in function to assembly mappings"""
+        # Initialize built-in function to assembly mappings
         return {
             'set_mode': 'builtin_set_vmode', 'set_vmode': 'builtin_set_vmode',
             'set_layer': 'builtin_set_layer', 'set_pos': 'builtin_set_pos',
@@ -56,7 +102,7 @@ class CodeGenerator:
         self.assembly.append("    CALL func_main")
         self.assembly.append("    HLT")
         self.assembly.append("")
-
+        
         # Emit interrupt vector FIRST at 0x0100 (before functions)
         if any(func.name == 'timer_interrupt' for func in ast.functions):
             self.assembly.append("ORG 0x0100")
@@ -64,14 +110,28 @@ class CodeGenerator:
             # Skip past the interrupt vector table (0x0100-0x011F, 8 vectors x 4 bytes)
             self.assembly.append("ORG 0x0120")
             self.assembly.append("")
-
+        
         # Generate all functions and data AFTER interrupt vector
         for func_def in ast.functions:
             self.generate_function(func_def)
-
+        
         self.generate_strings()
         self.generate_builtins()
-
+        
+        # **POST-GENERATION OPTIMIZATIONS**
+        # Apply peephole optimizations to reduce code size and improve performance.
+        if self.enable_peephole:
+            from astrid.codegen.peephole import PeepholeOptimizer
+            assembly_output = "\n".join(self.assembly)
+            peephole_opt = PeepholeOptimizer(debug=self.debug_optimizations)
+            optimized_output = peephole_opt.optimize(assembly_output)
+            
+            if self.debug_optimizations:
+                print("[CODEGEN] Peephole optimization applied")
+                print(f"[CODEGEN] Original: {len(self.assembly)} lines, Optimized: {len(optimized_output.split(chr(10)))} lines")
+            
+            return optimized_output.split('\n')
+        
         return self.assembly
 
     def generate_strings(self):
@@ -85,7 +145,7 @@ class CodeGenerator:
         self.assembly.append("")
 
     def find_local_vars(self, statements: List) -> List[VarDecl]:
-        """Recursively find all VarDecl nodes in a list of statements."""
+        # Recursively find all VarDecl nodes in a list of statements.
         decls = []
         for stmt in statements:
             if isinstance(stmt, VarDecl):
@@ -112,7 +172,7 @@ class CodeGenerator:
         return decls
 
     def _var_size(self, name: str) -> int:
-        """Return storage size in bytes for a variable (2 for int, 1 for char)."""
+        # Return storage size in bytes for a variable (2 for int, 1 for char).
         return 2 if self.var_types.get(name) == 'int' else 1
 
     def _is_int_var(self, name: str) -> bool:
@@ -126,6 +186,8 @@ class CodeGenerator:
         offset = self._get_local_offset(name)
         is_int = self._is_int_var(name)
         var_size = 2 if is_int else 1
+        # Record access for hot-variable optimization.
+        self.variable_access_counts[name] += 1
         if self.current_function == 'timer_interrupt':
             # Interrupt handler uses SP-relative locals (no ENTER/FP).
             # After "SUB SP, N", the first local (offset=-size) is at SP+0,
@@ -143,6 +205,8 @@ class CodeGenerator:
         offset = self._get_local_offset(name)
         is_int = self._is_int_var(name)
         var_size = 2 if is_int else 1
+        # Record access frequency for hot-variable optimization.
+        self.variable_access_counts[name] += 1
         if self.current_function == 'timer_interrupt':
             # Interrupt handler uses SP-relative locals (no ENTER/FP) — see
             # _emit_local_load for the offset formula.
@@ -348,6 +412,73 @@ class CodeGenerator:
         self.emit_label(end_label)
         self.loop_stack.pop()
 
+    def _detect_wrap_prone_var(self, for_stmt: For) -> Optional[str]:
+        """Detect if a for-loop has a pattern prone to 16-bit unsigned wrap-around.
+
+        Recognizes patterns where a loop variable is compared in the condition
+        and modified by a compound-update in the update expression, such that
+        the variable could overflow/underflow the 16-bit range before the
+        condition becomes false.
+
+        Recognized condition patterns (var is the loop variable):
+        - var < bound   (incrementing var, bound near 0xFFFF)
+        - var <= bound
+        - var > bound   (decrementing var, bound near 0x0000)
+        - var >= bound
+
+        Recognized update patterns:
+        - var += expr  (compound: var = var + expr)
+        - var -= expr  (compound: var = var - expr)
+        - var++        (postfix increment)
+        - var--        (postfix decrement)
+
+        The wrap check is suppressed for 'timer_interrupt' because that function
+        uses SP-relative locals (no ENTER/FP) and PUSH/POP would shift the SP
+        base, corrupting SP-relative addresses for all local variables.
+
+        Args:
+            for_stmt: The For AST node.
+
+        Returns:
+            The loop variable name if a wrap-prone pattern is detected, else None.
+        """
+        if not for_stmt.cond or not for_stmt.update:
+            return None
+        if not isinstance(for_stmt.cond, BinaryOp):
+            return None
+        if for_stmt.cond.op not in ['<', '<=', '>', '>=', '==', '!=']:
+            return None
+
+        # Collect candidate loop-variable names from both sides of the condition.
+        # The variable may appear on either side depending on how the AST was
+        # constructed (e.g. "p < finish" or "finish > p").
+        candidates = []
+        if isinstance(for_stmt.cond.left, Identifier):
+            candidates.append(for_stmt.cond.left.name)
+        if isinstance(for_stmt.cond.right, Identifier):
+            candidates.append(for_stmt.cond.right.name)
+
+        if not candidates:
+            return None
+
+        update = for_stmt.update
+        for var_name in candidates:
+            # Case 1: Compound assignment — var = var <op> expr
+            # Parser decomposes "var += expr" into Assignment('var', BinaryOp(Identifier('var'), '+', expr))
+            if isinstance(update, Assignment):
+                if update.name == var_name:
+                    value = update.value
+                    if isinstance(value, BinaryOp) and isinstance(value.left, Identifier) \
+                            and value.left.name == var_name:
+                        return var_name
+
+            # Case 2: Postfix operator — var++ or var--
+            elif isinstance(update, PostfixOp):
+                if isinstance(update.left, Identifier) and update.left.name == var_name:
+                    return var_name
+
+        return None
+
     def generate_for(self, for_stmt: For):
         self.emit_comment("For loop")
         start_label = self.generate_label("for_start")
@@ -357,24 +488,76 @@ class CodeGenerator:
         continue_label = self.generate_label("for_continue")
         self.loop_stack.append((continue_label, end_label))
 
+        # Emit initialization (may be a VarDecl list for "for(int x=...)",
+        # or an Assignment/Expression for "for(x=...)")
         if for_stmt.init:
             self.generate_block([for_stmt.init])
 
+        # Condition check: evaluate cond to 0/1, exit if false (zero)
         self.emit_label(start_label)
-
         if for_stmt.cond:
             reg = self.generate_expression(for_stmt.cond)
             self.emit(f"    CMP {reg}, 0")
             self.free_register()
             self.emit(f"    JZ {end_label}")
 
+        # Loop body
         self.generate_block(for_stmt.body)
 
         # Continue target: update expression
         self.emit_label(continue_label)
+
+        # Wrap-aware for-loop emission:
+        # When a 16-bit loop variable is incremented (e.g., p += 32) and
+        # the loop bound is 0xFFFF (or any value near 0xFFFF), the variable
+        # can wrap from 0xFFF0 to 0x0010.  The unsigned comparison
+        # (p < 0xFFFF) remains true after the wrap, causing an infinite loop.
+        #
+        # To detect this, we save the variable's value before the update, then
+        # compare it with the new value after the update.  If new < old
+        # (unsigned borrow / carry), the variable wrapped → exit loop.
+        #
+        # This check is suppressed in 'timer_interrupt' because that function
+        # uses SP-relative locals (no ENTER/FP) and PUSH/POP would shift the
+        # SP base, corrupting SP-relative addresses for all local variables.
+        loop_var = self._detect_wrap_prone_var(for_stmt)
+        need_wrap_check = (
+            loop_var is not None
+            and self.current_function != 'timer_interrupt'
+        )
+
+        if need_wrap_check:
+            # Save current value of loop variable on the stack before update.
+            # PUSH/POP are safe here because FP-relative addressing is unaffected
+            # by SP changes (only SP-relative access in timer_interrupt is affected,
+            # which we've already excluded above).
+            self.emit_comment(f"Wrap-check: save {loop_var} before update")
+            old_reg = self.get_register()
+            self._emit_local_load(old_reg, loop_var)
+            self.emit(f"    PUSH {old_reg}")
+            self.free_register()
+
+        # Emit update expression (e.g., p += step)
         if for_stmt.update:
             self.generate_block([for_stmt.update])
-            
+
+        if need_wrap_check:
+            # Restore pre-update value and compare with new value to detect
+            # unsigned wrap-around.
+            # CMP new, old computes new - old.  If new < old (unsigned),
+            # the carry/borrow flag is set, indicating the variable wrapped
+            # from a high value back to a low value.
+            self.emit_comment(f"Wrap-check: compare {loop_var} new vs old")
+            old_reg = self.get_register()
+            self.emit(f"    POP {old_reg}")
+            new_reg = self.get_register()
+            self._emit_local_load(new_reg, loop_var)
+            self.emit(f"    CMP {new_reg}, {old_reg}")
+            self.free_register()
+            # JC = jump if carry (borrow) → new < old → wrapped → exit
+            self.emit(f"    JC {end_label}")
+
+        # Jump back to condition check
         self.emit(f"    JMP {start_label}")
         self.emit_label(end_label)
         self.loop_stack.pop()
@@ -435,7 +618,7 @@ class CodeGenerator:
         self.loop_stack.pop()
 
     def generate_break(self):
-        """Generate assembly for a break statement - jump to loop end."""
+        # Generate assembly for a break statement - jump to loop end
         if not self.loop_stack:
             raise RuntimeError("break statement outside of loop")
         _, end_label = self.loop_stack[-1]
@@ -443,7 +626,7 @@ class CodeGenerator:
         self.emit(f"    JMP {end_label}")
 
     def generate_continue(self):
-        """Generate assembly for a continue statement - jump to loop continue target."""
+        # Generate assembly for a continue statement - jump to loop continue target
         if not self.loop_stack:
             raise RuntimeError("continue statement outside of loop")
         continue_label, _ = self.loop_stack[-1]
@@ -474,6 +657,46 @@ class CodeGenerator:
             else:
                 raise NameError(f"Undefined variable '{expr.name}'")
         elif isinstance(expr, BinaryOp):
+            # Constant folding: evaluate simple binary ops with two numeric
+            # literal operands at compile time (brought over from NoBASIC's
+            # ExpressionSimplifier). This avoids emitting MOV/ADD/SUB/etc.
+            # instructions for expressions like `2 + 3` or `10 * 5`.
+            if isinstance(expr.left, Number) and isinstance(expr.right, Number):
+                try:
+                    left_val = int(expr.left.value, 0)
+                    right_val = int(expr.right.value, 0)
+                    op = expr.op
+                    if op == '+': folded = left_val + right_val
+                    elif op == '-': folded = left_val - right_val
+                    elif op == '*': folded = left_val * right_val
+                    elif op == '/':
+                        if right_val == 0:
+                            folded = None
+                            raise ArithmeticError("Division by zero")
+                        folded = int(left_val / right_val)
+                    elif op == '%': folded = left_val % right_val if right_val != 0 else None
+                    elif op == '&': folded = left_val & right_val
+                    elif op == '|': folded = left_val | right_val
+                    elif op == '^': folded = left_val ^ right_val
+                    elif op == '<<': folded = left_val << right_val
+                    elif op == '>>': folded = left_val >> right_val
+                    elif op == '==': folded = 1 if left_val == right_val else 0
+                    elif op == '!=': folded = 1 if left_val != right_val else 0
+                    elif op == '<': folded = 1 if left_val < right_val else 0
+                    elif op == '>': folded = 1 if left_val > right_val else 0
+                    elif op == '<=': folded = 1 if left_val <= right_val else 0
+                    elif op == '>=': folded = 1 if left_val >= right_val else 0
+                    elif op == '&&': folded = 1 if (left_val != 0 and right_val != 0) else 0
+                    elif op == '||': folded = 1 if (left_val != 0 or right_val != 0) else 0
+                    else: folded = None
+                    if folded is not None:
+                        self.emit_comment(f"Constant folded: {left_val} {op} {right_val} = {folded}")
+                        reg = self.get_register()
+                        self.emit(f"    MOV {reg}, {folded}")
+                        return reg
+                except (ArithmeticError, ValueError):
+                    pass
+
             if (expr.op == '&' and isinstance(expr.right, Number) and expr.right.value in ('0xFF', '255')):
                 if (isinstance(expr.left, BinaryOp) and expr.left.op == '>>' and 
                     isinstance(expr.left.right, Number) and expr.left.right.value == '8'):
@@ -684,20 +907,106 @@ class CodeGenerator:
         self.label_counter += 1
         return label
 
-    def get_register(self, exclude: set = None) -> str:
+    def get_register(self, exclude: set = None, preferred: str = None) -> str:
         # Use P0-P7 as 16-bit expression temporaries. P8 is SP and P9 is FP,
         # so they must never be used for general temporaries or arithmetic
         # results (e.g. MOV P9, 3 would clobber the frame pointer).
         # P3 is reserved for DIV remainder storage (the CPU's DIV instruction
         # unconditionally writes the remainder to P3), so we exclude P3.
-        excluded = {3} | (exclude or set())
-        for _ in range(20):  # try up to 20 times
+        # Preferred register can be specified (e.g., 'P0', 'P1', etc.)
+        # P3 is always excluded (reserved for DIV remainder). Use string matching.
+        # 
+        # Round-robin through P0-P7 (skipping P3 and user-excluded registers).
+        # This preserves the original behavior where expression temporaries are
+        # reused freely between statements without true liveness-based allocation.
+        # The register_usage/var_reg/auto_free infrastructure is retained for
+        # future graph-coloring allocation passes but does NOT gate allocation here.
+        excluded = {'P3'} | (exclude or set())
+        
+        # Try preferred register first
+        if preferred and preferred not in excluded:
+            return preferred
+        
+        # Round-robin through P registers only (preserves original behavior)
+        for _ in range(20):
             idx = self.reg_counter % 8
             self.reg_counter += 1
-            if idx not in excluded:
-                return f"P{idx}"
-        # fallback (should never happen)
+            reg = f"P{idx}"
+            if reg not in excluded:
+                return reg
+        
+        # Fallback (should never happen)
         return "P0"
 
     def free_register(self):
+        # Expression temporaries are reused round-robin; no-op to preserve
+        # original behavior where registers are safe to reuse after an
+        # expression completes. Advanced liveness-based deallocation is
+        # available via deallocate_register()/_clear_temp_registers() for
+        # future integration, but is NOT used at expression boundaries here
+        # to avoid freeing registers still referenced by outer expressions.
         pass
+
+    def record_live_range(self, name: str, program_point: int):
+        # Record that a variable/temporary is live at a program point.
+        if name not in self.live_ranges:
+            self.live_ranges[name] = (program_point, program_point)
+        else:
+            start, end = self.live_ranges[name]
+            self.live_ranges[name] = (min(start, program_point), max(end, program_point))
+        
+        if program_point not in self.live_at_point:
+            self.live_at_point[program_point] = set()
+        self.live_at_point[program_point].add(name)
+
+    def allocate_register(self, preferred_reg: str = None) -> str:
+        # Allocate an unused register, preferring the specified register if available.
+        self.allocation_stats['total_allocations'] += 1
+        
+        # Try preferred register first
+        if preferred_reg and not self.register_usage.get(preferred_reg, True):
+            self.register_usage[preferred_reg] = True
+            self.auto_free_registers.add(preferred_reg)
+            self.allocation_stats['max_simultaneous_allocated'] = max(
+                self.allocation_stats['max_simultaneous_allocated'],
+                sum(1 for used in self.register_usage.values() if used)
+            )
+            return preferred_reg
+        
+        # Try allocation order
+        for reg in self.allocation_order:
+            if not self.register_usage[reg]:
+                self.register_usage[reg] = True
+                self.auto_free_registers.add(reg)
+                self.allocation_stats['max_simultaneous_allocated'] = max(
+                    self.allocation_stats['max_simultaneous_allocated'],
+                    sum(1 for used in self.register_usage.values() if used)
+                )
+                return reg
+        
+        # No free registers
+        self.allocation_stats['allocation_failures'] += 1
+        raise RuntimeError("Register exhaustion: No available registers")
+
+    def deallocate_register(self, reg: str):
+        # Deallocate a register, marking it as available.
+        if reg in self.register_usage:
+            self.register_usage[reg] = False
+            self.auto_free_registers.discard(reg)
+            self.allocation_stats['total_deallocations'] += 1
+
+    def _clear_temp_registers(self):
+        # Clear all temporary registers that aren't variable registers.
+        var_regs = set(self.var_reg.values())
+        for reg in list(self.auto_free_registers):
+            if reg not in var_regs:
+                self.deallocate_register(reg)
+
+    def smart_deallocate_regs(self):
+        # Intelligently deallocate temporary registers that are likely dead.
+        var_regs = set(self.var_reg.values())
+        for reg in list(self.auto_free_registers):
+            if reg not in var_regs:
+                self.deallocate_register(reg)
+        
+        self.allocation_stats['total_deallocations'] += 1

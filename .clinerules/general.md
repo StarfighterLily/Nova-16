@@ -8,6 +8,8 @@ If a search tool call fails, ensure you supply the 'regex' parameter.
 If an execute_command tool call fails, ensure you supply the 'command' and 'requires_approval' parameters.
 If a read_file tool call fails, ensure you supply the 'path' parameter.
 If a list_files tool call fails, ensure you supply the 'path' parameter.
+Ensure task_progress calls aren't nested into other tool calls.
 Create new high-coverage tests to verify correct behavior.
 Test against the emulator's '--headless' option and verify correct register data and visible pixel reports for graphical programs.
 Write new tools as needed (i.e., to test operand encoding) or fix existing tools without losing focus of the task at hand.
+Check the Sophia MCP server for useful tools. Some tools are passive prompts to help structure and break down thinking, some are interactive tools to compose chains/trees of thought and request interactive reasoning, others still offer project information storage, semantic searching tools, or file manipulation

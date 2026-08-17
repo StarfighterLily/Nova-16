@@ -1,19 +1,14 @@
 void setup() {
 	set_vmode(1);           // Memory mode
 	set_pos(0, 0);         // VX = 0, VY = 0
-	set_pointers(0x0000, 0xFFFF); // P0 = START, P1 = FINISH
 }
 
-void draw_stars(int layer, int start, int finish, int step, int color_min, int color_max) {
+void draw_stars(int layer, int step, int color_min, int color_max) {
 	int p, x, y, color;
+	int start = 0;
+	int finish = 65535;
 	set_layer(layer);
-	// Use a for loop that terminates before 16-bit overflow
-	// step must evenly divide 65536 (e.g. 32, 64, 128, 256) to avoid infinite loop
-	// Use p < finish (unsigned) to correctly terminate after wrap:
-	// - step=32: 65536/32=2048 iterations, p wraps from 0xFFF0 to 0x0010, 0x0010 < 0xFFFF false → exit
-	// - step=128: 65536/128=512 iterations, p wraps from 0xFF70 to 0x0090, 0x0090 < 0xFFFF false → exit
-	// - step=256: 65536/256=256 iterations, p wraps from 0xFF00 to 0x0100, 0x0100 < 0xFFFF false → exit
-	for (p = start; p < finish; p += step) {
+	for (p = start; p <= finish; p += step) {
 		int rnd = random();
 		x = (rnd >> 8) & 0xFF;
 		y = rnd & 0xFF;
@@ -35,14 +30,14 @@ void draw_text() {
 void main() {
 	setup();
 
-	// Layer 1: many dim stars - step=32 divides 65536 evenly
-	draw_stars(1, 0x0000, 0xFFFF, 32, 0x00, 0x06);
+	// Layer 1: many dim stars
+	draw_stars(1, 32, 0x00, 0x06);
 
-	// Layer 2: fewer, brighter stars - step=128 divides 65536 evenly
-	draw_stars(2, 0x0000, 0xFFFF, 128, 0x07, 0x0A);
+	// Layer 2: fewer, brighter stars
+	draw_stars(2, 128, 0x07, 0x0A);
 
-	// Layer 3: fewest, brightest stars - step=256 divides 65536 evenly
-	draw_stars(3, 0x0000, 0xFFFF, 256, 0x0B, 0x0F);
+	// Layer 3: fewest, brightest stars
+	draw_stars(3, 256, 0x0B, 0x0F);
 
 	draw_text();
 
@@ -58,7 +53,18 @@ void main() {
 void timer_interrupt() {
 	for (int layer = 1; layer <= 3; layer++) {
 		set_layer(layer);
-		scroll_x(layer);
+		if (layer == 1){
+			scroll_x(layer);
+		}
+		if (layer == 2){
+			scroll_x(layer);
+			scroll_x(layer);
+		}
+		if (layer == 3){
+			scroll_x(layer);
+			scroll_x(layer);
+			scroll_x(layer);
+		}
 	}
 	iret();
 }

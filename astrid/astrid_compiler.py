@@ -14,7 +14,15 @@ def main():
     parser = argparse.ArgumentParser(description="Astrid Compiler: Compile Astrid source to Nova-16 assembly")
     parser.add_argument("source", nargs="?", help="Astrid source file (.as or .astrid)")
     parser.add_argument("-o", "--output", help="Output assembly file (.asm)")
+    parser.add_argument("--enable-peephole", action="store_true", default=True,
+                        help="Enable peephole optimizer (default: enabled)")
+    parser.add_argument("--disable-peephole", action="store_true",
+                        help="Disable peephole optimizer")
+    parser.add_argument("--debug-optimizations", action="store_true",
+                        help="Enable optimization debug output")
     args = parser.parse_args()
+
+    enable_peephole = args.enable_peephole and not args.disable_peephole
 
     if args.source:
         with open(args.source, "r", encoding="utf-8") as f:
@@ -37,9 +45,16 @@ def main():
         ast = parser.parse()
         print(f"✓ Parser: Generated AST with {len(ast.functions)} functions")
 
-        codegen = CodeGenerator()
+        codegen = CodeGenerator(
+            enable_peephole=enable_peephole,
+            debug_optimizations=args.debug_optimizations
+        )
         assembly = codegen.generate(ast)
         print(f"✓ Code Generator: Successfully generated assembly code")
+        if enable_peephole:
+            print(f"✓ Peephole Optimizer: ENABLED")
+        else:
+            print(f"✓ Peephole Optimizer: DISABLED")
 
         with open(out_file, "w", encoding="utf-8") as f:
             f.write('\n'.join(assembly))
