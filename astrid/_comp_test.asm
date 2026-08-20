@@ -5,6 +5,28 @@ MOV SP, 0xFF00 ; Set stack pointer to high memory
 MOV FP, 0xFF00 ; Also init frame pointer
 CALL func_main
 HLT
+; Function: main
+func_main:
+ENTER 2
+; var x = ...
+MOV P0, 10
+MOV [0x0080], P0
+; Assignment to x
+MOV P1, [0x0080]
+; Compound shift SHL by 1
+SHL P1
+MOV [0x0080], P1
+; Assignment to x
+MOV P2, [0x0080]
+MOV P4, 4
+DIV P2, P4
+MOV [0x0080], P2
+; Function return
+MOV P5, [0x0080]
+MOV R0, P5
+MOV SP, FP
+POP FP
+RET
 ; Built-in Function Implementations
 builtin_set_vmode:
 POP P0

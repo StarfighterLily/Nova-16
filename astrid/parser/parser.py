@@ -121,6 +121,12 @@ class FuncCall(ASTNode):
         self.name = name
         self.args = args
 
+class Cast(Expression):
+    """Type cast expression node: (int)expr, (char)expr, (string)expr, (binary)expr."""
+    def __init__(self, target_type: str, expr: "Expression"):
+        self.target_type = target_type
+        self.expr = expr
+
 class Parser:
     def __init__(self, tokens: List[Token]):
         self.tokens = tokens
@@ -180,7 +186,7 @@ class Parser:
         return stmts
 
     def parse_statement(self):
-        if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'void'}:
+        if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'void', 'string', 'binary'}:
             return self.parse_var_decl()
         elif self.current.type == 'KEYWORD' and self.current.value == 'return':
             return [self.parse_return()]
@@ -278,7 +284,7 @@ class Parser:
 
         init = None
         if self.current.value != ';':
-            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char'}:
+            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'string', 'binary'}:
                 init = self.parse_var_decl(expect_semicolon=False)  # This returns a list of decls
             else:
                 init = self.parse_expression()
@@ -447,10 +453,15 @@ class Parser:
             return Identifier(token.value)
         elif token.type == 'DELIMITER' and token.value == '(':
             self.advance()
+            # Check for type cast: (int)expr, (char)expr, (string)expr, (binary)expr
+            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'string', 'binary'}:
+                target_type = self.current.value
+                self.advance()
+                self.expect('DELIMITER', ')')
+                cast_expr = self.parse_unary()
+                return Cast(target_type, cast_expr)
             expr = self.parse_expression()
             self.expect('DELIMITER', ')')
             return expr
         else:
             raise SyntaxError(f"Unexpected token in expression: {self.current}")
-
-

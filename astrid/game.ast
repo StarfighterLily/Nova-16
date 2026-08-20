@@ -1,3 +1,16 @@
 void main(){
-    
+    int key;
+    set_vmode(0);
+    set_layer(5);
+
+    while (1){
+        if (key_available()){
+            key = key_read();
+            if (key == 101){
+                screen_fill(0x00);
+                set_pos(128, 128);
+                write_text((string)key, 0x15);
+            }
+        }
+    }
 }

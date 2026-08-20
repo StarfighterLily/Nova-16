@@ -8,7 +8,7 @@ from astrid.parser.parser import (
     Program, FunctionDef, VarDecl, Assignment, Return, If, While, DoWhile, For, FuncCall,
     Switch, Case,
     Expression, Number, StringLiteral, CharLiteral, Identifier, BinaryOp, UnaryOp, PostfixOp,
-    Break, Continue
+    Break, Continue, Cast
 )
 from astrid.codegen.optimizations import (
     ExpressionSimplifier,
@@ -108,18 +108,74 @@ class CodeGenerator:
     def _init_builtins(self) -> Dict[str, str]:
         # Initialize built-in function to assembly mappings
         return {
+            # Graphics
             'set_mode': 'builtin_set_vmode', 'set_vmode': 'builtin_set_vmode',
             'set_layer': 'builtin_set_layer', 'set_pos': 'builtin_set_pos',
             'write_screen': 'builtin_write_screen', 'read_screen': 'builtin_read_screen',
+            'screen_fill': 'builtin_screen_fill',
             'scroll_x': 'builtin_scroll_x', 'scroll_y': 'builtin_scroll_y',
+            'screen_rotate': 'builtin_screen_rotate', 'screen_shift': 'builtin_screen_shift',
+            'screen_flip': 'builtin_screen_flip', 'draw_line': 'builtin_draw_line',
+            'draw_circle': 'builtin_draw_circle', 'screen_invert': 'builtin_screen_invert',
+            'screen_blit': 'builtin_screen_blit', 'set_blend_mode': 'builtin_set_blend_mode',
+            'draw_char': 'builtin_draw_char',
             'set_pointers': 'builtin_set_pointers', 'write_text': 'builtin_write_text',
-            'set_font': 'builtin_set_font', 'sound_play': 'builtin_sound_play',
-            'sound_stop': 'builtin_sound_stop', 'set_timer': 'builtin_set_timer',
+            'set_font': 'builtin_set_font',
+            'layer_swap': 'builtin_layer_swap', 'layer_move': 'builtin_layer_move',
+            'layer_copy': 'builtin_layer_copy',
+            # Sound
+            'sound_play': 'builtin_sound_play',
+            'sound_stop': 'builtin_sound_stop', 'sound_trigger': 'builtin_sound_trigger',
+            'set_timer': 'builtin_set_timer',
+            # Interrupts
             'sti': 'builtin_sti', 'cli': 'builtin_cli', 'iret': 'builtin_iret',
+            'enable_interrupts': 'builtin_sti', 'disable_interrupts': 'builtin_cli',
+            'software_int': 'builtin_int',
+            # Keyboard
             'key_available': 'builtin_key_available', 'key_read': 'builtin_key_read',
-            'key_clear': 'builtin_key_clear', 'random': 'builtin_random',
-            'random_range': 'builtin_random_range', 'halt': 'builtin_halt',
-            'enable_interrupts': 'builtin_sti', 'disable_interrupts': 'builtin_cli'
+            'key_clear': 'builtin_key_clear', 'key_count': 'builtin_key_count',
+            'key_ctrl': 'builtin_key_ctrl',
+            # Random
+            'random': 'builtin_random',
+            'random_range': 'builtin_random_range',
+            # Math
+            'abs': 'builtin_abs', 'min': 'builtin_min', 'max': 'builtin_max',
+            'clz': 'builtin_clz', 'ctz': 'builtin_ctz', 'popcnt': 'builtin_popcnt',
+            'sqrt': 'builtin_sqrt', 'log': 'builtin_log', 'exp': 'builtin_exp',
+            'sin': 'builtin_sin', 'cos': 'builtin_cos', 'tan': 'builtin_tan',
+            'atan': 'builtin_atan', 'asin': 'builtin_asin', 'acos': 'builtin_acos',
+            'deg': 'builtin_deg', 'rad': 'builtin_rad',
+            'floor': 'builtin_floor', 'ceil': 'builtin_ceil', 'round': 'builtin_round',
+            'trunc': 'builtin_trunc', 'frac': 'builtin_frac', 'intgr': 'builtin_intgr',
+            'powr': 'builtin_powr',
+            # String
+            'strcpy': 'builtin_strcpy', 'strcat': 'builtin_strcat',
+            'strcmp': 'builtin_strcmp', 'strlen': 'builtin_strlen',
+            'strupr': 'builtin_strupr', 'strlwr': 'builtin_strlwr',
+            'strrev': 'builtin_strrev', 'strfind': 'builtin_strfind',
+            'strfindi': 'builtin_strfindi',
+            # Serial
+            'ser_out': 'builtin_ser_out', 'ser_in': 'builtin_ser_in',
+            'ser_stat': 'builtin_ser_stat', 'ser_ctrl': 'builtin_ser_ctrl',
+            # Memory
+            'memcpy': 'builtin_memcpy', 'memset': 'builtin_memset',
+            'memmove': 'builtin_memmove', 'memcmp': 'builtin_memcmp',
+            'memtest': 'builtin_memtest', 'memswap': 'builtin_memswap',
+            # Bit manipulation
+            'btst': 'builtin_btst', 'bset': 'builtin_bset',
+            'bclr': 'builtin_bclr', 'bflip': 'builtin_bflip',
+            # Misc
+            'swap': 'builtin_swap', 'xchng': 'builtin_xchng',
+            'nop': 'builtin_nop',
+            'halt': 'builtin_halt',
+            # BCD
+            'sed': 'builtin_sed', 'cld': 'builtin_cld', 'cla': 'builtin_cla',
+            'bcd2bin': 'builtin_bcd2bin', 'bin2bcd': 'builtin_bin2bcd',
+            'bcdadd': 'builtin_bcdadd', 'bcdsub': 'builtin_bcdsub',
+            'bcda': 'builtin_bcda', 'bcds': 'builtin_bcds',
+            'bcdcmp': 'builtin_bcdcmp',
+            # Mouse
+            'mouse_ctrl': 'builtin_mouse_ctrl',
         }
 
     def _should_run_live_range_scheduler(self, assembly_lines: List[str]) -> Tuple[bool, str]:
@@ -266,7 +322,7 @@ class CodeGenerator:
         def simplify_node(node):
             if node is None:
                 return None
-            if isinstance(node, (Number, Identifier, StringLiteral, CharLiteral, BinaryOp, UnaryOp, PostfixOp, FuncCall)):
+            if isinstance(node, (Number, Identifier, StringLiteral, CharLiteral, BinaryOp, UnaryOp, PostfixOp, FuncCall, Cast)):
                 return simplifier.simplify(node)
             if isinstance(node, VarDecl):
                 if node.value is not None:
@@ -357,8 +413,9 @@ class CodeGenerator:
         return decls
 
     def _var_size(self, name: str) -> int:
-        # Return storage size in bytes for a variable (2 for int, 1 for char).
-        return 2 if self.var_types.get(name) == 'int' else 1
+        # Return storage size in bytes for a variable.
+        # 2 bytes for int/string/binary (16-bit values/addresses), 1 for char.
+        return 2 if self.var_types.get(name) in ('int', 'string', 'binary') else 1
 
     def _is_int_var(self, name: str) -> bool:
         return self.var_types.get(name) == 'int'
@@ -369,8 +426,7 @@ class CodeGenerator:
 
     def _emit_local_load(self, reg: str, name: str):
         offset = self._get_local_offset(name)
-        is_int = self._is_int_var(name)
-        var_size = 2 if is_int else 1
+        var_size = self._var_size(name)
         # Record access for hot-variable optimization.
         self.variable_access_counts[name] += 1
         # If this local was migrated to a spill allocation, load from that
@@ -395,8 +451,7 @@ class CodeGenerator:
 
     def _emit_local_store(self, name: str, src_reg: str):
         offset = self._get_local_offset(name)
-        is_int = self._is_int_var(name)
-        var_size = 2 if is_int else 1
+        var_size = self._var_size(name)
         # Record access frequency for hot-variable optimization.
         self.variable_access_counts[name] += 1
         # If this local was migrated to a spill allocation, store to that
@@ -443,17 +498,17 @@ class CodeGenerator:
         
         all_local_decls = self.find_local_vars(func_def.body)
         
-        # Compute stack frame size: each int var/param takes 2 bytes, char takes 1
-        # Params: int params use 2 bytes each, char params use 1 byte
+        # Compute stack frame size: each int/string/binary var/param takes 2 bytes, char takes 1
+        # Params: int/string/binary params use 2 bytes each, char params use 1 byte
         param_size = 0
         for param in func_def.params:
             self.var_types[param.name] = param.var_type
-            param_size += 2 if param.var_type == 'int' else 1
+            param_size += 2 if param.var_type in ('int', 'string', 'binary') else 1
         
         local_size = 0
         for decl in all_local_decls:
             self.var_types[decl.name] = decl.var_type
-            local_size += 2 if decl.var_type == 'int' else 1
+            local_size += 2 if decl.var_type in ('int', 'string', 'binary') else 1
         
         if func_def.name == 'timer_interrupt':
             # Interrupt handlers must NOT use ENTER/LEAVE because the CPU
@@ -469,13 +524,13 @@ class CodeGenerator:
         param_offset = 4
         for param in func_def.params:
             self.local_vars[param.name] = {'offset': param_offset}
-            param_offset += 2 if param.var_type == 'int' else 1
+            param_offset += 2 if param.var_type in ('int', 'string', 'binary') else 1
 
         # Local offsets: start at -2 going down (2 bytes per slot for simplicity;
         # char vars also get 2 bytes to keep word access alignment simple)
         local_offset = 0
         for decl in all_local_decls:
-            local_offset += 2 if decl.var_type == 'int' else 1
+            local_offset += 2 if decl.var_type in ('int', 'string', 'binary') else 1
             self.local_vars[decl.name] = {'offset': -local_offset}
 
         # Store locals_size for iret() cleanup
@@ -607,7 +662,7 @@ class CodeGenerator:
                 op_mnemonic = "SHR" if op == '>>' else "SHL"
                 self.emit_comment(f"Compound shift {op_mnemonic} by {shift_amount}")
                 for _ in range(shift_amount):
-                    self.emit(f"    {op_mnemonic} {var_reg}")
+                    self.emit(f"    {op_mnemonic} {var_reg}, 1")
             else:
                 rhs_reg = self.generate_expression(assignment.value.right)
                 if op == '+': self.emit(f"    ADD {var_reg}, {rhs_reg}")
@@ -633,12 +688,18 @@ class CodeGenerator:
         self.emit_comment("Function return")
         if return_stmt.value:
             reg = self.generate_expression(return_stmt.value)
+            # Astrid 'int' is 16-bit, but R0 is an 8-bit register. Returning
+            # only via R0 truncates values > 255 (e.g. 1234 -> 210). Place the
+            # full 16-bit result in P0 (the canonical 16-bit return register)
+            # and the low byte in R0 for byte-level callers / compatibility.
+            self.emit(f"    MOV P0, {reg}")
             self.emit(f"    MOV R0, {reg}")
             self.free_register()
         self.emit("    MOV SP, FP")
         self.emit("    POP FP")
         self.emit("    RET")
         self._emitted_return = True
+
 
     def generate_if(self, if_stmt: If):
         self.emit_comment("If statement")
@@ -861,6 +922,9 @@ class CodeGenerator:
             self.free_register()  # free case_val_reg
             self.emit(f"    JZ {case_labels[i]}")
 
+        # Free the switch expression register after all comparisons
+        self.free_register()
+
         # If no case matched, go to default or end
         if stmt.default_body:
             self.generate_block(stmt.default_body)
@@ -908,6 +972,8 @@ class CodeGenerator:
             reg = self.get_register()
             self.emit(f"    MOV {reg}, {expr.char_value}")
             return reg
+        elif isinstance(expr, Cast):
+            return self.generate_cast(expr)
         elif isinstance(expr, Identifier):
             reg = self.get_register()
             if expr.name in self.local_vars:
@@ -987,7 +1053,7 @@ class CodeGenerator:
                 op_mnemonic = "SHR" if expr.op == '>>' else "SHL"
                 self.emit_comment(f"Unrolled shift {op_mnemonic} by {shift_amount}")
                 for _ in range(shift_amount):
-                    self.emit(f"    {op_mnemonic} {left_reg}")
+                    self.emit(f"    {op_mnemonic} {left_reg}, 1")
                 return left_reg
 
             left_reg = self.generate_expression(expr.left)
@@ -1029,8 +1095,38 @@ class CodeGenerator:
                 self.emit(f"    MOV {left_reg}, 1")
                 self.emit_label(end_label)
 
-            elif op == '&&': self.emit(f"    AND {left_reg}, {right_reg}")
-            elif op == '||': self.emit(f"    OR {left_reg}, {right_reg}")
+            elif op == '&&':
+                # Short-circuit AND: if left is 0, result is 0 (skip right)
+                false_label = self.generate_label("sc_false")
+                end_label = self.generate_label("sc_end")
+                self.emit(f"    CMP {left_reg}, 0")
+                self.emit(f"    JZ {false_label}")
+                right_reg = self.generate_expression(expr.right)
+                self.emit(f"    CMP {right_reg}, 0")
+                self.emit(f"    JZ {false_label}")
+                self.emit(f"    MOV {left_reg}, 1")
+                self.emit(f"    JMP {end_label}")
+                self.emit_label(false_label)
+                self.emit(f"    MOV {left_reg}, 0")
+                self.emit_label(end_label)
+                self.free_register()
+                return left_reg
+            elif op == '||':
+                # Short-circuit OR: if left is non-zero, result is 1 (skip right)
+                true_label = self.generate_label("sc_true")
+                end_label = self.generate_label("sc_end")
+                self.emit(f"    CMP {left_reg}, 0")
+                self.emit(f"    JNZ {true_label}")
+                right_reg = self.generate_expression(expr.right)
+                self.emit(f"    CMP {right_reg}, 0")
+                self.emit(f"    JNZ {true_label}")
+                self.emit(f"    MOV {left_reg}, 0")
+                self.emit(f"    JMP {end_label}")
+                self.emit_label(true_label)
+                self.emit(f"    MOV {left_reg}, 1")
+                self.emit_label(end_label)
+                self.free_register()
+                return left_reg
             elif op == '&': self.emit(f"    AND {left_reg}, {right_reg}")
             elif op == '|': self.emit(f"    OR {left_reg}, {right_reg}")
             elif op == '^': self.emit(f"    XOR {left_reg}, {right_reg}")
@@ -1042,7 +1138,7 @@ class CodeGenerator:
             op = expr.op
             if op == '-': self.emit(f"    NEG {reg}")
             elif op == '!': self.emit(f"    NOT {reg}")
-            elif op == '~': self.emit(f"    INV {reg}")
+            elif op == '~': self.emit(f"    NOT {reg}")
             else: raise SyntaxError(f"Unknown unary operator '{op}'")
             return reg
         elif isinstance(expr, PostfixOp):
@@ -1063,8 +1159,175 @@ class CodeGenerator:
         else:
             raise RuntimeError(f"Unknown expression type: {type(expr)}")
 
+    def generate_cast(self, cast: Cast) -> str:
+        """Generate code for type cast expressions using Nova-16 conversion instructions.
+        
+        Supported casts:
+          (string)expr   -> ITOS:  converts int expr to decimal string at 0xA000, 
+                                    returns buffer address
+          (binary)expr   -> ITOB:  converts int expr to binary string at 0xA100,
+                                    returns buffer address
+          (int)expr      -> STOI/BTOI: converts string/binary addr to int
+          (char)expr     -> truncates to 8 bits (low byte)
+        """
+        target = cast.target_type
+        inner = cast.expr
+
+        # Identity cast optimization: casting to the type the expression
+        # already produces is a no-op (just a register copy). Without this,
+        # `(string)s` where s is a string variable would ITOS the string
+        # *address* — producing the decimal digits of the pointer — instead
+        # of simply passing the existing string through.
+        source_type = self._cast_source_type(inner)
+        if source_type == target and target in ('string', 'binary', 'int'):
+            reg = self.get_register()
+            inner_reg = self.generate_expression(inner)
+            if inner_reg != reg:
+                self.emit(f"    MOV {reg}, {inner_reg}")
+            self.free_register()
+            return reg
+
+        # Compile-time optimization: casting a literal is a compile-time op.
+        if isinstance(inner, Number):
+            num_val = int(inner.value, 0) & 0xFFFF
+            if target == 'char':
+                reg = self.get_register()
+                self.emit(f"    MOV {reg}, {num_val & 0xFF}")
+                return reg
+            elif target == 'string':
+                # (string)CONST -> convert at runtime is actually still needed
+                # for decimal string generation, but ITOS works fine at runtime.
+                pass  # fall through to runtime
+            elif target == 'binary':
+                pass  # fall through to runtime
+            elif target == 'int':
+                reg = self.get_register()
+                self.emit(f"    MOV {reg}, {num_val}")
+                return reg
+
+        self.emit_comment(f"Type cast: ({target}) expr")
+        inner_reg = self.generate_expression(inner)
+        result_reg = self.get_register()
+
+        if target == 'string':
+            # ITOS writes the decimal string to the fixed buffer 0xA000 and
+            # writes that buffer address into the destination operand.
+            self.emit(f"    ITOS {result_reg}, {inner_reg}")
+        elif target == 'binary':
+            # ITOB writes the binary string to the fixed buffer 0xA100 and
+            # writes that buffer address into the destination operand.
+            # First load the fixed buffer address into a temp register.
+            self.emit(f"    MOV {result_reg}, 0xA100")
+            self.emit(f"    ITOB {result_reg}, {inner_reg}")
+        elif target == 'int':
+            # STOI parses a decimal string; BTOI parses a binary string.
+            # Numeric sources (int/char) already hold their value in a
+            # register, so a plain MOV is correct — no memory dereference.
+            if source_type == 'binary':
+                self.emit(f"    BTOI {result_reg}, {inner_reg}")
+            elif source_type == 'string':
+                self.emit(f"    STOI {result_reg}, {inner_reg}")
+            else:
+                # Numeric (int/char): value already in inner_reg; just copy.
+                self.emit(f"    MOV {result_reg}, {inner_reg}")
+        elif target == 'char':
+            # Truncate to 8 bits: use the low byte of the register.
+
+            if inner_reg.startswith('P'):
+                self.emit(f"    MOV {result_reg}, :{inner_reg}")
+            else:
+                self.emit(f"    MOV {result_reg}, {inner_reg}")
+        else:
+            raise TypeError(f"Unknown cast target type '{target}'")
+
+        self.free_register()  # inner_reg no longer needed
+        return result_reg
+
+    def _is_string_or_binary_expr(self, expr: Expression) -> bool:
+        """Determine if an expression produces a string or binary typed value."""
+        if isinstance(expr, Identifier) and expr.name in self.var_types:
+            return self.var_types[expr.name] in ('string', 'binary')
+        if isinstance(expr, StringLiteral):
+            return True
+        if isinstance(expr, Cast):
+            return expr.target_type in ('string', 'binary')
+        if isinstance(expr, FuncCall):
+            func = self.functions.get(expr.name)
+            return bool(func and func.get('return_type') in ('string', 'binary'))
+        return False
+
+    def _cast_source_type(self, expr: Expression) -> Optional[str]:
+        """Determine the type of an expression's value for cast resolution.
+
+        Returns 'string', 'binary', 'int', 'char', or None if unknown.
+        Used by generate_cast to pick STOI/BTOI vs simple MOV for (int) casts,
+        and by identity-cast elimination when casting to the same type.
+        """
+        if isinstance(expr, Identifier):
+            return self.var_types.get(expr.name)
+        if isinstance(expr, Cast):
+            return expr.target_type  # (string)x yields a string value
+        if isinstance(expr, StringLiteral):
+            return 'string'
+        if isinstance(expr, CharLiteral):
+            return 'char'
+        if isinstance(expr, Number):
+            return 'int'
+        if isinstance(expr, FuncCall):
+            func = self.functions.get(expr.name)
+            return func.get('return_type') if func else None
+        if isinstance(expr, PostfixOp):
+            if isinstance(expr.left, Identifier):
+                return self.var_types.get(expr.left.name)
+        return None
+
     def generate_call(self, call: FuncCall) -> str:
         self.emit_comment(f"Call to {call.name}")
+        
+        # --- write_text with a non-string first argument ---
+        # The TEXT instruction expects a memory address (null-terminated string).
+        # When the first argument is an integer/expression rather than a string
+        # (or string-typed value), we use the ITOS CPU instruction to convert
+        # the integer into a decimal ASCII string at the fixed buffer 0xA000,
+        # then pass that buffer address instead of the raw numeric value.
+        # If the first argument is already a string expression — a StringLiteral,
+        # a cast to string ((string)key), or a string/binary variable — simply
+        # pass it through without an extra ITOS to avoid double conversion.
+        if (call.name == 'write_text' and len(call.args) >= 1
+                and not isinstance(call.args[0], StringLiteral)
+                and not self._is_string_or_binary_expr(call.args[0])):
+            self.emit_comment("Integer-to-string conversion for write_text")
+            # Evaluate the integer expression into a temporary register.
+            val_reg = self.generate_expression(call.args[0])
+            # ITOS dest, src: converts src (integer) to a decimal ASCII string
+            # at the fixed buffer 0xA000, and writes the buffer address into dest.
+            str_reg = self.get_register()
+            self.emit(f"    ITOS {str_reg}, {val_reg}")
+            self.free_register()  # release val_reg (no longer needed)
+            
+            # Push arguments in reversed source order so the stack top
+            # matches the source argument order expected by builtin_write_text
+            # (which pops return_addr, then string_ptr into P1, then color into P2).
+            if len(call.args) > 1:
+                color_reg = self.generate_expression(call.args[1])
+                self.emit(f"    PUSH {color_reg}")
+                self.free_register()
+            else:
+                # Default color (white on blue, 0x1F) if not specified.
+                self.emit(f"    PUSH 0x1F")
+            
+            self.emit(f"    PUSH {str_reg}")
+            self.free_register()
+            
+            label = self.builtin_functions.get(call.name)
+            self.emit(f"    CALL {label}")
+            self.emit(f"    ; Args consumed by callee")
+            
+            result_reg = self.get_register()
+            self.emit(f"    MOV {result_reg}, R0")
+            return result_reg
+        
+        # --- Normal call path: push all args in reversed order ---
         for arg in reversed(call.args):
             arg_reg = self.generate_expression(arg)
             self.emit(f"    PUSH {arg_reg}")
@@ -1079,8 +1342,31 @@ class CodeGenerator:
             self.emit(f"    ; Args consumed by callee")
 
         result_reg = self.get_register()
-        if call.name in ('random', 'random_range'):
-            # RND/RNDR writes a 16-bit result to P0; read it back as a 16-bit value.
+        # User-defined functions return their 16-bit int result in P0
+        # (see generate_return), and a subset of builtins also write P0
+        # directly (RND P0, RNDR P0, KEYSTAT P0, KEYIN P0, SREAD P0,
+        # SERIN P0, SERSTAT P0, KEYCOUNT P0, and all math/string/memory/
+        # bit/BCD builtins that write their result to P0).
+        # Void builtins (set_vmode, etc.) leave both untouched; their
+        # return value is discarded so the source register is irrelevant.
+        p0_returning_builtins = {
+            'random', 'random_range', 'key_available', 'key_read',
+            'read_screen', 'key_count', 'ser_in', 'ser_stat',
+            'abs', 'min', 'max', 'clz', 'ctz', 'popcnt',
+            'sqrt', 'log', 'exp', 'sin', 'cos', 'tan',
+            'atan', 'asin', 'acos', 'deg', 'rad',
+            'floor', 'ceil', 'round', 'trunc', 'frac', 'intgr', 'powr',
+            'strcpy', 'strcat', 'strcmp', 'strlen',
+            'strupr', 'strlwr', 'strrev', 'strfind', 'strfindi',
+            'ser_out', 'ser_ctrl',
+            'memcpy', 'memset', 'memmove', 'memcmp', 'memtest', 'memswap',
+            'btst', 'bset', 'bclr', 'bflip',
+            'swap', 'xchng',
+            'bcd2bin', 'bin2bcd', 'bcdadd', 'bcdsub',
+            'bcda', 'bcds', 'bcdcmp',
+            'mouse_ctrl',
+        }
+        if call.name in self.functions or call.name in p0_returning_builtins:
             self.emit(f"    MOV {result_reg}, P0")
         else:
             self.emit(f"    MOV {result_reg}, R0")
@@ -1088,6 +1374,7 @@ class CodeGenerator:
 
     def generate_builtins(self):
         self.assembly.append("; Built-in Function Implementations")
+        # --- Graphics ---
         self.emit_label("builtin_set_vmode")
         self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    MOV VM, P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_set_layer")
@@ -1096,12 +1383,45 @@ class CodeGenerator:
         self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    MOV VX, P1"); self.emit("    MOV VY, P2"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_write_screen")
         self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SWRITE P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_screen_fill")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SFILL P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_read_screen")
         self.emit("    SREAD P0"); self.emit("    RET")
         self.emit_label("builtin_scroll_x")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SROL 0, 1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SROL 0, P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_scroll_y")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SROL 1, 1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SROL 1, P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_screen_rotate")
+        # Args: direction, amount
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
+        self.emit("    SROT P1, P2"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_screen_shift")
+        # Args: axis, amount
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
+        self.emit("    SSHFT P1, P2"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_screen_flip")
+        # Args: axis
+        self.emit("    POP P0"); self.emit("    POP P1")
+        self.emit("    SFLIP P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_draw_line")
+        # Args: x2, y2 (uses VX/VY as start)
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
+        self.emit("    SLINE P1, P2"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_draw_circle")
+        # Args: radius, filled
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
+        self.emit("    SCIRC P1, P2"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_screen_invert")
+        self.emit("    SINV"); self.emit("    RET")
+        self.emit_label("builtin_screen_blit")
+        self.emit("    SBLIT"); self.emit("    RET")
+        self.emit_label("builtin_set_blend_mode")
+        self.emit("    POP P0"); self.emit("    POP P1")
+        self.emit("    SBLEND P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_draw_char")
+        # Args: char (uses VX/VY position, VC color)
+        self.emit("    POP P0"); self.emit("    POP P1")
+        self.emit("    CHAR P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_set_pointers")
         # All pushes/pops are P (2 bytes) for 16-bit ABI consistency.
         self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2")
@@ -1111,21 +1431,52 @@ class CodeGenerator:
         self.emit("    MOV VC, P2"); self.emit("    TEXT P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_set_font")
         self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_layer_swap")
+        self.emit("    POP P0"); self.emit("    POP P1")
+        self.emit("    LSWAP P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_layer_move")
+        self.emit("    POP P0"); self.emit("    POP P1")
+        self.emit("    LMOVE P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_layer_copy")
+        self.emit("    POP P0"); self.emit("    POP P1")
+        self.emit("    LCOPY P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        # --- Sound ---
         self.emit_label("builtin_sound_play")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P3"); self.emit("    SPLAY P3, P2, P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P3")
+        self.emit("    SPLAY P3, P2, P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_sound_stop")
         self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SPLAY P1, 0, 0"); self.emit("    PUSH P0"); self.emit("    RET")
+        self.emit_label("builtin_sound_trigger")
+        self.emit("    POP P0"); self.emit("    POP P1")
+        self.emit("    STRIG P1"); self.emit("    PUSH P0"); self.emit("    RET")
         self.emit_label("builtin_set_timer")
         self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P3"); self.emit("    POP P4")
         # Args pushed in reversed source order: stack top->bottom after POP P0 is
         # [arg0=TT, arg1=TM, arg2=TS, arg3=TC]. So POP P1=TT, P2=TM, P3=TS, P4=TC.
         self.emit("    MOV TT, P1"); self.emit("    MOV TM, P2"); self.emit("    MOV TS, P3"); self.emit("    MOV TC, P4"); self.emit("    PUSH P0"); self.emit("    RET")
+        # --- Interrupts ---
         self.emit_label("builtin_sti")
         self.emit("    STI"); self.emit("    RET")
         self.emit_label("builtin_cli")
         self.emit("    CLI"); self.emit("    RET")
         self.emit_label("builtin_iret")
         self.emit("    IRET"); self.emit("    RET")
+        self.emit_label("builtin_int")
+        self.emit("    POP P0"); self.emit("    POP P1")
+        self.emit("    INT P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        # --- Keyboard ---
+        self.emit_label("builtin_key_available")
+        self.emit("    KEYSTAT P0"); self.emit("    RET")
+        self.emit_label("builtin_key_read")
+        self.emit("    KEYIN P0"); self.emit("    RET")
+        self.emit_label("builtin_key_clear")
+        self.emit("    KEYCLEAR"); self.emit("    RET")
+        self.emit_label("builtin_key_count")
+        self.emit("    KEYCOUNT P0"); self.emit("    RET")
+        self.emit_label("builtin_key_ctrl")
+        self.emit("    POP P0"); self.emit("    POP P1")
+        self.emit("    KEYCTRL P1"); self.emit("    PUSH P0"); self.emit("    RET")
+        # --- Random ---
         self.emit_label("builtin_random")
         self.emit("    RND P0"); self.emit("    RET")
         self.emit_label("builtin_random_range")
@@ -1136,14 +1487,149 @@ class CodeGenerator:
         self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2")
         self.emit("    RNDR P0, P1, P2")
         self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_key_available")
-        self.emit("    KEYSTAT P0"); self.emit("    RET")
-        self.emit_label("builtin_key_read")
-        self.emit("    KEYIN P0"); self.emit("    RET")
-        self.emit_label("builtin_key_clear")
-        self.emit("    KEYCLEAR"); self.emit("    RET")
+        # --- Math (unary, write result to P0) ---
+        self.emit_label("builtin_abs")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    ABS P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_min")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    MIN P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_max")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    MAX P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_clz")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    CLZ P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_ctz")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    CTZ P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_popcnt")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POPCNT P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_sqrt")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    SQRT P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_log")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    LOG P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_exp")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    EXP P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_sin")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    SIN P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_cos")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    COS P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_tan")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    TAN P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_atan")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    ATAN P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_asin")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    ASIN P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_acos")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    ACOS P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_deg")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    DEG P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_rad")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    RAD P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_floor")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    FLOOR P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_ceil")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    CEIL P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_round")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    ROUND P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_trunc")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    TRUNC P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_frac")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    FRAC P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_intgr")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    INTGR P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_powr")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POWR P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        # --- String ---
+        self.emit_label("builtin_strcpy")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    STRCPY P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_strcat")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    STRCAT P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_strcmp")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    STRCMP P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_strlen")
+        # STRLEN writes result to R0
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    STRLEN P1"); self.emit("    MOV P0, R0"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_strupr")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    STRUPR P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_strlwr")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    STRLWR P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_strrev")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    STRREV P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_strfind")
+        # STRFIND writes result to R0
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    STRFIND P1, P2"); self.emit("    MOV P0, R0"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_strfindi")
+        # STRFINDI writes result to R0
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    STRFINDI P1, P2"); self.emit("    MOV P0, R0"); self.emit("    PUSH P3"); self.emit("    RET")
+        # --- Serial ---
+        self.emit_label("builtin_ser_out")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    SEROUT P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_ser_in")
+        self.emit("    SERIN P0"); self.emit("    RET")
+        self.emit_label("builtin_ser_stat")
+        self.emit("    SERSTAT P0"); self.emit("    RET")
+        self.emit_label("builtin_ser_ctrl")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    SERCTRL P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        # --- Memory ---
+        self.emit_label("builtin_memcpy")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    MEMCPY P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_memset")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    MEMSET P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_memmove")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    MEMMOVE P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_memcmp")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    POP P5"); self.emit("    MEMCMP P1, P2, P4, P5"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_memtest")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    MEMTEST P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_memswap")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    MEMSWAP P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        # --- Bit manipulation ---
+        self.emit_label("builtin_btst")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BTST P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_bset")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BSET P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_bclr")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCLR P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_bflip")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BFLIP P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        # --- Misc ---
+        self.emit_label("builtin_swap")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    SWAP P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_xchng")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    XCHNG P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_nop")
+        self.emit("    NOP"); self.emit("    RET")
+        self.emit_label("builtin_pushf")
+        self.emit("    PUSHF"); self.emit("    RET")
+        self.emit_label("builtin_popf")
+        self.emit("    POPF"); self.emit("    RET")
+        self.emit_label("builtin_pusha")
+        self.emit("    PUSHA"); self.emit("    RET")
+        self.emit_label("builtin_popa")
+        self.emit("    POPA"); self.emit("    RET")
         self.emit_label("builtin_halt")
         self.emit("    HLT"); self.emit("    RET")
+        # --- BCD ---
+        self.emit_label("builtin_sed")
+        self.emit("    SED"); self.emit("    RET")
+        self.emit_label("builtin_cld")
+        self.emit("    CLD"); self.emit("    RET")
+        self.emit_label("builtin_cla")
+        self.emit("    CLA"); self.emit("    RET")
+        self.emit_label("builtin_bcd2bin")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    BCD2BIN P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_bin2bcd")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    BIN2BCD P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_bcdadd")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCDADD P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_bcdsub")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCDSUB P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_bcda")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCDA P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_bcds")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCDS P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        self.emit_label("builtin_bcdcmp")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCDCMP P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        # --- Mouse ---
+        self.emit_label("builtin_mouse_ctrl")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    MOUSECTRL P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
 
     def get_string_label(self, value: str) -> str:
         if value not in self.strings:

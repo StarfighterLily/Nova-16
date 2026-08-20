@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from astrid.parser.parser import (
     BinaryOp, UnaryOp, Number, Identifier, StringLiteral, CharLiteral,
     FuncCall, Expression, Assignment, Return, If, While, DoWhile, For,
-    Switch, Break, Continue, VarDecl, PostfixOp, FunctionDef,
+    Switch, Break, Continue, VarDecl, PostfixOp, FunctionDef, Cast,
 )
 
 
@@ -50,6 +50,8 @@ def _expression_key(expr: Any) -> str:
     if isinstance(expr, FuncCall):
         args = ",".join(_expression_key(arg) for arg in expr.args)
         return f"call:{expr.name}({args})"
+    if isinstance(expr, Cast):
+        return f"cast:{expr.target_type}:{_expression_key(expr.expr)}"
     return repr(expr)
 
 
@@ -108,6 +110,16 @@ class ExpressionSimplifier:
             if folded is not None:
                 return folded
             return FuncCall(expr.name, simplified_args)
+        if isinstance(expr, Cast):
+            simplified_inner = self._simplify_node(expr.expr)
+            # Compile-time fold: (char)CONST, (int)CONST are constant folds.
+            num_val = _num_value(simplified_inner)
+            if num_val is not None:
+                if expr.target_type == 'char':
+                    return Number(str(num_val & 0xFF))
+                if expr.target_type == 'int':
+                    return Number(str(num_val & 0xFFFF))
+            return Cast(expr.target_type, simplified_inner)
         return expr
 
     def _fold_unary(self, operator: str, operand: Any) -> Optional[Number]:
@@ -243,6 +255,17 @@ class ExpressionSimplifier:
             "sound_play", "sound_stop", "set_timer", "sti", "cli", "iret",
             "key_available", "key_read", "key_clear", "random", "random_range",
             "halt", "enable_interrupts", "disable_interrupts",
+            "screen_rotate", "screen_shift", "screen_flip", "draw_line",
+            "draw_circle", "screen_invert", "screen_blit", "set_blend_mode",
+            "draw_char", "layer_swap", "layer_move", "layer_copy",
+            "sound_trigger", "int", "key_count", "key_ctrl",
+            "ser_out", "ser_in", "ser_stat", "ser_ctrl",
+            "memcpy", "memset", "memmove", "memcmp", "memtest", "memswap",
+            "btst", "bset", "bclr", "bflip",
+            "swap", "xchng", "nop", "pushf", "popf", "pusha", "popa",
+            "sed", "cld", "cla", "bcd2bin", "bin2bcd",
+            "bcdadd", "bcdsub", "bcda", "bcds", "bcdcmp",
+            "mouse_ctrl",
         }
         if name in side_effect_builtins:
             return None
@@ -414,6 +437,9 @@ class FunctionInliner:
             return node
         if isinstance(node, FuncCall):
             node.args = [self._substitute(arg, mapping) for arg in node.args]
+            return node
+        if isinstance(node, Cast):
+            node.expr = self._substitute(node.expr, mapping)
             return node
         return node
 
@@ -667,6 +693,9 @@ class StrengthReducer:
 
         elif isinstance(expr, FuncCall):
             return FuncCall(expr.name, [self._reduce_node(arg) for arg in expr.args])
+
+        elif isinstance(expr, Cast):
+            return Cast(expr.target_type, self._reduce_node(expr.expr))
 
         elif isinstance(expr, list):
             return [self._reduce_node(item) for item in expr]

@@ -13,7 +13,7 @@ TOKEN_TYPES = [
 # Keywords in Astrid
 KEYWORDS = {
     'int', 'char', 'void', 'if', 'else', 'while', 'for', 'break', 'continue', 'return',
-    'do', 'switch', 'case', 'default',
+    'do', 'switch', 'case', 'default', 'string', 'binary',
 }
 
 # Operators and delimiters
