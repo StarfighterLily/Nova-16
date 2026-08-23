@@ -48,8 +48,12 @@ class PostfixOp(Expression):
         self.op = op
 
 class Program(ASTNode):
-    def __init__(self, functions: List["FunctionDef"]):
+    def __init__(self, functions: List["FunctionDef"], globals_: Optional[List["VarDecl"]] = None):
         self.functions = functions
+        # Top-level (global) variable declarations. Empty for sources that
+        # only define functions; populated when the source declares variables
+        # outside of any function body.
+        self.globals: List["VarDecl"] = globals_ or []
 
 class FunctionDef(ASTNode):
     def __init__(self, return_type: str, name: str, params: List["VarDecl"], body: List["ASTNode"]):
@@ -59,10 +63,35 @@ class FunctionDef(ASTNode):
         self.body = body
 
 class VarDecl(ASTNode):
-    def __init__(self, var_type: str, name: str, value: Optional["ASTNode"]):
+    def __init__(self, var_type: str, name: str, value: Optional["ASTNode"],
+                 array_size: Optional["Expression"] = None,
+                 init_list: Optional[List["Expression"]] = None,
+                 pointer_depth: int = 0,
+                 is_array_param: bool = False):
         self.var_type = var_type
         self.name = name
         self.value = value
+        # Array support: `int arr[10];` sets array_size to the constant size
+        # expression. `int arr[] = {1, 2, 3};` leaves array_size None and
+        # infers the count from init_list.
+        self.array_size = array_size
+        # Initializer list: `int arr[3] = {1, 2, 3};` or scalar `int x = 5;`
+        # uses `value` instead. init_list is a list of expressions.
+        self.init_list = init_list
+        # Pointer declarations (`int *p`, `char **s`) record how many '*'
+        # preceded the name. Pointers occupy 2 bytes (a 16-bit address).
+        self.pointer_depth = pointer_depth
+        # Array parameters (`void f(int arr[])`) decay to an address; the
+        # parameter slot holds the caller's array base address (2 bytes).
+        self.is_array_param = is_array_param
+
+    @property
+    def is_pointer(self) -> bool:
+        return self.pointer_depth > 0
+
+    @property
+    def is_array(self) -> bool:
+        return self.array_size is not None or self.init_list is not None
 
 class Assignment(ASTNode):
     def __init__(self, name: str, value: "ASTNode"):
@@ -127,6 +156,54 @@ class Cast(Expression):
         self.target_type = target_type
         self.expr = expr
 
+class ArrayAccess(Expression):
+    """Array element access: arr[index]."""
+    def __init__(self, name: str, index: "Expression"):
+        self.name = name
+        self.index = index
+
+class ArrayAssignment(ASTNode):
+    """Assignment to an array element: arr[index] = value (or compound op)."""
+    def __init__(self, target: "ArrayAccess", value: "Expression"):
+        self.target = target
+        self.value = value
+
+class TernaryOp(Expression):
+    """Ternary conditional expression: cond ? then_expr : else_expr."""
+    def __init__(self, cond: "Expression", then_expr: "Expression", else_expr: "Expression"):
+        self.cond = cond
+        self.then_expr = then_expr
+        self.else_expr = else_expr
+
+class PrefixOp(Expression):
+    """Prefix increment/decrement: ++i or --i (yields the NEW value)."""
+    def __init__(self, op: str, operand: "Expression"):
+        self.op = op
+        self.operand = operand
+
+class AddressOf(Expression):
+    """Unary & operator: address-of a variable or array element."""
+    def __init__(self, operand: "Expression"):
+        self.operand = operand
+
+class Deref(Expression):
+    """Unary * operator: dereference a pointer (load through an address)."""
+    def __init__(self, operand: "Expression"):
+        self.operand = operand
+
+class DerefAssignment(ASTNode):
+    """Assignment through a pointer: *ptr = value (or compound op)."""
+    def __init__(self, target: "Deref", value: "Expression"):
+        self.target = target
+        self.value = value
+
+class SizeofExpr(Expression):
+    """sizeof(type) or sizeof(expr): compile-time size in bytes."""
+    def __init__(self, target):
+        # target is either a type-name string ('int', 'char', ...) or an
+        # expression node whose inferred type determines the size.
+        self.target = target
+
 class Parser:
     def __init__(self, tokens: List[Token]):
         self.tokens = tokens
@@ -145,20 +222,100 @@ class Parser:
             raise SyntaxError(f"Expected {type_} {value}, got {self.current.type} {self.current.value}")
         self.advance()
 
+    def _skip_const(self):
+        """Consume any leading 'const' qualifiers."""
+        while self.current.type == 'KEYWORD' and self.current.value == 'const':
+            self.advance()
+
+    @staticmethod
+    def _unescape_string(s: str) -> str:
+        """Resolve backslash escapes in a raw string/char literal.
+
+        Handles \\n \\t \\r \\\\ \\" \\' \\0 and \\xNN hex escapes. Unknown
+        escapes keep the escaped character itself (lenient, like many C
+        compilers' warnings).
+        """
+        out = []
+        i = 0
+        simple = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\',
+                  '"': '"', "'": "'", '0': '\0'}
+        while i < len(s):
+            ch = s[i]
+            if ch == '\\' and i + 1 < len(s):
+                nxt = s[i + 1]
+                if nxt in simple:
+                    out.append(simple[nxt])
+                    i += 2
+                    continue
+                if nxt in ('x', 'X') and i + 3 <= len(s):
+                    try:
+                        out.append(chr(int(s[i + 2:i + 4], 16)))
+                        i += 4
+                        continue
+                    except ValueError:
+                        pass
+                out.append(nxt)
+                i += 2
+                continue
+            out.append(ch)
+            i += 1
+        return ''.join(out)
+
     def parse(self) -> "Program":
         functions = []
+        globals_: List[VarDecl] = []
         while self.current.type != 'EOF':
-            functions.append(self.parse_function())
-        return Program(functions)
+            # Top-level const qualifiers prefix either functions or globals.
+            if self.current.type == 'KEYWORD' and self.current.value == 'const':
+                self.advance()
+                continue
+            if (self.current.type == 'KEYWORD'
+                    and self.current.value in {'int', 'char', 'string', 'binary', 'void'}):
+                # Distinguish a function definition/prototype from a global
+                # variable declaration by looking ahead past any pointer
+                # stars: `type [*]* name(` is a function, anything else
+                # (`type name;`, `type name[N];`, `type name = ...`) is a
+                # global variable declaration.
+                j = self.pos + 1
+                while (j < len(self.tokens) and self.tokens[j].type == 'OPERATOR'
+                       and self.tokens[j].value == '*'):
+                    j += 1
+                name_tok = self.tokens[j] if j < len(self.tokens) else None
+                after_tok = self.tokens[j + 1] if j + 1 < len(self.tokens) else None
+                if (name_tok is not None and name_tok.type == 'IDENTIFIER'
+                        and after_tok is not None and after_tok.type == 'DELIMITER'
+                        and after_tok.value == '('):
+                    func = self.parse_function()
+                    if func is not None:  # None => prototype-only declaration
+                        functions.append(func)
+                elif self.current.value == 'void':
+                    raise SyntaxError(
+                        f"Unexpected 'void' at top level (line {self.current.line})")
+                else:
+                    globals_.extend(self.parse_var_decl())
+            else:
+                functions.append(self.parse_function())
+        return Program(functions, globals_)
 
-    def parse_function(self) -> "FunctionDef":
+    def parse_function(self) -> Optional["FunctionDef"]:
         return_type = self.current.value
         self.expect('KEYWORD')
+        # Pointer-returning functions: `int *get_ptr() { ... }`
+        pointer_depth = 0
+        while self.current.type == 'OPERATOR' and self.current.value == '*':
+            pointer_depth += 1
+            self.advance()
         name = self.current.value
         self.expect('IDENTIFIER')
         self.expect('DELIMITER', '(')
         params = self.parse_params()
         self.expect('DELIMITER', ')')
+        # Prototype declaration: `int add(int a, int b);` — no body. The
+        # definition elsewhere provides the implementation; forward calls
+        # resolve because the code generator pre-registers all functions.
+        if self.current.type == 'DELIMITER' and self.current.value == ';':
+            self.advance()
+            return None
         self.expect('DELIMITER', '{')
         body = self.parse_block()
         self.expect('DELIMITER', '}')
@@ -166,17 +323,40 @@ class Parser:
 
     def parse_params(self) -> List["VarDecl"]:
         params = []
-        if self.current.type == 'KEYWORD':
-            while True:
-                var_type = self.current.value
-                self.expect('KEYWORD')
-                name = self.current.value
-                self.expect('IDENTIFIER')
-                params.append(VarDecl(var_type, name, None))
-                if self.current.type == 'DELIMITER' and self.current.value == ',':
-                    self.advance()
-                else:
-                    break
+        # Empty parameter list: f() or f(void)
+        if self.current.type == 'DELIMITER' and self.current.value == ')':
+            return params
+        if self.current.type == 'KEYWORD' and self.current.value == 'void':
+            nxt = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+            if nxt is not None and nxt.type == 'DELIMITER' and nxt.value == ')':
+                self.advance()  # consume 'void'; caller consumes ')'
+                return params
+        while True:
+            self._skip_const()
+            var_type = self.current.value
+            self.expect('KEYWORD')
+            pointer_depth = 0
+            while self.current.type == 'OPERATOR' and self.current.value == '*':
+                pointer_depth += 1
+                self.advance()
+            name = self.current.value
+            self.expect('IDENTIFIER')
+            is_array_param = False
+            if self.current.type == 'DELIMITER' and self.current.value == '[':
+                # Array parameter: void f(int arr[], int n). Arrays decay to
+                # the base address, so the parameter slot holds an address.
+                self.advance()
+                if not (self.current.type == 'DELIMITER' and self.current.value == ']'):
+                    self.parse_expression()  # size ignored (decay semantics)
+                self.expect('DELIMITER', ']')
+                is_array_param = True
+            params.append(VarDecl(var_type, name, None,
+                                  pointer_depth=pointer_depth,
+                                  is_array_param=is_array_param))
+            if self.current.type == 'DELIMITER' and self.current.value == ',':
+                self.advance()
+            else:
+                break
         return params
 
     def parse_block(self) -> List[ASTNode]:
@@ -186,7 +366,35 @@ class Parser:
         return stmts
 
     def parse_statement(self):
+        # Empty statement: a lone ';' is valid C and produces no code.
+        if self.current.type == 'DELIMITER' and self.current.value == ';':
+            self.advance()
+            return []
+        # const-qualified declarations: `const int K = 5;` — consume the
+        # qualifier, then fall through to the declaration handling below.
+        if self.current.type == 'KEYWORD' and self.current.value == 'const':
+            self.advance()
+            self._skip_const()
         if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'void', 'string', 'binary'}:
+            # int(x), char(x), string(x), binary(x) at statement start is a
+            # function call, not a variable declaration. Peek for '(' after
+            # the type keyword to distinguish.
+            peek_pos = self.pos + 1
+            if peek_pos < len(self.tokens) and self.tokens[peek_pos].value == '(':
+                func_name = self.current.value
+                self.advance()  # skip keyword
+                self.expect('DELIMITER', '(')
+                args = []
+                if self.current.type != 'DELIMITER' or self.current.value != ')':
+                    while True:
+                        args.append(self.parse_expression())
+                        if self.current.type == 'DELIMITER' and self.current.value == ',':
+                            self.advance()
+                        else:
+                            break
+                self.expect('DELIMITER', ')')
+                self.expect('DELIMITER', ';')
+                return [FuncCall(func_name, args)]
             return self.parse_var_decl()
         elif self.current.type == 'KEYWORD' and self.current.value == 'return':
             return [self.parse_return()]
@@ -224,13 +432,52 @@ class Parser:
         self.expect('KEYWORD')
         decls = []
         while True:
+            pointer_depth = 0
+            while self.current.type == 'OPERATOR' and self.current.value == '*':
+                pointer_depth += 1
+                self.advance()
             name = self.current.value
             self.expect('IDENTIFIER')
+            array_size = None
+            init_list = None
             value = None
+            is_array = False
+            # Array declaration: int arr[SIZE]; or int arr[]; (size inferred)
+            if self.current.type == 'DELIMITER' and self.current.value == '[':
+                self.advance()
+                is_array = True
+                if not (self.current.type == 'DELIMITER' and self.current.value == ']'):
+                    array_size = self.parse_expression()
+                self.expect('DELIMITER', ']')
             if self.current.value == '=':
                 self.advance()
-                value = self.parse_expression()
-            decls.append(VarDecl(var_type, name, value))
+                if self.current.type == 'DELIMITER' and self.current.value == '{':
+                    # Initializer list: = { expr, expr, ... }
+                    self.advance()
+                    init_list = []
+                    if not (self.current.type == 'DELIMITER' and self.current.value == '}'):
+                        while True:
+                            init_list.append(self.parse_expression())
+                            if self.current.value == ',':
+                                self.advance()
+                            else:
+                                break
+                    self.expect('DELIMITER', '}')
+                else:
+                    value = self.parse_expression()
+                    # C-style string initialization of char arrays:
+                    #   char buf[] = "Hi";   /   char buf[16] = "Hi";
+                    # Expands to per-character initializers plus a NUL
+                    # terminator so strlen/strcpy-style builtins work.
+                    if var_type == 'char' and is_array and isinstance(value, StringLiteral):
+                        text = Parser._unescape_string(value.value)
+                        init_list = [CharLiteral(ord(c)) for c in text]
+                        init_list.append(CharLiteral(0))
+                        if array_size is None:
+                            array_size = Number(str(len(init_list)))
+                        value = None
+            decls.append(VarDecl(var_type, name, value, array_size, init_list,
+                                 pointer_depth=pointer_depth))
             if self.current.value == ',':
                 self.advance()
             else:
@@ -360,7 +607,7 @@ class Parser:
         return self.parse_binary_op(1)  # Start with lowest precedence
 
     def get_precedence(self, op):
-        if op in ['=', '+=', '-=', '*=', '/=', '&=', '|=', '^=', '<<=', '>>=']: return 1
+        if op in ['=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=']: return 1
         if op in ['||']: return 2
         if op in ['&&']: return 3
         if op in ['|']: return 4
@@ -390,22 +637,70 @@ class Parser:
 
             # Handle assignment as a special kind of binary op
             if op_prec == 1:
-                if not isinstance(left, Identifier):
+                if isinstance(left, Identifier):
+                    # Handle compound assignment: x += 2 becomes x = x + 2
+                    if op in ['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=']:
+                        base_op = op[:-1]  # Remove trailing '=': '+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>'
+                        right = BinaryOp(Identifier(left.name), base_op, right)
+                    left = Assignment(left.name, right)
+                elif isinstance(left, ArrayAccess):
+                    # Array element assignment: arr[i] = v, with compound
+                    # forms decomposed like scalars (arr[i] += v becomes
+                    # arr[i] = arr[i] + v).
+                    if op in ['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=']:
+                        base_op = op[:-1]
+                        right = BinaryOp(ArrayAccess(left.name, left.index), base_op, right)
+                    left = ArrayAssignment(left, right)
+                elif isinstance(left, Deref):
+                    # Assignment through a pointer: *p = v. Compound forms
+                    # decompose the same way (*p += v becomes *p = *p + v).
+                    if op in ['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=']:
+                        base_op = op[:-1]
+                        right = BinaryOp(Deref(left.operand), base_op, right)
+                    left = DerefAssignment(left, right)
+                else:
                     raise SyntaxError("Invalid assignment target")
-                # Handle compound assignment: x += 2 becomes x = x + 2
-                if op in ['+=', '-=', '*=', '/=', '&=', '|=', '^=', '<<=', '>>=']:
-                    base_op = op[:-1]  # Remove trailing '=': '+', '-', '*', '/', '&', '|', '^', '<<', '>>'
-                    right = BinaryOp(Identifier(left.name), base_op, right)
-                left = Assignment(left.name, right)
             else:
                 left = BinaryOp(left, op, right)
+
+        # Ternary conditional operator (?:). Binds tighter than assignment
+        # but looser than ||, and is right-associative:
+        #   a || b ? c : d  parses as (a || b) ? c : d
+        #   a ? b : c ? d : e parses as a ? b : (c ? d : e)
+        if (precedence <= 2 and self.current.value == '?'
+                and self.current.type in ('OPERATOR', 'DELIMITER')):
+            self.advance()
+            then_expr = self.parse_binary_op(1)
+            self.expect('DELIMITER', ':')
+            else_expr = self.parse_binary_op(1)
+            left = TernaryOp(left, then_expr, else_expr)
 
         return left
 
     def parse_unary(self):
-        if self.current.value in ['-', '!', '~']:
+        # Prefix increment/decrement: ++i / --i (C semantics: yields the
+        # updated value, unlike postfix which yields the old value).
+        if self.current.type == 'OPERATOR' and self.current.value in ('++', '--'):
             op = self.current.value
             self.advance()
+            operand = self.parse_unary()
+            if not isinstance(operand, Identifier):
+                raise SyntaxError(f"Prefix '{op}' requires a variable operand")
+            return PrefixOp(op, operand)
+
+        if self.current.type == 'OPERATOR' and self.current.value in ('-', '+', '!', '~', '&', '*'):
+            op = self.current.value
+            self.advance()
+            if op == '+':
+                # Unary plus is a no-op in C.
+                return self.parse_unary()
+            if op == '&':
+                operand = self.parse_unary()
+                if not isinstance(operand, (Identifier, ArrayAccess)):
+                    raise SyntaxError("'&' requires a variable or array element operand")
+                return AddressOf(operand)
+            if op == '*':
+                return Deref(self.parse_unary())
             right = self.parse_unary()
             return UnaryOp(op, right)
 
@@ -427,15 +722,13 @@ class Parser:
             return StringLiteral(token.value.strip('"'))
         elif token.type == 'CHAR':
             self.advance()
-            # Parse char literal value
+            # Parse char literal value, resolving all escape sequences
+            # (\n, \t, \r, \0, \\, \', \xNN) via the shared unescaper.
             char_content = token.value.strip("'")
-            if char_content.startswith('\\'):
-                # Handle escape sequences
-                escape_map = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', "'": "'"}
-                char_val = escape_map.get(char_content[1], char_content[1])
-            else:
-                char_val = char_content
-            return CharLiteral(ord(char_val))
+            unescaped = Parser._unescape_string(char_content)
+            if len(unescaped) != 1:
+                raise SyntaxError(f"Invalid char literal: {token.value}")
+            return CharLiteral(ord(unescaped))
         elif token.type == 'IDENTIFIER':
             self.advance()
             if self.current.type == 'DELIMITER' and self.current.value == '(':
@@ -450,7 +743,53 @@ class Parser:
                             break
                 self.expect('DELIMITER', ')')
                 return FuncCall(token.value, args)
+            # Array indexing: arr[expr] (chained indexing not needed for
+            # 1-D arrays, but allow postfix on the result for future use).
+            if self.current.type == 'DELIMITER' and self.current.value == '[':
+                self.advance()
+                index = self.parse_expression()
+                self.expect('DELIMITER', ']')
+                return ArrayAccess(token.value, index)
             return Identifier(token.value)
+        elif token.type == 'KEYWORD' and token.value == 'sizeof':
+            # sizeof(type) or sizeof(expr): compile-time byte size.
+            self.advance()
+            self.expect('DELIMITER', '(')
+            if (self.current.type == 'KEYWORD'
+                    and self.current.value in {'int', 'char', 'string', 'binary', 'void'}):
+                type_name = self.current.value
+                self.advance()
+                # Allow pointer forms: sizeof(int*)
+                while self.current.type == 'OPERATOR' and self.current.value == '*':
+                    self.advance()
+                self.expect('DELIMITER', ')')
+                return SizeofExpr(type_name)
+            inner = self.parse_expression()
+            self.expect('DELIMITER', ')')
+            return SizeofExpr(inner)
+        elif token.type == 'KEYWORD' and token.value in {'int', 'char', 'string', 'binary'}:
+            # Builtin conversion functions used inside expressions, e.g.
+            # `int b = int(a);` or `return char(c);`. The lexer classifies
+            # these names as KEYWORDs, so they never reach the IDENTIFIER
+            # branch above. A type keyword directly followed by '(' is a
+            # function call; anything else is a syntax error (casts like
+            # `(int)x` are handled by the '(' delimiter branch below).
+            next_token = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+            if next_token is not None and next_token.type == 'DELIMITER' and next_token.value == '(':
+                func_name = token.value
+                self.advance()          # consume type keyword
+                self.expect('DELIMITER', '(')
+                args = []
+                if self.current.type != 'DELIMITER' or self.current.value != ')':
+                    while True:
+                        args.append(self.parse_expression())
+                        if self.current.type == 'DELIMITER' and self.current.value == ',':
+                            self.advance()
+                        else:
+                            break
+                self.expect('DELIMITER', ')')
+                return FuncCall(func_name, args)
+            raise SyntaxError(f"Unexpected token in expression: {self.current}")
         elif token.type == 'DELIMITER' and token.value == '(':
             self.advance()
             # Check for type cast: (int)expr, (char)expr, (string)expr, (binary)expr

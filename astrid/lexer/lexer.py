@@ -14,24 +14,31 @@ TOKEN_TYPES = [
 KEYWORDS = {
     'int', 'char', 'void', 'if', 'else', 'while', 'for', 'break', 'continue', 'return',
     'do', 'switch', 'case', 'default', 'string', 'binary',
+    # C qualifiers/operators added for expanded C support:
+    'const',    # const qualifier (accepted; treated as a normal variable)
+    'sizeof',   # sizeof(type) / sizeof(expr) compile-time byte-size operator
 }
 
 # Operators and delimiters
 OPERATORS = {
     '+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=', '=', '+=', '-=', '*=', '/=',
     '&=', '|=', '^=', '<<=', '>>=', '&&', '||', '!', '&', '|', '^', '~', '<<', '>>',
-    '++', '--', '->',
+    '++', '--', '->', '?',
 }
 DELIMITERS = {'(', ')', '{', '}', '[', ']', ';', ',', '.', ':'}
 
 # Token class
 token_specification = [
-    ('NUMBER',   r'0x[0-9A-Fa-f]+|\d+'),
+    # Integer literals: hexadecimal (0x..), binary (0b..), octal (0o..),
+    # and decimal. Python's int(value, 0) understands all four forms.
+    ('NUMBER',   r'0x[0-9A-Fa-f]+|0[bB][01]+|0[oO][0-7]+|\d+'),
     ('ID',       r'[A-Za-z_][A-Za-z0-9_]*'),
     ('STRING',   r'"(\\.|[^"\\])*"'),
-    ('CHAR',     r'\'(\\.|[^\\\'])\''),
+    # Char literals: single character, standard escapes (\n, \t, ...),
+    # or hex escapes (\x41).
+    ('CHAR',     r'\'(\\x[0-9A-Fa-f]{2}|\\.|[^\\\'])\''),
     ('COMMENT',  r'//.*|/\*(.|\n)*?\*/'),
-    ('OP',       r'==|!=|<=|>=|<<=|>>=|<<|>>|&&|\|\||\+\+|--|\+=|-=|\*=|/=|&=|\|=|\^=|\-\>|\|\||[+\-*/%&|^!~=<>]'),
+    ('OP',       r'==|!=|<=|>=|<<=|>>=|<<|>>|&&|\|\||\+\+|--|\+=|-=|\*=|/=|%=|&=|\|=|\^=|\-\>|\?|[+\-*/%&|^!~=<>]'),
     ('DELIM',    r'[(){}\[\];,.:]'),
     ('SKIP',     r'[ \t\r\n]+'),
     ('MISMATCH', r'.'),

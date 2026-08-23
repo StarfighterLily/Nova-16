@@ -1,0 +1,6 @@
+void main(){
+    while (1){
+        screen_fill(0x00);
+        screen_fill(0x0F);
+    }
+}

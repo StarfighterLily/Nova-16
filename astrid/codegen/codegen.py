@@ -8,7 +8,9 @@ from astrid.parser.parser import (
     Program, FunctionDef, VarDecl, Assignment, Return, If, While, DoWhile, For, FuncCall,
     Switch, Case,
     Expression, Number, StringLiteral, CharLiteral, Identifier, BinaryOp, UnaryOp, PostfixOp,
-    Break, Continue, Cast
+    Break, Continue, Cast,
+    ArrayAccess, ArrayAssignment, TernaryOp, PrefixOp,
+    AddressOf, Deref, DerefAssignment, SizeofExpr,
 )
 from astrid.codegen.optimizations import (
     ExpressionSimplifier,
@@ -23,6 +25,10 @@ from astrid.codegen.optimizations import (
 class CodeGenerator:
     # Generates Nova-16 assembly code from Astrid AST with enhanced register allocation
     DATA_REGION_START = 0x0120
+    # Fixed base address for global variables (scalars and arrays). Chosen
+    # well above typical code segments (ORG 0x1000+) and far below the stack
+    # (0xFF00) so global storage never collides with either.
+    GLOBAL_REGION_START = 0x8000
     LIVE_RANGE_SCHEDULER_MAX_LINES = 384
     LIVE_RANGE_SCHEDULER_MAX_WORK = 24576
 
@@ -46,9 +52,14 @@ class CodeGenerator:
         self.enable_live_range = bool(enable_live_range) and self.enable_optimizations
         self.enable_live_range_scheduling = self.enable_live_range
         self.assembly = []
-        self.global_vars = {}
+        self.global_vars = {}  # name -> {'address', 'type', 'size', 'is_array', 'count', 'init_values'}
+        self.array_vars = {}   # per-function LOCAL arrays: name -> {'elem_type', 'count', 'elem_size', 'offset'}
         self.local_vars = {}
         self.var_types = {}  # name -> 'int' (16-bit, 2 bytes) or 'char' (8-bit)
+        # Pointer-declared variables (`int *p`) and array parameters
+        # (`void f(int arr[])`): both hold 16-bit addresses (2 bytes).
+        self.pointer_vars: Set[str] = set()
+        self.address_params: Set[str] = set()
         self.functions = {}
         self.strings = {}
         self.string_counter = 0
@@ -64,6 +75,12 @@ class CodeGenerator:
         # Spill allocations (var -> absolute memory address) determined by
         # the dynamic spill allocator. Populated during function generation.
         self.spill_allocations: Dict[str, int] = {}
+        # Per-function zero-page spill base. The DynamicSpillAllocator assigns
+        # addresses starting at a fixed base for EVERY function; since functions
+        # call each other, two functions' spilled locals would collide at the
+        # same zero-page address. Advance the base per function so each gets a
+        # disjoint spill region.
+        self._spill_base = 0x0080
         
         # Unified liveness tracking
         self.live_ranges: Dict[str, Tuple[int, int]] = {}  # name -> (start, end)
@@ -130,7 +147,9 @@ class CodeGenerator:
             # Interrupts
             'sti': 'builtin_sti', 'cli': 'builtin_cli', 'iret': 'builtin_iret',
             'enable_interrupts': 'builtin_sti', 'disable_interrupts': 'builtin_cli',
-            'software_int': 'builtin_int',
+            # software_int() raises a software interrupt via the INT opcode.
+            # Distinct from int(), which is an identity conversion (see Math).
+            'software_int': 'builtin_software_int',
             # Keyboard
             'key_available': 'builtin_key_available', 'key_read': 'builtin_key_read',
             'key_clear': 'builtin_key_clear', 'key_count': 'builtin_key_count',
@@ -147,6 +166,9 @@ class CodeGenerator:
             'deg': 'builtin_deg', 'rad': 'builtin_rad',
             'floor': 'builtin_floor', 'ceil': 'builtin_ceil', 'round': 'builtin_round',
             'trunc': 'builtin_trunc', 'frac': 'builtin_frac', 'intgr': 'builtin_intgr',
+            # int(x) is an identity conversion on 16-bit integer values
+            # (distinct from intgr(), which truncates a fixed-point x/256).
+            'int': 'builtin_int',
             'powr': 'builtin_powr',
             # String
             'strcpy': 'builtin_strcpy', 'strcat': 'builtin_strcat',
@@ -167,6 +189,8 @@ class CodeGenerator:
             # Misc
             'swap': 'builtin_swap', 'xchng': 'builtin_xchng',
             'nop': 'builtin_nop',
+            'pushf': 'builtin_pushf', 'popf': 'builtin_popf',
+            'pusha': 'builtin_pusha', 'popa': 'builtin_popa',
             'halt': 'builtin_halt',
             # BCD
             'sed': 'builtin_sed', 'cld': 'builtin_cld', 'cla': 'builtin_cla',
@@ -263,6 +287,20 @@ class CodeGenerator:
             if self.debug_optimizations:
                 import traceback; traceback.print_exc()
 
+        # Allocate global variables (scalars and arrays) at fixed addresses
+        # in the dedicated global region so code can reference them directly.
+        self._allocate_globals(ast)
+
+        # Pre-register ALL user functions before generating any bodies so
+        # forward references (calls to functions defined later in the source,
+        # or declared via C-style prototypes) resolve correctly.
+        for func_def in ast.functions:
+            self.functions[func_def.name] = {
+                'label': f'func_{func_def.name}',
+                'params': len(func_def.params),
+                'return_type': func_def.return_type
+            }
+
         # Main entry point MUST be first segment so emulator sets PC correctly
         self.assembly.append("ORG 0x1000")
         self.assembly.append("start:")
@@ -286,6 +324,7 @@ class CodeGenerator:
 
         self.generate_strings()
         self.generate_builtins()
+        self._emit_globals_data()
 
         assembly_output = "\n".join(self.assembly)
         assembly_lines = assembly_output.splitlines()
@@ -324,6 +363,23 @@ class CodeGenerator:
                 return None
             if isinstance(node, (Number, Identifier, StringLiteral, CharLiteral, BinaryOp, UnaryOp, PostfixOp, FuncCall, Cast)):
                 return simplifier.simplify(node)
+            # Newer expression/statement nodes: recurse manually since the
+            # shared ExpressionSimplifier does not know their shape.
+            if isinstance(node, ArrayAccess):
+                node.index = simplify_node(node.index)
+                return node
+            if isinstance(node, ArrayAssignment):
+                node.target.index = simplify_node(node.target.index)
+                node.value = simplify_node(node.value)
+                return node
+            if isinstance(node, TernaryOp):
+                node.cond = simplify_node(node.cond)
+                node.then_expr = simplify_node(node.then_expr)
+                node.else_expr = simplify_node(node.else_expr)
+                return node
+            if isinstance(node, PrefixOp):
+                node.operand = simplify_node(node.operand)
+                return node
             if isinstance(node, VarDecl):
                 if node.value is not None:
                     node.value = simplify_node(node.value)
@@ -415,6 +471,9 @@ class CodeGenerator:
     def _var_size(self, name: str) -> int:
         # Return storage size in bytes for a variable.
         # 2 bytes for int/string/binary (16-bit values/addresses), 1 for char.
+        # Pointers and array parameters always occupy 2 bytes (an address).
+        if name in self.pointer_vars or name in self.address_params:
+            return 2
         return 2 if self.var_types.get(name) in ('int', 'string', 'binary') else 1
 
     def _is_int_var(self, name: str) -> bool:
@@ -472,6 +531,232 @@ class CodeGenerator:
             # allocated as an expression temporary.
             self.emit(f"    MOV [FP{offset:+d}], {src_reg}")
 
+    # ------------------------------------------------------------------
+    # Globals, arrays, ternary, and prefix ++/-- support
+    # ------------------------------------------------------------------
+
+    def _elem_size(self, var_type: str) -> int:
+        # Storage size in bytes for one element of the given type.
+        return 2 if var_type in ('int', 'string', 'binary') else 1
+
+    def _resolve_array_count(self, decl: VarDecl) -> int:
+        """Resolve an array's element count at compile time."""
+        if decl.init_list is not None:
+            return len(decl.init_list)
+        if isinstance(decl.array_size, Number):
+            count = int(decl.array_size.value, 0)
+            if count <= 0:
+                raise ValueError(f"Array '{decl.name}' must have a positive size")
+            return count
+        raise TypeError(f"Array '{decl.name}' size must be a compile-time constant")
+
+    def _const_eval(self, expr) -> Optional[int]:
+        """Evaluate a compile-time constant expression (global initializers).
+
+        Returns the 16-bit masked value, or None if the expression is not a
+        compile-time constant."""
+        try:
+            if isinstance(expr, Number):
+                return int(expr.value, 0) & 0xFFFF
+            if isinstance(expr, CharLiteral):
+                return expr.char_value & 0xFFFF
+            if isinstance(expr, UnaryOp) and expr.op == '-':
+                inner = self._const_eval(expr.right)
+                return None if inner is None else (-inner) & 0xFFFF
+            if isinstance(expr, BinaryOp):
+                left = self._const_eval(expr.left)
+                right = self._const_eval(expr.right)
+                if left is None or right is None:
+                    return None
+                op = expr.op
+                if op == '+': return (left + right) & 0xFFFF
+                if op == '-': return (left - right) & 0xFFFF
+                if op == '*': return (left * right) & 0xFFFF
+                if op == '/' and right != 0: return int(left / right) & 0xFFFF
+                if op == '%' and right != 0: return (left % right) & 0xFFFF
+                if op == '&': return left & right
+                if op == '|': return left | right
+                if op == '^': return left ^ right
+                if op == '<<': return (left << right) & 0xFFFF
+                if op == '>>': return (left >> right) & 0xFFFF
+            return None
+        except (ValueError, ArithmeticError):
+            return None
+
+    def _allocate_globals(self, ast: Program):
+        """Assign fixed storage addresses to all global variables/scalars."""
+        next_addr = self.GLOBAL_REGION_START
+        for decl in getattr(ast, 'globals', None) or []:
+            elem_size = self._elem_size(decl.var_type)
+            if decl.is_array:
+                count = self._resolve_array_count(decl)
+                init_values = []
+                if decl.init_list:
+                    for e in decl.init_list:
+                        v = self._const_eval(e)
+                        if v is None:
+                            raise TypeError(
+                                f"Global array '{decl.name}' initializers must be "
+                                f"compile-time constants")
+                        init_values.append(v)
+                self.global_vars[decl.name] = {
+                    'address': next_addr, 'type': decl.var_type,
+                    'size': count * elem_size, 'is_array': True,
+                    'count': count, 'init_values': init_values,
+                }
+                next_addr += count * elem_size
+            else:
+                init_value = None
+                if decl.value is not None:
+                    init_value = self._const_eval(decl.value)
+                    if init_value is None:
+                        raise TypeError(
+                            f"Global variable '{decl.name}' initializer must be "
+                            f"a compile-time constant")
+                self.global_vars[decl.name] = {
+                    'address': next_addr, 'type': decl.var_type,
+                    'size': elem_size, 'is_array': False,
+                    'count': 1,
+                    'init_values': [init_value] if init_value is not None else [],
+                }
+                next_addr += elem_size
+
+    def _emit_globals_data(self):
+        """Emit the global-variable data segment at GLOBAL_REGION_START."""
+        if not self.global_vars:
+            return
+        self.assembly.append("")
+        self.assembly.append(f"ORG 0x{self.GLOBAL_REGION_START:04X}")
+        self.assembly.append("; Global Variables")
+        for name, info in self.global_vars.items():
+            self.assembly.append(f"gvar_{name}:")
+            elem_size = self._elem_size(info['type'])
+            directive = "DW" if elem_size == 2 else "DB"
+            init = info.get('init_values') or []
+            if info['is_array']:
+                if init:
+                    self.assembly.append(f"    {directive} {', '.join(str(v) for v in init)}")
+                remaining = info['count'] - len(init)
+                if remaining > 0:
+                    self.assembly.append(f"    DS {remaining * elem_size}")
+            else:
+                if init:
+                    self.assembly.append(f"    {directive} {init[0]}")
+                else:
+                    self.assembly.append(f"    DS {info['size']}")
+        self.assembly.append("")
+
+    def _get_array_info(self, name: str) -> Dict:
+        """Return layout info for an array (local or global)."""
+        if name in self.array_vars:
+            return self.array_vars[name]
+        g = self.global_vars.get(name)
+        if g and g.get('is_array'):
+            return {'elem_type': g['type'], 'count': g['count'],
+                    'elem_size': self._elem_size(g['type']),
+                    'base_addr': g['address'], 'is_global': True}
+        raise NameError(f"Undefined array '{name}'")
+
+    def _emit_array_addr(self, info: Dict, idx_reg: str, addr_reg: str):
+        """Emit code computing an element address into addr_reg.
+
+        On entry idx_reg holds the element index; it is scaled in place to a
+        byte offset (x2 for word elements) and combined with the array base
+        (FP-relative for locals, absolute for globals, SP-relative inside
+        timer_interrupt which has no frame pointer)."""
+        if info['elem_size'] == 2:
+            # Scale word index to byte offset: idx * 2
+            self.emit(f"    ADD {idx_reg}, {idx_reg}")
+        if info.get('is_param'):
+            # Array parameter: the slot at FP+offset CONTAINS the caller's
+            # array base address; element i lives at base + i*elem_size.
+            self.emit(f"    MOV {addr_reg}, [FP{info['offset']:+d}]")
+            self.emit(f"    ADD {addr_reg}, {idx_reg}")
+        elif info.get('is_global'):
+            self.emit(f"    MOV {addr_reg}, 0x{info['base_addr']:04X}")
+            self.emit(f"    ADD {addr_reg}, {idx_reg}")
+        elif self.current_function == 'timer_interrupt':
+            # Interrupt handler locals are SP-relative: the array's lowest
+            # byte sits at SP + (-(offset) - total_size).
+            base_sp = -info['offset'] - info['count'] * info['elem_size']
+            self.emit(f"    MOV {addr_reg}, SP")
+            self.emit(f"    ADD {addr_reg}, {base_sp}")
+            self.emit(f"    ADD {addr_reg}, {idx_reg}")
+        else:
+            off = -info['offset']  # byte distance below FP (positive)
+            self.emit(f"    MOV {addr_reg}, FP")
+            self.emit(f"    SUB {addr_reg}, {off}")
+            self.emit(f"    ADD {addr_reg}, {idx_reg}")
+
+    def _emit_array_const_addr(self, info: Dict, index: int, addr_reg: str):
+        """Emit code computing an element address for a compile-time index."""
+        byte_off = index * info['elem_size']
+        if info.get('is_param'):
+            self.emit(f"    MOV {addr_reg}, [FP{info['offset']:+d}]")
+            self.emit(f"    ADD {addr_reg}, {byte_off}")
+        elif info.get('is_global'):
+            self.emit(f"    MOV {addr_reg}, 0x{info['base_addr'] + byte_off:04X}")
+        elif self.current_function == 'timer_interrupt':
+            base_sp = -info['offset'] - info['count'] * info['elem_size'] + byte_off
+            self.emit(f"    MOV {addr_reg}, SP")
+            self.emit(f"    ADD {addr_reg}, {base_sp}")
+        else:
+            delta = info['offset'] + byte_off  # signed delta from FP
+            self.emit(f"    MOV {addr_reg}, FP")
+            if delta >= 0:
+                self.emit(f"    ADD {addr_reg}, {delta}")
+            else:
+                self.emit(f"    SUB {addr_reg}, {-delta}")
+
+    def _emit_var_load(self, reg: str, name: str):
+        """Load a scalar variable (local or global) into reg.
+
+        Arrays decay to their base address (C pointer-decay semantics), so
+        char buffers can be passed to strcpy/strlen/etc. by name."""
+        if name in self.address_params and name in self.local_vars:
+            # Array parameter: loading the name yields its address. The
+            # parameter slot CONTAINS the caller's array base address, so
+            # load through the slot (C decay semantics).
+            offset = self.local_vars[name]['offset']
+            if self.current_function == 'timer_interrupt':
+                sp_offset = -offset - 2
+                self.emit(f"    MOV {reg}, [SP+{sp_offset}]")
+            else:
+                self.emit(f"    MOV {reg}, [FP{offset:+d}]")
+            return
+        if name in self.array_vars:
+            info = self.array_vars[name]
+            if self.current_function == 'timer_interrupt':
+                base_sp = -info['offset'] - info['count'] * info['elem_size']
+                self.emit(f"    MOV {reg}, SP")
+                self.emit(f"    ADD {reg}, {base_sp}")
+            else:
+                self.emit(f"    MOV {reg}, FP")
+                self.emit(f"    SUB {reg}, {-info['offset']}")
+            return
+        g = self.global_vars.get(name)
+        if g:
+            if g.get('is_array'):
+                self.emit(f"    MOV {reg}, 0x{g['address']:04X}")
+            else:
+                self.emit(f"    MOV {reg}, [0x{g['address']:04X}]")
+            return
+        if name in self.local_vars:
+            self._emit_local_load(reg, name)
+            return
+        raise NameError(f"Undefined variable '{name}'")
+
+    def _emit_var_store(self, name: str, src_reg: str):
+        """Store src_reg into a scalar variable (local or global)."""
+        if name in self.local_vars:
+            self._emit_local_store(name, src_reg)
+            return
+        g = self.global_vars.get(name)
+        if g and not g.get('is_array'):
+            self.emit(f"    MOV [0x{g['address']:04X}], {src_reg}")
+            return
+        raise NameError(f"Undefined variable '{name}'")
+
     def generate_function(self, func_def: FunctionDef):
         self.functions[func_def.name] = {
             'label': f'func_{func_def.name}',
@@ -481,6 +766,9 @@ class CodeGenerator:
 
         # Clear spill allocations for this function (per-function scope)
         self.spill_allocations = {}
+        # Advance the zero-page spill base so this function's spilled locals
+        # don't collide with a callee's (or caller's) spilled locals.
+        self._spill_base += self.opt_config.get('zero_page_size', 128)
         
         # Apply register-coloring metadata pass to local variables. This is a
         # lightweight, conservative optimization pass that records likely color
@@ -492,6 +780,9 @@ class CodeGenerator:
         self.current_function = func_def.name
         self.local_vars = {}
         self.var_types = {}
+        self.array_vars = {}  # per-function local array scope
+        self.pointer_vars = set()   # per-function pointer-declared locals/params
+        self.address_params = set()  # per-function array/pointer parameters
         
         self.assembly.append(f"; Function: {func_def.name}")
         self.assembly.append(f"func_{func_def.name}:")
@@ -503,12 +794,33 @@ class CodeGenerator:
         param_size = 0
         for param in func_def.params:
             self.var_types[param.name] = param.var_type
-            param_size += 2 if param.var_type in ('int', 'string', 'binary') else 1
+            if param.pointer_depth or getattr(param, 'is_array_param', False):
+                # Pointers and array parameters hold a 16-bit address.
+                param_size += 2
+                self.pointer_vars.add(param.name)
+                if getattr(param, 'is_array_param', False):
+                    self.address_params.add(param.name)
+                    # Register layout info so arr[i] indexing works on the
+                    # parameter (offset filled in once known below).
+                    self.array_vars[param.name] = {
+                        'elem_type': param.var_type, 'count': 0,
+                        'elem_size': self._elem_size(param.var_type),
+                        'offset': None, 'is_param': True,
+                    }
+            else:
+                param_size += 2 if param.var_type in ('int', 'string', 'binary') else 1
         
         local_size = 0
         for decl in all_local_decls:
             self.var_types[decl.name] = decl.var_type
-            local_size += 2 if decl.var_type in ('int', 'string', 'binary') else 1
+            if decl.is_array:
+                # Arrays occupy count * elem_size contiguous bytes in the frame
+                local_size += self._resolve_array_count(decl) * self._elem_size(decl.var_type)
+            elif decl.pointer_depth:
+                local_size += 2
+                self.pointer_vars.add(decl.name)
+            else:
+                local_size += 2 if decl.var_type in ('int', 'string', 'binary') else 1
         
         if func_def.name == 'timer_interrupt':
             # Interrupt handlers must NOT use ENTER/LEAVE because the CPU
@@ -524,14 +836,29 @@ class CodeGenerator:
         param_offset = 4
         for param in func_def.params:
             self.local_vars[param.name] = {'offset': param_offset}
-            param_offset += 2 if param.var_type in ('int', 'string', 'binary') else 1
+            if param.name in self.array_vars and self.array_vars[param.name].get('is_param'):
+                self.array_vars[param.name]['offset'] = param_offset
+            param_offset += 2 if (param.var_type in ('int', 'string', 'binary')
+                                  or param.pointer_depth
+                                  or getattr(param, 'is_array_param', False)) else 1
 
         # Local offsets: start at -2 going down (2 bytes per slot for simplicity;
         # char vars also get 2 bytes to keep word access alignment simple)
         local_offset = 0
         for decl in all_local_decls:
-            local_offset += 2 if decl.var_type in ('int', 'string', 'binary') else 1
-            self.local_vars[decl.name] = {'offset': -local_offset}
+            if decl.is_array:
+                count = self._resolve_array_count(decl)
+                elem_size = self._elem_size(decl.var_type)
+                local_offset += count * elem_size
+                self.local_vars[decl.name] = {'offset': -local_offset}
+                self.array_vars[decl.name] = {
+                    'elem_type': decl.var_type, 'count': count,
+                    'elem_size': elem_size, 'offset': -local_offset,
+                }
+            else:
+                local_offset += 2 if (decl.var_type in ('int', 'string', 'binary')
+                                      or decl.pointer_depth) else 1
+                self.local_vars[decl.name] = {'offset': -local_offset}
 
         # Store locals_size for iret() cleanup
         self._timer_interrupt_locals_size = local_size if func_def.name == 'timer_interrupt' else 0
@@ -543,7 +870,8 @@ class CodeGenerator:
         if self.local_vars:
             # Separate parameters from local variables
             param_names = {p.name for p in func_def.params}
-            actual_local_names = [name for name in self.local_vars if name not in param_names]
+            actual_local_names = [name for name in self.local_vars
+                                  if name not in param_names and name not in self.array_vars]
             
             if actual_local_names:
                 candidate_graph: Dict[str, Set[str]] = {name: set() for name in actual_local_names}
@@ -574,7 +902,7 @@ class CodeGenerator:
                         spill_slots={name: idx for idx, name in enumerate(actual_local_names)},
                         access_counts={name: self.variable_access_counts.get(name, 0) for name in actual_local_names},
                         debug=self.debug_optimizations,
-                        zero_page_base=self.opt_config.get('zero_page_base', 0x0080),
+                        zero_page_base=self._spill_base,
                         zero_page_size=self.opt_config.get('zero_page_size', 128),
                     )
                     allocs = allocator.allocate()
@@ -606,6 +934,10 @@ class CodeGenerator:
                 self.generate_var_decl(statement)
             elif isinstance(statement, Assignment):
                 self.generate_assignment(statement)
+            elif isinstance(statement, ArrayAssignment):
+                self.generate_array_assignment(statement)
+            elif isinstance(statement, DerefAssignment):
+                self.generate_deref_assignment(statement)
             elif isinstance(statement, Return):
                 self.generate_return(statement)
             elif isinstance(statement, If):
@@ -638,10 +970,23 @@ class CodeGenerator:
                 raise RuntimeError(f"Unknown statement type: {type(statement)}")
 
     def generate_var_decl(self, var_decl: VarDecl):
+        if var_decl.is_array:
+            # Local arrays: emit runtime stores for initializer-list elements.
+            # (Global array initializers are emitted as DW/DB data instead.)
+            info = self._get_array_info(var_decl.name)
+            self.emit_comment(f"array {var_decl.name}[{info['count']}]")
+            if var_decl.init_list and not info.get('is_global'):
+                for i, init_expr in enumerate(var_decl.init_list):
+                    reg = self.generate_expression(init_expr)
+                    addr_reg = self.get_register()
+                    self._emit_array_const_addr(info, i, addr_reg)
+                    self._emit_mem_store(addr_reg, reg, info['elem_size'])
+                    self.free_register()
+            return
         if var_decl.value:
             self.emit_comment(f"var {var_decl.name} = ...")
             reg = self.generate_expression(var_decl.value)
-            self._emit_local_store(var_decl.name, reg)
+            self._emit_var_store(var_decl.name, reg)
             self.free_register()
 
     def generate_assignment(self, assignment: Assignment):
@@ -653,7 +998,7 @@ class CodeGenerator:
             assignment.value.left.name == assignment.name):
             op = assignment.value.op
             var_reg = self.get_register()
-            self._emit_local_load(var_reg, assignment.name)
+            self._emit_var_load(var_reg, assignment.name)
             if op in ['<<', '>>']:
                 # Shift operations: amount must be a constant (parser requires this)
                 if not isinstance(assignment.value.right, Number):
@@ -669,20 +1014,284 @@ class CodeGenerator:
                 elif op == '-': self.emit(f"    SUB {var_reg}, {rhs_reg}")
                 elif op == '*': self.emit(f"    MUL {var_reg}, {rhs_reg}")
                 elif op == '/': self.emit(f"    DIV {var_reg}, {rhs_reg}")
+                elif op == '%': self.emit(f"    MOD {var_reg}, {rhs_reg}")
                 elif op == '&': self.emit(f"    AND {var_reg}, {rhs_reg}")
                 elif op == '|': self.emit(f"    OR {var_reg}, {rhs_reg}")
                 elif op == '^': self.emit(f"    XOR {var_reg}, {rhs_reg}")
                 else: raise SyntaxError(f"Unknown compound operator '{op}'")
                 self.free_register()
-            self._emit_local_store(assignment.name, var_reg)
+            self._emit_var_store(assignment.name, var_reg)
             self.free_register()
         else:
             reg = self.generate_expression(assignment.value)
-            if assignment.name in self.local_vars:
-                self._emit_local_store(assignment.name, reg)
-            else:
-                raise NameError(f"Undefined variable '{assignment.name}'")
+            self._emit_var_store(assignment.name, reg)
             self.free_register()
+
+    def _pop_preserving(self, target_reg: str, protected_reg: Optional[str]) -> Optional[str]:
+        """POP the top of stack into target_reg safely.
+
+        Expression temporaries are handed out round-robin, so a register
+        obtained earlier can be re-issued under the same name while its value
+        is still live. If protected_reg names the same register as target_reg,
+        its value is relocated to a fresh temporary before the POP clobbers
+        it. Returns the register now holding the protected value."""
+        if protected_reg is not None and protected_reg == target_reg:
+            tmp_reg = self.get_register(exclude={target_reg})
+            self.emit(f"    MOV {tmp_reg}, {protected_reg}")
+            self.emit(f"    POP {target_reg}")
+            return tmp_reg
+        self.emit(f"    POP {target_reg}")
+        return protected_reg
+
+    def generate_array_assignment(self, stmt: ArrayAssignment):
+        """Generate arr[index] = value (simple or compound)."""
+        target = stmt.target
+        info = self._get_array_info(target.name)
+        can_push = self.current_function != 'timer_interrupt'
+
+        # Detect compound assignment: the parser decomposes arr[i] += v into
+        # ArrayAssignment(arr[i], BinaryOp(arr[i], '+', v)) sharing the same
+        # index node object between both occurrences of arr[i].
+        compound_op = None
+        rhs = stmt.value
+        if (isinstance(stmt.value, BinaryOp)
+                and isinstance(stmt.value.left, ArrayAccess)
+                and stmt.value.left.name == target.name
+                and stmt.value.left.index is target.index):
+            compound_op = stmt.value.op
+            rhs = stmt.value.right
+
+        self.emit_comment(f"Array assignment to {target.name}[...]")
+        idx_reg = self.generate_expression(target.index)
+        if can_push:
+            # Preserve the index across RHS evaluation: expression temporaries
+            # are round-robin reused and a deep RHS could clobber idx_reg.
+            self.emit(f"    PUSH {idx_reg}")
+
+        store_reg = None
+        if compound_op:
+            addr_reg = self.get_register()
+            self._emit_array_addr(info, idx_reg, addr_reg)
+            acc_reg = self.get_register()
+            self._emit_mem_load(acc_reg, addr_reg, info['elem_size'])
+            if compound_op in ('<<', '>>'):
+                # Shift amounts are compile-time constants: no codegen runs
+                # between the load and the shifts, so acc cannot be clobbered.
+                if not isinstance(rhs, Number):
+                    raise TypeError("Shift amount must be a constant integer for this compiler version.")
+                shift_amount = int(rhs.value, 0)
+                op_mnemonic = "SHR" if compound_op == '>>' else "SHL"
+                for _ in range(shift_amount):
+                    self.emit(f"    {op_mnemonic} {acc_reg}, 1")
+            else:
+                # Stash the loaded element across RHS evaluation, restore it,
+                # THEN apply the operation (applying before the POP would let
+                # the stale stacked value overwrite the computed result).
+                if can_push:
+                    self.emit(f"    PUSH {acc_reg}")
+                rhs_reg = self.generate_expression(rhs)
+                if can_push:
+                    rhs_reg = self._pop_preserving(acc_reg, rhs_reg)
+                if compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
+                elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
+                elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
+                elif compound_op == '/': self.emit(f"    DIV {acc_reg}, {rhs_reg}")
+                elif compound_op == '%': self.emit(f"    MOD {acc_reg}, {rhs_reg}")
+                elif compound_op == '&': self.emit(f"    AND {acc_reg}, {rhs_reg}")
+                elif compound_op == '|': self.emit(f"    OR {acc_reg}, {rhs_reg}")
+                elif compound_op == '^': self.emit(f"    XOR {acc_reg}, {rhs_reg}")
+                else: raise SyntaxError(f"Unknown compound operator '{compound_op}'")
+            store_reg = acc_reg
+        else:
+            val_reg = self.generate_expression(rhs)
+            store_reg = val_reg
+
+        if can_push:
+            # The index was stashed across RHS evaluation; restore it without
+            # destroying the computed value (register names can alias).
+            store_reg = self._pop_preserving(idx_reg, store_reg)
+        addr_reg = self.get_register(exclude={idx_reg, store_reg})
+        self._emit_array_addr(info, idx_reg, addr_reg)
+        self._emit_mem_store(addr_reg, store_reg, info['elem_size'])
+        return store_reg
+
+    def generate_address_of(self, expr: AddressOf) -> str:
+        """&var / &arr[i]: compute an address into a register.
+
+        Pointers are plain 16-bit addresses on Nova-16, so & simply yields
+        the variable's storage location as an integer value."""
+        operand = expr.operand
+        if isinstance(operand, Identifier):
+            name = operand.name
+            reg = self.get_register()
+            g = self.global_vars.get(name)
+            if g:
+                self.emit(f"    MOV {reg}, 0x{g['address']:04X}")
+                return reg
+            if name in self.local_vars:
+                # Respect spill allocations so &x matches where loads/stores
+                # of x actually live (zero-page migration).
+                if name in self.spill_allocations and self.current_function != 'timer_interrupt':
+                    self.emit(f"    MOV {reg}, 0x{self.spill_allocations[name]:04X}")
+                    return reg
+                offset = self._get_local_offset(name)
+                if self.current_function == 'timer_interrupt':
+                    sp_offset = -offset - self._var_size(name)
+                    self.emit(f"    MOV {reg}, SP")
+                    self.emit(f"    ADD {reg}, {sp_offset}")
+                else:
+                    self.emit(f"    MOV {reg}, FP")
+                    if offset >= 0:
+                        self.emit(f"    ADD {reg}, {offset}")
+                    else:
+                        self.emit(f"    SUB {reg}, {-offset}")
+                return reg
+            raise NameError(f"Cannot take address of undefined variable '{name}'")
+        if isinstance(operand, ArrayAccess):
+            info = self._get_array_info(operand.name)
+            idx_reg = self.generate_expression(operand.index)
+            addr_reg = self.get_register(exclude={idx_reg})
+            self._emit_array_addr(info, idx_reg, addr_reg)
+            return addr_reg
+        raise SyntaxError("'&' operand must be a variable or array element")
+
+    def generate_deref_assignment(self, stmt: DerefAssignment) -> str:
+        """*ptr = value (simple or compound). Returns register holding value."""
+        target = stmt.target
+        can_push = self.current_function != 'timer_interrupt'
+
+        # Detect compound assignment: *p += v decomposes to
+        # DerefAssignment(*p, BinaryOp(*p, '+', v)) sharing the same operand.
+        compound_op = None
+        rhs = stmt.value
+        if (isinstance(stmt.value, BinaryOp)
+                and isinstance(stmt.value.left, Deref)
+                and stmt.value.left.operand is stmt.target.operand):
+            compound_op = stmt.value.op
+            rhs = stmt.value.right
+
+        self.emit_comment("Pointer assignment (*ptr = ...)")
+        ptr_reg = self.generate_expression(target.operand)
+        if can_push:
+            # Preserve the pointer across RHS evaluation (round-robin temps).
+            self.emit(f"    PUSH {ptr_reg}")
+
+        if compound_op:
+            acc_reg = self.get_register()
+            self.emit(f"    MOV {acc_reg}, [{ptr_reg}]")
+            if can_push:
+                self.emit(f"    PUSH {acc_reg}")
+            rhs_reg = self.generate_expression(rhs)
+            if can_push:
+                rhs_reg = self._pop_preserving(acc_reg, rhs_reg)
+            if compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
+            elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
+            elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
+            elif compound_op == '/': self.emit(f"    DIV {acc_reg}, {rhs_reg}")
+            elif compound_op == '%': self.emit(f"    MOD {acc_reg}, {rhs_reg}")
+            elif compound_op == '&': self.emit(f"    AND {acc_reg}, {rhs_reg}")
+            elif compound_op == '|': self.emit(f"    OR {acc_reg}, {rhs_reg}")
+            elif compound_op == '^': self.emit(f"    XOR {acc_reg}, {rhs_reg}")
+            else: raise SyntaxError(f"Unknown compound operator '{compound_op}'")
+            val_reg = acc_reg
+        else:
+            val_reg = self.generate_expression(rhs)
+
+        if can_push:
+            # Restore the pointer into ptr_reg WITHOUT clobbering the
+            # computed value (register names can alias under round-robin).
+            val_reg = self._pop_preserving(ptr_reg, val_reg)
+        self._emit_mem_store(ptr_reg, val_reg, self._pointee_size(target.operand))
+        return val_reg
+
+    def _emit_mem_store(self, addr_reg: str, val_reg: str, elem_size: int):
+        """Store val_reg through addr_reg with the correct width.
+
+        MOV [mem], Psrc performs a 16-bit big-endian word write whose high
+        byte clobbers the adjacent cell -- fatal for packed char arrays.
+        Routing the value through an R register forces an 8-bit write."""
+        if elem_size == 1:
+            self.emit(f"    MOV R0, {val_reg}")
+            self.emit(f"    MOV [{addr_reg}], R0")
+        else:
+            self.emit(f"    MOV [{addr_reg}], {val_reg}")
+
+    def _emit_mem_load(self, dst_reg: str, addr_reg: str, elem_size: int):
+        """Load dst_reg through addr_reg with the correct width.
+
+        MOV Pdst, [mem] reads a 16-bit word; for single-byte elements an
+        R-register read fetches exactly one byte (no neighbor contamination)."""
+        if elem_size == 1:
+            self.emit(f"    MOV R0, [{addr_reg}]")
+            self.emit(f"    MOV {dst_reg}, R0")
+        else:
+            self.emit(f"    MOV {dst_reg}, [{addr_reg}]")
+
+    def _pointee_size(self, ptr_expr) -> int:
+        """Element size a pointer expression points at (2 unless char*)."""
+        if isinstance(ptr_expr, Identifier):
+            return 1 if self.var_types.get(ptr_expr.name) == 'char' else 2
+        return 2
+
+    def _sizeof_bytes(self, expr: SizeofExpr) -> int:
+        """Resolve sizeof(...) to a compile-time byte count."""
+        target = expr.target
+        if isinstance(target, str):
+            type_name = target
+        else:
+            type_name = self._cast_source_type(target) or 'int'
+        return 1 if type_name == 'char' else 2
+
+    def generate_array_access(self, expr: ArrayAccess) -> str:
+        """Read arr[index]: compute the element address, then load through it."""
+        info = self._get_array_info(expr.name)
+        idx_reg = self.generate_expression(expr.index)
+        addr_reg = self.get_register()
+        self._emit_array_addr(info, idx_reg, addr_reg)
+        result_reg = self.get_register()
+        self._emit_mem_load(result_reg, addr_reg, info['elem_size'])
+        return result_reg
+
+    def generate_ternary(self, expr: TernaryOp) -> str:
+        """cond ? a : b - evaluates only the selected branch.
+
+        Each branch pushes its result onto the stack and control converges at
+        end_label with exactly one value pushed, which is then popped into a
+        fresh result register. This avoids holding a result register across
+        branch evaluation (round-robin temps would alias it)."""
+        self.emit_comment("Ternary conditional")
+        else_label = self.generate_label("tern_else")
+        end_label = self.generate_label("tern_end")
+        cond_reg = self.generate_expression(expr.cond)
+        self.emit(f"    CMP {cond_reg}, 0")
+        self.free_register()
+        self.emit(f"    JZ {else_label}")
+        then_reg = self.generate_expression(expr.then_expr)
+        self.emit(f"    PUSH {then_reg}")
+        self.emit(f"    JMP {end_label}")
+        self.emit_label(else_label)
+        else_reg = self.generate_expression(expr.else_expr)
+        self.emit(f"    PUSH {else_reg}")
+        self.emit_label(end_label)
+        result_reg = self.get_register()
+        self.emit(f"    POP {result_reg}")
+        return result_reg
+
+    def generate_prefix(self, expr: PrefixOp) -> str:
+        """++i / --i - returns the NEW value (C semantics)."""
+        if not isinstance(expr.operand, Identifier):
+            raise SyntaxError("Prefix ++/-- can only be applied to variables")
+        self.emit_comment(f"Prefix {expr.op} on {expr.operand.name}")
+        reg = self.get_register()
+        self._emit_var_load(reg, expr.operand.name)
+        if expr.op == '++':
+            self.emit(f"    INC {reg}")
+        elif expr.op == '--':
+            self.emit(f"    DEC {reg}")
+        else:
+            raise SyntaxError(f"Unknown prefix operator '{expr.op}'")
+        self._emit_var_store(expr.operand.name, reg)
+        return reg
 
     def generate_return(self, return_stmt: Return):
         self.emit_comment("Function return")
@@ -886,11 +1495,14 @@ class CodeGenerator:
         """Generate code for do-while loop: do { body } while (cond);"""
         self.emit_comment("Do-While loop")
         start_label = self.generate_label("dowhile_start")
+        cond_label = self.generate_label("dowhile_cond")
         end_label = self.generate_label("dowhile_end")
-        # For do-while, continue jumps to the start of the loop body
-        self.loop_stack.append((start_label, end_label))
+        # For do-while, `continue` jumps to the condition check (C semantics),
+        # NOT back to the top of the body.
+        self.loop_stack.append((cond_label, end_label))
         self.emit_label(start_label)
         self.generate_block(stmt.body)
+        self.emit_label(cond_label)
         reg = self.generate_expression(stmt.cond)
         self.emit(f"    CMP {reg}, 0")
         self.free_register()
@@ -961,7 +1573,13 @@ class CodeGenerator:
     def generate_expression(self, expr: Expression) -> str:
         if isinstance(expr, Number):
             reg = self.get_register()
-            self.emit(f"    MOV {reg}, {expr.value}")
+            # Normalize the literal to a plain decimal integer: the Nova-16
+            # assembler understands decimal and 0x hex, but not 0b/0o forms.
+            try:
+                literal = int(expr.value, 0)
+            except (ValueError, TypeError):
+                literal = expr.value
+            self.emit(f"    MOV {reg}, {literal}")
             return reg
         elif isinstance(expr, StringLiteral):
             reg = self.get_register()
@@ -976,11 +1594,8 @@ class CodeGenerator:
             return self.generate_cast(expr)
         elif isinstance(expr, Identifier):
             reg = self.get_register()
-            if expr.name in self.local_vars:
-                self._emit_local_load(reg, expr.name)
-                return reg
-            else:
-                raise NameError(f"Undefined variable '{expr.name}'")
+            self._emit_var_load(reg, expr.name)
+            return reg
         elif isinstance(expr, BinaryOp):
             # Constant folding: evaluate simple binary ops with two numeric
             # literal operands at compile time (brought over from NoBASIC's
@@ -1057,7 +1672,16 @@ class CodeGenerator:
                 return left_reg
 
             left_reg = self.generate_expression(expr.left)
+            # Preserve the left operand across right-hand evaluation:
+            # expression temporaries are round-robin reused, and a deep RHS
+            # (each array element read alone consumes two temporaries) would
+            # otherwise clobber left_reg before the operation is emitted.
+            can_push_left = self.current_function != 'timer_interrupt'
+            if can_push_left:
+                self.emit(f"    PUSH {left_reg}")
             right_reg = self.generate_expression(expr.right)
+            if can_push_left:
+                right_reg = self._pop_preserving(left_reg, right_reg)
             op = expr.op
             if op == '+': self.emit(f"    ADD {left_reg}, {right_reg}")
             elif op == '-': self.emit(f"    SUB {left_reg}, {right_reg}")
@@ -1136,24 +1760,108 @@ class CodeGenerator:
         elif isinstance(expr, UnaryOp):
             reg = self.generate_expression(expr.right)
             op = expr.op
-            if op == '-': self.emit(f"    NEG {reg}")
-            elif op == '!': self.emit(f"    NOT {reg}")
-            elif op == '~': self.emit(f"    NOT {reg}")
-            else: raise SyntaxError(f"Unknown unary operator '{op}'")
+            if op == '-':
+                self.emit(f"    NEG {reg}")
+            elif op == '~':
+                # Bitwise NOT: 16-bit complement. Matches the CPU's NOT opcode.
+                self.emit(f"    NOT {reg}")
+            elif op == '!':
+                # Logical NOT: must produce exactly 0 or 1, NOT bitwise
+                # complement.  The CPU's NOT instruction gives ~value
+                # (e.g. !5 -> 0xFFFA) which is a different magnitude and
+                # has different truthiness than the C-style 0/1 result.
+                not_true = self.generate_label("not_true")
+                not_end = self.generate_label("not_end")
+                self.emit(f"    CMP {reg}, 0")
+                self.emit(f"    JZ {not_true}")
+                # reg != 0 -> logical false (0)
+                self.emit(f"    MOV {reg}, 0")
+                self.emit(f"    JMP {not_end}")
+                self.emit_label(not_true)
+                # reg == 0 -> logical true (1)
+                self.emit(f"    MOV {reg}, 1")
+                self.emit_label(not_end)
+            else:
+                raise SyntaxError(f"Unknown unary operator '{op}'")
             return reg
-        elif isinstance(expr, PostfixOp):
-            if not isinstance(expr.left, Identifier):
-                raise SyntaxError("Postfix operators can only be applied to identifiers")
+        elif isinstance(expr, ArrayAccess):
+            return self.generate_array_access(expr)
+        elif isinstance(expr, Assignment):
+            # Assignment used as an expression (chained assignment like
+            # `a = b = c`, or assignments inside conditions/arguments):
+            # store the RHS and yield the assigned value.
+            reg = self.generate_expression(expr.value)
+            self._emit_var_store(expr.name, reg)
+            return reg
+        elif isinstance(expr, ArrayAssignment):
+            return self.generate_array_assignment(expr)
+        elif isinstance(expr, DerefAssignment):
+            return self.generate_deref_assignment(expr)
+        elif isinstance(expr, AddressOf):
+            return self.generate_address_of(expr)
+        elif isinstance(expr, Deref):
+            # Load through a pointer: reg holds the address, then read it.
+            # Pointer arithmetic (*(p + n)) must scale the offset by the
+            # pointee size (2 bytes for int*, 1 for char*).
+            operand = expr.operand
+            if (isinstance(operand, BinaryOp) and operand.op in ('+', '-')
+                    and isinstance(operand.left, Identifier)
+                    and self._pointee_size(operand.left) == 2
+                    and isinstance(operand.right, Number)):
+                # Scale the constant offset: (p + n) -> (p + n*2)
+                n = int(operand.right.value, 0) * 2
+                ptr_reg = self.generate_expression(operand.left)
+                if operand.op == '+':
+                    self.emit(f"    ADD {ptr_reg}, {n}")
+                else:
+                    self.emit(f"    SUB {ptr_reg}, {n}")
+            else:
+                ptr_reg = self.generate_expression(operand)
+            self._emit_mem_load(ptr_reg, ptr_reg, self._pointee_size(operand))
+            return ptr_reg
+        elif isinstance(expr, SizeofExpr):
             reg = self.get_register()
-            self._emit_local_load(reg, expr.left.name)
-            result_reg = self.get_register()
-            self.emit(f"    MOV {result_reg}, {reg}")
-            if expr.op == '++': self.emit(f"    INC {reg}")
-            elif expr.op == '--': self.emit(f"    DEC {reg}")
-            else: raise SyntaxError(f"Unknown postfix operator '{expr.op}'")
-            self._emit_local_store(expr.left.name, reg)
-            self.free_register()
-            return result_reg
+            self.emit(f"    MOV {reg}, {self._sizeof_bytes(expr)}")
+            return reg
+        elif isinstance(expr, TernaryOp):
+            return self.generate_ternary(expr)
+        elif isinstance(expr, PrefixOp):
+            return self.generate_prefix(expr)
+        elif isinstance(expr, PostfixOp):
+            if isinstance(expr.left, Identifier):
+                reg = self.get_register()
+                self._emit_var_load(reg, expr.left.name)
+                result_reg = self.get_register()
+                self.emit(f"    MOV {result_reg}, {reg}")
+                if expr.op == '++': self.emit(f"    INC {reg}")
+                elif expr.op == '--': self.emit(f"    DEC {reg}")
+                else: raise SyntaxError(f"Unknown postfix operator '{expr.op}'")
+                self._emit_var_store(expr.left.name, reg)
+                self.free_register()
+                return result_reg
+            if isinstance(expr.left, ArrayAccess):
+                # arr[i]++ / arr[i]-- : returns the OLD value (C semantics).
+                target = expr.left
+                info = self._get_array_info(target.name)
+                can_push = self.current_function != 'timer_interrupt'
+                idx_reg = self.generate_expression(target.index)
+                if can_push:
+                    self.emit(f"    PUSH {idx_reg}")
+                addr_reg = self.get_register()
+                self._emit_array_addr(info, idx_reg, addr_reg)
+                old_reg = self.get_register()
+                self._emit_mem_load(old_reg, addr_reg, info['elem_size'])
+                result_reg = self.get_register()
+                self.emit(f"    MOV {result_reg}, {old_reg}")
+                if expr.op == '++':
+                    self.emit(f"    INC {old_reg}")
+                elif expr.op == '--':
+                    self.emit(f"    DEC {old_reg}")
+                else:
+                    raise SyntaxError(f"Unknown postfix operator '{expr.op}'")
+                self._emit_mem_store(addr_reg, old_reg, info['elem_size'])
+                return result_reg
+            raise SyntaxError("Postfix operators can only be applied to variables or array elements")
         elif isinstance(expr, FuncCall):
             return self.generate_call(expr)
         else:
@@ -1279,6 +1987,11 @@ class CodeGenerator:
         if isinstance(expr, PostfixOp):
             if isinstance(expr.left, Identifier):
                 return self.var_types.get(expr.left.name)
+        if isinstance(expr, ArrayAccess):
+            try:
+                return self._get_array_info(expr.name)['elem_type']
+            except NameError:
+                return None
         return None
 
     def generate_call(self, call: FuncCall) -> str:
@@ -1355,7 +2068,7 @@ class CodeGenerator:
             'abs', 'min', 'max', 'clz', 'ctz', 'popcnt',
             'sqrt', 'log', 'exp', 'sin', 'cos', 'tan',
             'atan', 'asin', 'acos', 'deg', 'rad',
-            'floor', 'ceil', 'round', 'trunc', 'frac', 'intgr', 'powr',
+            'floor', 'ceil', 'round', 'trunc', 'frac', 'intgr', 'int', 'powr',
             'strcpy', 'strcat', 'strcmp', 'strlen',
             'strupr', 'strlwr', 'strrev', 'strfind', 'strfindi',
             'ser_out', 'ser_ctrl',
@@ -1461,7 +2174,7 @@ class CodeGenerator:
         self.emit("    CLI"); self.emit("    RET")
         self.emit_label("builtin_iret")
         self.emit("    IRET"); self.emit("    RET")
-        self.emit_label("builtin_int")
+        self.emit_label("builtin_software_int")
         self.emit("    POP P0"); self.emit("    POP P1")
         self.emit("    INT P1"); self.emit("    PUSH P0"); self.emit("    RET")
         # --- Keyboard ---
@@ -1534,6 +2247,10 @@ class CodeGenerator:
         self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    FRAC P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
         self.emit_label("builtin_intgr")
         self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    INTGR P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        # int(x): identity on 16-bit integers (values are already integral).
+        # Do NOT use the INT opcode here -- that raises a software interrupt.
+        self.emit_label("builtin_int")
+        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
         self.emit_label("builtin_powr")
         self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POWR P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
         # --- String ---

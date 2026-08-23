@@ -248,6 +248,15 @@ class ExpressionSimplifier:
         return left, right
 
     def _fold_builtin_call(self, func_name: str, args: List[Any]) -> Optional[Number]:
+        """Fold built-in function calls where all arguments are numeric literals.
+
+        The formulas below must match core/exec_handlers.py's runtime opcode
+        handlers (_sin, _cos, _tan, etc.) EXACTLY. This fold is purely an
+        optimization: Astrid source that happens to have a constant-foldable
+        argument must produce the identical result to the same source with a
+        non-foldable argument, which falls through to the real opcode at
+        runtime.
+        """
         name = func_name.lower()
         side_effect_builtins = {
             "set_mode", "set_vmode", "set_layer", "set_pos", "write_screen",
@@ -258,11 +267,11 @@ class ExpressionSimplifier:
             "screen_rotate", "screen_shift", "screen_flip", "draw_line",
             "draw_circle", "screen_invert", "screen_blit", "set_blend_mode",
             "draw_char", "layer_swap", "layer_move", "layer_copy",
-            "sound_trigger", "int", "key_count", "key_ctrl",
+            "sound_trigger", "key_count", "key_ctrl",
             "ser_out", "ser_in", "ser_stat", "ser_ctrl",
             "memcpy", "memset", "memmove", "memcmp", "memtest", "memswap",
             "btst", "bset", "bclr", "bflip",
-            "swap", "xchng", "nop", "pushf", "popf", "pusha", "popa",
+            "xchng", "nop", "pushf", "popf", "pusha", "popa",
             "sed", "cld", "cla", "bcd2bin", "bin2bcd",
             "bcdadd", "bcdsub", "bcda", "bcds", "bcdcmp",
             "mouse_ctrl",
@@ -278,12 +287,114 @@ class ExpressionSimplifier:
                 return None
             values.append(val)
         try:
-            if name == "abs":
-                return Number(str(abs(values[0])))
-            if name == "min" and len(values) >= 2:
-                return Number(str(min(values[0], values[1])))
-            if name == "max" and len(values) >= 2:
-                return Number(str(max(values[0], values[1])))
+            # Unary math functions.
+            #
+            # These formulas must match core/exec_handlers.py's runtime
+            # opcode handlers (_sin, _cos, _tan, etc) EXACTLY. This fold is
+            # purely an optimization: Astrid source that happens to have a
+            # constant-foldable argument must produce the identical result
+            # to the same source with a non-foldable argument, which falls
+            # through to the real SIN/COS/.../opcode at runtime.
+            if name in ("sin", "cos", "tan", "sqrt", "abs", "atan", "asin", "acos",
+                        "deg", "rad", "floor", "ceil", "round", "trunc", "frac",
+                        "intgr", "int", "log", "exp"):
+                # NOTE: int() is an identity conversion on 16-bit integer
+                # values (see builtin_int in codegen.py); it is NOT the
+                # fixed-point truncation that intgr() performs.
+                import math
+                v = values[0]
+                if name == "sin":
+                    return Number(str(int(math.sin(v / 256.0) * 256)))
+                if name == "cos":
+                    return Number(str(int(math.cos(v / 256.0) * 256)))
+                if name == "tan":
+                    # _tan takes its operand as raw radians (no /256 scaling)
+                    # and scales the result by 1000, not 256.
+                    try:
+                        return Number(str(int(math.tan(v) * 1000)))
+                    except (ValueError, OverflowError):
+                        return None  # can't fold; runtime handler falls back to 0
+                if name == "sqrt":
+                    if v < 0: return None
+                    return Number(str(int(v ** 0.5)))
+                if name == "abs":
+                    return Number(str(abs(v)))
+                if name == "atan":
+                    return Number(str(int(math.atan(v / 256.0) * 256)))
+                if name == "asin":
+                    try:
+                        return Number(str(int(math.asin(v / 256.0) * 256)))
+                    except ValueError:
+                        return None  # out of [-1, 1] domain; runtime handler falls back to 0
+                if name == "acos":
+                    try:
+                        return Number(str(int(math.acos(v / 256.0) * 256)))
+                    except ValueError:
+                        return None  # out of [-1, 1] domain; runtime handler falls back to 0
+                if name == "deg":
+                    # _deg converts plain degrees -> fixed-point (x256) radians.
+                    return Number(str(int((v * math.pi / 180.0) * 256)))
+                if name == "rad":
+                    # _rad converts fixed-point (x256) radians -> plain degrees.
+                    return Number(str(int((v / 256.0) * 180.0 / math.pi)))
+                if name == "floor":
+                    return Number(str(int(math.floor(v / 256.0))))
+                if name == "ceil":
+                    return Number(str(int(math.ceil(v / 256.0))))
+                if name == "round":
+                    return Number(str(int(round(v / 256.0))))
+                if name == "trunc":
+                    # Truncate toward zero (matches _trunc: int(v / 256.0),
+                    # not v // 256 which floors toward -infinity).
+                    return Number(str(int(v / 256.0)))
+                if name == "frac":
+                    # Same sign as v, consistent with TRUNC (matches _frac's
+                    # math.fmod, not v % 256 which floors).
+                    return Number(str(int(math.fmod(v, 256))))
+                if name == "intgr":
+                    return Number(str(int(v / 256.0)))
+                if name == "int":
+                    # Identity: Astrid values are already 16-bit integers.
+                    return Number(str(v & 0xFFFF))
+                if name == "log":
+                    if v <= 0: return None
+                    return Number(str(int(math.log(v / 256.0) * 256)))
+                if name == "exp":
+                    result = int(math.exp(v / 256.0) * 256)
+                    return Number(str(max(0, min(65535, result))))
+
+            # Binary math functions
+            if name in ("min", "max") and len(values) >= 2:
+                v0, v1 = values[0], values[1]
+                fn = min if name == "min" else max
+                return Number(str(fn(v0, v1)))
+            if name == "powr" and len(values) >= 2:
+                v0, v1 = values[0], values[1]
+                if v1 < 0: return None
+                return Number(str(int(v0 ** v1)))
+
+            # CLZ / CTZ / POPCNT on constants
+            if name == "clz":
+                v = values[0]
+                count = 0
+                for i in range(15, -1, -1):
+                    if v & (1 << i): break
+                    count += 1
+                return Number(str(count))
+            if name == "ctz":
+                v = values[0]
+                count = 0
+                for i in range(16):
+                    if v & (1 << i): break
+                    count += 1
+                return Number(str(count))
+            if name == "popcnt":
+                return Number(str(values[0].bit_count()))
+
+            # SWAP (byte swap)
+            if name == "swap":
+                v = values[0]
+                return Number(str(((v & 0xFF) << 8) | ((v >> 8) & 0xFF)))
         except (TypeError, ValueError, ZeroDivisionError):
             return None
         return None

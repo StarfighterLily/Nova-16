@@ -44,7 +44,10 @@ void main() {
 }
 """
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.ast', delete=False) as f:
+    # UTF-8 is required: source strings may contain non-ASCII characters
+    # that cp1252 cannot encode on Windows.
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.ast', delete=False,
+                                     encoding='utf-8') as f:
         f.write(source)
         source_path = f.name
     
@@ -90,7 +93,8 @@ void main() {
 }
 """
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.ast', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.ast', delete=False,
+                                     encoding='utf-8') as f:
         f.write(source)
         source_path = f.name
     
@@ -136,7 +140,8 @@ void main() {
 }
 """
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.ast', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.ast', delete=False,
+                                     encoding='utf-8') as f:
         f.write(source)
         source_path = f.name
     

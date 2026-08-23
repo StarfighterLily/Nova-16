@@ -336,7 +336,12 @@ class PeepholeOptimizer:
 
     def _is_copy_propagation_safe_register(self, reg):
         reg = reg.strip().upper()
-        if reg in {'SP', 'FP', 'P7', 'VX', 'VY', 'VM', 'VL', 'VC', 'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS', 'C0', 'C1'}:
+        # P0 and R0 are the function return-value registers (ABI): callers
+        # read them after RET, which is invisible to the local use-scan, so
+        # moves that DEFINE P0/R0 must never be eliminated or propagated
+        # away. P7/P8/P9-class and special registers are likewise reserved.
+        if reg in {'SP', 'FP', 'P0', 'R0', 'P7', 'VX', 'VY', 'VM', 'VL', 'VC',
+                   'SA', 'SF', 'SV', 'SW', 'TT', 'TM', 'TC', 'TS', 'C0', 'C1'}:
             return False
         return bool(re.fullmatch(r'R[0-9]|P[0-6]', reg))
 
