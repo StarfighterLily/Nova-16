@@ -23,10 +23,12 @@ MOV P4, R0
 ; For loop
 ; var x = ...
 MOV P5, 0
-MOV [FP-1], P5
+MOV [0xC000], P5
 for_start_0:
-MOV P6, [FP-1]
+MOV P6, [0xC000]
+PUSH P6
 MOV P7, 128
+POP P6
 CMP P6, P7
 JC cmp_true_3
 MOV P6, 0
@@ -39,10 +41,12 @@ JZ for_end_1
 ; For loop
 ; var y = ...
 MOV P0, 0
-MOV [FP-2], P0
+MOV [0xC002], P0
 for_start_5:
-MOV P1, [FP-2]
+MOV P1, [0xC002]
+PUSH P1
 MOV P2, 128
+POP P1
 CMP P1, P2
 JC cmp_true_8
 MOV P1, 0
@@ -53,45 +57,45 @@ cmp_end_9:
 CMP P1, 0
 JZ for_end_6
 ; Call to set_pos
-MOV P4, [FP-2]
+MOV P4, [0xC002]
 PUSH P4
-MOV P5, [FP-1]
+MOV P5, [0xC000]
 PUSH P5
 CALL builtin_set_pos
 ; Args consumed by callee
 MOV P6, R0
 ; Call to write_screen
-MOV P7, 0x1F
+MOV P7, 31
 PUSH P7
 CALL builtin_write_screen
 ; Args consumed by callee
 MOV P0, R0
 for_continue_7:
 ; Wrap-check: save y before update
-MOV P1, [FP-2]
+MOV P1, [0xC002]
 PUSH P1
-MOV P2, [FP-2]
+MOV P2, [0xC002]
 MOV P4, P2
 INC P2
-MOV [FP-2], P2
+MOV [0xC002], P2
 ; Wrap-check: compare y new vs old
 POP P5
-MOV P6, [FP-2]
+MOV P6, [0xC002]
 CMP P6, P5
 JC for_end_6
 JMP for_start_5
 for_end_6:
 for_continue_2:
 ; Wrap-check: save x before update
-MOV P7, [FP-1]
+MOV P7, [0xC000]
 PUSH P7
-MOV P0, [FP-1]
+MOV P0, [0xC000]
 MOV P1, P0
 INC P0
-MOV [FP-1], P0
+MOV [0xC000], P0
 ; Wrap-check: compare x new vs old
 POP P2
-MOV P4, [FP-1]
+MOV P4, [0xC000]
 CMP P4, P2
 JC for_end_1
 JMP for_start_0
@@ -126,97 +130,4 @@ POP P0
 POP P1
 SWRITE P1
 PUSH P0
-RET
-builtin_read_screen:
-SREAD P0
-RET
-builtin_scroll_x:
-POP P0
-POP P1
-SROL 0, 1
-PUSH P0
-RET
-builtin_scroll_y:
-POP P0
-POP P1
-SROL 1, 1
-PUSH P0
-RET
-builtin_set_pointers:
-POP P3
-POP P1
-POP P2
-MOV P0, P1
-MOV P1, P2
-PUSH P3
-RET
-builtin_write_text:
-POP P0
-POP P1
-POP P2
-MOV VC, P2
-TEXT P1
-PUSH P0
-RET
-builtin_set_font:
-POP P0
-POP P1
-PUSH P0
-RET
-builtin_sound_play:
-POP P0
-POP P1
-POP P2
-POP P3
-SPLAY P3, P2, P1
-PUSH P0
-RET
-builtin_sound_stop:
-POP P0
-POP P1
-SPLAY P1, 0, 0
-PUSH P0
-RET
-builtin_set_timer:
-POP P0
-POP P1
-POP P2
-POP P3
-POP P4
-MOV TT, P1
-MOV TM, P2
-MOV TS, P3
-MOV TC, P4
-PUSH P0
-RET
-builtin_sti:
-STI
-RET
-builtin_cli:
-CLI
-RET
-builtin_iret:
-IRET
-RET
-builtin_random:
-RND P0
-RET
-builtin_random_range:
-POP P3
-POP P1
-POP P2
-RNDR P0, P1, P2
-PUSH P3
-RET
-builtin_key_available:
-KEYSTAT P0
-RET
-builtin_key_read:
-KEYIN P0
-RET
-builtin_key_clear:
-KEYCLEAR
-RET
-builtin_halt:
-HLT
 RET

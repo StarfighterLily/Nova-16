@@ -34,10 +34,10 @@ func_draw_stars:
 ENTER 14
 ; var start = ...
 MOV P6, 0
-MOV [0x0088], P6
+MOV [0xC088], P6
 ; var finish = ...
 MOV P7, 65535
-MOV [0x008A], P7
+MOV [0xC08A], P7
 ; Call to set_layer
 MOV P0, [FP+4]
 PUSH P0
@@ -46,11 +46,13 @@ CALL builtin_set_layer
 MOV P1, R0
 ; For loop
 ; Assignment to p
-MOV P2, [0x0088]
-MOV [0x0080], P2
+MOV P2, [0xC088]
+MOV [0xC080], P2
 for_start_0:
-MOV P4, [0x0080]
-MOV P5, [0x008A]
+MOV P4, [0xC080]
+PUSH P4
+MOV P5, [0xC08A]
+POP P4
 CMP P5, P4
 JNC cmp_true_3
 MOV P4, 0
@@ -64,17 +66,19 @@ JZ for_end_1
 ; Call to random
 CALL builtin_random
 MOV P6, P0
-MOV [0x008C], P6
+MOV [0xC08C], P6
 ; Assignment to x
 ; Optimized high-byte access: (val >> 8) & 0xFF
-MOV P7, [0x008C]
+MOV P7, [0xC08C]
 MOV P0, P7:
-MOV [0x0082], P0
+MOV [0xC082], P0
 ; Assignment to y
-MOV P1, 0xFF
-MOV P2, [0x008C]
+MOV P1, 255
+PUSH P1
+MOV P2, [0xC08C]
+POP P1
 AND P1, P2
-MOV [0x0084], P1
+MOV [0xC084], P1
 ; Assignment to color
 ; Call to random_range
 MOV P4, [FP+10]
@@ -84,33 +88,33 @@ PUSH P5
 CALL builtin_random_range
 ; Args consumed by callee
 MOV P6, P0
-MOV [0x0086], P6
+MOV [0xC086], P6
 ; Call to set_pos
-MOV P7, [0x0084]
+MOV P7, [0xC084]
 PUSH P7
-MOV P0, [0x0082]
+MOV P0, [0xC082]
 PUSH P0
 CALL builtin_set_pos
 ; Args consumed by callee
 MOV P1, R0
 ; Call to write_screen
-MOV P2, [0x0086]
+MOV P2, [0xC086]
 PUSH P2
 CALL builtin_write_screen
 ; Args consumed by callee
 MOV P4, R0
 for_continue_2:
 ; Wrap-check: save p before update
-MOV P5, [0x0080]
+MOV P5, [0xC080]
 PUSH P5
 ; Assignment to p
-MOV P6, [0x0080]
+MOV P6, [0xC080]
 MOV P7, [FP+6]
 ADD P6, P7
-MOV [0x0080], P6
+MOV [0xC080], P6
 ; Wrap-check: compare p new vs old
 POP P0
-MOV P1, [0x0080]
+MOV P1, [0xC080]
 CMP P1, P0
 JC for_end_1
 JMP for_start_0
@@ -143,7 +147,7 @@ CALL builtin_set_pos
 ; Args consumed by callee
 MOV P1, R0
 ; Call to write_text
-MOV P2, 0x15
+MOV P2, 21
 PUSH P2
 MOV P4, str_5
 PUSH P4
@@ -159,7 +163,7 @@ CALL builtin_set_pos
 ; Args consumed by callee
 MOV P0, R0
 ; Call to write_text
-MOV P1, 0x1F
+MOV P1, 31
 PUSH P1
 MOV P2, str_5
 PUSH P2
@@ -175,11 +179,11 @@ func_main:
 ENTER 0
 ; Call to setup
 CALL func_setup
-MOV P5, R0
+MOV P5, P0
 ; Call to draw_stars
-MOV P6, 0x06
+MOV P6, 6
 PUSH P6
-MOV P7, 0x00
+MOV P7, 0
 PUSH P7
 MOV P0, 32
 PUSH P0
@@ -187,11 +191,11 @@ MOV P1, 1
 PUSH P1
 CALL func_draw_stars
 ; Args consumed by callee
-MOV P2, R0
+MOV P2, P0
 ; Call to draw_stars
-MOV P4, 0x0A
+MOV P4, 10
 PUSH P4
-MOV P5, 0x07
+MOV P5, 7
 PUSH P5
 MOV P6, 128
 PUSH P6
@@ -199,11 +203,10 @@ MOV P7, 2
 PUSH P7
 CALL func_draw_stars
 ; Args consumed by callee
-MOV P0, R0
 ; Call to draw_stars
-MOV P1, 0x0F
+MOV P1, 15
 PUSH P1
-MOV P2, 0x0B
+MOV P2, 11
 PUSH P2
 MOV P4, 256
 PUSH P4
@@ -211,10 +214,10 @@ MOV P5, 3
 PUSH P5
 CALL func_draw_stars
 ; Args consumed by callee
-MOV P6, R0
+MOV P6, P0
 ; Call to draw_text
 CALL func_draw_text
-MOV P7, R0
+MOV P7, P0
 ; Call to sti
 CALL builtin_sti
 MOV P0, R0
@@ -381,28 +384,11 @@ POP P1
 SWRITE P1
 PUSH P0
 RET
-builtin_read_screen:
-SREAD P0
-RET
 builtin_scroll_x:
 POP P0
 POP P1
-SROL 0, 1
+SROL 0, P1
 PUSH P0
-RET
-builtin_scroll_y:
-POP P0
-POP P1
-SROL 1, 1
-PUSH P0
-RET
-builtin_set_pointers:
-POP P3
-POP P1
-POP P2
-MOV P0, P1
-MOV P1, P2
-PUSH P3
 RET
 builtin_write_text:
 POP P0
@@ -412,31 +398,14 @@ MOV VC, P2
 TEXT P1
 PUSH P0
 RET
-builtin_set_font:
-POP P0
-POP P1
-PUSH P0
-RET
-builtin_sound_play:
-POP P0
-POP P1
-POP P2
-POP P3
-SPLAY P3, P2, P1
-PUSH P0
-RET
-builtin_sound_stop:
-POP P0
-POP P1
-SPLAY P1, 0, 0
-PUSH P0
-RET
 builtin_set_timer:
 POP P0
 POP P1
 POP P2
 POP P3
 POP P4
+; Args pushed in reversed source order: stack top->bottom after POP P0 is
+; [arg0=TT, arg1=TM, arg2=TS, arg3=TC]. So POP P1=TT, P2=TM, P3=TS, P4=TC.
 MOV TT, P1
 MOV TM, P2
 MOV TS, P3
@@ -446,31 +415,17 @@ RET
 builtin_sti:
 STI
 RET
-builtin_cli:
-CLI
-RET
-builtin_iret:
-IRET
-RET
 builtin_random:
 RND P0
 RET
 builtin_random_range:
+; Save return address in P3 (not P0, since RNDR will write its result to P0).
+; Stack: [ret_addr, color_max, color_min] (top = last pushed = color_min)
+; builtins with P0 as destination use P3 for the return address (see
+; builtin_set_pointers for the same pattern).
 POP P3
 POP P1
 POP P2
 RNDR P0, P1, P2
 PUSH P3
-RET
-builtin_key_available:
-KEYSTAT P0
-RET
-builtin_key_read:
-KEYIN P0
-RET
-builtin_key_clear:
-KEYCLEAR
-RET
-builtin_halt:
-HLT
 RET

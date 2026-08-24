@@ -30,6 +30,9 @@ def main():
                         help="Disable live-range scheduling")
     parser.add_argument("--debug-optimizations", action="store_true",
                         help="Enable optimization debug output")
+    parser.add_argument("--emit-all-builtins", action="store_true", dest="emit_all_builtins",
+                        help="Emit every builtin implementation regardless of usage "
+                             "(legacy behavior; default is lazy, usage-driven emission)")
     args = parser.parse_args()
 
     if args.debug_optimizations:
@@ -64,6 +67,7 @@ def main():
             enable_peephole=enable_peephole,
             enable_live_range_scheduling=enable_live_range_scheduling,
             debug_optimizations=args.debug_optimizations,
+            emit_all_builtins=args.emit_all_builtins,
         )
         assembly = codegen.generate(ast)
         print(f"✓ Code Generator: Successfully generated assembly code")

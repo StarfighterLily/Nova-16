@@ -29,13 +29,343 @@ class CodeGenerator:
     # well above typical code segments (ORG 0x1000+) and far below the stack
     # (0xFF00) so global storage never collides with either.
     GLOBAL_REGION_START = 0x8000
+    # Dedicated RAM region for spilled locals (hot-variable migration).
+    # Each compiled function gets a disjoint window here so spilled locals
+    # never collide with code (ORG 0x1000+), globals (0x8000+), the ITOS /
+    # ITOB string buffers (0xA000 / 0xA100), the sprite SCB (0xF000-0xF0FF),
+    # or the stack (grows down from 0xFF00). The previous scheme advanced a
+    # 128-byte window per function upward from zero page (0x0080), which for
+    # multi-function programs marched straight into the emitted code and
+    # corrupted it at runtime (e.g. starfield's draw_stars overwriting its
+    # own loop with spilled variables).
+    SPILL_REGION_START = 0xC000
+    SPILL_REGION_END = 0xF000
     LIVE_RANGE_SCHEDULER_MAX_LINES = 384
     LIVE_RANGE_SCHEDULER_MAX_WORK = 24576
+
+    # Static implementations for every builtin, keyed by assembly label.
+    # Builtins are LAZILY LINKED: generate_builtins() only emits entries whose
+    # label was recorded in self.used_builtins during code generation, so
+    # programs that never call a builtin pay zero bytes for it. Each value is
+    # a list of lines: instruction mnemonics are emitted indented; strings
+    # starting with ';' are emitted verbatim as comments.
+    BUILTIN_IMPLEMENTATIONS: Dict[str, List[str]] = {
+        # --- Graphics ---
+        'builtin_set_vmode': [
+            'POP P0', 'POP P1', 'MOV VM, P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_set_layer': [
+            'POP P0', 'POP P1', 'MOV VL, P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_set_pos': [
+            'POP P0', 'POP P1', 'POP P2', 'MOV VX, P1', 'MOV VY, P2', 'PUSH P0', 'RET',
+        ],
+        'builtin_write_screen': [
+            'POP P0', 'POP P1', 'SWRITE P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_screen_fill': [
+            'POP P0', 'POP P1', 'SFILL P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_read_screen': [
+            'SREAD P0', 'RET',
+        ],
+        'builtin_scroll_x': [
+            'POP P0', 'POP P1', 'SROL 0, P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_scroll_y': [
+            'POP P0', 'POP P1', 'SROL 1, P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_screen_rotate': [
+            '; Args: direction, amount',
+            'POP P0', 'POP P1', 'POP P2', 'SROT P1, P2', 'PUSH P0', 'RET',
+        ],
+        'builtin_screen_shift': [
+            '; Args: axis, amount',
+            'POP P0', 'POP P1', 'POP P2', 'SSHFT P1, P2', 'PUSH P0', 'RET',
+        ],
+        'builtin_screen_flip': [
+            '; Args: axis',
+            'POP P0', 'POP P1', 'SFLIP P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_draw_line': [
+            '; Args: x2, y2 (uses VX/VY as start)',
+            'POP P0', 'POP P1', 'POP P2', 'SLINE P1, P2', 'PUSH P0', 'RET',
+        ],
+        'builtin_draw_circle': [
+            '; Args: radius, filled',
+            'POP P0', 'POP P1', 'POP P2', 'SCIRC P1, P2', 'PUSH P0', 'RET',
+        ],
+        'builtin_screen_invert': [
+            'SINV', 'RET',
+        ],
+        'builtin_screen_blit': [
+            'SBLIT', 'RET',
+        ],
+        'builtin_set_blend_mode': [
+            'POP P0', 'POP P1', 'SBLEND P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_draw_char': [
+            '; Args: char (uses VX/VY position, VC color)',
+            'POP P0', 'POP P1', 'CHAR P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_set_pointers': [
+            '; All pushes/pops are P (2 bytes) for 16-bit ABI consistency.',
+            'POP P3', 'POP P1', 'POP P2', 'MOV P0, P1', 'MOV P1, P2', 'PUSH P3', 'RET',
+        ],
+        'builtin_write_text': [
+            'POP P0', 'POP P1', 'POP P2', 'MOV VC, P2', 'TEXT P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_set_font': [
+            'POP P0', 'POP P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_layer_swap': [
+            'POP P0', 'POP P1', 'LSWAP P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_layer_move': [
+            'POP P0', 'POP P1', 'LMOVE P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_layer_copy': [
+            'POP P0', 'POP P1', 'LCOPY P1', 'PUSH P0', 'RET',
+        ],
+        # --- Sound ---
+        'builtin_sound_play': [
+            'POP P0', 'POP P1', 'POP P2', 'POP P3', 'SPLAY P3, P2, P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_sound_stop': [
+            'POP P0', 'POP P1', 'SPLAY P1, 0, 0', 'PUSH P0', 'RET',
+        ],
+        'builtin_sound_trigger': [
+            'POP P0', 'POP P1', 'STRIG P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_set_timer': [
+            'POP P0', 'POP P1', 'POP P2', 'POP P3', 'POP P4',
+            '; Args pushed in reversed source order: stack top->bottom after POP P0 is',
+            '; [arg0=TT, arg1=TM, arg2=TS, arg3=TC]. So POP P1=TT, P2=TM, P3=TS, P4=TC.',
+            'MOV TT, P1', 'MOV TM, P2', 'MOV TS, P3', 'MOV TC, P4', 'PUSH P0', 'RET',
+        ],
+        # --- Interrupts ---
+        'builtin_sti': ['STI', 'RET'],
+        'builtin_cli': ['CLI', 'RET'],
+        'builtin_iret': ['IRET', 'RET'],
+        'builtin_software_int': [
+            'POP P0', 'POP P1', 'INT P1', 'PUSH P0', 'RET',
+        ],
+        # --- Keyboard ---
+        'builtin_key_available': ['KEYSTAT P0', 'RET'],
+        'builtin_key_read': ['KEYIN P0', 'RET'],
+        'builtin_key_clear': ['KEYCLEAR', 'RET'],
+        'builtin_key_count': ['KEYCOUNT P0', 'RET'],
+        'builtin_key_ctrl': [
+            'POP P0', 'POP P1', 'KEYCTRL P1', 'PUSH P0', 'RET',
+        ],
+        # --- Random ---
+        'builtin_random': ['RND P0', 'RET'],
+        'builtin_random_range': [
+            '; Save return address in P3 (not P0, since RNDR will write its result to P0).',
+            '; Stack: [ret_addr, color_max, color_min] (top = last pushed = color_min)',
+            '; builtins with P0 as destination use P3 for the return address (see',
+            '; builtin_set_pointers for the same pattern).',
+            'POP P3', 'POP P1', 'POP P2', 'RNDR P0, P1, P2', 'PUSH P3', 'RET',
+        ],
+        # --- Math (unary, write result to P0) ---
+        'builtin_abs': [
+            'POP P3', 'POP P1', 'ABS P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_min': [
+            'POP P3', 'POP P1', 'POP P2', 'MIN P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_max': [
+            'POP P3', 'POP P1', 'POP P2', 'MAX P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_clz': [
+            'POP P3', 'POP P1', 'CLZ P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_ctz': [
+            'POP P3', 'POP P1', 'CTZ P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_popcnt': [
+            'POP P3', 'POP P1', 'POPCNT P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_sqrt': [
+            'POP P3', 'POP P1', 'SQRT P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_log': [
+            'POP P3', 'POP P1', 'LOG P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_exp': [
+            'POP P3', 'POP P1', 'EXP P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_sin': [
+            'POP P3', 'POP P1', 'SIN P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_cos': [
+            'POP P3', 'POP P1', 'COS P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_tan': [
+            'POP P3', 'POP P1', 'TAN P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_atan': [
+            'POP P3', 'POP P1', 'ATAN P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_asin': [
+            'POP P3', 'POP P1', 'ASIN P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_acos': [
+            'POP P3', 'POP P1', 'ACOS P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_deg': [
+            'POP P3', 'POP P1', 'DEG P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_rad': [
+            'POP P3', 'POP P1', 'RAD P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_floor': [
+            'POP P3', 'POP P1', 'FLOOR P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_ceil': [
+            'POP P3', 'POP P1', 'CEIL P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_round': [
+            'POP P3', 'POP P1', 'ROUND P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_trunc': [
+            'POP P3', 'POP P1', 'TRUNC P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_frac': [
+            'POP P3', 'POP P1', 'FRAC P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_intgr': [
+            'POP P3', 'POP P1', 'INTGR P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_int': [
+            '; int(x): identity on 16-bit integers (values are already integral).',
+            '; Do NOT use the INT opcode here -- that raises a software interrupt.',
+            'POP P3', 'POP P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_powr': [
+            'POP P3', 'POP P1', 'POP P2', 'POWR P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        # --- String ---
+        'builtin_strcpy': [
+            'POP P3', 'POP P1', 'POP P2', 'STRCPY P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_strcat': [
+            'POP P3', 'POP P1', 'POP P2', 'STRCAT P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_strcmp': [
+            'POP P3', 'POP P1', 'POP P2', 'POP P4', 'STRCMP P1, P2, P4', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_strlen': [
+            '; STRLEN writes result to R0',
+            'POP P3', 'POP P1', 'STRLEN P1', 'MOV P0, R0', 'PUSH P3', 'RET',
+        ],
+        'builtin_strupr': [
+            'POP P3', 'POP P1', 'STRUPR P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_strlwr': [
+            'POP P3', 'POP P1', 'STRLWR P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_strrev': [
+            'POP P3', 'POP P1', 'STRREV P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_strfind': [
+            '; STRFIND writes result to R0',
+            'POP P3', 'POP P1', 'POP P2', 'STRFIND P1, P2', 'MOV P0, R0', 'PUSH P3', 'RET',
+        ],
+        'builtin_strfindi': [
+            '; STRFINDI writes result to R0',
+            'POP P3', 'POP P1', 'POP P2', 'STRFINDI P1, P2', 'MOV P0, R0', 'PUSH P3', 'RET',
+        ],
+        # --- Serial ---
+        'builtin_ser_out': [
+            'POP P3', 'POP P1', 'SEROUT P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_ser_in': ['SERIN P0', 'RET'],
+        'builtin_ser_stat': ['SERSTAT P0', 'RET'],
+        'builtin_ser_ctrl': [
+            'POP P3', 'POP P1', 'SERCTRL P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        # --- Memory ---
+        'builtin_memcpy': [
+            'POP P3', 'POP P1', 'POP P2', 'POP P4', 'MEMCPY P1, P2, P4', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_memset': [
+            'POP P3', 'POP P1', 'POP P2', 'POP P4', 'MEMSET P1, P2, P4', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_memmove': [
+            'POP P3', 'POP P1', 'POP P2', 'POP P4', 'MEMMOVE P1, P2, P4', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_memcmp': [
+            'POP P3', 'POP P1', 'POP P2', 'POP P4', 'POP P5', 'MEMCMP P1, P2, P4, P5', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_memtest': [
+            'POP P3', 'POP P1', 'POP P2', 'POP P4', 'MEMTEST P1, P2, P4', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_memswap': [
+            'POP P3', 'POP P1', 'POP P2', 'POP P4', 'MEMSWAP P1, P2, P4', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        # --- Bit manipulation ---
+        'builtin_btst': [
+            'POP P3', 'POP P1', 'POP P2', 'BTST P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_bset': [
+            'POP P3', 'POP P1', 'POP P2', 'BSET P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_bclr': [
+            'POP P3', 'POP P1', 'POP P2', 'BCLR P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_bflip': [
+            'POP P3', 'POP P1', 'POP P2', 'BFLIP P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        # --- Misc ---
+        'builtin_swap': [
+            'POP P3', 'POP P1', 'SWAP P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_xchng': [
+            'POP P3', 'POP P1', 'POP P2', 'XCHNG P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_nop': ['NOP', 'RET'],
+        'builtin_pushf': ['PUSHF', 'RET'],
+        'builtin_popf': ['POPF', 'RET'],
+        'builtin_pusha': ['PUSHA', 'RET'],
+        'builtin_popa': ['POPA', 'RET'],
+        'builtin_halt': ['HLT', 'RET'],
+        # --- BCD ---
+        'builtin_sed': ['SED', 'RET'],
+        'builtin_cld': ['CLD', 'RET'],
+        'builtin_cla': ['CLA', 'RET'],
+        'builtin_bcd2bin': [
+            'POP P3', 'POP P1', 'BCD2BIN P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_bin2bcd': [
+            'POP P3', 'POP P1', 'BIN2BCD P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_bcdadd': [
+            'POP P3', 'POP P1', 'POP P2', 'BCDADD P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_bcdsub': [
+            'POP P3', 'POP P1', 'POP P2', 'BCDSUB P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_bcda': [
+            'POP P3', 'POP P1', 'POP P2', 'BCDA P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_bcds': [
+            'POP P3', 'POP P1', 'POP P2', 'BCDS P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_bcdcmp': [
+            'POP P3', 'POP P1', 'POP P2', 'BCDCMP P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        # --- Mouse ---
+        'builtin_mouse_ctrl': [
+            'POP P3', 'POP P1', 'MOUSECTRL P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+    }
 
     def __init__(self, enable_peephole: bool = True, debug_optimizations: bool = False,
                  enable_expr_simplify: bool = True, enable_live_range: bool = True,
                  enable_optimizations: bool = True,
-                 enable_live_range_scheduling: Optional[bool] = None):
+                 enable_live_range_scheduling: Optional[bool] = None,
+                 emit_all_builtins: bool = False):
         self.debug_optimizations = debug_optimizations
         self.opt_config = get_optimization_config()
         self.opt_config['debug_optimizations'] = debug_optimizations
@@ -67,6 +397,11 @@ class CodeGenerator:
         self.reg_counter = 0 
         self.current_function = None
         self.builtin_functions = self._init_builtins()
+        # Labels of builtins actually referenced during code generation.
+        # Only these get emitted into the output assembly (lazy linking).
+        self.used_builtins: Set[str] = set()
+        # When True, emit every builtin regardless of usage (--emit-all-builtins).
+        self.emit_all_builtins = bool(emit_all_builtins)
         # Stack of (start_label, end_label) for break/continue support
         self.loop_stack = []
         
@@ -80,7 +415,10 @@ class CodeGenerator:
         # call each other, two functions' spilled locals would collide at the
         # same zero-page address. Advance the base per function so each gets a
         # disjoint spill region.
-        self._spill_base = 0x0080
+        self._spill_window = self.SPILL_REGION_START
+        # Spill window assigned to the function currently being generated
+        # (None when the spill region is exhausted -> keep locals FP-relative).
+        self._function_spill_base = None
         
         # Unified liveness tracking
         self.live_ranges: Dict[str, Tuple[int, int]] = {}  # name -> (start, end)
@@ -766,9 +1104,15 @@ class CodeGenerator:
 
         # Clear spill allocations for this function (per-function scope)
         self.spill_allocations = {}
-        # Advance the zero-page spill base so this function's spilled locals
-        # don't collide with a callee's (or caller's) spilled locals.
-        self._spill_base += self.opt_config.get('zero_page_size', 128)
+        # Reserve this function's spill window from the dedicated spill
+        # region so spilled locals never collide with code, globals, the
+        # stack, or another function's window. When the region is exhausted,
+        # keep locals FP-relative (no migration) rather than corrupt memory.
+        if self._spill_window + self.opt_config.get('zero_page_size', 128) <= self.SPILL_REGION_END:
+            self._function_spill_base = self._spill_window
+            self._spill_window += self.opt_config.get('zero_page_size', 128)
+        else:
+            self._function_spill_base = None
         
         # Apply register-coloring metadata pass to local variables. This is a
         # lightweight, conservative optimization pass that records likely color
@@ -898,14 +1242,16 @@ class CodeGenerator:
                 # Use DynamicSpillAllocator to assign concrete spill addresses
                 # (fallback to a larger spill region) for hot/spilled locals.
                 try:
-                    allocator = DynamicSpillAllocator(
-                        spill_slots={name: idx for idx, name in enumerate(actual_local_names)},
-                        access_counts={name: self.variable_access_counts.get(name, 0) for name in actual_local_names},
-                        debug=self.debug_optimizations,
-                        zero_page_base=self._spill_base,
-                        zero_page_size=self.opt_config.get('zero_page_size', 128),
-                    )
-                    allocs = allocator.allocate()
+                    allocs = {}
+                    if self._function_spill_base is not None:
+                        allocator = DynamicSpillAllocator(
+                            spill_slots={name: idx for idx, name in enumerate(actual_local_names)},
+                            access_counts={name: self.variable_access_counts.get(name, 0) for name in actual_local_names},
+                            debug=self.debug_optimizations,
+                            zero_page_base=self._function_spill_base,
+                            zero_page_size=self.opt_config.get('zero_page_size', 128),
+                        )
+                        allocs = allocator.allocate()
                     for var, addr in allocs.items():
                         self.spill_allocations[var] = addr
                     if allocs and self.debug_optimizations:
@@ -2033,6 +2379,9 @@ class CodeGenerator:
             self.free_register()
             
             label = self.builtin_functions.get(call.name)
+            if label:
+                # Record usage so generate_builtins emits this implementation.
+                self.used_builtins.add(label)
             self.emit(f"    CALL {label}")
             self.emit(f"    ; Args consumed by callee")
             
@@ -2049,6 +2398,9 @@ class CodeGenerator:
         label = self.functions.get(call.name, {}).get('label') or self.builtin_functions.get(call.name)
         if not label:
             raise NameError(f"Undefined function '{call.name}'")
+        # Record builtin usage so generate_builtins only emits what is called.
+        if label in self.BUILTIN_IMPLEMENTATIONS:
+            self.used_builtins.add(label)
         
         self.emit(f"    CALL {label}")
         if call.args:
@@ -2086,267 +2438,32 @@ class CodeGenerator:
         return result_reg
 
     def generate_builtins(self):
+        """Emit builtin implementations referenced by the program.
+
+        Builtins are LAZILY LINKED: only labels recorded in self.used_builtins
+        (populated by generate_call) are emitted, so programs that never call
+        a builtin pay zero bytes for it. Set emit_all_builtins=True
+        (--emit-all-builtins CLI flag) to restore the legacy behavior of
+        emitting the full builtin library.
+        """
+        if self.emit_all_builtins:
+            selected = list(self.BUILTIN_IMPLEMENTATIONS.items())
+        else:
+            selected = [(label, body)
+                        for label, body in self.BUILTIN_IMPLEMENTATIONS.items()
+                        if label in self.used_builtins]
+        if not selected:
+            return
         self.assembly.append("; Built-in Function Implementations")
-        # --- Graphics ---
-        self.emit_label("builtin_set_vmode")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    MOV VM, P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_set_layer")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    MOV VL, P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_set_pos")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    MOV VX, P1"); self.emit("    MOV VY, P2"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_write_screen")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SWRITE P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_screen_fill")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SFILL P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_read_screen")
-        self.emit("    SREAD P0"); self.emit("    RET")
-        self.emit_label("builtin_scroll_x")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SROL 0, P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_scroll_y")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SROL 1, P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_screen_rotate")
-        # Args: direction, amount
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
-        self.emit("    SROT P1, P2"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_screen_shift")
-        # Args: axis, amount
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
-        self.emit("    SSHFT P1, P2"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_screen_flip")
-        # Args: axis
-        self.emit("    POP P0"); self.emit("    POP P1")
-        self.emit("    SFLIP P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_draw_line")
-        # Args: x2, y2 (uses VX/VY as start)
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
-        self.emit("    SLINE P1, P2"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_draw_circle")
-        # Args: radius, filled
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
-        self.emit("    SCIRC P1, P2"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_screen_invert")
-        self.emit("    SINV"); self.emit("    RET")
-        self.emit_label("builtin_screen_blit")
-        self.emit("    SBLIT"); self.emit("    RET")
-        self.emit_label("builtin_set_blend_mode")
-        self.emit("    POP P0"); self.emit("    POP P1")
-        self.emit("    SBLEND P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_draw_char")
-        # Args: char (uses VX/VY position, VC color)
-        self.emit("    POP P0"); self.emit("    POP P1")
-        self.emit("    CHAR P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_set_pointers")
-        # All pushes/pops are P (2 bytes) for 16-bit ABI consistency.
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2")
-        self.emit("    MOV P0, P1"); self.emit("    MOV P1, P2"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_write_text")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2")
-        self.emit("    MOV VC, P2"); self.emit("    TEXT P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_set_font")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_layer_swap")
-        self.emit("    POP P0"); self.emit("    POP P1")
-        self.emit("    LSWAP P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_layer_move")
-        self.emit("    POP P0"); self.emit("    POP P1")
-        self.emit("    LMOVE P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_layer_copy")
-        self.emit("    POP P0"); self.emit("    POP P1")
-        self.emit("    LCOPY P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        # --- Sound ---
-        self.emit_label("builtin_sound_play")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P3")
-        self.emit("    SPLAY P3, P2, P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_sound_stop")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    SPLAY P1, 0, 0"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_sound_trigger")
-        self.emit("    POP P0"); self.emit("    POP P1")
-        self.emit("    STRIG P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        self.emit_label("builtin_set_timer")
-        self.emit("    POP P0"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P3"); self.emit("    POP P4")
-        # Args pushed in reversed source order: stack top->bottom after POP P0 is
-        # [arg0=TT, arg1=TM, arg2=TS, arg3=TC]. So POP P1=TT, P2=TM, P3=TS, P4=TC.
-        self.emit("    MOV TT, P1"); self.emit("    MOV TM, P2"); self.emit("    MOV TS, P3"); self.emit("    MOV TC, P4"); self.emit("    PUSH P0"); self.emit("    RET")
-        # --- Interrupts ---
-        self.emit_label("builtin_sti")
-        self.emit("    STI"); self.emit("    RET")
-        self.emit_label("builtin_cli")
-        self.emit("    CLI"); self.emit("    RET")
-        self.emit_label("builtin_iret")
-        self.emit("    IRET"); self.emit("    RET")
-        self.emit_label("builtin_software_int")
-        self.emit("    POP P0"); self.emit("    POP P1")
-        self.emit("    INT P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        # --- Keyboard ---
-        self.emit_label("builtin_key_available")
-        self.emit("    KEYSTAT P0"); self.emit("    RET")
-        self.emit_label("builtin_key_read")
-        self.emit("    KEYIN P0"); self.emit("    RET")
-        self.emit_label("builtin_key_clear")
-        self.emit("    KEYCLEAR"); self.emit("    RET")
-        self.emit_label("builtin_key_count")
-        self.emit("    KEYCOUNT P0"); self.emit("    RET")
-        self.emit_label("builtin_key_ctrl")
-        self.emit("    POP P0"); self.emit("    POP P1")
-        self.emit("    KEYCTRL P1"); self.emit("    PUSH P0"); self.emit("    RET")
-        # --- Random ---
-        self.emit_label("builtin_random")
-        self.emit("    RND P0"); self.emit("    RET")
-        self.emit_label("builtin_random_range")
-        # Save return address in P3 (not P0, since RNDR will write its result to P0).
-        # Stack: [ret_addr, color_max, color_min] (top = last pushed = color_min)
-        # builtins with P0 as destination use P3 for the return address (see
-        # builtin_set_pointers for the same pattern).
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2")
-        self.emit("    RNDR P0, P1, P2")
-        self.emit("    PUSH P3"); self.emit("    RET")
-        # --- Math (unary, write result to P0) ---
-        self.emit_label("builtin_abs")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    ABS P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_min")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    MIN P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_max")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    MAX P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_clz")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    CLZ P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_ctz")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    CTZ P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_popcnt")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POPCNT P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_sqrt")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    SQRT P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_log")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    LOG P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_exp")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    EXP P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_sin")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    SIN P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_cos")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    COS P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_tan")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    TAN P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_atan")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    ATAN P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_asin")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    ASIN P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_acos")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    ACOS P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_deg")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    DEG P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_rad")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    RAD P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_floor")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    FLOOR P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_ceil")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    CEIL P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_round")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    ROUND P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_trunc")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    TRUNC P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_frac")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    FRAC P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_intgr")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    INTGR P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        # int(x): identity on 16-bit integers (values are already integral).
-        # Do NOT use the INT opcode here -- that raises a software interrupt.
-        self.emit_label("builtin_int")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_powr")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POWR P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        # --- String ---
-        self.emit_label("builtin_strcpy")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    STRCPY P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_strcat")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    STRCAT P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_strcmp")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    STRCMP P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_strlen")
-        # STRLEN writes result to R0
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    STRLEN P1"); self.emit("    MOV P0, R0"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_strupr")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    STRUPR P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_strlwr")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    STRLWR P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_strrev")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    STRREV P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_strfind")
-        # STRFIND writes result to R0
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    STRFIND P1, P2"); self.emit("    MOV P0, R0"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_strfindi")
-        # STRFINDI writes result to R0
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    STRFINDI P1, P2"); self.emit("    MOV P0, R0"); self.emit("    PUSH P3"); self.emit("    RET")
-        # --- Serial ---
-        self.emit_label("builtin_ser_out")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    SEROUT P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_ser_in")
-        self.emit("    SERIN P0"); self.emit("    RET")
-        self.emit_label("builtin_ser_stat")
-        self.emit("    SERSTAT P0"); self.emit("    RET")
-        self.emit_label("builtin_ser_ctrl")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    SERCTRL P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        # --- Memory ---
-        self.emit_label("builtin_memcpy")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    MEMCPY P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_memset")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    MEMSET P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_memmove")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    MEMMOVE P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_memcmp")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    POP P5"); self.emit("    MEMCMP P1, P2, P4, P5"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_memtest")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    MEMTEST P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_memswap")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    POP P4"); self.emit("    MEMSWAP P1, P2, P4"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        # --- Bit manipulation ---
-        self.emit_label("builtin_btst")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BTST P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_bset")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BSET P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_bclr")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCLR P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_bflip")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BFLIP P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        # --- Misc ---
-        self.emit_label("builtin_swap")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    SWAP P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_xchng")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    XCHNG P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_nop")
-        self.emit("    NOP"); self.emit("    RET")
-        self.emit_label("builtin_pushf")
-        self.emit("    PUSHF"); self.emit("    RET")
-        self.emit_label("builtin_popf")
-        self.emit("    POPF"); self.emit("    RET")
-        self.emit_label("builtin_pusha")
-        self.emit("    PUSHA"); self.emit("    RET")
-        self.emit_label("builtin_popa")
-        self.emit("    POPA"); self.emit("    RET")
-        self.emit_label("builtin_halt")
-        self.emit("    HLT"); self.emit("    RET")
-        # --- BCD ---
-        self.emit_label("builtin_sed")
-        self.emit("    SED"); self.emit("    RET")
-        self.emit_label("builtin_cld")
-        self.emit("    CLD"); self.emit("    RET")
-        self.emit_label("builtin_cla")
-        self.emit("    CLA"); self.emit("    RET")
-        self.emit_label("builtin_bcd2bin")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    BCD2BIN P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_bin2bcd")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    BIN2BCD P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_bcdadd")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCDADD P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_bcdsub")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCDSUB P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_bcda")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCDA P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_bcds")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCDS P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        self.emit_label("builtin_bcdcmp")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    POP P2"); self.emit("    BCDCMP P1, P2"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
-        # --- Mouse ---
-        self.emit_label("builtin_mouse_ctrl")
-        self.emit("    POP P3"); self.emit("    POP P1"); self.emit("    MOUSECTRL P1"); self.emit("    MOV P0, P1"); self.emit("    PUSH P3"); self.emit("    RET")
+        for label, body in selected:
+            self.emit_label(label)
+            for line in body:
+                if line.startswith(';'):
+                    # Comment lines are emitted verbatim (no extra indent).
+                    self.assembly.append(line)
+                else:
+                    self.emit(line)
+        self.assembly.append("")
 
     def get_string_label(self, value: str) -> str:
         if value not in self.strings:
