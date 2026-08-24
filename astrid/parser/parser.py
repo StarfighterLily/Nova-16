@@ -3,8 +3,17 @@
 """Enhanced parser with do-while loops, switch/case statements, and char literals."""
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Dict
 from astrid.lexer.lexer import Lexer, Token
+
+# Storage qualifiers are accepted and ignored: the declared entity behaves
+# exactly like its unqualified counterpart (Astrid has no linker/optimizer
+# semantics attached to them).
+STORAGE_QUALIFIERS = {'const', 'register', 'volatile', 'extern', 'static', 'inline'}
+# Type modifiers normalize to their base type ('int' unless a base type
+# follows): Astrid's type system only distinguishes the base widths.
+TYPE_MODIFIERS = {'signed', 'unsigned', 'long', 'short'}
+BASE_TYPES = {'int', 'char', 'string', 'binary', 'void'}
 
 # AST Node Classes
 class ASTNode:
@@ -48,12 +57,17 @@ class PostfixOp(Expression):
         self.op = op
 
 class Program(ASTNode):
-    def __init__(self, functions: List["FunctionDef"], globals_: Optional[List["VarDecl"]] = None):
+    def __init__(self, functions: List["FunctionDef"], globals_: Optional[List["VarDecl"]] = None,
+                 enum_constants: Optional[Dict[str, int]] = None):
         self.functions = functions
         # Top-level (global) variable declarations. Empty for sources that
         # only define functions; populated when the source declares variables
         # outside of any function body.
         self.globals: List["VarDecl"] = globals_ or []
+        # Named integer constants from enum declarations (name -> value).
+        # Shared dict instance also held by the parser so enums declared
+        # inside function bodies are visible program-wide.
+        self.enum_constants: Dict[str, int] = enum_constants if enum_constants is not None else {}
 
 class FunctionDef(ASTNode):
     def __init__(self, return_type: str, name: str, params: List["VarDecl"], body: List["ASTNode"]):
@@ -206,9 +220,48 @@ class SizeofExpr(Expression):
 
 class Parser:
     def __init__(self, tokens: List[Token]):
-        self.tokens = tokens
+        # Normalize storage qualifiers / type modifiers up front so every
+        # grammar rule can expect exactly one base-type keyword (see
+        # _normalize_type_tokens).
+        self.tokens = Parser._normalize_type_tokens(tokens)
         self.pos = 0
         self.current = self.tokens[self.pos]
+        # Enum constants accumulate here as enum declarations are parsed;
+        # shared with the resulting Program node.
+        self.enum_constants: Dict[str, int] = {}
+
+    @staticmethod
+    def _normalize_type_tokens(tokens: List[Token]) -> List[Token]:
+        """Collapse runs of storage qualifiers / type modifiers / base types
+        into a single base-type KEYWORD token.
+
+        C allows declarations like `static unsigned int x;` or functions
+        like `long helper(void)`. Astrid's type system only distinguishes
+        the base types, so any run of consecutive qualifier/modifier/
+        base-type keywords is merged into its base type (defaulting to
+        'int' when only modifiers appear). Single base-type keywords pass
+        through unchanged, so constructs like the `int(x)` conversion call
+        are unaffected."""
+        mergeable = STORAGE_QUALIFIERS | TYPE_MODIFIERS | BASE_TYPES
+        out: List[Token] = []
+        i = 0
+        while i < len(tokens):
+            tok = tokens[i]
+            if tok.type == 'KEYWORD' and tok.value in mergeable:
+                j = i
+                while (j < len(tokens) and tokens[j].type == 'KEYWORD'
+                       and tokens[j].value in mergeable):
+                    j += 1
+                base = 'int'
+                for k in range(i, j):
+                    if tokens[k].value in BASE_TYPES:
+                        base = tokens[k].value
+                out.append(Token('KEYWORD', base, tok.line, tok.column))
+                i = j
+                continue
+            out.append(tok)
+            i += 1
+        return out
 
     def advance(self):
         self.pos += 1
@@ -238,7 +291,14 @@ class Parser:
         out = []
         i = 0
         simple = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\',
-                  '"': '"', "'": "'", '0': '\0'}
+                  '"': '"', "'": "'", '0': '\0',
+                  # Extended C escape sequences:
+                  'a': '\a',   # bell (7)
+                  'b': '\b',   # backspace (8)
+                  'f': '\f',   # form feed (12)
+                  'v': '\v',   # vertical tab (11)
+                  '?': '?',    # trigraph-escape question mark
+                  }
         while i < len(s):
             ch = s[i]
             if ch == '\\' and i + 1 < len(s):
@@ -265,6 +325,11 @@ class Parser:
         functions = []
         globals_: List[VarDecl] = []
         while self.current.type != 'EOF':
+            # Enum declarations introduce named integer constants usable
+            # anywhere a compile-time number is expected.
+            if self.current.type == 'KEYWORD' and self.current.value == 'enum':
+                self.parse_enum()
+                continue
             # Top-level const qualifiers prefix either functions or globals.
             if self.current.type == 'KEYWORD' and self.current.value == 'const':
                 self.advance()
@@ -295,7 +360,58 @@ class Parser:
                     globals_.extend(self.parse_var_decl())
             else:
                 functions.append(self.parse_function())
-        return Program(functions, globals_)
+        return Program(functions, globals_, self.enum_constants)
+
+    def parse_enum(self):
+        """Parse an enum declaration: enum [Tag] { A, B = 5, C };
+
+        Constant names and values are recorded in self.enum_constants
+        (shared with the Program node). Values auto-increment from 0 and
+        reset when an explicit `= expr` is given, matching C semantics."""
+        self.expect('KEYWORD', 'enum')
+        if self.current.type == 'IDENTIFIER':
+            self.advance()  # optional tag name (not tracked further)
+        if not (self.current.type == 'DELIMITER' and self.current.value == '{'):
+            # Bare tag reference or forward declaration: nothing to record.
+            if self.current.type == 'DELIMITER' and self.current.value == ';':
+                self.advance()
+            return
+        self.advance()  # consume '{'
+        next_value = 0
+        while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
+            cname = self.current.value
+            self.expect('IDENTIFIER')
+            if self.current.type == 'OPERATOR' and self.current.value == '=':
+                self.advance()
+                next_value = self._parse_enum_const_value()
+            self.enum_constants[cname] = next_value
+            next_value += 1
+            if self.current.type == 'DELIMITER' and self.current.value == ',':
+                self.advance()
+        self.expect('DELIMITER', '}')
+        if self.current.type == 'DELIMITER' and self.current.value == ';':
+            self.advance()
+
+    def _parse_enum_const_value(self) -> int:
+        """Parse an explicit enum constant value: NUMBER, CHAR, another
+        enum constant, optionally negated."""
+        sign = 1
+        if self.current.type == 'OPERATOR' and self.current.value == '-':
+            sign = -1
+            self.advance()
+        tok = self.current
+        if tok.type == 'NUMBER':
+            self.advance()
+            return sign * int(tok.value, 0)
+        if tok.type == 'CHAR':
+            self.advance()
+            return sign * ord(Parser._unescape_string(tok.value.strip("'")))
+        if tok.type == 'IDENTIFIER':
+            self.advance()
+            if tok.value in self.enum_constants:
+                return sign * self.enum_constants[tok.value]
+            raise SyntaxError(f"Unknown enum constant '{tok.value}' in enum initializer")
+        raise SyntaxError(f"Invalid enum constant value near {tok}")
 
     def parse_function(self) -> Optional["FunctionDef"]:
         return_type = self.current.value
@@ -369,6 +485,10 @@ class Parser:
         # Empty statement: a lone ';' is valid C and produces no code.
         if self.current.type == 'DELIMITER' and self.current.value == ';':
             self.advance()
+            return []
+        # Enum declarations are valid statements inside function bodies.
+        if self.current.type == 'KEYWORD' and self.current.value == 'enum':
+            self.parse_enum()
             return []
         # const-qualified declarations: `const int K = 5;` — consume the
         # qualifier, then fall through to the declaration handling below.
@@ -684,6 +804,9 @@ class Parser:
             op = self.current.value
             self.advance()
             operand = self.parse_unary()
+            if isinstance(operand, Deref):
+                # ++(*p) / --(*p): increment/decrement the pointee VALUE.
+                return PrefixOp(op, operand)
             if not isinstance(operand, Identifier):
                 raise SyntaxError(f"Prefix '{op}' requires a variable operand")
             return PrefixOp(op, operand)
@@ -719,7 +842,13 @@ class Parser:
             return Number(token.value)
         elif token.type == 'STRING':
             self.advance()
-            return StringLiteral(token.value.strip('"'))
+            raw = token.value.strip('"')
+            # Adjacent string literal concatenation ("abc" "def" -> "abcdef"),
+            # as in C. Escapes are resolved later by _unescape_string users.
+            while self.current.type == 'STRING':
+                raw += self.current.value.strip('"')
+                self.advance()
+            return StringLiteral(raw)
         elif token.type == 'CHAR':
             self.advance()
             # Parse char literal value, resolving all escape sequences

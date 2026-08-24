@@ -69,11 +69,170 @@ class CodeGenerator:
         'builtin_read_screen': [
             'SREAD P0', 'RET',
         ],
+        # scroll_x/scroll_y accept an optional direction and amount:
+        #   scroll_x(layer)            -> dir=0, amount=1
+        #   scroll_x(layer, dir)       -> amount=1
+        #   scroll_x(layer, dir, amount)
+        # dir=0 rolls forward, any non-zero dir reverses. Because arguments
+        # are stack-passed, each arity gets its own stub (see ARITY_BUILTINS).
         'builtin_scroll_x': [
-            'POP P0', 'POP P1', 'SROL 0, P1', 'PUSH P0', 'RET',
+            '; Args: layer (defaults dir=0, amount=1)',
+            'POP P0', 'POP P1',
+            'MOV VL, P1',
+            'SROL 0, 1',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_scroll_x_2': [
+            '; Args: layer, dir',
+            'POP P0', 'POP P1', 'POP P2',
+            'MOV VL, P1',
+            'CMP P2, 0',
+            'JZ builtin_scroll_x_2_fwd',
+            'SROL 0, -1',
+            'JMP builtin_scroll_x_2_end',
+            'builtin_scroll_x_2_fwd:',
+            'SROL 0, 1',
+            'builtin_scroll_x_2_end:',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_scroll_x_3': [
+            '; Args: layer, dir, amount',
+            'POP P0', 'POP P1', 'POP P2', 'POP P3',
+            'MOV VL, P1',
+            'CMP P2, 0',
+            'JZ builtin_scroll_x_3_fwd',
+            'NEG P3',
+            'builtin_scroll_x_3_fwd:',
+            'SROL 0, P3',
+            'PUSH P0', 'RET',
         ],
         'builtin_scroll_y': [
-            'POP P0', 'POP P1', 'SROL 1, P1', 'PUSH P0', 'RET',
+            '; Args: layer (defaults dir=0, amount=1)',
+            'POP P0', 'POP P1',
+            'MOV VL, P1',
+            'SROL 1, 1',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_scroll_y_2': [
+            '; Args: layer, dir',
+            'POP P0', 'POP P1', 'POP P2',
+            'MOV VL, P1',
+            'CMP P2, 0',
+            'JZ builtin_scroll_y_2_fwd',
+            'SROL 1, -1',
+            'JMP builtin_scroll_y_2_end',
+            'builtin_scroll_y_2_fwd:',
+            'SROL 1, 1',
+            'builtin_scroll_y_2_end:',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_scroll_y_3': [
+            '; Args: layer, dir, amount',
+            'POP P0', 'POP P1', 'POP P2', 'POP P3',
+            'MOV VL, P1',
+            'CMP P2, 0',
+            'JZ builtin_scroll_y_3_fwd',
+            'NEG P3',
+            'builtin_scroll_y_3_fwd:',
+            'SROL 1, P3',
+            'PUSH P0', 'RET',
+        ],
+        # roll_x/roll_y: same signature as scroll_x/scroll_y, but the
+        # caller's active layer (VL) is saved and restored, so rolling one
+        # layer never disturbs whatever layer is currently selected.
+        'builtin_roll_x': [
+            '; Args: layer (defaults dir=0, amount=1); preserves VL',
+            'POP P0', 'POP P1',
+            'MOV P5, VL',
+            'MOV VL, P1',
+            'SROL 0, 1',
+            'MOV VL, P5',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_roll_x_2': [
+            '; Args: layer, dir; preserves VL',
+            'POP P0', 'POP P1', 'POP P2',
+            'MOV P5, VL',
+            'MOV VL, P1',
+            'CMP P2, 0',
+            'JZ builtin_roll_x_2_fwd',
+            'SROL 0, -1',
+            'JMP builtin_roll_x_2_end',
+            'builtin_roll_x_2_fwd:',
+            'SROL 0, 1',
+            'builtin_roll_x_2_end:',
+            'MOV VL, P5',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_roll_x_3': [
+            '; Args: layer, dir, amount; preserves VL',
+            'POP P0', 'POP P1', 'POP P2', 'POP P3',
+            'MOV P5, VL',
+            'MOV VL, P1',
+            'CMP P2, 0',
+            'JZ builtin_roll_x_3_fwd',
+            'NEG P3',
+            'builtin_roll_x_3_fwd:',
+            'SROL 0, P3',
+            'MOV VL, P5',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_roll_y': [
+            '; Args: layer (defaults dir=0, amount=1); preserves VL',
+            'POP P0', 'POP P1',
+            'MOV P5, VL',
+            'MOV VL, P1',
+            'SROL 1, 1',
+            'MOV VL, P5',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_roll_y_2': [
+            '; Args: layer, dir; preserves VL',
+            'POP P0', 'POP P1', 'POP P2',
+            'MOV P5, VL',
+            'MOV VL, P1',
+            'CMP P2, 0',
+            'JZ builtin_roll_y_2_fwd',
+            'SROL 1, -1',
+            'JMP builtin_roll_y_2_end',
+            'builtin_roll_y_2_fwd:',
+            'SROL 1, 1',
+            'builtin_roll_y_2_end:',
+            'MOV VL, P5',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_roll_y_3': [
+            '; Args: layer, dir, amount; preserves VL',
+            'POP P0', 'POP P1', 'POP P2', 'POP P3',
+            'MOV P5, VL',
+            'MOV VL, P1',
+            'CMP P2, 0',
+            'JZ builtin_roll_y_3_fwd',
+            'NEG P3',
+            'builtin_roll_y_3_fwd:',
+            'SROL 1, P3',
+            'MOV VL, P5',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_draw_rect': [
+            '; Args: x2, y2, filled (start corner from VX/VY, color VC)',
+            'POP P0', 'POP P1', 'POP P2', 'POP P3',
+            'SRECT P1, P2, P3',
+            'PUSH P0', 'RET',
+        ],
+        'builtin_set_color': [
+            '; Args: color -> VC (drawing color for SRECT/SLINE/SCIRC/CHAR)',
+            'POP P0', 'POP P1', 'MOV VC, P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_vread': [
+            '; Args: linear VRAM address. VREAD uses its operand as BOTH the',
+            '; address input and the result destination, so the return address',
+            '; must be stashed in P3 first (same pattern as builtin_random_range).',
+            'POP P3', 'POP P1', 'VREAD P1', 'MOV P0, P1', 'PUSH P3', 'RET',
+        ],
+        'builtin_vwrite': [
+            '; Args: value (writes VRAM at VX/VY)',
+            'POP P0', 'POP P1', 'VWRITE P1', 'PUSH P0', 'RET',
         ],
         'builtin_screen_rotate': [
             '; Args: direction, amount',
@@ -382,6 +541,7 @@ class CodeGenerator:
         self.enable_live_range = bool(enable_live_range) and self.enable_optimizations
         self.enable_live_range_scheduling = self.enable_live_range
         self.assembly = []
+        self.enum_constants: Dict[str, int] = {}  # name -> value (from enum declarations)
         self.global_vars = {}  # name -> {'address', 'type', 'size', 'is_array', 'count', 'init_values'}
         self.array_vars = {}   # per-function LOCAL arrays: name -> {'elem_type', 'count', 'elem_size', 'offset'}
         self.local_vars = {}
@@ -468,7 +628,14 @@ class CodeGenerator:
             'set_layer': 'builtin_set_layer', 'set_pos': 'builtin_set_pos',
             'write_screen': 'builtin_write_screen', 'read_screen': 'builtin_read_screen',
             'screen_fill': 'builtin_screen_fill',
+            # scroll_x/scroll_y/roll_x/roll_y are dispatched to arity-specific
+            # stubs at call sites (see ARITY_BUILTINS); these base labels cover
+            # the 1-argument form scroll_x(layer).
             'scroll_x': 'builtin_scroll_x', 'scroll_y': 'builtin_scroll_y',
+            'roll_x': 'builtin_roll_x', 'roll_y': 'builtin_roll_y',
+            'draw_rect': 'builtin_draw_rect',
+            'set_color': 'builtin_set_color',
+            'vread': 'builtin_vread', 'vwrite': 'builtin_vwrite',
             'screen_rotate': 'builtin_screen_rotate', 'screen_shift': 'builtin_screen_shift',
             'screen_flip': 'builtin_screen_flip', 'draw_line': 'builtin_draw_line',
             'draw_circle': 'builtin_draw_circle', 'screen_invert': 'builtin_screen_invert',
@@ -540,6 +707,24 @@ class CodeGenerator:
             'mouse_ctrl': 'builtin_mouse_ctrl',
         }
 
+    # Builtins whose implementation stub depends on the call-site argument
+    # count (optional trailing arguments). Maps source name ->
+    # {arg_count: implementation label}. An arity missing from the table
+    # falls back to the base label from builtin_functions.
+    ARITY_BUILTINS: Dict[str, Dict[int, str]] = {
+        'scroll_x': {1: 'builtin_scroll_x', 2: 'builtin_scroll_x_2', 3: 'builtin_scroll_x_3'},
+        'scroll_y': {1: 'builtin_scroll_y', 2: 'builtin_scroll_y_2', 3: 'builtin_scroll_y_3'},
+        'roll_x': {1: 'builtin_roll_x', 2: 'builtin_roll_x_2', 3: 'builtin_roll_x_3'},
+        'roll_y': {1: 'builtin_roll_y', 2: 'builtin_roll_y_2', 3: 'builtin_roll_y_3'},
+    }
+
+    def _resolve_builtin_label(self, name: str, arg_count: int) -> Optional[str]:
+        """Pick the implementation label for a builtin call of this arity."""
+        arity_table = self.ARITY_BUILTINS.get(name)
+        if arity_table:
+            return arity_table.get(arg_count) or self.builtin_functions.get(name)
+        return self.builtin_functions.get(name)
+
     def _should_run_live_range_scheduler(self, assembly_lines: List[str]) -> Tuple[bool, str]:
         """Return whether the live-range scheduler is worth the compile-time cost."""
         line_count = len(assembly_lines)
@@ -566,6 +751,9 @@ class CodeGenerator:
 
     def generate(self, ast: Program) -> List[str]:
         self.assembly.append("; Generated by the Astrid Compiler for Nova-16")
+        # Adopt the parser's enum constant table so enum names resolve to
+        # their integer values everywhere numbers are accepted.
+        self.enum_constants = dict(getattr(ast, 'enum_constants', None) or {})
         # Run front-end expression simplifier (constant-folding, algebraic
         # simplifications, and CSE) to reduce register pressure and code size.
         if self.enable_optimizations and self.enable_expr_simplify:
@@ -883,10 +1071,15 @@ class CodeGenerator:
             return len(decl.init_list)
         if isinstance(decl.array_size, Number):
             count = int(decl.array_size.value, 0)
-            if count <= 0:
-                raise ValueError(f"Array '{decl.name}' must have a positive size")
-            return count
-        raise TypeError(f"Array '{decl.name}' size must be a compile-time constant")
+        else:
+            # Enum constants (or any constant expression) are valid sizes.
+            count = self._const_eval(decl.array_size)
+            if count is None:
+                raise TypeError(
+                    f"Array '{decl.name}' size must be a compile-time constant")
+        if count <= 0:
+            raise ValueError(f"Array '{decl.name}' must have a positive size")
+        return count
 
     def _const_eval(self, expr) -> Optional[int]:
         """Evaluate a compile-time constant expression (global initializers).
@@ -898,6 +1091,11 @@ class CodeGenerator:
                 return int(expr.value, 0) & 0xFFFF
             if isinstance(expr, CharLiteral):
                 return expr.char_value & 0xFFFF
+            if isinstance(expr, Identifier):
+                # Enum constants are compile-time integers; any other
+                # identifier is not a compile-time constant.
+                value = self.enum_constants.get(expr.name)
+                return None if value is None else value & 0xFFFF
             if isinstance(expr, UnaryOp) and expr.op == '-':
                 inner = self._const_eval(expr.right)
                 return None if inner is None else (-inner) & 0xFFFF
@@ -925,7 +1123,8 @@ class CodeGenerator:
         """Assign fixed storage addresses to all global variables/scalars."""
         next_addr = self.GLOBAL_REGION_START
         for decl in getattr(ast, 'globals', None) or []:
-            elem_size = self._elem_size(decl.var_type)
+            # Pointers always occupy 2 bytes regardless of pointee type.
+            elem_size = 2 if decl.pointer_depth else self._elem_size(decl.var_type)
             if decl.is_array:
                 count = self._resolve_array_count(decl)
                 init_values = []
@@ -940,6 +1139,7 @@ class CodeGenerator:
                 self.global_vars[decl.name] = {
                     'address': next_addr, 'type': decl.var_type,
                     'size': count * elem_size, 'is_array': True,
+                    'elem_size': elem_size,
                     'count': count, 'init_values': init_values,
                 }
                 next_addr += count * elem_size
@@ -954,6 +1154,9 @@ class CodeGenerator:
                 self.global_vars[decl.name] = {
                     'address': next_addr, 'type': decl.var_type,
                     'size': elem_size, 'is_array': False,
+                    'elem_size': elem_size,
+                    # Global pointers hold addresses (16-bit values).
+                    'is_pointer': bool(decl.pointer_depth),
                     'count': 1,
                     'init_values': [init_value] if init_value is not None else [],
                 }
@@ -968,7 +1171,7 @@ class CodeGenerator:
         self.assembly.append("; Global Variables")
         for name, info in self.global_vars.items():
             self.assembly.append(f"gvar_{name}:")
-            elem_size = self._elem_size(info['type'])
+            elem_size = info.get('elem_size', self._elem_size(info['type']))
             directive = "DW" if elem_size == 2 else "DB"
             init = info.get('init_values') or []
             if info['is_array']:
@@ -985,7 +1188,11 @@ class CodeGenerator:
         self.assembly.append("")
 
     def _get_array_info(self, name: str) -> Dict:
-        """Return layout info for an array (local or global)."""
+        """Return layout info for an array (local or global).
+
+        Pointer variables also produce access info: p[i] means *(p + i)
+        with the index scaled by the pointee size (C subscript semantics),
+        so arrays and pointers share the same indexing code paths."""
         if name in self.array_vars:
             return self.array_vars[name]
         g = self.global_vars.get(name)
@@ -993,7 +1200,33 @@ class CodeGenerator:
             return {'elem_type': g['type'], 'count': g['count'],
                     'elem_size': self._elem_size(g['type']),
                     'base_addr': g['address'], 'is_global': True}
+        if name in self.pointer_vars or name in self.address_params:
+            return {'is_pointer': True, 'name': name,
+                    'elem_size': 1 if self.var_types.get(name) == 'char' else 2,
+                    'count': 0}
+        if g and g.get('is_pointer'):
+            return {'is_pointer': True, 'name': name,
+                    'elem_size': 1 if g['type'] == 'char' else 2,
+                    'count': 0}
         raise NameError(f"Undefined array '{name}'")
+
+    def _pointer_step(self, name: str) -> Optional[int]:
+        """Byte step for pointer arithmetic on `name`, or None when the
+        name is not pointer-like.
+
+        Declared pointers and array parameters step by their pointee size;
+        arrays decay to pointers (arr + i scales by elem_size), matching C."""
+        if name in self.pointer_vars or name in self.address_params:
+            return 1 if self.var_types.get(name) == 'char' else 2
+        if name in self.array_vars:
+            return self.array_vars[name]['elem_size']
+        g = self.global_vars.get(name)
+        if g:
+            if g.get('is_pointer'):
+                return 1 if g['type'] == 'char' else 2
+            if g.get('is_array'):
+                return self._elem_size(g['type'])
+        return None
 
     def _emit_array_addr(self, info: Dict, idx_reg: str, addr_reg: str):
         """Emit code computing an element address into addr_reg.
@@ -1005,6 +1238,12 @@ class CodeGenerator:
         if info['elem_size'] == 2:
             # Scale word index to byte offset: idx * 2
             self.emit(f"    ADD {idx_reg}, {idx_reg}")
+        if info.get('is_pointer'):
+            # Pointer subscripting: the variable holds the base address;
+            # element i lives at base + i*elem_size (already scaled above).
+            self._emit_var_load(addr_reg, info['name'])
+            self.emit(f"    ADD {addr_reg}, {idx_reg}")
+            return
         if info.get('is_param'):
             # Array parameter: the slot at FP+offset CONTAINS the caller's
             # array base address; element i lives at base + i*elem_size.
@@ -1029,6 +1268,12 @@ class CodeGenerator:
     def _emit_array_const_addr(self, info: Dict, index: int, addr_reg: str):
         """Emit code computing an element address for a compile-time index."""
         byte_off = index * info['elem_size']
+        if info.get('is_pointer'):
+            # Pointer subscripting with a compile-time index.
+            self._emit_var_load(addr_reg, info['name'])
+            if byte_off:
+                self.emit(f"    ADD {addr_reg}, {byte_off}")
+            return
         if info.get('is_param'):
             self.emit(f"    MOV {addr_reg}, [FP{info['offset']:+d}]")
             self.emit(f"    ADD {addr_reg}, {byte_off}")
@@ -1170,6 +1415,15 @@ class CodeGenerator:
             # Interrupt handlers must NOT use ENTER/LEAVE because the CPU
             # already pushed PC and flags on the stack. Use direct SP
             # manipulation instead so IRET can find the saved context.
+            # The CPU's interrupt entry saves ONLY PC + flags -- general
+            # registers are NOT preserved. Interrupted code keeps live
+            # values in P/R registers across the interrupt (e.g. a while(1)
+            # loop condition re-reads its register after the handler
+            # returns), so the handler must save/restore them itself.
+            # Registers are pushed BEFORE allocating locals so that
+            # SP-relative ([SP+n]) local addressing stays valid in the
+            # handler body; _emit_isr_register_restore mirrors this order.
+            self._emit_isr_register_save()
             if local_size > 0:
                 self.assembly.append(f"    SUB SP, {local_size} ; Allocate locals")
         else:
@@ -1264,13 +1518,52 @@ class CodeGenerator:
 
         # Only emit implicit return if the function didn't already return (e.g. via iret)
         if func_def.return_type == 'void' and not self._emitted_return:
-            self.assembly.append("; Implicit return for void function")
-            self.assembly.append("    MOV SP, FP")
-            self.assembly.append("    POP FP")
-            self.assembly.append("    RET")
+            if func_def.name == 'timer_interrupt':
+                # ISR without an explicit iret() call: restore the saved
+                # context and return from the interrupt. A normal RET here
+                # would pop the pushed flags word as a return address and
+                # corrupt the interrupted program state.
+                self.assembly.append("; Implicit ISR return")
+                if self._timer_interrupt_locals_size > 0:
+                    self.assembly.append(
+                        f"    ADD SP, {self._timer_interrupt_locals_size} ; Deallocate locals before IRET")
+                self._emit_isr_register_restore()
+                self.assembly.append("    IRET")
+            else:
+                self.assembly.append("; Implicit return for void function")
+                self.assembly.append("    MOV SP, FP")
+                self.assembly.append("    POP FP")
+                self.assembly.append("    RET")
 
         self.assembly.append("")
         self.current_function = None
+
+    # Registers preserved across interrupt-handler invocations. The CPU's
+    # interrupt entry pushes only PC + flags; every other register is
+    # effectively caller-save, so an ISR that clobbers P/R registers would
+    # corrupt the interrupted code's live register state. P8 (SP) is
+    # excluded on purpose: handlers keep the stack balanced, so SP is
+    # restored implicitly by the SUB SP / ADD SP prologue-epilogue pair.
+    ISR_SAVED_P_REGS = ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P9']
+    ISR_SAVED_R_REGS = ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9']
+
+    def _emit_isr_register_save(self):
+        """Push all caller-saved registers at interrupt-handler entry.
+
+        Must be emitted BEFORE any SUB SP local allocation so that
+        SP-relative local addressing inside the handler is unaffected."""
+        self.assembly.append("    ; Save general registers (interrupt entry only saves PC+flags)")
+        for reg in self.ISR_SAVED_P_REGS:
+            self.assembly.append(f"    PUSH {reg}")
+        for reg in self.ISR_SAVED_R_REGS:
+            self.assembly.append(f"    PUSH {reg}")
+
+    def _emit_isr_register_restore(self):
+        """Pop the registers saved by _emit_isr_register_save, in reverse."""
+        for reg in reversed(self.ISR_SAVED_R_REGS):
+            self.emit(f"    POP {reg}")
+        for reg in reversed(self.ISR_SAVED_P_REGS):
+            self.emit(f"    POP {reg}")
 
     def generate_block(self, body: List):
         for statement in body:
@@ -1305,6 +1598,9 @@ class CodeGenerator:
                     # Special handling for iret: don't emit normal epilogue
                     if hasattr(self, '_timer_interrupt_locals_size') and self._timer_interrupt_locals_size > 0:
                         self.emit(f"    ADD SP, {self._timer_interrupt_locals_size} ; Deallocate locals before IRET")
+                    # Restore the general registers saved by the ISR prologue
+                    # (interrupt entry only preserves PC + flags).
+                    self._emit_isr_register_restore()
                     self.emit("    IRET")
                     self._emitted_return = True
                     return  # Exit function after IRET
@@ -1338,24 +1634,41 @@ class CodeGenerator:
     def generate_assignment(self, assignment: Assignment):
         self.emit_comment(f"Assignment to {assignment.name}")
         # Check for compound assignment pattern: x = x <op> rhs
-        # The parser decomposes x += y into Assignment('x', BinaryOp(Identifier('x'), '+', y))
-        if (isinstance(assignment.value, BinaryOp) and
-            isinstance(assignment.value.left, Identifier) and
-            assignment.value.left.name == assignment.name):
-            op = assignment.value.op
+        # The parser decomposes x += y into Assignment('x', BinaryOp(Identifier('x'), '+', y)).
+        # NOTE: the ExpressionSimplifier may canonicalize commutative ops
+        # constant-first (x + 2 becomes 2 + x), so mirror such forms back
+        # to variable-first before matching.
+        value = assignment.value
+        if isinstance(value, BinaryOp):
+            lhs_is_var = isinstance(value.left, Identifier) and value.left.name == assignment.name
+            rhs_is_var = isinstance(value.right, Identifier) and value.right.name == assignment.name
+            if rhs_is_var and not lhs_is_var and value.op in ('+', '*', '&', '|', '^'):
+                value = BinaryOp(value.right, value.op, value.left)
+        if (isinstance(value, BinaryOp) and
+            isinstance(value.left, Identifier) and
+            value.left.name == assignment.name):
+            op = value.op
             var_reg = self.get_register()
             self._emit_var_load(var_reg, assignment.name)
             if op in ['<<', '>>']:
                 # Shift operations: amount must be a constant (parser requires this)
-                if not isinstance(assignment.value.right, Number):
+                if not isinstance(value.right, Number):
                     raise TypeError("Shift amount must be a constant integer for this compiler version.")
-                shift_amount = int(assignment.value.right.value, 0)
+                shift_amount = int(value.right.value, 0)
                 op_mnemonic = "SHR" if op == '>>' else "SHL"
                 self.emit_comment(f"Compound shift {op_mnemonic} by {shift_amount}")
                 for _ in range(shift_amount):
                     self.emit(f"    {op_mnemonic} {var_reg}, 1")
             else:
-                rhs_reg = self.generate_expression(assignment.value.right)
+                rhs_reg = self.generate_expression(value.right)
+                # Pointer compound arithmetic (p += n / p -= n): scale n by
+                # the pointee size before adding (C semantics).
+                if op in ('+', '-'):
+                    step = self._pointer_step(assignment.name)
+                    if step and step > 1:
+                        scale_reg = self.get_register(exclude={var_reg, rhs_reg})
+                        self.emit(f"    MOV {scale_reg}, {step}")
+                        self.emit(f"    MUL {rhs_reg}, {scale_reg}")
                 if op == '+': self.emit(f"    ADD {var_reg}, {rhs_reg}")
                 elif op == '-': self.emit(f"    SUB {var_reg}, {rhs_reg}")
                 elif op == '*': self.emit(f"    MUL {var_reg}, {rhs_reg}")
@@ -1580,12 +1893,26 @@ class CodeGenerator:
         return 2
 
     def _sizeof_bytes(self, expr: SizeofExpr) -> int:
-        """Resolve sizeof(...) to a compile-time byte count."""
+        """Resolve sizeof(...) to a compile-time byte count.
+
+        sizeof(arrayVariable) yields the TOTAL storage size in bytes
+        (count * elem_size), matching C; everything else sizes its base
+        type (1 for char, 2 otherwise)."""
         target = expr.target
         if isinstance(target, str):
             type_name = target
-        else:
-            type_name = self._cast_source_type(target) or 'int'
+            return 1 if type_name == 'char' else 2
+        if isinstance(target, Identifier):
+            name = target.name
+            if name in self.array_vars:
+                info = self.array_vars[name]
+                return info['count'] * info['elem_size']
+            g = self.global_vars.get(name)
+            if g and g.get('is_array'):
+                return g['count'] * g.get('elem_size', self._elem_size(g['type']))
+            type_name = self.var_types.get(name) or (g['type'] if g else 'int')
+            return 1 if type_name == 'char' else 2
+        type_name = self._cast_source_type(target) or 'int'
         return 1 if type_name == 'char' else 2
 
     def generate_array_access(self, expr: ArrayAccess) -> str:
@@ -1624,16 +1951,40 @@ class CodeGenerator:
         return result_reg
 
     def generate_prefix(self, expr: PrefixOp) -> str:
-        """++i / --i - returns the NEW value (C semantics)."""
+        """++i / --i / ++(*p) - returns the NEW value (C semantics).
+
+        Pointer operands advance by the pointee size; dereference operands
+        increment/decrement the pointee VALUE by 1."""
+        if isinstance(expr.operand, Deref):
+            self.emit_comment(f"Prefix {expr.op} on *ptr")
+            ptr_reg = self.generate_expression(expr.operand.operand)
+            size = self._pointee_size(expr.operand.operand)
+            reg = self.get_register(exclude={ptr_reg})
+            self._emit_mem_load(reg, ptr_reg, size)
+            if expr.op == '++':
+                self.emit(f"    INC {reg}")
+            elif expr.op == '--':
+                self.emit(f"    DEC {reg}")
+            else:
+                raise SyntaxError(f"Unknown prefix operator '{expr.op}'")
+            self._emit_mem_store(ptr_reg, reg, size)
+            return reg
         if not isinstance(expr.operand, Identifier):
             raise SyntaxError("Prefix ++/-- can only be applied to variables")
         self.emit_comment(f"Prefix {expr.op} on {expr.operand.name}")
         reg = self.get_register()
         self._emit_var_load(reg, expr.operand.name)
+        step = self._pointer_step(expr.operand.name)
         if expr.op == '++':
-            self.emit(f"    INC {reg}")
+            if step and step > 1:
+                self.emit(f"    ADD {reg}, {step}")
+            else:
+                self.emit(f"    INC {reg}")
         elif expr.op == '--':
-            self.emit(f"    DEC {reg}")
+            if step and step > 1:
+                self.emit(f"    SUB {reg}, {step}")
+            else:
+                self.emit(f"    DEC {reg}")
         else:
             raise SyntaxError(f"Unknown prefix operator '{expr.op}'")
         self._emit_var_store(expr.operand.name, reg)
@@ -1940,6 +2291,10 @@ class CodeGenerator:
             return self.generate_cast(expr)
         elif isinstance(expr, Identifier):
             reg = self.get_register()
+            if expr.name in self.enum_constants:
+                # Enum constants are compile-time integers.
+                self.emit(f"    MOV {reg}, {self.enum_constants[expr.name]}")
+                return reg
             self._emit_var_load(reg, expr.name)
             return reg
         elif isinstance(expr, BinaryOp):
@@ -2029,6 +2384,28 @@ class CodeGenerator:
             if can_push_left:
                 right_reg = self._pop_preserving(left_reg, right_reg)
             op = expr.op
+            # Pointer arithmetic (C semantics): ptr ± n advances by
+            # n * pointee_size bytes. Declared pointers, array parameters,
+            # and decayed arrays all participate. The mirrored form
+            # (n + ptr) produced by constant-first canonicalization of the
+            # ExpressionSimplifier scales identically.
+            if op in ('+', '-'):
+                # Which side holds the pointer determines which operand
+                # gets scaled: always scale the INTEGER offset.
+                ptr_side_left = isinstance(expr.left, Identifier)
+                if ptr_side_left:
+                    step = self._pointer_step(expr.left.name)
+                elif op == '+' and isinstance(expr.right, Identifier):
+                    step = self._pointer_step(expr.right.name)
+                else:
+                    step = None
+                if step and step > 1:
+                    # Pointer on the left -> the RIGHT operand is the
+                    # integer offset; mirrored form scales the LEFT one.
+                    offset_reg = right_reg if ptr_side_left else left_reg
+                    scale_reg = self.get_register(exclude={left_reg, right_reg})
+                    self.emit(f"    MOV {scale_reg}, {step}")
+                    self.emit(f"    MUL {offset_reg}, {scale_reg}")
             if op == '+': self.emit(f"    ADD {left_reg}, {right_reg}")
             elif op == '-': self.emit(f"    SUB {left_reg}, {right_reg}")
             elif op == '*': self.emit(f"    MUL {left_reg}, {right_reg}")
@@ -2146,24 +2523,12 @@ class CodeGenerator:
         elif isinstance(expr, AddressOf):
             return self.generate_address_of(expr)
         elif isinstance(expr, Deref):
-            # Load through a pointer: reg holds the address, then read it.
-            # Pointer arithmetic (*(p + n)) must scale the offset by the
-            # pointee size (2 bytes for int*, 1 for char*).
-            operand = expr.operand
-            if (isinstance(operand, BinaryOp) and operand.op in ('+', '-')
-                    and isinstance(operand.left, Identifier)
-                    and self._pointee_size(operand.left) == 2
-                    and isinstance(operand.right, Number)):
-                # Scale the constant offset: (p + n) -> (p + n*2)
-                n = int(operand.right.value, 0) * 2
-                ptr_reg = self.generate_expression(operand.left)
-                if operand.op == '+':
-                    self.emit(f"    ADD {ptr_reg}, {n}")
-                else:
-                    self.emit(f"    SUB {ptr_reg}, {n}")
-            else:
-                ptr_reg = self.generate_expression(operand)
-            self._emit_mem_load(ptr_reg, ptr_reg, self._pointee_size(operand))
+            # Load through a pointer: evaluate the address expression (the
+            # generic BinaryOp path already scales ptr ± n by the pointee
+            # size for both constant and variable offsets), then read
+            # through it.
+            ptr_reg = self.generate_expression(expr.operand)
+            self._emit_mem_load(ptr_reg, ptr_reg, self._pointee_size(expr.operand))
             return ptr_reg
         elif isinstance(expr, SizeofExpr):
             reg = self.get_register()
@@ -2177,13 +2542,35 @@ class CodeGenerator:
             if isinstance(expr.left, Identifier):
                 reg = self.get_register()
                 self._emit_var_load(reg, expr.left.name)
-                result_reg = self.get_register()
+                result_reg = self.get_register(exclude={reg})
                 self.emit(f"    MOV {result_reg}, {reg}")
-                if expr.op == '++': self.emit(f"    INC {reg}")
-                elif expr.op == '--': self.emit(f"    DEC {reg}")
+                # Pointer postfix ++/-- advance by the pointee size (C).
+                step = self._pointer_step(expr.left.name)
+                if expr.op == '++':
+                    if step and step > 1: self.emit(f"    ADD {reg}, {step}")
+                    else: self.emit(f"    INC {reg}")
+                elif expr.op == '--':
+                    if step and step > 1: self.emit(f"    SUB {reg}, {step}")
+                    else: self.emit(f"    DEC {reg}")
                 else: raise SyntaxError(f"Unknown postfix operator '{expr.op}'")
                 self._emit_var_store(expr.left.name, reg)
                 self.free_register()
+                return result_reg
+            if isinstance(expr.left, Deref):
+                # (*p)++ / (*p)-- : returns the OLD pointee value.
+                ptr_reg = self.generate_expression(expr.left.operand)
+                size = self._pointee_size(expr.left.operand)
+                old_reg = self.get_register(exclude={ptr_reg})
+                self._emit_mem_load(old_reg, ptr_reg, size)
+                result_reg = self.get_register(exclude={ptr_reg, old_reg})
+                self.emit(f"    MOV {result_reg}, {old_reg}")
+                if expr.op == '++':
+                    self.emit(f"    INC {old_reg}")
+                elif expr.op == '--':
+                    self.emit(f"    DEC {old_reg}")
+                else:
+                    raise SyntaxError(f"Unknown postfix operator '{expr.op}'")
+                self._emit_mem_store(ptr_reg, old_reg, size)
                 return result_reg
             if isinstance(expr.left, ArrayAccess):
                 # arr[i]++ / arr[i]-- : returns the OLD value (C semantics).
@@ -2207,7 +2594,7 @@ class CodeGenerator:
                     raise SyntaxError(f"Unknown postfix operator '{expr.op}'")
                 self._emit_mem_store(addr_reg, old_reg, info['elem_size'])
                 return result_reg
-            raise SyntaxError("Postfix operators can only be applied to variables or array elements")
+            raise SyntaxError("Postfix operators can only be applied to variables, pointers, or array elements")
         elif isinstance(expr, FuncCall):
             return self.generate_call(expr)
         else:
@@ -2395,7 +2782,13 @@ class CodeGenerator:
             self.emit(f"    PUSH {arg_reg}")
             self.free_register()
         
-        label = self.functions.get(call.name, {}).get('label') or self.builtin_functions.get(call.name)
+        if call.name in self.functions:
+            label = self.functions[call.name]['label']
+        else:
+            # Arity-aware builtin resolution: optional-argument builtins
+            # (scroll_x/scroll_y/roll_x/roll_y) select a dedicated stub per
+            # argument count so the stack layout always matches the callee.
+            label = self._resolve_builtin_label(call.name, len(call.args))
         if not label:
             raise NameError(f"Undefined function '{call.name}'")
         # Record builtin usage so generate_builtins only emits what is called.
@@ -2416,7 +2809,7 @@ class CodeGenerator:
         # return value is discarded so the source register is irrelevant.
         p0_returning_builtins = {
             'random', 'random_range', 'key_available', 'key_read',
-            'read_screen', 'key_count', 'ser_in', 'ser_stat',
+            'read_screen', 'key_count', 'ser_in', 'ser_stat', 'vread',
             'abs', 'min', 'max', 'clz', 'ctz', 'popcnt',
             'sqrt', 'log', 'exp', 'sin', 'cos', 'tan',
             'atan', 'asin', 'acos', 'deg', 'rad',
@@ -2461,6 +2854,10 @@ class CodeGenerator:
                 if line.startswith(';'):
                     # Comment lines are emitted verbatim (no extra indent).
                     self.assembly.append(line)
+                elif line.endswith(':'):
+                    # Internal branch labels inside multi-path stubs
+                    # (e.g. direction selection in scroll/roll builtins).
+                    self.emit_label(line[:-1])
                 else:
                     self.emit(line)
         self.assembly.append("")

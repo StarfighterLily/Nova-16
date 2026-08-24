@@ -27,6 +27,25 @@ void draw_text() {
 	write_text("StarField", 0x1F); // Main
 }
 
+void parallax() {
+	for (int layer = 1; layer <= 3; layer++) {
+		set_layer(layer);
+		if (layer == 1){
+			scroll_x(layer, 1, 1);	//new function sig: scroll_x(layer, dir, amount)
+			scroll_y(layer, 1, 1);
+		}
+		if (layer == 2){
+			scroll_x(layer, 1, 2);
+			scroll_y(layer, 1, 2);
+		}
+		if (layer == 3){
+			scroll_x(layer, 1, 3);
+			scroll_y(layer, 1, 3);
+		}
+	}
+	iret();
+}
+
 void main() {
 	setup();
 
@@ -51,20 +70,5 @@ void main() {
 
 // Timer interrupt handler (vector at 0x0100)
 void timer_interrupt() {
-	for (int layer = 1; layer <= 3; layer++) {
-		set_layer(layer);
-		if (layer == 1){
-			scroll_x(layer);
-		}
-		if (layer == 2){
-			scroll_x(layer);
-			scroll_x(layer);
-		}
-		if (layer == 3){
-			scroll_x(layer);
-			scroll_x(layer);
-			scroll_x(layer);
-		}
-	}
-	iret();
+	parallax();
 }

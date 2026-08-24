@@ -174,184 +174,276 @@ MOV P4, R0
 MOV SP, FP
 POP FP
 RET
+; Function: parallax
+func_parallax:
+ENTER 2
+; For loop
+; var layer = ...
+MOV P5, 1
+MOV [0xC180], P5
+for_start_6:
+MOV P6, [0xC180]
+PUSH P6
+MOV P7, 3
+POP P6
+CMP P7, P6
+JNC cmp_true_9
+MOV P6, 0
+JMP cmp_end_10
+cmp_true_9:
+MOV P6, 1
+cmp_end_10:
+CMP P6, 0
+JZ for_end_7
+; Call to set_layer
+MOV P0, [0xC180]
+PUSH P0
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P1, R0
+; If statement
+MOV P2, 1
+PUSH P2
+MOV P4, [0xC180]
+POP P2
+CMP P2, P4
+JZ cmp_true_13
+MOV P2, 0
+JMP cmp_end_14
+cmp_true_13:
+MOV P2, 1
+cmp_end_14:
+CMP P2, 0
+JZ if_end_11
+; Call to roll_x
+MOV P5, 1
+PUSH P5
+MOV P6, 1
+PUSH P6
+MOV P7, [0xC180]
+PUSH P7
+CALL builtin_roll_x_3
+; Args consumed by callee
+MOV P0, R0
+; Call to roll_y
+MOV P1, 1
+PUSH P1
+MOV P2, 1
+PUSH P2
+MOV P4, [0xC180]
+PUSH P4
+CALL builtin_roll_y_3
+; Args consumed by callee
+MOV P5, R0
+if_end_11:
+; If statement
+MOV P6, 2
+PUSH P6
+MOV P7, [0xC180]
+POP P6
+CMP P6, P7
+JZ cmp_true_17
+MOV P6, 0
+JMP cmp_end_18
+cmp_true_17:
+MOV P6, 1
+cmp_end_18:
+CMP P6, 0
+JZ if_end_15
+; Call to roll_x
+MOV P0, 2
+PUSH P0
+MOV P1, 1
+PUSH P1
+MOV P2, [0xC180]
+PUSH P2
+CALL builtin_roll_x_3
+; Args consumed by callee
+MOV P4, R0
+; Call to roll_y
+MOV P5, 2
+PUSH P5
+MOV P6, 1
+PUSH P6
+MOV P7, [0xC180]
+PUSH P7
+CALL builtin_roll_y_3
+; Args consumed by callee
+MOV P0, R0
+if_end_15:
+; If statement
+MOV P1, 3
+PUSH P1
+MOV P2, [0xC180]
+POP P1
+CMP P1, P2
+JZ cmp_true_21
+MOV P1, 0
+JMP cmp_end_22
+cmp_true_21:
+MOV P1, 1
+cmp_end_22:
+CMP P1, 0
+JZ if_end_19
+; Call to roll_x
+MOV P4, 3
+PUSH P4
+MOV P5, 1
+PUSH P5
+MOV P6, [0xC180]
+PUSH P6
+CALL builtin_roll_x_3
+; Args consumed by callee
+MOV P7, R0
+; Call to roll_y
+MOV P0, 3
+PUSH P0
+MOV P1, 1
+PUSH P1
+MOV P2, [0xC180]
+PUSH P2
+CALL builtin_roll_y_3
+; Args consumed by callee
+MOV P4, R0
+if_end_19:
+for_continue_8:
+; Wrap-check: save layer before update
+MOV P5, [0xC180]
+PUSH P5
+MOV P6, [0xC180]
+MOV P7, P6
+INC P6
+MOV [0xC180], P6
+; Wrap-check: compare layer new vs old
+POP P0
+MOV P1, [0xC180]
+CMP P1, P0
+JC for_end_7
+JMP for_start_6
+for_end_7:
+; Call to iret
+CALL builtin_iret
+MOV P2, R0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
 ; Function: main
 func_main:
 ENTER 0
 ; Call to setup
 CALL func_setup
-MOV P5, P0
+MOV P4, P0
 ; Call to draw_stars
-MOV P6, 6
+MOV P5, 6
+PUSH P5
+MOV P6, 0
 PUSH P6
-MOV P7, 0
+MOV P7, 32
 PUSH P7
-MOV P0, 32
+MOV P0, 1
 PUSH P0
-MOV P1, 1
-PUSH P1
 CALL func_draw_stars
 ; Args consumed by callee
-MOV P2, P0
+MOV P1, P0
 ; Call to draw_stars
-MOV P4, 10
-PUSH P4
-MOV P5, 7
-PUSH P5
-MOV P6, 128
-PUSH P6
-MOV P7, 2
-PUSH P7
-CALL func_draw_stars
-; Args consumed by callee
-; Call to draw_stars
-MOV P1, 15
-PUSH P1
-MOV P2, 11
+MOV P2, 10
 PUSH P2
-MOV P4, 256
+MOV P4, 7
 PUSH P4
-MOV P5, 3
+MOV P5, 128
 PUSH P5
+MOV P6, 2
+PUSH P6
 CALL func_draw_stars
 ; Args consumed by callee
-MOV P6, P0
+MOV P7, P0
+; Call to draw_stars
+MOV P0, 15
+PUSH P0
+MOV P1, 11
+PUSH P1
+MOV P2, 256
+PUSH P2
+MOV P4, 3
+PUSH P4
+CALL func_draw_stars
+; Args consumed by callee
+MOV P5, P0
 ; Call to draw_text
 CALL func_draw_text
-MOV P7, P0
+MOV P6, P0
 ; Call to sti
 CALL builtin_sti
-MOV P0, R0
+MOV P7, R0
 ; Call to set_timer
-MOV P1, 3
+MOV P0, 3
+PUSH P0
+MOV P1, 80
 PUSH P1
-MOV P2, 80
+MOV P2, 255
 PUSH P2
-MOV P4, 255
+MOV P4, 0
 PUSH P4
-MOV P5, 0
-PUSH P5
 CALL builtin_set_timer
 ; Args consumed by callee
-MOV P6, R0
+MOV P5, R0
 ; While loop
-while_start_6:
-MOV P7, 1
-CMP P7, 0
-JZ while_end_7
-JMP while_start_6
-while_end_7:
+while_start_23:
+MOV P6, 1
+CMP P6, 0
+JZ while_end_24
+JMP while_start_23
+while_end_24:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
 ; Function: timer_interrupt
 func_timer_interrupt:
-SUB SP, 2 ; Allocate locals
-; For loop
-; var layer = ...
-MOV P0, 1
-MOV [SP+0], P0
-for_start_8:
-MOV P1, [SP+0]
-MOV P2, 3
-CMP P2, P1
-JNC cmp_true_11
-MOV P1, 0
-JMP cmp_end_12
-cmp_true_11:
-MOV P1, 1
-cmp_end_12:
-CMP P1, 0
-JZ for_end_9
-; Call to set_layer
-MOV P4, [SP+0]
-PUSH P4
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P5, R0
-; If statement
-MOV P6, 1
-MOV P7, [SP+0]
-CMP P6, P7
-JZ cmp_true_15
-MOV P6, 0
-JMP cmp_end_16
-cmp_true_15:
-MOV P6, 1
-cmp_end_16:
-CMP P6, 0
-JZ if_end_13
-; Call to scroll_x
-MOV P0, [SP+0]
+; Save general registers (interrupt entry only saves PC+flags)
 PUSH P0
-CALL builtin_scroll_x
-; Args consumed by callee
-MOV P1, R0
-if_end_13:
-; If statement
-MOV P2, 2
-MOV P4, [SP+0]
-CMP P2, P4
-JZ cmp_true_19
-MOV P2, 0
-JMP cmp_end_20
-cmp_true_19:
-MOV P2, 1
-cmp_end_20:
-CMP P2, 0
-JZ if_end_17
-; Call to scroll_x
-MOV P5, [SP+0]
+PUSH P1
+PUSH P2
+PUSH P3
+PUSH P4
 PUSH P5
-CALL builtin_scroll_x
-; Args consumed by callee
-MOV P6, R0
-; Call to scroll_x
-MOV P7, [SP+0]
-PUSH P7
-CALL builtin_scroll_x
-; Args consumed by callee
-MOV P0, R0
-if_end_17:
-; If statement
-MOV P1, 3
-MOV P2, [SP+0]
-CMP P1, P2
-JZ cmp_true_23
-MOV P1, 0
-JMP cmp_end_24
-cmp_true_23:
-MOV P1, 1
-cmp_end_24:
-CMP P1, 0
-JZ if_end_21
-; Call to scroll_x
-MOV P4, [SP+0]
-PUSH P4
-CALL builtin_scroll_x
-; Args consumed by callee
-MOV P5, R0
-; Call to scroll_x
-MOV P6, [SP+0]
 PUSH P6
-CALL builtin_scroll_x
-; Args consumed by callee
-MOV P7, R0
-; Call to scroll_x
-MOV P0, [SP+0]
-PUSH P0
-CALL builtin_scroll_x
-; Args consumed by callee
-MOV P1, R0
-if_end_21:
-for_continue_10:
-MOV P2, [SP+0]
-MOV P4, P2
-INC P2
-MOV [SP+0], P2
-JMP for_start_8
-for_end_9:
-ADD SP, 2 ; Deallocate locals before IRET
+PUSH P7
+PUSH P9
+PUSH R0
+PUSH R1
+PUSH R2
+PUSH R3
+PUSH R4
+PUSH R5
+PUSH R6
+PUSH R7
+PUSH R8
+PUSH R9
+; Call to parallax
+CALL func_parallax
+MOV P7, P0
+; Implicit ISR return
+POP R9
+POP R8
+POP R7
+POP R6
+POP R5
+POP R4
+POP R3
+POP R2
+POP R1
+POP R0
+POP P9
+POP P7
+POP P6
+POP P5
+POP P4
+POP P3
+POP P2
+POP P1
+POP P0
 IRET
 ;
 ; Data Section
@@ -384,10 +476,36 @@ POP P1
 SWRITE P1
 PUSH P0
 RET
-builtin_scroll_x:
+builtin_roll_x_3:
+; Args: layer, dir, amount; preserves VL
 POP P0
 POP P1
-SROL 0, P1
+POP P2
+POP P3
+MOV P5, VL
+MOV VL, P1
+CMP P2, 0
+JZ builtin_roll_x_3_fwd
+NEG P3
+builtin_roll_x_3_fwd:
+SROL 0, P3
+MOV VL, P5
+PUSH P0
+RET
+builtin_roll_y_3:
+; Args: layer, dir, amount; preserves VL
+POP P0
+POP P1
+POP P2
+POP P3
+MOV P5, VL
+MOV VL, P1
+CMP P2, 0
+JZ builtin_roll_y_3_fwd
+NEG P3
+builtin_roll_y_3_fwd:
+SROL 1, P3
+MOV VL, P5
 PUSH P0
 RET
 builtin_write_text:
@@ -414,6 +532,9 @@ PUSH P0
 RET
 builtin_sti:
 STI
+RET
+builtin_iret:
+IRET
 RET
 builtin_random:
 RND P0

@@ -161,15 +161,27 @@ int main() {
 
 
 def test_table_covers_every_mapped_builtin():
-    """Every name->label mapping must have a table implementation (and vice versa)."""
+    """Every name->label mapping must have a table implementation (and vice versa).
+
+    Arity-variant stubs (scroll_x/scroll_y/roll_x/roll_y _2/_3 forms) live in
+    BUILTIN_IMPLEMENTATIONS but are selected per call site via ARITY_BUILTINS,
+    so they are part of the expected label set too."""
     gen = CodeGenerator()
     impls = CodeGenerator.BUILTIN_IMPLEMENTATIONS
     for name, label in gen.builtin_functions.items():
         assert label in impls, (
             f"builtin '{name}' maps to '{label}' which has no implementation"
         )
-    assert set(impls) == set(gen.builtin_functions.values()), (
-        "BUILTIN_IMPLEMENTATIONS and builtin_functions label sets diverge"
+    expected_labels = set(gen.builtin_functions.values())
+    for arity_table in CodeGenerator.ARITY_BUILTINS.values():
+        for label in arity_table.values():
+            assert label in impls, (
+                f"arity stub '{label}' has no implementation entry"
+            )
+        expected_labels.update(arity_table.values())
+    assert set(impls) == expected_labels, (
+        "BUILTIN_IMPLEMENTATIONS and builtin_functions+ARITY_BUILTINS "
+        "label sets diverge"
     )
     print("PASS test_table_covers_every_mapped_builtin")
 

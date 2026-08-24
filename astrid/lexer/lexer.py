@@ -17,6 +17,13 @@ KEYWORDS = {
     # C qualifiers/operators added for expanded C support:
     'const',    # const qualifier (accepted; treated as a normal variable)
     'sizeof',   # sizeof(type) / sizeof(expr) compile-time byte-size operator
+    # C enum support:
+    'enum',     # enum declarations introduce named integer constants
+    # C storage qualifiers (accepted and ignored -- the compiler treats the
+    # declared entity exactly like its unqualified counterpart):
+    'register', 'volatile', 'extern', 'static', 'inline',
+    # C type modifiers (normalized to their base type by the parser):
+    'signed', 'unsigned', 'long', 'short',
 }
 
 # Operators and delimiters
