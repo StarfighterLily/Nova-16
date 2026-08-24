@@ -5,90 +5,542 @@ MOV SP, 0xFF00 ; Set stack pointer to high memory
 MOV FP, 0xFF00 ; Also init frame pointer
 CALL func_main
 HLT
-; Function: main
-func_main:
+; Function: chkKey
+func_chkKey:
 ENTER 2
-; Call to set_vmode
-MOV P0, 0
-PUSH P0
-CALL builtin_set_vmode
-; Args consumed by callee
-MOV P1, R0
-; Call to set_layer
-MOV P2, 5
-PUSH P2
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P4, R0
-; While loop
-while_start_0:
-MOV P5, 1
-CMP P5, 0
-JZ while_end_1
 ; If statement
 ; Call to key_available
 CALL builtin_key_available
-MOV P6, P0
-CMP P6, 0
-JZ if_end_2
+CMP P0, 0
+JZ if_end_0
 ; Assignment to key
 ; Call to key_read
 CALL builtin_key_read
-MOV P7, P0
-MOV [0xC000], P7
+MOV P1, P0
+MOV [0xC000], P1
 ; If statement
-MOV P0, 101
+MOV P2, 101
+PUSH P2
+MOV P4, [0xC000]
+POP P2
+CMP P2, P4
+JZ cmp_true_4
+MOV P2, 0
+JMP cmp_end_5
+cmp_true_4:
+MOV P2, 1
+cmp_end_5:
+CMP P2, 0
+JZ if_end_2
+if_end_2:
+; If statement
+MOV P5, 97
+PUSH P5
+MOV P6, [0xC000]
+POP P5
+CMP P5, P6
+JZ cmp_true_8
+MOV P5, 0
+JMP cmp_end_9
+cmp_true_8:
+MOV P5, 1
+cmp_end_9:
+PUSH P5
+MOV P7, [0x8000]
+PUSH P7
+MOV P0, 8
+POP P7
+CMP P0, P7
+JC cmp_true_10
+MOV P7, 0
+JMP cmp_end_11
+cmp_true_10:
+MOV P7, 1
+cmp_end_11:
+POP P5
+CMP P5, 0
+JZ sc_false_12
+MOV P1, [0x8000]
+PUSH P1
+MOV P2, 8
+POP P1
+CMP P2, P1
+JC cmp_true_14
+MOV P1, 0
+JMP cmp_end_15
+cmp_true_14:
+MOV P1, 1
+cmp_end_15:
+CMP P1, 0
+JZ sc_false_12
+MOV P5, 1
+JMP sc_end_13
+sc_false_12:
+MOV P5, 0
+sc_end_13:
+CMP P5, 0
+JZ if_end_6
+; Assignment to x
+MOV P4, [0x8000]
+MOV P5, 8
+SUB P4, P5
+MOV [0x8000], P4
+if_end_6:
+; If statement
+MOV P6, 128
+PUSH P6
+MOV P7, [0xC000]
+POP P6
+CMP P6, P7
+JZ cmp_true_18
+MOV P6, 0
+JMP cmp_end_19
+cmp_true_18:
+MOV P6, 1
+cmp_end_19:
+PUSH P6
+MOV P0, [0x8000]
+PUSH P0
+MOV P1, 8
+POP P0
+CMP P1, P0
+JC cmp_true_20
+MOV P0, 0
+JMP cmp_end_21
+cmp_true_20:
+MOV P0, 1
+cmp_end_21:
+POP P6
+CMP P6, 0
+JZ sc_false_22
+MOV P2, [0x8000]
+PUSH P2
+MOV P4, 8
+POP P2
+CMP P4, P2
+JC cmp_true_24
+MOV P2, 0
+JMP cmp_end_25
+cmp_true_24:
+MOV P2, 1
+cmp_end_25:
+CMP P2, 0
+JZ sc_false_22
+MOV P6, 1
+JMP sc_end_23
+sc_false_22:
+MOV P6, 0
+sc_end_23:
+CMP P6, 0
+JZ if_end_16
+; Assignment to x
+MOV P5, [0x8000]
+MOV P6, 8
+SUB P5, P6
+MOV [0x8000], P5
+if_end_16:
+; If statement
+MOV P7, [0x8000]
+PUSH P7
+MOV P0, 248
+POP P7
+CMP P7, P0
+JC cmp_true_28
+MOV P7, 0
+JMP cmp_end_29
+cmp_true_28:
+MOV P7, 1
+cmp_end_29:
+PUSH P7
+MOV P1, 100
+PUSH P1
+MOV P2, [0xC000]
+POP P1
+CMP P1, P2
+JZ cmp_true_30
+MOV P1, 0
+JMP cmp_end_31
+cmp_true_30:
+MOV P1, 1
+cmp_end_31:
+POP P7
+CMP P7, 0
+JZ sc_false_32
+MOV P4, 100
+PUSH P4
+MOV P5, [0xC000]
+POP P4
+CMP P4, P5
+JZ cmp_true_34
+MOV P4, 0
+JMP cmp_end_35
+cmp_true_34:
+MOV P4, 1
+cmp_end_35:
+CMP P4, 0
+JZ sc_false_32
+MOV P7, 1
+JMP sc_end_33
+sc_false_32:
+MOV P7, 0
+sc_end_33:
+CMP P7, 0
+JZ if_end_26
+; Assignment to x
+MOV P6, [0x8000]
+MOV P7, 8
+ADD P6, P7
+MOV [0x8000], P6
+if_end_26:
+; If statement
+MOV P0, [0x8000]
+PUSH P0
+MOV P1, 248
+POP P0
+CMP P0, P1
+JC cmp_true_38
+MOV P0, 0
+JMP cmp_end_39
+cmp_true_38:
+MOV P0, 1
+cmp_end_39:
+PUSH P0
+MOV P2, 129
+PUSH P2
+MOV P4, [0xC000]
+POP P2
+CMP P2, P4
+JZ cmp_true_40
+MOV P2, 0
+JMP cmp_end_41
+cmp_true_40:
+MOV P2, 1
+cmp_end_41:
+POP P0
+CMP P0, 0
+JZ sc_false_42
+MOV P5, 129
+PUSH P5
+MOV P6, [0xC000]
+POP P5
+CMP P5, P6
+JZ cmp_true_44
+MOV P5, 0
+JMP cmp_end_45
+cmp_true_44:
+MOV P5, 1
+cmp_end_45:
+CMP P5, 0
+JZ sc_false_42
+MOV P0, 1
+JMP sc_end_43
+sc_false_42:
+MOV P0, 0
+sc_end_43:
+CMP P0, 0
+JZ if_end_36
+; Assignment to x
+MOV P7, [0x8000]
+MOV P0, 8
+ADD P7, P0
+MOV [0x8000], P7
+if_end_36:
+; If statement
+MOV P1, 119
+PUSH P1
+MOV P2, [0xC000]
+POP P1
+CMP P1, P2
+JZ cmp_true_48
+MOV P1, 0
+JMP cmp_end_49
+cmp_true_48:
+MOV P1, 1
+cmp_end_49:
+PUSH P1
+MOV P4, [0x8002]
+PUSH P4
+MOV P5, 8
+POP P4
+CMP P5, P4
+JC cmp_true_50
+MOV P4, 0
+JMP cmp_end_51
+cmp_true_50:
+MOV P4, 1
+cmp_end_51:
+POP P1
+CMP P1, 0
+JZ sc_false_52
+MOV P6, [0x8002]
+PUSH P6
+MOV P7, 8
+POP P6
+CMP P7, P6
+JC cmp_true_54
+MOV P6, 0
+JMP cmp_end_55
+cmp_true_54:
+MOV P6, 1
+cmp_end_55:
+CMP P6, 0
+JZ sc_false_52
+MOV P1, 1
+JMP sc_end_53
+sc_false_52:
+MOV P1, 0
+sc_end_53:
+CMP P1, 0
+JZ if_end_46
+; Assignment to y
+MOV P0, [0x8002]
+MOV P1, 8
+SUB P0, P1
+MOV [0x8002], P0
+if_end_46:
+; If statement
+MOV P2, 130
+PUSH P2
+MOV P4, [0xC000]
+POP P2
+CMP P2, P4
+JZ cmp_true_58
+MOV P2, 0
+JMP cmp_end_59
+cmp_true_58:
+MOV P2, 1
+cmp_end_59:
+PUSH P2
+MOV P5, [0x8002]
+PUSH P5
+MOV P6, 8
+POP P5
+CMP P6, P5
+JC cmp_true_60
+MOV P5, 0
+JMP cmp_end_61
+cmp_true_60:
+MOV P5, 1
+cmp_end_61:
+POP P2
+CMP P2, 0
+JZ sc_false_62
+MOV P7, [0x8002]
+PUSH P7
+MOV P0, 8
+POP P7
+CMP P0, P7
+JC cmp_true_64
+MOV P7, 0
+JMP cmp_end_65
+cmp_true_64:
+MOV P7, 1
+cmp_end_65:
+CMP P7, 0
+JZ sc_false_62
+MOV P2, 1
+JMP sc_end_63
+sc_false_62:
+MOV P2, 0
+sc_end_63:
+CMP P2, 0
+JZ if_end_56
+; Assignment to y
+MOV P1, [0x8002]
+MOV P2, 8
+SUB P1, P2
+MOV [0x8002], P1
+if_end_56:
+; If statement
+MOV P4, [0x8002]
+PUSH P4
+MOV P5, 240
+POP P4
+CMP P4, P5
+JC cmp_true_68
+MOV P4, 0
+JMP cmp_end_69
+cmp_true_68:
+MOV P4, 1
+cmp_end_69:
+PUSH P4
+MOV P6, 115
+PUSH P6
+MOV P7, [0xC000]
+POP P6
+CMP P6, P7
+JZ cmp_true_70
+MOV P6, 0
+JMP cmp_end_71
+cmp_true_70:
+MOV P6, 1
+cmp_end_71:
+POP P4
+CMP P4, 0
+JZ sc_false_72
+MOV P0, 115
 PUSH P0
 MOV P1, [0xC000]
 POP P0
 CMP P0, P1
-JZ cmp_true_6
+JZ cmp_true_74
 MOV P0, 0
-JMP cmp_end_7
-cmp_true_6:
+JMP cmp_end_75
+cmp_true_74:
 MOV P0, 1
-cmp_end_7:
+cmp_end_75:
 CMP P0, 0
-JZ if_end_4
-; Call to screen_fill
-MOV P2, 0
-PUSH P2
-CALL builtin_screen_fill
-; Args consumed by callee
-MOV P4, R0
-; Call to set_pos
-MOV P5, 128
+JZ sc_false_72
+MOV P4, 1
+JMP sc_end_73
+sc_false_72:
+MOV P4, 0
+sc_end_73:
+CMP P4, 0
+JZ if_end_66
+; Assignment to y
+MOV P2, [0x8002]
+MOV P4, 8
+ADD P2, P4
+MOV [0x8002], P2
+if_end_66:
+; If statement
+MOV P5, [0x8002]
 PUSH P5
-MOV P6, 128
-PUSH P6
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P7, R0
-; Call to write_text
-MOV P0, 21
-PUSH P0
-; Type cast: (string) expr
-MOV P1, [0xC000]
-ITOS P2, P1
-PUSH P2
-CALL builtin_write_text
-; Args consumed by callee
-MOV P4, R0
-if_end_4:
-if_end_2:
-JMP while_start_0
-while_end_1:
+MOV P6, 240
+POP P5
+CMP P5, P6
+JC cmp_true_78
+MOV P5, 0
+JMP cmp_end_79
+cmp_true_78:
+MOV P5, 1
+cmp_end_79:
+PUSH P5
+MOV P7, 131
+PUSH P7
+MOV P0, [0xC000]
+POP P7
+CMP P7, P0
+JZ cmp_true_80
+MOV P7, 0
+JMP cmp_end_81
+cmp_true_80:
+MOV P7, 1
+cmp_end_81:
+POP P5
+CMP P5, 0
+JZ sc_false_82
+MOV P1, 131
+PUSH P1
+MOV P2, [0xC000]
+POP P1
+CMP P1, P2
+JZ cmp_true_84
+MOV P1, 0
+JMP cmp_end_85
+cmp_true_84:
+MOV P1, 1
+cmp_end_85:
+CMP P1, 0
+JZ sc_false_82
+MOV P5, 1
+JMP sc_end_83
+sc_false_82:
+MOV P5, 0
+sc_end_83:
+CMP P5, 0
+JZ if_end_76
+; Assignment to y
+MOV P4, [0x8002]
+MOV P5, 8
+ADD P4, P5
+MOV [0x8002], P4
+if_end_76:
+if_end_0:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-; Built-in Function Implementations
-builtin_set_vmode:
-POP P0
-POP P1
-MOV VM, P1
+; Function: drawPlayer
+func_drawPlayer:
+ENTER 0
+; Call to set_layer
+MOV P6, 5
+PUSH P6
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P7, R0
+; Call to set_pos
+MOV P0, [FP+6]
 PUSH P0
+MOV P1, [FP+4]
+PUSH P1
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P2, R0
+; Call to write_text
+MOV P4, 31
+PUSH P4
+MOV P5, str_86
+PUSH P5
+CALL builtin_write_text
+; Args consumed by callee
+MOV P6, R0
+; Call to set_pos
+MOV P7, 8
+PUSH P7
+MOV P0, [FP+6]
+POP P7
+ADD P7, P0
+PUSH P7
+MOV P1, [FP+4]
+PUSH P1
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P2, R0
+; Call to write_text
+MOV P4, 31
+PUSH P4
+MOV P5, str_87
+PUSH P5
+CALL builtin_write_text
+; Args consumed by callee
+MOV P6, R0
+; Implicit return for void function
+MOV SP, FP
+POP FP
 RET
+; Function: main
+func_main:
+ENTER 0
+; While loop
+while_start_88:
+MOV P7, 1
+CMP P7, 0
+JZ while_end_89
+; Call to chkKey
+CALL func_chkKey
+; Call to drawPlayer
+MOV P1, [0x8002]
+PUSH P1
+MOV P2, [0x8000]
+PUSH P2
+CALL func_drawPlayer
+ADD SP, 4 ; Caller cleans up args
+MOV P4, P0
+JMP while_start_88
+while_end_89:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+;
+; Data Section
+;
+str_86: DEFSTR "O"
+str_87: DEFSTR "X"
+; Built-in Function Implementations
 builtin_set_layer:
 POP P0
 POP P1
@@ -101,12 +553,6 @@ POP P1
 POP P2
 MOV VX, P1
 MOV VY, P2
-PUSH P0
-RET
-builtin_screen_fill:
-POP P0
-POP P1
-SFILL P1
 PUSH P0
 RET
 builtin_write_text:
@@ -123,3 +569,9 @@ RET
 builtin_key_read:
 KEYIN P0
 RET
+ORG 0x8000
+; Global Variables
+gvar_x:
+DW 120
+gvar_y:
+DW 120

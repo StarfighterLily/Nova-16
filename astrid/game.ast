@@ -1,16 +1,58 @@
-void main(){
-    int key;
-    set_vmode(0);
-    set_layer(5);
+int x = 120, y = 120;
 
-    while (1){
-        if (key_available()){
-            key = key_read();
-            if (key == 101){
-                screen_fill(0x00);
-                set_pos(128, 128);
-                write_text((string)key, 0x15);
-            }
+void chkKey() {
+    int key;
+    if (key_available()) {
+        key = key_read();
+        if (key == 101) {
+            // sword swing
         }
+        if (key == 97 && x > 8) {
+            // move left
+            x -= 8;
+        }
+        if (key == 128 && x > 8) {
+            // move left (alternative key)
+            x -= 8;
+        }
+        if (key == 100 && x < 248) {
+            // move right
+            x += 8;
+        }
+        if (key == 129 && x < 248) {
+            // move right (alternative key)
+            x += 8;
+        }
+        if (key == 119 && y > 8) {
+            // move up
+            y -= 8;
+        }
+        if (key == 130 && y > 8) {
+            // move up (alternative key)
+            y -= 8;
+        }
+        if (key == 115 && y < 240) {
+            // move down
+            y += 8;
+        }
+        if (key == 131 && y < 240) {
+            // move down (alternative key)
+            y += 8;
+        }
+    }
+}
+
+void drawPlayer(int x, int y) {
+    set_layer(5);
+    set_pos(x, y);
+    write_text("O", 0x1F);
+    set_pos(x, y + 8);
+    write_text("X", 0x1F);
+}
+
+void main() {
+    while (1) {
+        chkKey();
+        drawPlayer(x, y);
     }
 }

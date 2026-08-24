@@ -1317,15 +1317,19 @@ class CodeGenerator:
                 self.emit(f"    MOV {reg}, FP")
                 self.emit(f"    SUB {reg}, {-info['offset']}")
             return
+        if name in self.local_vars:
+            # Locals and parameters shadow globals of the same name (C scoping
+            # semantics). A function `void f(int x)` that declares a global
+            # `x` must read the FP-relative param slot, NOT the global. This
+            # mirrors _emit_var_store, which already resolves locals first.
+            self._emit_local_load(reg, name)
+            return
         g = self.global_vars.get(name)
         if g:
             if g.get('is_array'):
                 self.emit(f"    MOV {reg}, 0x{g['address']:04X}")
             else:
                 self.emit(f"    MOV {reg}, [0x{g['address']:04X}]")
-            return
-        if name in self.local_vars:
-            self._emit_local_load(reg, name)
             return
         raise NameError(f"Undefined variable '{name}'")
 
@@ -1783,11 +1787,9 @@ class CodeGenerator:
         if isinstance(operand, Identifier):
             name = operand.name
             reg = self.get_register()
-            g = self.global_vars.get(name)
-            if g:
-                self.emit(f"    MOV {reg}, 0x{g['address']:04X}")
-                return reg
             if name in self.local_vars:
+                # Params/locals shadow globals (C scoping) -- &x on a param
+                # whose name collides with a global must yield the frame slot.
                 # Respect spill allocations so &x matches where loads/stores
                 # of x actually live (zero-page migration).
                 if name in self.spill_allocations and self.current_function != 'timer_interrupt':
@@ -1804,6 +1806,10 @@ class CodeGenerator:
                         self.emit(f"    ADD {reg}, {offset}")
                     else:
                         self.emit(f"    SUB {reg}, {-offset}")
+                return reg
+            g = self.global_vars.get(name)
+            if g:
+                self.emit(f"    MOV {reg}, 0x{g['address']:04X}")
                 return reg
             raise NameError(f"Cannot take address of undefined variable '{name}'")
         if isinstance(operand, ArrayAccess):
@@ -2796,7 +2802,18 @@ class CodeGenerator:
             self.used_builtins.add(label)
         
         self.emit(f"    CALL {label}")
-        if call.args:
+        if call.name in self.functions and call.args:
+            # User-function callees end with MOV SP, FP / POP FP / RET,
+            # which restores SP to the frame base and LEAVES the
+            # caller-pushed arguments on the stack. Deallocate them here
+            # (cdecl-style, one word per argument -- every PUSH above is a
+            # full 16-bit word regardless of the parameter's declared type).
+            # Without this, loops that call functions with arguments leak
+            # stack bytes every iteration until SP walks down through low
+            # memory, wraps, and corrupts the running program.
+            self.emit(f"    ADD SP, {len(call.args) * 2} ; Caller cleans up args")
+        elif call.args:
+            # Builtin stubs pop their own arguments off the stack.
             self.emit(f"    ; Args consumed by callee")
 
         result_reg = self.get_register()
