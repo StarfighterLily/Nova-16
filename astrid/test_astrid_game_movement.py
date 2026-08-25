@@ -299,15 +299,17 @@ def test_game_movement_and_stack_stability_headless():
         assert read_x() == 8, f"x must clamp at 8, got {read_x()}"
         for _ in range(40):
             kbd.add_key(100)     # right ('d')
-        run(20000)
+        # 8 -> 248 is 30 moves; one game-loop iteration costs ~2k cycles,
+        # so give the mash enough budget to actually reach the clamp.
+        run(150000)
         assert read_x() == 248, f"x must clamp at 248, got {read_x()}"
         for _ in range(40):
             kbd.add_key(115)     # down ('s')
-        run(20000)
+        run(150000)
         assert read_y() == 240, f"y must clamp at 240, got {read_y()}"
         for _ in range(40):
             kbd.add_key(119)     # up ('w')
-        run(20000)
+        run(150000)
         assert read_y() == 8, f"y must clamp at 8, got {read_y()}"
 
         # --- long run: stack must never drift; program must not halt/crash ---

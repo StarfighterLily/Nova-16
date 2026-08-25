@@ -1,58 +1,204 @@
 int x = 120, y = 120;
+int oldx, oldy;
+int facing = 0;
+int counter = 0;
+int ex, ey = 128;
+int oldex, oldey;
+int swx, swy;
+int swinging = 0;
+
+void clearSwing() {
+    if (swinging == 1) {
+        set_layer(5);
+        set_pos(swx, swy);
+        write_text("--", 0x00);
+        swinging = 0;
+    }
+}
+
+void swordSwing() {
+    string sword;
+    clearSwing();   
+    counter = 0;
+    sword = "--";
+    if (facing == 1) {
+        swx = x - 16;
+        swy = y + 8;
+    }
+    if (facing == 2) {
+        swx = x + 8;
+        swy = y + 8;
+    }
+    if (facing != 0) {
+        set_layer(5);
+        set_pos(swx, swy);
+        write_text(sword, 0x1F);
+        swinging = 1;
+    }
+}
 
 void chkKey() {
     int key;
+    int ox, oy;
     if (key_available()) {
         key = key_read();
+        ox = x;
+        oy = y;
+        if (key) {
+            clearSwing();
+        }
         if (key == 101) {
             // sword swing
+            swordSwing();
         }
         if (key == 97 && x > 8) {
             // move left
             x -= 8;
+            if (x < 8) {
+                x = 8;
+            }
+            facing = 1;
         }
         if (key == 128 && x > 8) {
             // move left (alternative key)
             x -= 8;
+            if (x < 8) {
+                x = 8;
+            }
+            facing = 1;
         }
         if (key == 100 && x < 248) {
             // move right
             x += 8;
+            if (x > 248) {
+                x = 248;
+            }
+            facing = 2;
         }
         if (key == 129 && x < 248) {
             // move right (alternative key)
             x += 8;
+            if (x > 248) {
+                x = 248;
+            }
+            facing = 2;
         }
         if (key == 119 && y > 8) {
             // move up
             y -= 8;
+            if (y < 8) {
+                y = 8;
+            }
         }
         if (key == 130 && y > 8) {
             // move up (alternative key)
             y -= 8;
+            if (y < 8) {
+                y = 8;
+            }
         }
         if (key == 115 && y < 240) {
             // move down
             y += 8;
+            if (y > 240) {
+                y = 240;
+            }
         }
         if (key == 131 && y < 240) {
             // move down (alternative key)
             y += 8;
+            if (y > 240) {
+                y = 240;
+            }
+        }
+        if (ox != x || oy != y) {
+            oldx = ox;
+            oldy = oy;
         }
     }
 }
 
 void drawPlayer(int x, int y) {
     set_layer(5);
+    if (oldx != x || oldy != y) {
+        set_pos(oldx, oldy);
+        write_text("O", 0x00);
+        set_pos(oldx, oldy + 8);
+        write_text("X", 0x00);
+    }
     set_pos(x, y);
     write_text("O", 0x1F);
     set_pos(x, y + 8);
     write_text("X", 0x1F);
 }
 
+void enemy(){
+    oldex = ex;
+    oldey = ey;
+    int walk = random_range(1, 64);
+
+    if (ex < 8) {
+        ex = 8;
+    }
+    if (ey < 8) {
+        ey = 8;
+    }
+    if (ex > 240) {
+        ex = 240;
+    }
+    if (ey > 240) {
+        ey = 240;
+    }
+
+    if (walk == 1 && ex > 8) {
+        // move left
+        ex -= 8;
+    }
+    if (walk == 8 && ex < 240) {
+        // move right
+        ex += 8;
+    }
+    if (walk == 16 && ey > 8) {
+        // move up
+        ey -= 8;
+    }
+    if (walk == 32 && ey < 232) {
+        // move down
+        ey += 8;
+    }
+    if (walk != 1 && walk != 8 && walk != 16 && walk != 32) {
+        // stay in place
+    }
+
+    set_layer(6);
+    set_pos(ex, ey);
+    write_text("m", 0x0F);
+    if (oldex != ex || oldey != ey) {
+        set_pos(oldex, oldey);
+        write_text("m", 0x00);
+    }
+}
+
 void main() {
+    for (int i = 0; i < 256; i + 8) {
+        set_layer(1);
+        set_pos(0, i);
+        write_text("X                              X", 0x1F);
+    }
+    screen_rotate(0,1);
+    for (int i = 0; i < 256; i + 8) {
+        set_layer(1);
+        set_pos(0, i);
+        write_text("X                              X", 0x1F);
+    }
     while (1) {
+        counter++;
+        if (counter > 4) {
+            counter = 0;
+            clearSwing();
+        }
         chkKey();
         drawPlayer(x, y);
+        enemy();
     }
 }

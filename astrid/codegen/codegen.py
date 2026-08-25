@@ -2169,9 +2169,31 @@ class CodeGenerator:
             self.emit(f"    PUSH {old_reg}")
             self.free_register()
 
-        # Emit update expression (e.g., p += step)
+        # Emit update expression (e.g., p += step).
+        #
+        # Support a bare step idiom: when the update clause is a plain
+        # expression of the form `var op expr` (e.g. `i + 8`) rather than an
+        # explicit `i += 8` assignment, treat it as `var = var op expr` so the
+        # computed value is stored back into the loop variable. Previously the
+        # bare expression was only evaluated into a scratch register and its
+        # result discarded, silently freezing the loop variable -- game.ast's
+        # `for (int i = 0; i < 256; i + 8)` never advanced i, so the level
+        # boundary drew just a single 'X ... X' line before looping forever.
+        #
+        # NOTE: the ExpressionSimplifier may canonicalize commutative ops
+        # constant-first (`i + 8` becomes `8 + i`), so the loop variable may
+        # appear on either side of the BinaryOp. generate_assignment already
+        # mirrors such const-first compound forms back to variable-first.
         if for_stmt.update:
-            self.generate_block([for_stmt.update])
+            update = for_stmt.update
+            if isinstance(update, BinaryOp):
+                if isinstance(update.left, Identifier):
+                    update = Assignment(update.left.name, update)
+                elif (isinstance(update.right, Identifier)
+                        and not isinstance(update.left, Identifier)
+                        and update.op in ('+', '*', '&', '|', '^')):
+                    update = Assignment(update.right.name, update)
+            self.generate_block([update])
 
         if need_wrap_check:
             # Restore pre-update value and compare with new value to detect
@@ -2692,8 +2714,17 @@ class CodeGenerator:
 
     def _is_string_or_binary_expr(self, expr: Expression) -> bool:
         """Determine if an expression produces a string or binary typed value."""
-        if isinstance(expr, Identifier) and expr.name in self.var_types:
-            return self.var_types[expr.name] in ('string', 'binary')
+        if isinstance(expr, Identifier):
+            # LOCAL declarations first (C shadowing semantics), then GLOBAL
+            # declarations as fallback: var_types only holds locals+params
+            # for the function currently being generated, so a file-scope
+            # `string sword;` was invisible here and write_text(sword)
+            # ITOS-converted the variable's POINTER into decimal digits.
+            if expr.name in self.var_types:
+                return self.var_types[expr.name] in ('string', 'binary')
+            g = self.global_vars.get(expr.name)
+            if g:
+                return g['type'] in ('string', 'binary')
         if isinstance(expr, StringLiteral):
             return True
         if isinstance(expr, Cast):
@@ -2711,7 +2742,17 @@ class CodeGenerator:
         and by identity-cast elimination when casting to the same type.
         """
         if isinstance(expr, Identifier):
-            return self.var_types.get(expr.name)
+            # Locals first (shadowing semantics); globals provide the
+            # fallback so casts on file-scope string/binary variables pick
+            # STOI/BTOI instead of a plain MOV of the pointer.
+            if expr.name in self.var_types:
+                return self.var_types.get(expr.name)
+            g = self.global_vars.get(expr.name)
+            # Scalar globals only: array identifiers decay to an address, so
+            # (int)someGlobalCharArray must stay a plain MOV of the pointer.
+            if g and not g.get('is_array'):
+                return g['type']
+            return None
         if isinstance(expr, Cast):
             return expr.target_type  # (string)x yields a string value
         if isinstance(expr, StringLiteral):
