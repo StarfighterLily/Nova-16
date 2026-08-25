@@ -830,8 +830,8 @@ class CodeGenerator:
         # Main entry point MUST be first segment so emulator sets PC correctly
         self.assembly.append("ORG 0x1000")
         self.assembly.append("start:")
-        self.assembly.append("    MOV SP, 0xFF00 ; Set stack pointer to high memory")
-        self.assembly.append("    MOV FP, 0xFF00 ; Also init frame pointer")
+        self.assembly.append("    MOV SP, 0xFFFF ; Set stack pointer to high memory")
+        self.assembly.append("    MOV FP, 0xFFFF ; Also init frame pointer")
         self.assembly.append("    CALL func_main")
         self.assembly.append("    HLT")
         self.assembly.append("")
