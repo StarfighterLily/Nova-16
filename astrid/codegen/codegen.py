@@ -11,6 +11,7 @@ from astrid.parser.parser import (
     Break, Continue, Cast,
     ArrayAccess, ArrayAssignment, TernaryOp, PrefixOp,
     AddressOf, Deref, DerefAssignment, SizeofExpr,
+    MemberAccess, MemberAssignment,
 )
 from astrid.codegen.optimizations import (
     ExpressionSimplifier,
@@ -542,6 +543,9 @@ class CodeGenerator:
         self.enable_live_range_scheduling = self.enable_live_range
         self.assembly = []
         self.enum_constants: Dict[str, int] = {}  # name -> value (from enum declarations)
+        # Struct layouts: tag -> ordered field names. Every field is one
+        # 16-bit word slot; field i lives at byte offset i*2.
+        self.struct_defs: Dict[str, List[str]] = {}
         self.global_vars = {}  # name -> {'address', 'type', 'size', 'is_array', 'count', 'init_values'}
         self.array_vars = {}   # per-function LOCAL arrays: name -> {'elem_type', 'count', 'elem_size', 'offset'}
         self.local_vars = {}
@@ -550,6 +554,9 @@ class CodeGenerator:
         # (`void f(int arr[])`): both hold 16-bit addresses (2 bytes).
         self.pointer_vars: Set[str] = set()
         self.address_params: Set[str] = set()
+        # Struct pointers (`struct Point *pp`): name -> struct tag, so
+        # pp->field resolves the member offset through the pointee layout.
+        self.pointer_struct_tags: Dict[str, str] = {}
         self.functions = {}
         self.strings = {}
         self.string_counter = 0
@@ -754,6 +761,9 @@ class CodeGenerator:
         # Adopt the parser's enum constant table so enum names resolve to
         # their integer values everywhere numbers are accepted.
         self.enum_constants = dict(getattr(ast, 'enum_constants', None) or {})
+        # Adopt the parser's struct layout table so member accesses resolve
+        # field offsets through their struct's definition.
+        self.struct_defs = dict(getattr(ast, 'structs', None) or {})
         # Run front-end expression simplifier (constant-folding, algebraic
         # simplifications, and CSE) to reduce register pressure and code size.
         if self.enable_optimizations and self.enable_expr_simplify:
@@ -894,8 +904,16 @@ class CodeGenerator:
             if isinstance(node, ArrayAccess):
                 node.index = simplify_node(node.index)
                 return node
+            if isinstance(node, MemberAccess):
+                # Simplify the base chain in place; field names are plain
+                # identifiers with nothing to fold.
+                node.base = simplify_node(node.base) or node.base
+                return node
             if isinstance(node, ArrayAssignment):
                 node.target.index = simplify_node(node.target.index)
+                node.value = simplify_node(node.value)
+                return node
+            if isinstance(node, MemberAssignment):
                 node.value = simplify_node(node.value)
                 return node
             if isinstance(node, TernaryOp):
@@ -1063,7 +1081,139 @@ class CodeGenerator:
 
     def _elem_size(self, var_type: str) -> int:
         # Storage size in bytes for one element of the given type.
-        return 2 if var_type in ('int', 'string', 'binary') else 1
+        # Struct fields are word slots, so a struct element is also 2 bytes.
+        return 2 if var_type in ('int', 'string', 'binary', 'struct') else 1
+
+    # ------------------------------------------------------------------
+    # Struct layout and member access support
+    # ------------------------------------------------------------------
+
+    def _struct_fields(self, tag: str) -> List[str]:
+        fields = self.struct_defs.get(tag)
+        if fields is None:
+            raise NameError(f"Undefined struct type '{tag}'")
+        return fields
+
+    def _struct_size(self, tag: str) -> int:
+        """Total byte size of one struct value (each field is a word slot)."""
+        return len(self._struct_fields(tag)) * 2
+
+    def _struct_field_offset(self, tag: str, field: str) -> int:
+        """Byte offset of a field within the struct, or a clear error."""
+        fields = self._struct_fields(tag)
+        if field not in fields:
+            raise NameError(
+                f"Struct '{tag}' has no field '{field}' "
+                f"(fields: {', '.join(fields)})")
+        return fields.index(field) * 2
+
+    def _var_struct_tag(self, name: str) -> Optional[str]:
+        """Struct tag for a declared struct variable/pointer/array, if any."""
+        info = self.array_vars.get(name)
+        if info and info.get('tag'):
+            return info['tag']
+        g = self.global_vars.get(name)
+        if g and g.get('tag'):
+            return g['tag']
+        return self.pointer_struct_tags.get(name)
+
+    def _member_base_info(self, expr: MemberAccess):
+        """Resolve a MemberAccess base into (kind, data, field_offset).
+
+        kind 'array'   -- data is an array-info dict; the member address is
+                          the array element address plus the field offset.
+                          Covers scalar struct variables (an N-field struct
+                          is laid out exactly like an N-word array) AND
+                          arrays of structs via ArrayAccess bases.
+        kind 'pointer' -- data is (name, tag); the variable's VALUE is the
+                          struct base address (`pp->field`).
+        """
+        base = expr.base
+        while isinstance(base, MemberAccess):
+            raise SyntaxError(
+                "Nested struct members (a.b.c) are not supported")
+        if isinstance(base, Identifier):
+            name = base.name
+            tag = self._var_struct_tag(name)
+            if tag is None:
+                raise NameError(
+                    f"'{name}' is not a struct variable or struct pointer")
+            offset = self._struct_field_offset(tag, expr.field)
+            info = self.array_vars.get(name)
+            if info is not None and info.get('tag'):
+                # Scalar struct local: an N-word array under the hood.
+                return ('array', info, offset), tag
+            g = self.global_vars.get(name)
+            if name in self.pointer_vars or name in self.address_params or \
+                    (g is not None and g.get('is_pointer')):
+                # Struct pointer: pp->field loads the pointer then adds.
+                # NOTE: must be tested before the scalar-global branch --
+                # global struct pointers also carry the struct tag.
+                return ('pointer', (name, tag), offset), tag
+            if g is not None and g.get('tag'):
+                # Scalar struct global: registered as an is_array word block.
+                return ('array', {
+                    'elem_type': 'struct', 'count': g['count'],
+                    'elem_size': 2, 'stride': g.get('stride', 2),
+                    'base_addr': g['address'], 'is_global': True,
+                }, offset), tag
+            raise NameError(
+                f"'{name}' is not a struct variable or struct pointer")
+        if isinstance(base, ArrayAccess):
+            arr_name = base.name
+            info = self.array_vars.get(arr_name)
+            if info is None:
+                g = self.global_vars.get(arr_name)
+                if g and g.get('is_array'):
+                    info = {'elem_type': g['type'], 'count': g['count'],
+                            'elem_size': self._elem_size(g['type']),
+                            'stride': g.get('stride'),
+                            'base_addr': g['address'], 'is_global': True,
+                            **({'tag': g['tag']} if g.get('tag') else {})}
+                else:
+                    raise NameError(f"Undefined array '{arr_name}'")
+            if not info.get('tag'):
+                raise NameError(
+                    f"'{arr_name}' is not an array of structs")
+            offset = self._struct_field_offset(info['tag'], expr.field)
+            return ('array', info, offset), info['tag']
+        raise SyntaxError("Unsupported struct member base expression")
+
+    def _emit_member_addr(self, expr: MemberAccess, addr_reg: str,
+                          idx_reg: Optional[str] = None):
+        """Emit code computing a member's byte address into addr_reg.
+
+        For ArrayAccess bases the caller may pass a pre-evaluated index in
+        idx_reg; for Identifier bases the address is fully constant."""
+        (kind, data, offset), tag = self._member_base_info(expr)
+        if kind == 'pointer':
+            name, _tag2 = data
+            self._emit_var_load(addr_reg, name)
+            if offset:
+                self.emit(f"    ADD {addr_reg}, {offset}")
+        elif isinstance(expr.base, ArrayAccess):
+            info = data
+            if idx_reg is None:
+                idx_reg = self.generate_expression(expr.base.index)
+            self._emit_array_addr(info, idx_reg, addr_reg)
+            if offset:
+                self.emit(f"    ADD {addr_reg}, {offset}")
+        else:
+            # Constant scalar-struct base: field j of an N-field struct is
+            # element j of its underlying N-word array layout.
+            info = data
+            self._emit_array_const_addr(info, offset // 2, addr_reg)
+
+
+    def _decl_is_true_array(self, decl):
+        """Whether a declaration is a genuine array (vs a scalar with an
+        initializer list). For structs, `struct Point p = {10, 20}` is a
+        scalar struct whose initializer list fills fields; only `[...]`
+        bracket syntax (or an explicit size) makes it an array."""
+        if getattr(decl, 'struct_tag', None):
+            return bool(getattr(decl, 'array_syntax', False)
+                        or getattr(decl, 'array_size', None) is not None)
+        return decl.is_array
 
     def _resolve_array_count(self, decl: VarDecl) -> int:
         """Resolve an array's element count at compile time."""
@@ -1123,26 +1273,95 @@ class CodeGenerator:
         """Assign fixed storage addresses to all global variables/scalars."""
         next_addr = self.GLOBAL_REGION_START
         for decl in getattr(ast, 'globals', None) or []:
+            struct_tag = getattr(decl, 'struct_tag', None)
             # Pointers always occupy 2 bytes regardless of pointee type.
             elem_size = 2 if decl.pointer_depth else self._elem_size(decl.var_type)
-            if decl.is_array:
-                count = self._resolve_array_count(decl)
-                init_values = []
-                if decl.init_list:
-                    for e in decl.init_list:
+            # A scalar struct variable (`struct Point p;`, including the
+            # initializer-list form `struct Point p = {10, 20};`) is laid
+            # out exactly like an array of its N word fields, so it
+            # registers through the same is_array machinery below (bare-name
+            # loads decay to the base address, &p works, member j == word j).
+            struct_array_syntax = bool(struct_tag and (
+                getattr(decl, 'array_syntax', False)
+                or getattr(decl, 'array_size', None) is not None))
+            is_struct_scalar = (bool(struct_tag) and not decl.pointer_depth
+                                and not struct_array_syntax)
+            # Arrays of structs step by the full struct byte size instead
+            # of elem_size; recorded via the optional 'stride' key.
+            stride = self._struct_size(struct_tag) \
+                if (struct_tag and struct_array_syntax) else None
+            init_values = []
+            if decl.is_array or is_struct_scalar:
+                if is_struct_scalar:
+                    # N fields == N word slots; init lists fill words.
+                    count = len(self._struct_fields(struct_tag))
+                    elem_size = 2
+                    if getattr(decl, 'init_list', None):
+                        if len(decl.init_list) > count:
+                            raise TypeError(
+                                f"Struct '{struct_tag}' has {count} fields "
+                                f"but global '{decl.name}' lists "
+                                f"{len(decl.init_list)} initializers")
+                        for e in decl.init_list:
+                            v = self._const_eval(e)
+                            if v is None:
+                                raise TypeError(
+                                    f"Global struct '{decl.name}' initializers "
+                                    f"must be compile-time constants")
+                            init_values.append(v)
+                elif stride is not None:
+                    # Array of structs: initializer lists fill words
+                    # sequentially across whole structs.
+                    elem_size = 2
+                    fields_per_struct = stride // 2
+                    if decl.array_size is not None:
+                        if isinstance(decl.array_size, Number):
+                            count = int(decl.array_size.value, 0)
+                        else:
+                            cval = self._const_eval(decl.array_size)
+                            if cval is None:
+                                raise TypeError(
+                                    f"Array '{decl.name}' size must be a "
+                                    f"compile-time constant")
+                            count = cval
+                    else:
+                        n_words = len(decl.init_list or [])
+                        if n_words % fields_per_struct:
+                            raise TypeError(
+                                f"Global struct array '{decl.name}' needs an "
+                                f"explicit size or a whole-number-of-structs "
+                                f"initializer list")
+                        count = n_words // fields_per_struct
+                    for e in (decl.init_list or []):
                         v = self._const_eval(e)
                         if v is None:
                             raise TypeError(
                                 f"Global array '{decl.name}' initializers must be "
                                 f"compile-time constants")
                         init_values.append(v)
+                else:
+                    count = self._resolve_array_count(decl)
+                    if decl.init_list:
+                        for e in decl.init_list:
+                            v = self._const_eval(e)
+                            if v is None:
+                                raise TypeError(
+                                    f"Global array '{decl.name}' initializers must be "
+                                    f"compile-time constants")
+                            init_values.append(v)
+                total_size = count * (stride or elem_size)
                 self.global_vars[decl.name] = {
                     'address': next_addr, 'type': decl.var_type,
-                    'size': count * elem_size, 'is_array': True,
+                    'size': total_size, 'is_array': True,
                     'elem_size': elem_size,
                     'count': count, 'init_values': init_values,
+                    # Struct entries hold WORD values regardless of the
+                    # element stride (each field is one DW slot).
+                    'init_elem_bytes': 2 if struct_tag else elem_size,
+                    **({'stride': stride} if stride else {}),
+                    **({'tag': struct_tag} if struct_tag else {}),
                 }
-                next_addr += count * elem_size
+                next_addr += total_size
             else:
                 init_value = None
                 if decl.value is not None:
@@ -1159,6 +1378,9 @@ class CodeGenerator:
                     'is_pointer': bool(decl.pointer_depth),
                     'count': 1,
                     'init_values': [init_value] if init_value is not None else [],
+                    # Struct pointers remember their layout so pp->field
+                    # resolves member offsets through the pointee type.
+                    **({'tag': struct_tag} if struct_tag else {}),
                 }
                 next_addr += elem_size
 
@@ -1177,9 +1399,13 @@ class CodeGenerator:
             if info['is_array']:
                 if init:
                     self.assembly.append(f"    {directive} {', '.join(str(v) for v in init)}")
-                remaining = info['count'] - len(init)
+                # Bytes consumed by the initialized prefix. Struct entries
+                # hold word values even when the element stride is larger
+                # (arrays of structs fill words sequentially).
+                init_bytes = len(init) * info.get('init_elem_bytes', elem_size)
+                remaining = info['size'] - init_bytes
                 if remaining > 0:
-                    self.assembly.append(f"    DS {remaining * elem_size}")
+                    self.assembly.append(f"    DS {remaining}")
             else:
                 if init:
                     self.assembly.append(f"    {directive} {init[0]}")
@@ -1199,6 +1425,8 @@ class CodeGenerator:
         if g and g.get('is_array'):
             return {'elem_type': g['type'], 'count': g['count'],
                     'elem_size': self._elem_size(g['type']),
+                    **({'stride': g['stride']} if g.get('stride') else {}),
+                    **({'tag': g['tag']} if g.get('tag') else {}),
                     'base_addr': g['address'], 'is_global': True}
         if name in self.pointer_vars or name in self.address_params:
             return {'is_pointer': True, 'name': name,
@@ -1228,16 +1456,35 @@ class CodeGenerator:
                 return self._elem_size(g['type'])
         return None
 
+    def _array_stride(self, info: Dict) -> int:
+        """Bytes between consecutive array elements.
+
+        Plain arrays (and scalar struct variables, which are laid out as
+        word arrays) step by elem_size; arrays of structs step by the
+        whole struct size via the optional 'stride' key."""
+        return info.get('stride') or info['elem_size']
+
     def _emit_array_addr(self, info: Dict, idx_reg: str, addr_reg: str):
         """Emit code computing an element address into addr_reg.
 
-        On entry idx_reg holds the element index; it is scaled in place to a
-        byte offset (x2 for word elements) and combined with the array base
+        On entry idx_reg holds the element index; it is scaled in place to
+        a byte offset (x stride) and combined with the array base
         (FP-relative for locals, absolute for globals, SP-relative inside
         timer_interrupt which has no frame pointer)."""
-        if info['elem_size'] == 2:
+        stride = self._array_stride(info)
+        if stride == 1:
+            pass
+        elif stride == 2:
             # Scale word index to byte offset: idx * 2
             self.emit(f"    ADD {idx_reg}, {idx_reg}")
+        else:
+            # Arrays of structs: scale by the full struct size. The
+            # multiplier is an immediate constant operand (MUL reg, imm),
+            # so NO scratch register is allocated from the round-robin
+            # pool -- an allocated temp could alias a live outer value
+            # (e.g. a compound-assignment accumulator still in its
+            # register while this expression evaluates).
+            self.emit(f"    MUL {idx_reg}, {stride}")
         if info.get('is_pointer'):
             # Pointer subscripting: the variable holds the base address;
             # element i lives at base + i*elem_size (already scaled above).
@@ -1255,7 +1502,7 @@ class CodeGenerator:
         elif self.current_function == 'timer_interrupt':
             # Interrupt handler locals are SP-relative: the array's lowest
             # byte sits at SP + (-(offset) - total_size).
-            base_sp = -info['offset'] - info['count'] * info['elem_size']
+            base_sp = -info['offset'] - info['count'] * self._array_stride(info)
             self.emit(f"    MOV {addr_reg}, SP")
             self.emit(f"    ADD {addr_reg}, {base_sp}")
             self.emit(f"    ADD {addr_reg}, {idx_reg}")
@@ -1265,9 +1512,17 @@ class CodeGenerator:
             self.emit(f"    SUB {addr_reg}, {off}")
             self.emit(f"    ADD {addr_reg}, {idx_reg}")
 
-    def _emit_array_const_addr(self, info: Dict, index: int, addr_reg: str):
-        """Emit code computing an element address for a compile-time index."""
-        byte_off = index * info['elem_size']
+    def _emit_array_const_addr(self, info: Dict, index: int, addr_reg: str,
+                               slot_step: bool = False):
+        """Emit code computing an element address for a compile-time index.
+
+        slot_step=True steps by the element slot size (elem_size) instead of
+        the array stride -- used when walking a flat initializer list across
+        the words of an array of structs."""
+        if slot_step:
+            byte_off = index * info['elem_size']
+        else:
+            byte_off = index * self._array_stride(info)
         if info.get('is_pointer'):
             # Pointer subscripting with a compile-time index.
             self._emit_var_load(addr_reg, info['name'])
@@ -1280,7 +1535,8 @@ class CodeGenerator:
         elif info.get('is_global'):
             self.emit(f"    MOV {addr_reg}, 0x{info['base_addr'] + byte_off:04X}")
         elif self.current_function == 'timer_interrupt':
-            base_sp = -info['offset'] - info['count'] * info['elem_size'] + byte_off
+            base_sp = (-info['offset'] - info['count'] * self._array_stride(info)
+                       + byte_off)
             self.emit(f"    MOV {addr_reg}, SP")
             self.emit(f"    ADD {addr_reg}, {base_sp}")
         else:
@@ -1406,12 +1662,22 @@ class CodeGenerator:
         local_size = 0
         for decl in all_local_decls:
             self.var_types[decl.name] = decl.var_type
-            if decl.is_array:
-                # Arrays occupy count * elem_size contiguous bytes in the frame
-                local_size += self._resolve_array_count(decl) * self._elem_size(decl.var_type)
+            decl_tag = getattr(decl, 'struct_tag', None)
+            if self._decl_is_true_array(decl):
+                # Arrays occupy count * elem_size contiguous bytes in the
+                # frame; arrays of structs step by the full struct size.
+                stride = self._struct_size(decl_tag) if decl_tag \
+                    else self._elem_size(decl.var_type)
+                local_size += self._resolve_array_count(decl) * stride
             elif decl.pointer_depth:
                 local_size += 2
                 self.pointer_vars.add(decl.name)
+                if decl_tag:
+                    # Struct pointers remember their layout for ->field.
+                    self.pointer_struct_tags[decl.name] = decl_tag
+            elif decl_tag:
+                # Scalar struct local: one word slot per field.
+                local_size += self._struct_size(decl_tag)
             else:
                 local_size += 2 if decl.var_type in ('int', 'string', 'binary') else 1
         
@@ -1448,14 +1714,35 @@ class CodeGenerator:
         # char vars also get 2 bytes to keep word access alignment simple)
         local_offset = 0
         for decl in all_local_decls:
-            if decl.is_array:
+            decl_tag = getattr(decl, 'struct_tag', None)
+            if self._decl_is_true_array(decl):
                 count = self._resolve_array_count(decl)
-                elem_size = self._elem_size(decl.var_type)
-                local_offset += count * elem_size
+                stride = self._struct_size(decl_tag) if decl_tag \
+                    else self._elem_size(decl.var_type)
+                local_offset += count * stride
+                info = {
+                    'elem_type': decl.var_type, 'count': count,
+                    'elem_size': 2 if decl_tag else self._elem_size(decl.var_type),
+                    'offset': -local_offset,
+                }
+                if decl_tag:
+                    info['tag'] = decl_tag
+                    info['stride'] = stride
+                self.local_vars[decl.name] = {'offset': -local_offset}
+                self.array_vars[decl.name] = info
+            elif decl.pointer_depth:
+                local_offset += 2
+                self.local_vars[decl.name] = {'offset': -local_offset}
+            elif decl_tag:
+                # Scalar struct local: register as an N-word array so all
+                # array addressing paths (member loads, &p, decay) apply.
+                n_fields = len(self._struct_fields(decl_tag))
+                local_offset += n_fields * 2
                 self.local_vars[decl.name] = {'offset': -local_offset}
                 self.array_vars[decl.name] = {
-                    'elem_type': decl.var_type, 'count': count,
-                    'elem_size': elem_size, 'offset': -local_offset,
+                    'elem_type': 'struct', 'count': n_fields,
+                    'elem_size': 2, 'offset': -local_offset,
+                    'tag': decl_tag,
                 }
             else:
                 local_offset += 2 if (decl.var_type in ('int', 'string', 'binary')
@@ -1579,6 +1866,8 @@ class CodeGenerator:
                 self.generate_assignment(statement)
             elif isinstance(statement, ArrayAssignment):
                 self.generate_array_assignment(statement)
+            elif isinstance(statement, MemberAssignment):
+                self.generate_member_assignment(statement)
             elif isinstance(statement, DerefAssignment):
                 self.generate_deref_assignment(statement)
             elif isinstance(statement, Return):
@@ -1625,7 +1914,11 @@ class CodeGenerator:
                 for i, init_expr in enumerate(var_decl.init_list):
                     reg = self.generate_expression(init_expr)
                     addr_reg = self.get_register()
-                    self._emit_array_const_addr(info, i, addr_reg)
+                    # Initializer lists fill the flat word slots of struct
+                    # arrays (each value occupies one elem_size slot), so
+                    # step by elem_size, not the struct stride.
+                    self._emit_array_const_addr(info, i, addr_reg,
+                                                slot_step=True)
                     self._emit_mem_store(addr_reg, reg, info['elem_size'])
                     self.free_register()
             return
@@ -1689,6 +1982,100 @@ class CodeGenerator:
             reg = self.generate_expression(assignment.value)
             self._emit_var_store(assignment.name, reg)
             self.free_register()
+
+    def _member_targets_equal(self, a: MemberAccess, b: MemberAccess) -> bool:
+        """Structural equality of two member targets (for compound-assignment
+        detection). Index expressions inside array bases may differ
+        syntactically after simplification; they address the same storage,
+        so only the access chain shape is compared."""
+        while isinstance(a, MemberAccess) and isinstance(b, MemberAccess):
+            if a.field != b.field or a.arrow != b.arrow:
+                return False
+            a, b = a.base, b.base
+        if isinstance(a, Identifier) and isinstance(b, Identifier):
+            return a.name == b.name
+        if isinstance(a, ArrayAccess) and isinstance(b, ArrayAccess):
+            return a.name == b.name
+        return False
+
+    def generate_member_access(self, expr: MemberAccess) -> str:
+        """Read a struct member (p.x, pts[i].y, pp->z) into a register."""
+        addr_reg = self.get_register()
+        self.emit_comment(f"Member read ({expr.field})")
+        self._emit_member_addr(expr, addr_reg)
+        result_reg = self.get_register()
+        self._emit_mem_load(result_reg, addr_reg, 2)
+        return result_reg
+
+    def generate_member_assignment(self, stmt: MemberAssignment) -> str:
+        """Generate p.field = value (simple or compound).
+
+        The member address is computed first and preserved across RHS
+        evaluation via the stack (expression temporaries are round-robin
+        reused and a deep RHS could clobber the address register)."""
+        target = stmt.target
+
+        # Detect compound assignment: p.x += v decomposes to
+        # MemberAssignment(p.x, BinaryOp(p.x, '+', v)).
+        compound_op = None
+        rhs = stmt.value
+        if (isinstance(stmt.value, BinaryOp)
+                and isinstance(stmt.value.left, MemberAccess)
+                and self._member_targets_equal(stmt.value.left, target)):
+            compound_op = stmt.value.op
+            rhs = stmt.value.right
+
+        can_push = self.current_function != 'timer_interrupt'
+        self.emit_comment(f"Member assignment to ...{target.field}")
+
+        # Phase 1: compute the member's byte address.
+        idx_reg = None
+        if isinstance(target.base, ArrayAccess):
+            idx_reg = self.generate_expression(target.base.index)
+        addr_reg = self.get_register(exclude={idx_reg} if idx_reg else None)
+        self._emit_member_addr(target, addr_reg, idx_reg=idx_reg)
+
+        if compound_op:
+            acc_reg = self.get_register(exclude={addr_reg})
+            self._emit_mem_load(acc_reg, addr_reg, 2)
+            if can_push:
+                # Save both the accumulator and the address across RHS eval.
+                self.emit(f"    PUSH {acc_reg}")
+                self.emit(f"    PUSH {addr_reg}")
+            rhs_reg = self.generate_expression(rhs)
+            if can_push:
+                # Stack top is addr, then acc. Restore the address directly,
+                # then pop the accumulator (relocating rhs if aliased).
+                self.emit(f"    POP {addr_reg}")
+                rhs_reg = self._pop_preserving(acc_reg, rhs_reg)
+            if compound_op in ('<<', '>>'):
+                if not isinstance(rhs, Number):
+                    raise TypeError(
+                        "Shift amount must be a constant integer for this "
+                        "compiler version.")
+                shift_amount = int(rhs.value, 0)
+                op_mnemonic = "SHR" if compound_op == '>>' else "SHL"
+                for _ in range(shift_amount):
+                    self.emit(f"    {op_mnemonic} {acc_reg}, 1")
+            elif compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
+            elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
+            elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
+            elif compound_op == '/': self.emit(f"    DIV {acc_reg}, {rhs_reg}")
+            elif compound_op == '%': self.emit(f"    MOD {acc_reg}, {rhs_reg}")
+            elif compound_op == '&': self.emit(f"    AND {acc_reg}, {rhs_reg}")
+            elif compound_op == '|': self.emit(f"    OR {acc_reg}, {rhs_reg}")
+            elif compound_op == '^': self.emit(f"    XOR {acc_reg}, {rhs_reg}")
+            else: raise SyntaxError(f"Unknown compound operator '{compound_op}'")
+            val_reg = acc_reg
+        else:
+            if can_push:
+                self.emit(f"    PUSH {addr_reg}")
+            val_reg = self.generate_expression(rhs)
+            if can_push:
+                val_reg = self._pop_preserving(addr_reg, val_reg)
+
+        self._emit_mem_store(addr_reg, val_reg, 2)
+        return val_reg
 
     def _pop_preserving(self, target_reg: str, protected_reg: Optional[str]) -> Optional[str]:
         """POP the top of stack into target_reg safely.
@@ -1818,6 +2205,14 @@ class CodeGenerator:
             addr_reg = self.get_register(exclude={idx_reg})
             self._emit_array_addr(info, idx_reg, addr_reg)
             return addr_reg
+        if isinstance(operand, MemberAccess):
+            # &p.field / &pts[i].field: address of one member slot.
+            idx_reg = None
+            if isinstance(operand.base, ArrayAccess):
+                idx_reg = self.generate_expression(operand.base.index)
+            addr_reg = self.get_register(exclude={idx_reg} if idx_reg else None)
+            self._emit_member_addr(operand, addr_reg, idx_reg=idx_reg)
+            return addr_reg
         raise SyntaxError("'&' operand must be a variable or array element")
 
     def generate_deref_assignment(self, stmt: DerefAssignment) -> str:
@@ -1902,9 +2297,12 @@ class CodeGenerator:
         """Resolve sizeof(...) to a compile-time byte count.
 
         sizeof(arrayVariable) yields the TOTAL storage size in bytes
-        (count * elem_size), matching C; everything else sizes its base
+        (count * elem_size), matching C; sizeof(struct Tag) / sizeof(structVar)
+        yield the whole struct layout size; everything else sizes its base
         type (1 for char, 2 otherwise)."""
         target = expr.target
+        if isinstance(target, tuple) and len(target) == 2 and target[0] == 'struct':
+            return self._struct_size(target[1])
         if isinstance(target, str):
             type_name = target
             return 1 if type_name == 'char' else 2
@@ -1912,10 +2310,12 @@ class CodeGenerator:
             name = target.name
             if name in self.array_vars:
                 info = self.array_vars[name]
-                return info['count'] * info['elem_size']
+                return info['count'] * self._array_stride(info)
             g = self.global_vars.get(name)
             if g and g.get('is_array'):
-                return g['count'] * g.get('elem_size', self._elem_size(g['type']))
+                stride = g.get('stride') or g.get('elem_size',
+                                                  self._elem_size(g['type']))
+                return g['count'] * stride
             type_name = self.var_types.get(name) or (g['type'] if g else 'int')
             return 1 if type_name == 'char' else 2
         type_name = self._cast_source_type(target) or 'int'
@@ -1974,6 +2374,21 @@ class CodeGenerator:
             else:
                 raise SyntaxError(f"Unknown prefix operator '{expr.op}'")
             self._emit_mem_store(ptr_reg, reg, size)
+            return reg
+        if isinstance(expr.operand, MemberAccess):
+            # ++p.x / --p.y: increment/decrement the member VALUE in place.
+            self.emit_comment(f"Prefix {expr.op} on member ({expr.operand.field})")
+            addr_reg = self.get_register()
+            self._emit_member_addr(expr.operand, addr_reg)
+            reg = self.get_register(exclude={addr_reg})
+            self._emit_mem_load(reg, addr_reg, 2)
+            if expr.op == '++':
+                self.emit(f"    INC {reg}")
+            elif expr.op == '--':
+                self.emit(f"    DEC {reg}")
+            else:
+                raise SyntaxError(f"Unknown prefix operator '{expr.op}'")
+            self._emit_mem_store(addr_reg, reg, 2)
             return reg
         if not isinstance(expr.operand, Identifier):
             raise SyntaxError("Prefix ++/-- can only be applied to variables")
@@ -2546,6 +2961,10 @@ class CodeGenerator:
             return reg
         elif isinstance(expr, ArrayAssignment):
             return self.generate_array_assignment(expr)
+        elif isinstance(expr, MemberAssignment):
+            return self.generate_member_assignment(expr)
+        elif isinstance(expr, MemberAccess):
+            return self.generate_member_access(expr)
         elif isinstance(expr, DerefAssignment):
             return self.generate_deref_assignment(expr)
         elif isinstance(expr, AddressOf):
@@ -2599,6 +3018,24 @@ class CodeGenerator:
                 else:
                     raise SyntaxError(f"Unknown postfix operator '{expr.op}'")
                 self._emit_mem_store(ptr_reg, old_reg, size)
+                return result_reg
+            if isinstance(expr.left, MemberAccess):
+                # p.x++ / p.x-- : returns the OLD member value (C semantics).
+                target = expr.left
+                self.emit_comment(f"Postfix {expr.op} on member ({target.field})")
+                addr_reg = self.get_register()
+                self._emit_member_addr(target, addr_reg)
+                old_reg = self.get_register(exclude={addr_reg})
+                self._emit_mem_load(old_reg, addr_reg, 2)
+                result_reg = self.get_register(exclude={addr_reg, old_reg})
+                self.emit(f"    MOV {result_reg}, {old_reg}")
+                if expr.op == '++':
+                    self.emit(f"    INC {old_reg}")
+                elif expr.op == '--':
+                    self.emit(f"    DEC {old_reg}")
+                else:
+                    raise SyntaxError(f"Unknown postfix operator '{expr.op}'")
+                self._emit_mem_store(addr_reg, old_reg, 2)
                 return result_reg
             if isinstance(expr.left, ArrayAccess):
                 # arr[i]++ / arr[i]-- : returns the OLD value (C semantics).

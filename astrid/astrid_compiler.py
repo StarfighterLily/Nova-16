@@ -58,9 +58,12 @@ def main():
         tokens = lexer.tokenize()
         print(f"✓ Lexer: Generated {len(tokens)} tokens")
 
-        parser = Parser(tokens)
+        # source_path anchors include/inherits directives to the source
+        # file's directory (stdin compiles resolve against the CWD).
+        parser = Parser(tokens, source_path=args.source)
         ast = parser.parse()
-        print(f"✓ Parser: Generated AST with {len(ast.functions)} functions")
+        print(f"✓ Parser: Generated AST with {len(ast.functions)} functions, "
+              f"{len(ast.globals)} globals")
 
         codegen = CodeGenerator(
             enable_optimizations=args.enable_optimizations,

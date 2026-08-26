@@ -19,11 +19,17 @@ KEYWORDS = {
     'sizeof',   # sizeof(type) / sizeof(expr) compile-time byte-size operator
     # C enum support:
     'enum',     # enum declarations introduce named integer constants
+    # C struct support:
+    'struct',   # struct Tag { field; ... }; definitions + member access (p.field)
+
     # C storage qualifiers (accepted and ignored -- the compiler treats the
     # declared entity exactly like its unqualified counterpart):
     'register', 'volatile', 'extern', 'static', 'inline',
     # C type modifiers (normalized to their base type by the parser):
     'signed', 'unsigned', 'long', 'short',
+    # Multi-file compilation units:
+    'include',   # include "file";   -- splice another file's definitions in
+    'inherits',  # inherits "file";  -- pull in a base file, allowing overrides
 }
 
 # Operators and delimiters
