@@ -427,7 +427,15 @@ class Parser:
                 after = (self.tokens[self.pos + 2]
                          if self.pos + 2 < len(self.tokens) else None)
                 if after is not None and after.type == 'DELIMITER' and after.value == '{':
-                    self.parse_struct_definition()
+                    # Definition, optionally with C-style footer declarators
+                    # (`struct Tag { ... } inst1, inst2;`) which become
+                    # global variables.
+                    for g in self.parse_struct_definition():
+                        if any(e.name == g.name for e in globals_):
+                            raise SyntaxError(
+                                f"Duplicate definition of global '{g.name}' "
+                                f"at top level")
+                        globals_.append(g)
                     continue
                 # Function returning a struct (`struct Point make()`) is not
                 # supported: the name would be followed by '('.
@@ -697,15 +705,23 @@ class Parser:
             raise SyntaxError(f"Unknown enum constant '{tok.value}' in enum initializer")
         raise SyntaxError(f"Invalid enum constant value near {tok}")
 
-    def parse_struct_definition(self):
-        """Parse a struct definition: struct Tag { int x; int y, z; };
+    def parse_struct_definition(self) -> List[VarDecl]:
+        """Parse a struct definition with optional footer declarators:
+
+            struct Tag { int x; int y, z; };          -- plain definition
+            struct Tag { ... } inst1, inst2[4];       -- C-style: declares
+                                                         instances of the
+                                                         struct
 
         Every field occupies one 16-bit word slot regardless of its base
         type (mirroring how Astrid locals give char variables full word
         slots), so field i lives at byte offset i*2 and the struct's byte
         size is len(fields) * 2. The definition is recorded in
         self.struct_defs; redefining a tag with a different layout is an
-        error."""
+        error. Footer-declared variables are returned as VarDecls (the
+        caller decides whether they are globals or locals); like in C, a
+        variable may share the tag's name since tags and variables live in
+        separate namespaces."""
         self.expect('KEYWORD', 'struct')
         tag = self.current.value
         self.expect('IDENTIFIER')
@@ -742,8 +758,13 @@ class Parser:
             raise SyntaxError(
                 f"Struct '{tag}' redefined with a different layout")
         self.struct_defs[tag] = fields
+        # Optional C-style footer declarators: } a, b[2], *c
+        decls: List[VarDecl] = []
+        if self.current.type == 'IDENTIFIER':
+            decls = self._parse_declarators('struct', struct_tag=tag)
         if self.current.type == 'DELIMITER' and self.current.value == ';':
             self.advance()
+        return decls
 
     def parse_function(self) -> Optional["FunctionDef"]:
         return_type = self.current.value
@@ -841,8 +862,9 @@ class Parser:
             after = self.tokens[self.pos + 2] if self.pos + 2 < len(self.tokens) else None
             if tag_tok is not None and tag_tok.type == 'IDENTIFIER' and \
                     after is not None and after.type == 'DELIMITER' and after.value == '{':
-                self.parse_struct_definition()
-                return []
+                # Definition, optionally with footer declarators that
+                # become local variables of this function.
+                return self.parse_struct_definition()
             if tag_tok is None or tag_tok.type != 'IDENTIFIER':
                 raise SyntaxError(
                     f"Expected a struct tag name after 'struct' "
@@ -905,20 +927,15 @@ class Parser:
             self.expect('DELIMITER', ';')
             return [expr]
 
-    def parse_var_decl(self, expect_semicolon=True, struct_tag=None):
-        """Parse one or more variable declarators.
+    def _parse_declarators(self, var_type: str,
+                           struct_tag: Optional[str] = None) -> List[VarDecl]:
+        """Parse a comma-separated declarator list (shared by variable
+        declarations and struct-definition footers):
 
-        struct_tag, when given, continues a declaration whose `struct Tag`
-        header was already consumed by the caller (top level or statement
-        start); the declared variables get var_type='struct'."""
-        if struct_tag is None:
-            var_type = self.current.value
-            self.expect('KEYWORD')
-        else:
-            var_type = 'struct'
-            # Consume the `struct Tag` header the caller peeked at.
-            self.expect('KEYWORD', 'struct')
-            self.expect('IDENTIFIER')
+            name, *ptr, arr[SIZE], arr2[] = {1, 2}, s = "text"
+
+        Returns one VarDecl per declarator. The type keyword / `struct Tag`
+        header must already be consumed by the caller."""
         decls = []
         while True:
             pointer_depth = 0
@@ -975,6 +992,23 @@ class Parser:
                 self.advance()
             else:
                 break
+        return decls
+
+    def parse_var_decl(self, expect_semicolon=True, struct_tag=None):
+        """Parse one or more variable declarators.
+
+        struct_tag, when given, continues a declaration whose `struct Tag`
+        header was already consumed by the caller (top level or statement
+        start); the declared variables get var_type='struct'."""
+        if struct_tag is None:
+            var_type = self.current.value
+            self.expect('KEYWORD')
+        else:
+            var_type = 'struct'
+            # Consume the `struct Tag` header the caller peeked at.
+            self.expect('KEYWORD', 'struct')
+            self.expect('IDENTIFIER')
+        decls = self._parse_declarators(var_type, struct_tag=struct_tag)
         if expect_semicolon:
             self.expect('DELIMITER', ';')
         return decls

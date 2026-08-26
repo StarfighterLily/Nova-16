@@ -459,13 +459,16 @@ def test_swing_auto_clears_and_player_survives():
     try:
         proc, mem, gfx, kbd = _boot_game(asm_path)
 
-        # Global addresses from the symbol table.
-        gvar = {}
+        # Player instance base address from the symbol table. game.ast now
+        # keeps player state in `struct Player {...} Player`, whose fields
+        # are word slots: x=+0x00, y=+0x02, ..., swinging=+0x10.
+        gvar_Player = None
         with open(asm_path.replace(".asm", ".sym"), encoding="utf-8") as f:
             for line in f:
                 parts = line.split()
-                if len(parts) == 2 and parts[0].startswith("gvar_"):
-                    gvar[parts[0][5:]] = int(parts[1], 16)
+                if len(parts) == 2 and parts[0] == "gvar_Player":
+                    gvar_Player = int(parts[1], 16)
+        assert gvar_Player is not None, "gvar_Player symbol not found"
 
         def run(n):
             c = 0
@@ -478,8 +481,8 @@ def test_swing_auto_clears_and_player_survives():
         run(150000)
         kbd.add_key(100)                # 'd': face right
         run(40000)
-        x = mem.read_word_fast(gvar["x"])
-        y = mem.read_word_fast(gvar["y"])
+        x = mem.read_word_fast(gvar_Player + 0x00)
+        y = mem.read_word_fast(gvar_Player + 0x02)
         sx, sy = x + 8, y + 8           # facing==2 swing cell
 
         kbd.add_key(101)                # 'e': swordSwing()
@@ -493,7 +496,7 @@ def test_swing_auto_clears_and_player_survives():
                 peak_ink = max(peak_ink,
                                int((layer5[sy:sy + 8, sx:sx + 16] != 0).sum()))
                 ever_swinging = max(ever_swinging,
-                                    mem.read_word_fast(gvar["swinging"]))
+                                    mem.read_word_fast(gvar_Player + 0x10))
 
         assert not proc.halted
         assert ever_swinging == 1, "swinging flag was never set"
@@ -502,8 +505,8 @@ def test_swing_auto_clears_and_player_survives():
 
         # After the timeout the sword cell must be empty; player intact.
         final_ink = int((layer5[sy:sy + 8, sx:sx + 16] != 0).sum())
-        px = mem.read_word_fast(gvar["x"])
-        py = mem.read_word_fast(gvar["y"])
+        px = mem.read_word_fast(gvar_Player + 0x00)
+        py = mem.read_word_fast(gvar_Player + 0x02)
         player_px = int((layer5[py:py + 16, px:px + 8] != 0).sum())
         assert final_ink == 0, (
             f"sword not cleared after timeout: {final_ink} ink px remain "
@@ -525,4 +528,5 @@ if __name__ == "__main__":
     test_same_glyph_black_erase_clears_cell()
     test_swing_auto_clears_and_player_survives()
     print("All sword/flicker regression tests passed!")
+
 

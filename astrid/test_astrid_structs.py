@@ -797,3 +797,87 @@ def test_include_identical_layout_tolerated(unit):
 
 
 
+
+
+# ---------------------------------------------------------------------------
+# C-style definition-footer declarators: struct Tag { ... } inst, arr[2], *p;
+# ---------------------------------------------------------------------------
+
+def test_parser_footer_declarators_recorded():
+    ast = parse_source(
+        'struct P { int x; int y; } a, b[2], *c;' + chr(10) +
+        'void main() { }')
+    assert ast.structs == {'P': ['x', 'y']}
+    names = [(g.name, g.struct_tag) for g in ast.globals]
+    assert names == [('a', 'P'), ('b', 'P'), ('c', 'P')]
+    assert not ast.globals[0].is_array
+    assert ast.globals[1].is_array
+    assert ast.globals[2].pointer_depth == 1
+
+
+def test_footer_declarator_variable_shares_tag_name():
+    """Like in C, an instance may share its struct's tag name."""
+    source = chr(10).join([
+        'struct Player { int x; int y; } Player;',
+        'int main() {',
+        '    Player.x = 30;',
+        '    Player.y = 12;',
+        '    return Player.x * 10 + Player.y;   // 312',
+        '}',
+    ])
+    proc, cycles, mem = compile_and_run(source, expected_p0=312)
+    print(f'PASS test_footer_declarator_variable_shares_tag_name (P0={proc.p0})')
+
+
+def test_footer_declarators_with_initializers_runtime():
+    source = chr(10).join([
+        'struct P { int x; int y; } g = {7, 9};',
+        'int main() {',
+        '    struct P loc = {1, 2};',
+        '    return g.x * 100 + g.y * 10 + loc.x + loc.y;',
+        '}',
+    ])
+    # 700 + 90 + 3 = 793
+    proc, cycles, mem = compile_and_run(source, expected_p0=793)
+    print(f'PASS test_footer_declarators_with_initializers (P0={proc.p0})')
+
+
+def test_footer_struct_array_and_pointer_runtime():
+    source = chr(10).join([
+        'struct Cell { int v; int w; } cells[3], *cursor;',
+        'int main() {',
+        '    int i;',
+        '    for (i = 0; i < 3; i++) {',
+        '        cells[i].v = i;',
+        '        cells[i].w = 10;',
+        '    }',
+        '    cursor = &cells[2];',
+        '    cursor->v += 40;',
+        '    return cells[2].v * 100 + cells[0].w;   // (42)*100 + 10',
+        '}',
+    ])
+    proc, cycles, mem = compile_and_run(source, expected_p0=4210)
+    print(f'PASS test_footer_struct_array_and_pointer_runtime (P0={proc.p0})')
+
+
+def test_local_footer_declarator_inside_function():
+    source = chr(10).join([
+        'struct T { int a; int b; };',
+        'int main() {',
+        '    struct U { int p; int q; } u = {5, 6};',
+        '    return u.p * 10 + u.q;   // 56',
+        '}',
+    ])
+    proc, cycles, mem = compile_and_run(source, expected_r0=56)
+    print(f'PASS test_local_footer_declarator_inside_function (R0={proc.r0})')
+
+
+def test_footer_duplicate_global_rejected():
+    src = chr(10).join([
+        'struct S { int x; } dup;',
+        'int dup;',
+        'void main() { }',
+    ])
+    with pytest.raises(SyntaxError, match='Duplicate definition of global'):
+        parse_source(src)
+    print('PASS test_footer_duplicate_global_rejected')

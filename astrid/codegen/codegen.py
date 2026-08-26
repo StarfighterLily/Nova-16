@@ -1136,6 +1136,20 @@ class CodeGenerator:
             name = base.name
             tag = self._var_struct_tag(name)
             if tag is None:
+                if name in self.struct_defs:
+                    # The name IS a struct type -- the user likely declared
+                    # (or tried to use) an instance in the wrong scope.
+                    hint = ''
+                    g = self.global_vars.get(name)
+                    if g is not None or name in self.local_vars:
+                        hint = (" It IS declared elsewhere, but not visible "
+                                "from this function's scope.")
+                    raise NameError(
+                        f"'{name}' is a struct TYPE, not a variable in this "
+                        f"scope. Declare an instance and use it instead: "
+                        f"struct {name} {name.lower()};  ...  "
+                        f"{name.lower()}.{expr.field}"
+                        f"{hint}")
                 raise NameError(
                     f"'{name}' is not a struct variable or struct pointer")
             offset = self._struct_field_offset(tag, expr.field)
