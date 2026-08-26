@@ -35,6 +35,7 @@ from nova_mcp.handlers_media import (
     handle_sound_control,
 )
 from nova_mcp.handlers_nobasic import handle_nobasic_compile
+from nova_mcp.handlers_astrid import handle_astrid_compile
 from nova_mcp.handlers_system import (
     handle_assemble,
     handle_assert_memory,
@@ -65,10 +66,12 @@ from nova_mcp.handlers_system import (
 from nova_mcp.runtime import (
     Image,
     ROOT_DIR,
+    _HAS_ASTRID,
     _HAS_NOBASIC,
     _HAS_PIL,
     _emulator_state,
     cleanup_emulator,
+    compile_astrid,
     compile_nobasic,
     ensure_emulator,
     initialize_emulator,
@@ -122,6 +125,7 @@ TOOL_HANDLER_NAMES = {
     "debugger_get_symbol_table": "_handle_debugger_get_symbol_table",
     "debugger_inspect_instruction": "_handle_debugger_inspect_instruction",
     "nobasic_compile": "_handle_nobasic_compile",
+    "astrid_compile": "_handle_astrid_compile",
 }
 
 
@@ -291,6 +295,17 @@ def _handle_nobasic_compile(args: dict[str, Any]) -> str:
         has_nobasic=_HAS_NOBASIC,
         compile_nobasic=compile_nobasic,
         assembler_module=nova_assembler,
+        ensure_emulator=ensure_emulator,
+        state=_emulator_state,
+        base_dir=ROOT_DIR,
+    )
+
+
+def _handle_astrid_compile(args: dict[str, Any]) -> str:
+    return handle_astrid_compile(
+        args,
+        has_astrid=_HAS_ASTRID,
+        compile_astrid=compile_astrid,
         ensure_emulator=ensure_emulator,
         state=_emulator_state,
         base_dir=ROOT_DIR,

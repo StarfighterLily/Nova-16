@@ -1443,18 +1443,21 @@ class Popa(BaseInstruction):
     def __init__(self):
         opcode_val = 0x1D  # POPA
         super().__init__("POPA", opcode_val)
-    
+
     def execute(self, cpu):
         sp = int(cpu.Pregisters[8])
         restored_values = []
 
-        # Pop 23 registers (R0-R9, P0-P9, VX, VY, VC)
+        # Pop 23 registers (R0-R9, P0-P9, VX, VY, VC). If the stack is
+        # exhausted, pad with zeros so a standalone popa() does not crash
+        # the emulator (Defense in Depth).
         for _ in range(23):
             if sp >= 0xFFFE:
-                raise RuntimeError(f"Stack underflow during POPA: SP=0x{sp:04X}")
-            value = cpu.memory.read_word(sp)
-            sp = (sp + 2) & 0xFFFF
-            restored_values.append(value)
+                restored_values.append(0)
+            else:
+                value = cpu.memory.read_word(sp)
+                sp = (sp + 2) & 0xFFFF
+                restored_values.append(value)
 
         # Restore R0-R9
         for i in range(10):

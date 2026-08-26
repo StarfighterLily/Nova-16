@@ -30,6 +30,8 @@ try:
     import nova_keyboard as keyboard_module
     from nova.memory import Memory as memory_module
     import nova_sound as sound_module
+    import nova_uart as uart_module
+    from nova.peripherals import Timer
 except ImportError as exc:
     print(f"Error importing Nova modules: {exc}", file=sys.stderr)
     raise SystemExit(1) from exc
@@ -41,6 +43,15 @@ try:
 except ImportError:
     compile_nobasic = None
     _HAS_NOBASIC = False
+
+# Astrid compiler (repo-root astrid/ package; ROOT_DIR is on sys.path)
+try:
+    from astrid.compiler_api import compile_astrid
+
+    _HAS_ASTRID = True
+except ImportError:
+    compile_astrid = None
+    _HAS_ASTRID = False
 
 try:
     from PIL import Image
@@ -103,11 +114,37 @@ def initialize_emulator(force_clean: bool = True):
     kbd = keyboard_module.NovaKeyboard(bus=bus)
     snd = sound_module.NovaSound()
 
+    # UART with the default host bridge: ser_out/ser_in/ser_stat/ser_ctrl
+    # builtins (and the §2 framed device protocol) need the real device.
+    uart_device = uart_module.NovaUART(
+        host_bridge=uart_module.create_host_bridge(None))
+
+    # Interrupt controller must exist before CPU and timer so both can
+    # reference it (mirrors nova_main.initialize_system exactly).
     intr_ctrl = InterruptController(bus=bus, cpu=None, memory=mem)
 
+    # Standalone timer peripheral: without it TT/TM/TC/TS writes go nowhere,
+    # no timer.fired events are published, and vector 0 never dispatches.
+    timer_dev = Timer(bus=bus, interrupt_controller=intr_ctrl)
+
     proc = cpu_module.CPU(mem, gfx, kbd, snd,
-                         bus=bus, interrupt_controller=intr_ctrl)
+                         uart_device=uart_device,
+                         bus=bus, interrupt_controller=intr_ctrl,
+                         timer_device=timer_dev)
     intr_ctrl.cpu = proc
+    intr_ctrl.memory = mem
+
+    # Dispatch pending interrupts after every CPU step. Without this
+    # subscription the controller's check() never runs and NO interrupts
+    # (timer, keyboard, user vectors) ever reach their handlers.
+    if hasattr(intr_ctrl, 'check'):
+        bus.subscribe('cpu.post_step', intr_ctrl.check)
+
+    # Sprite SCB writes mark the sprite layer dirty for compositing.
+    def _on_scb_written(addr):
+        if hasattr(gfx, 'sprites_dirty'):
+            gfx.sprites_dirty = True
+    bus.subscribe('memory.scb_written', _on_scb_written)
 
     _emulator_state.update(
         {

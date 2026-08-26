@@ -1,0 +1,219 @@
+// ============================================================================
+// Star System 1 -- a small operating system for the Nova-16, written in Astrid.
+//
+// Implements the bootable kernel subset of docs/starsystem.md:
+//   sec1  Everything-is-a-file drivers as plain functions over real opcodes
+//   sec3  Drive letters: C: resident segments, R: ramdisk over bank pages,
+//         union-mount descriptors installed in the hot zero page
+//   sec4  Plumb/vector discipline: timer heartbeat on vector 0
+//   sec5  Windows as files: a console window on a dedicated compositor layer
+//
+// Kernel invariant (sec3): banks are nonzero ONLY inside r_read/r_write and
+// every excursion is bracketed by save/restore of BANK, so the gvar region
+// at 0x8000+ is never shadowed while ordinary code runs.
+//
+// Headless contract (for the automated tests): ESC shuts the machine down
+// cleanly, so a test run always terminates deterministically.
+// ============================================================================
+
+// ---- kernel state (gvar_* symbols, base RAM at 0x8000+) --------------------
+int ticks;            // scheduler heartbeat, incremented by vector 0
+int cursor_col;       // console window cursor (8px glyph cells)
+int cursor_row;
+int last_key;         // mirror of the last dequeued /dev/key byte
+int ramdisk_ok;       // R: self-test result: 0 untested, 1 pass, 2 fail
+int bank_invariant;   // 1 while every R: access has restored BANK to 0
+int booted;           // set once boot() completes
+
+// ---- sec1 device drivers: naming conventions over real opcodes -------------
+
+// /dev/vga/layers/N putc -- emit one pixel of color at (x, y) on layer
+void px_putc(int layer, int x, int y, int color) {
+    set_layer(layer);
+    set_pos(x, y);
+    write_screen(color);
+}
+
+// /dev/win/console putc -- render one glyph at the window cursor.
+// The console window lives on sprite layer 5.
+void win_putc(int ch) {
+    set_layer(5);
+    set_color(0x1F);
+    set_pos(cursor_col * 8, cursor_row * 8);
+    draw_char(ch);
+    cursor_col++;
+    if (cursor_col > 30) {
+        cursor_col = 2;
+        cursor_row++;
+    }
+}
+
+// ---- sec3 R: ramdisk -- storage as bank pages behind 0x8000-0xBFFF ---------
+
+// Read one byte from R: page n at window offset off.
+// Bracketed by save/restore of BANK exactly as the spec mandates.
+int r_read(int n, int off) {
+    int prev = read_bank();
+    set_bank(n);
+    int v = peek(0x8000 + off);
+    set_bank(prev);
+    return v;
+}
+
+// Write one byte to R: page n at window offset off.
+void r_write(int n, int off, int val) {
+    int prev = read_bank();
+    set_bank(n);
+    poke(0x8000 + off, val);
+    set_bank(prev);
+}
+
+// ---- boot ------------------------------------------------------------------
+
+// Clear every compositor layer (kernel owns the whole machine at boot).
+void clear_video() {
+    int i;
+    for (i = 0; i < 8; i++) {
+        set_layer(i);
+        screen_fill(0x00);
+    }
+}
+
+// Install the drive-letter union descriptors into the zero page tables.
+// Pure bookkeeping per sec3: a drive is a search list over memory regions.
+// Layout (byte slots): 0x0010-11 = C: base segment 0x1000,
+// 0x0012 = R: bank count, 0x0014 = R: window base high byte, 0x0016-17 = SS.
+void mount_tables() {
+    poke(0x0010, 0x10);     // C: resident code segment high byte
+    poke(0x0011, 0x00);
+    poke(0x0012, 15);       // R: banks 1-15 available (240KB)
+    poke(0x0014, 0x80);     // R: window base high byte (0x8000)
+    poke(0x0016, 'S');
+    poke(0x0017, 'S');
+}
+
+void banner() {
+    // Desktop frame on background layer 1
+    set_layer(1);
+    set_color(0x1F);
+    set_pos(4, 4);
+    draw_rect(251, 251, 0);
+
+    // Console window chrome on sprite layer 5
+    set_layer(5);
+    set_color(0x17);
+    set_pos(16, 16);
+    draw_rect(240, 64, 0);
+
+    // Title bar text
+    set_pos(24, 24);
+    write_text("STAR SYSTEM 1", 0x1F);
+    set_pos(24, 40);
+    write_text("C: R: ONLINE - ESC HALTS", 0x17);
+
+    cursor_col = 4;
+    cursor_row = 7;
+}
+
+void boot() {
+    ticks = 0;
+    cursor_col = 4;
+    cursor_row = 7;
+    last_key = 0;
+    ramdisk_ok = 0;
+    bank_invariant = 1;
+    booted = 0;
+
+    clear_video();
+    mount_tables();
+    banner();
+
+    // Verify the zero-page mount tables actually landed (poke/peek round-trip)
+    if (peek(0x0016) != 'S' || peek(0x0012) != 15) {
+        set_layer(5);
+        set_color(0x1F);
+        set_pos(24, 200);
+        write_text("MOUNT TABLE CORRUPT", 0x1C);
+    }
+
+    booted = 1;
+}
+
+// ---- sec4 vector 0: scheduler heartbeat ------------------------------------
+
+// Auto-wired at ORG 0x0100 by the compiler; full register save/restore is
+// emitted around the body per the ISR contract.
+void timer_interrupt() {
+    ticks++;
+    iret();
+}
+
+// ---- R: self-test ----------------------------------------------------------
+
+// Write a signature to R: page 3, read it back, and prove the excursion
+// never shadowed base RAM. Leaves a human-readable verdict on screen.
+void ramdisk_selftest() {
+    r_write(3, 0, 'S');
+    r_write(3, 1, '1');
+
+    int ok = 1;
+    if (r_read(3, 0) != 'S') { ok = 0; }
+    if (r_read(3, 1) != '1') { ok = 0; }
+    // Bank must be back at 0 (pass-through) after every r_read/r_write
+    if (read_bank() != 0) { ok = 0; bank_invariant = 0; }
+
+    if (ok == 1) {
+        ramdisk_ok = 1;
+        set_layer(5);
+        set_color(0x1F);
+        set_pos(24, 56);
+        write_text("R: OK", 0x1E);
+    } else {
+        ramdisk_ok = 2;
+        set_layer(5);
+        set_color(0x1F);
+        set_pos(24, 56);
+        write_text("R: FAIL", 0x1C);
+    }
+}
+
+// ---- shutdown (deterministic exit for headless runs) ------------------------
+
+void shutdown() {
+    clear_video();
+    set_layer(5);
+    set_pos(96, 120);
+    write_text("HALT", 0x1F);
+    halt();
+}
+
+// ---- shell: /dev/key is the whole input device tree -------------------------
+
+void shell() {
+    while (1) {
+        if (key_available()) {
+            int k = key_read();
+            last_key = k;
+            if (k == 27) {
+                // ESC: orderly power-down
+                shutdown();
+            } else if (k == 114) {
+                // r: exercise the R: ramdisk driver
+                ramdisk_selftest();
+            } else if (k >= 32 && k < 127) {
+                // printable bytes echo through the console window file
+                win_putc(k);
+            }
+        }
+    }
+}
+
+void main() {
+    boot();
+
+    // Scheduler heartbeat: timer fires vector 0, dispatcher counts ticks.
+    set_timer(0, 64, 3, 3);     // TT, TM, TS, TC (enable + IRQ enable)
+    sti();
+
+    shell();
+}

@@ -545,4 +545,33 @@ def build_tools() -> list[Tool]:
                 "required": ["source_path"],
             },
         ),
+        Tool(
+            name="astrid_compile",
+            description=(
+                "Compile an Astrid (.ast) source file to Nova-16 assembly "
+                "and binary. Optionally auto-load the binary."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "source_path": {
+                        "type": "string",
+                        "description": "Path to .ast/.as/.astrid source file",
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": "Path to output .asm file (optional, defaults to .asm variant of source)",
+                    },
+                    "verbose": {
+                        "type": "boolean",
+                        "description": "Enable verbose output (default: false)",
+                    },
+                    "auto_load": {
+                        "type": "boolean",
+                        "description": "Automatically load compiled binary (default: false)",
+                    },
+                },
+                "required": ["source_path"],
+            },
+        ),
     ]

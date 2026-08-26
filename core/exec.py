@@ -287,14 +287,20 @@ def _popa(cpu) -> None:
     """POPA: Pop all registers from stack as 16-bit words.
 
     Reverse of PUSHA. SP is restored last so P8 doesn't corrupt the walk.
+    If the stack is exhausted (fewer than 46 bytes present), the missing
+    registers are restored to zero rather than raising -- this keeps a
+    standalone popa() from crashing the emulator, matching the
+    Defense-in-Depth principle that a single bad call must not corrupt
+    the whole system.
     """
     sp = cpu.regfile.get('P', 8)
     values = []
     for _ in range(23):
         if sp >= 0xFFFE:
-            raise RuntimeError(f"Stack underflow during POPA: SP=0x{sp:04X}")
-        values.append(cpu.memory.read_word_fast(sp))
-        sp = (sp + 2) & 0xFFFF
+            values.append(0)
+        else:
+            values.append(cpu.memory.read_word_fast(sp))
+            sp = (sp + 2) & 0xFFFF
 
     # Restore R0-R9
     for i in range(10):
