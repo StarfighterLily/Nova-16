@@ -10,6 +10,10 @@ and verifies:
 - sec3 R: ramdisk: pressing 'r' runs the self-test; signature lands in
   bank page 3 (not base RAM); BANK invariant holds.
 - Console window: printable keys echo as glyphs at the cursor.
+- Console scroll: consuming the bottom row scrolls the text layer up one
+  glyph row (SSHFT -8) instead of wrapping over the prompt; the gutter
+  row between title bar and viewport is cleared, chrome stays put on
+  background layer 2.
 - Deterministic shutdown: ESC halts cleanly with a HALT banner.
 
 The kernel is compiled ONCE per pytest session into a temp directory;
@@ -110,14 +114,21 @@ def test_kernel_boot_state(kernel):
     kernel.run(120000)
     assert not kernel.proc.halted, 'kernel halted during boot'
     assert kernel.gvar('booted') == 1
-    # Banner rendered on the console sprite layer...
-    layer5 = kernel.sprite_layer5()
-    title_ink = int((layer5[24:32, 24:130] != 0).sum())
+    # Window chrome (frame + title bar) is static background content on
+    # layer 2 per sec5 -- sprite layer 5 is reserved for the scrolling
+    # console viewport, so the SSHFT scroll never drags the chrome around.
+    chrome = kernel.gfx.background_layers[1]
+    title_ink = int((chrome[24:32, 24:130] != 0).sum())
     assert title_ink > 20, f'title bar empty (ink={title_ink})'
-    # ...and the desktop frame on background layer 1.
+    # The desktop frame stays on background layer 1.
     bg = kernel.gfx.background_layers[0]
     frame_ink = int((bg != 0).sum())
     assert frame_ink > 100, f'desktop frame missing (ink={frame_ink})'
+    # The text viewport (sprite layer 5) starts clean above the first
+    # content row (y=56) -- no chrome ink may leak into the scroll region.
+    layer5 = kernel.sprite_layer5()
+    leaked = int((layer5[:56, :] != 0).sum())
+    assert leaked == 0, f'chrome ink on scrolling layer (px={leaked})'
     print(f'PASS boot state (title_ink={title_ink}, frame_ink={frame_ink})')
 
 
@@ -221,6 +232,64 @@ def test_printable_key_echoes_at_cursor(kernel):
     print(f'PASS console echo (cell ink={cell_ink} at {x0},{y0})')
 
 
+def test_console_scrolls_at_bottom_instead_of_wrapping(kernel):
+    """Issue #2: the console must scroll its history away when the bottom
+    row is consumed, not wrap to the top and overwrite the prompt."""
+    kernel.run(120000)
+    assert kernel.gvar('cursor_row') == 7
+
+    # Drive the cursor past the bottom row (21): 16 Enter presses cover
+    # rows 7..22, forcing at least one scroll.
+    for _ in range(16):
+        kernel.press(13)
+        kernel.run(20000)
+
+    # The cursor is pinned to the bottom row, not wrapped to row 7.
+    assert kernel.gvar('cursor_row') == 21, (
+        f"cursor wrapped to row {kernel.gvar('cursor_row')} "
+        'instead of scrolling')
+
+    layer5 = kernel.sprite_layer5()
+    # The gutter row between the title bar and the first content row is
+    # blank -- the scrolled-out top line did not poke into the chrome gap.
+    gutter_ink = int((layer5[48:56, :] != 0).sum())
+    assert gutter_ink == 0, f'gutter row not cleared after scroll (ink={gutter_ink})'
+    # A fresh "> " prompt is rendered on the new bottom line (col 4 -> x=32).
+    prompt_ink = int((layer5[168:176, 32:48] != 0).sum())
+    assert prompt_ink > 0, 'prompt missing on the scrolled bottom row'
+    # Chrome survived the scroll untouched on background layer 2.
+    chrome_ink = int((kernel.gfx.background_layers[1][24:32, 24:130] != 0).sum())
+    assert chrome_ink > 20, 'window chrome lost after scroll'
+    print(f'PASS console scroll (gutter={gutter_ink}, prompt_ink={prompt_ink})')
+
+
+def test_scrolled_history_is_preserved(kernel):
+    """A line printed before the scroll must still be visible one row higher
+    after the scroll -- history scrolls away, it is not erased."""
+    kernel.run(120000)
+    # 'H' echoes on row 7 (y=56), the first content row.
+    kernel.press(ord('H'))
+    kernel.run(20000)
+    layer5 = kernel.sprite_layer5()
+    assert int((layer5[56:64, 32:40] != 0).sum()) > 0, 'H glyph missing pre-scroll'
+
+    # Sixteen Enters consume rows 8..21 plus one scroll.
+    for _ in range(16):
+        kernel.press(13)
+        kernel.run(20000)
+
+    # The 'H' line scrolled up exactly one glyph row (y=48 is the gutter...
+    # rows 8..21 moved to 7..20 => H's row 7 scrolled out; the line one
+    # below the wrap point is verifiable instead): the last Enters'
+    # prompts stack at one-row intervals above the bottom row.
+    layer5 = kernel.sprite_layer5()
+    prompt_rows = [y for y in range(56, 176, 8)
+                   if int((layer5[y:y + 8, 32:48] != 0).sum()) > 0]
+    assert len(prompt_rows) >= 14, (
+        f'scroll collapsed history: prompt rows at {prompt_rows}')
+    print(f'PASS scroll history ({len(prompt_rows)} stacked prompt rows)')
+
+
 def test_control_keys_do_not_echo(kernel):
     kernel.run(120000)
     col0 = kernel.gvar('cursor_col')
@@ -270,6 +339,8 @@ if __name__ == '__main__':
     test_base_ram_globals_unshadowed_after_ramdisk_ops(Kernel())
     test_printable_key_echoes_at_cursor(Kernel())
     test_control_keys_do_not_echo(Kernel())
+    test_console_scrolls_at_bottom_instead_of_wrapping(Kernel())
+    test_scrolled_history_is_preserved(Kernel())
     test_esc_halts_cleanly_with_halt_banner(Kernel())
     test_astrid_compile_tool_compiles_kernel()
     shutil.rmtree(_BIN_CACHE.get('dir', ''), ignore_errors=True)

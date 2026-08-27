@@ -28,34 +28,45 @@ void draw_text() {
 }
 
 void parallax() {
-	for (int layer = 1; layer <= 3; layer++) {
+	for (int layer = 1; layer <= 4; layer++) {
 		set_layer(layer);
 		if (layer == 1){
-			scroll_x(layer, 1, 1);
+			scroll_x(layer, 0, 1);
 		}
 		if (layer == 2){
-			scroll_x(layer, 1, 2);
+			scroll_x(layer, 0, 2);
 		}
 		if (layer == 3){
-			scroll_x(layer, 1, 3);
+			scroll_x(layer, 0, 3);
+		}
+		if (layer == 4){
+			scroll_x(layer, 0, 4);
 		}
 	}
-	iret();
+	// ISR discipline: parallax runs with interrupts masked, so it must be
+	// SHORT.  The TS=80 divisor already throttles the fire rate -- busy-
+	// looping here (the old nop()x5000 debounce) only guaranteed that every
+	// subsequent timer fire landed while I=0 and was dropped, and the
+	// explicit iret() below relied on an accidental stack unwind (the
+	// compiler already emits the ISR epilogue + IRET in timer_interrupt).
 }
 
 void main() {
 	setup();
 
 	// Layer 1: many dim stars
-	draw_stars(1, 32, 0x00, 0x06);
+	draw_stars(1, 32, 0x00, 0x04);
 
 	// Layer 2: fewer, brighter stars
-	draw_stars(2, 128, 0x07, 0x0A);
+	draw_stars(2, 128, 0x04, 0x07);
 
-	// Layer 3: fewest, brightest stars
-	draw_stars(3, 256, 0x0B, 0x0F);
+	// Layer 3: fewer, brighter stars
+	draw_stars(3, 256, 0x07, 0x0A);
 
-	draw_text();
+	// Layer 4: fewest, brightest stars
+	draw_stars(4, 512, 0x0A, 0x0F);
+
+	//draw_text();
 
 	sti();	// enable interrupts
 	set_timer(0, 255, 80, 3);     // TT, TM, TS, TC

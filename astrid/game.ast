@@ -146,7 +146,7 @@ void drawPlayer(int x, int y) {
 void enemy(){
     Enemy.oldex = Enemy.ex;
     Enemy.oldey = Enemy.ey;
-    int walk = random_range(1, 64);
+    int walk = random_range(1, 4089);
 
     if (Enemy.ex < 8) {
         Enemy.ex = 8;
@@ -165,15 +165,15 @@ void enemy(){
         // move left
         Enemy.ex -= 8;
     }
-    if (walk == 8 && Enemy.ex < 240) {
+    if (walk == 64 && Enemy.ex < 240) {
         // move right
         Enemy.ex += 8;
     }
-    if (walk == 16 && Enemy.ey > 8) {
+    if (walk == 256 && Enemy.ey > 8) {
         // move up
         Enemy.ey -= 8;
     }
-    if (walk == 32 && Enemy.ey < 232) {
+    if (walk == 1024 && Enemy.ey < 232) {
         // move down
         Enemy.ey += 8;
     }
@@ -214,7 +214,7 @@ void main() {
     }
     while (!Enemy.ehit) {
         Player.counter++;
-        if (Player.counter > 8) {
+        if (Player.counter > 255) {
             Player.counter = 0;
             clearSwing();
         }

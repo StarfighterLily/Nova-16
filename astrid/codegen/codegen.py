@@ -2514,12 +2514,34 @@ class CodeGenerator:
         self.emit(f"    CMP {reg}, 0")
         self.free_register()
         self.emit(f"    JZ {else_label if if_stmt.else_body else end_label}")
+        # Reset _emitted_return before generating branches so a conditional
+        # return inside an if-then body doesn't permanently suppress the
+        # function-level epilogue for the fall-through path (when there is
+        # no else branch, the condition-false path runs after the if).
+        self._emitted_return = False
         self.generate_block(if_stmt.then_body)
+        then_returns = self._emitted_return
         if if_stmt.else_body:
-            self.emit(f"    JMP {end_label}")
+            # The end label is only reachable via an explicit skip over the
+            # else branch; when the then-branch already returned there is
+            # nothing to skip, so neither the JMP nor the label is needed.
+            if not then_returns:
+                self.emit(f"    JMP {end_label}")
             self.emit_label(else_label)
+            self._emitted_return = False
             self.generate_block(if_stmt.else_body)
-        self.emit_label(end_label)
+            else_returns = self._emitted_return
+            # The if-statement unconditionally returns only when BOTH
+            # branches do; otherwise the fall-through path needs an epilogue.
+            self._emitted_return = then_returns and else_returns
+            if not then_returns:
+                self.emit_label(end_label)
+        else:
+            self.emit_label(end_label)
+            # Without an else branch the fall-through (condition-false) path
+            # never returns, so the if-statement as a whole does not
+            # unconditionally return.
+            self._emitted_return = False
 
     def generate_while(self, while_stmt: While):
         self.emit_comment("While loop")

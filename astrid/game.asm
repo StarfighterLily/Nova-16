@@ -1194,7 +1194,7 @@ POP P5
 MOV [P5], P7
 ; var walk = ...
 ; Call to random_range
-MOV P0, 64
+MOV P0, 4089
 PUSH P0
 MOV P1, 1
 PUSH P1
@@ -1371,7 +1371,7 @@ cmp_true_187:
 MOV P0, 1
 cmp_end_188:
 PUSH P0
-MOV P2, 8
+MOV P2, 64
 PUSH P2
 MOV P4, [0xC200]
 POP P2
@@ -1385,7 +1385,7 @@ cmp_end_190:
 POP P0
 CMP P0, 0
 JZ sc_false_191
-MOV P5, 8
+MOV P5, 64
 PUSH P5
 MOV P6, [0xC200]
 POP P5
@@ -1417,7 +1417,7 @@ ADD P0, P1
 MOV [P7], P0
 if_end_185:
 ; If statement
-MOV P2, 16
+MOV P2, 256
 PUSH P2
 MOV P4, [0xC200]
 POP P2
@@ -1493,7 +1493,7 @@ cmp_true_207:
 MOV P0, 1
 cmp_end_208:
 PUSH P0
-MOV P2, 32
+MOV P2, 1024
 PUSH P2
 MOV P4, [0xC200]
 POP P2
@@ -1507,7 +1507,7 @@ cmp_end_210:
 POP P0
 CMP P0, 0
 JZ sc_false_211
-MOV P5, 32
+MOV P5, 1024
 PUSH P5
 MOV P6, [0xC200]
 POP P5
@@ -2244,7 +2244,7 @@ MOV [P7], P0
 MOV P2, 0x800A
 MOV P4, [P2]
 PUSH P4
-MOV P5, 8
+MOV P5, 255
 POP P4
 CMP P5, P4
 JC cmp_true_319

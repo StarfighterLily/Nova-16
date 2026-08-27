@@ -2000,7 +2000,11 @@ class Sshft(BaseInstruction):
         operands = cpu.parse_operands(2)
         axis = cpu.get_operand_value(operands[0])
         amount = cpu.get_operand_value(operands[1])
-        
+        # Amount is a signed 16-bit immediate: the assembler encodes
+        # negative amounts as two's-complement imm16 (e.g. 0xFFF8 = -8).
+        if amount & 0x8000:
+            amount -= 0x10000
+
         if axis == 0:  # X axis
             cpu.gfx.shift_x(amount)
         elif axis == 1:  # Y axis

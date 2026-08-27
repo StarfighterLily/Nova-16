@@ -10,7 +10,21 @@
 //
 // Kernel invariant (sec3): banks are nonzero ONLY inside r_read/r_write and
 // every excursion is bracketed by save/restore of BANK, so the gvar region
-// at 0x8000+ is never shadowed while ordinary code runs.
+// at 0x8000+ is never shadowed while ordinary code runs.  Each excursion is
+// also a CRITICAL SECTION: it is bracketed by cli()/sti() so the vector-0
+// heartbeat -- whose ISR does not save/restore BANK -- can never land mid
+// excursion and run its ticks++ against the wrong bank page, which corrupts
+// the live R: signature and the counter itself.
+//
+// Console model (sec5): glyphs live in an 8px grid.  A command line (led by a
+// "> " prompt) and the response it produces are kept on SEPARATE rows, so a
+// report never overwrites the prompt.  Return advances to the next line; when
+// the bottom row is consumed the whole text layer shifts up one glyph row
+// (scroll_console), so history scrolls away instead of being overwritten.
+//
+// Layer discipline: the static window chrome (frame + title bar) lives on
+// background layer 2; only the scrolling text lives on sprite layer 5, so a
+// layer-wide SSHFT scrolls text without dragging the chrome with it.
 //
 // Headless contract (for the automated tests): ESC shuts the machine down
 // cleanly, so a test run always terminates deterministically.
@@ -27,45 +41,87 @@ int booted;           // set once boot() completes
 
 // ---- sec1 device drivers: naming conventions over real opcodes -------------
 
-// /dev/vga/layers/N putc -- emit one pixel of color at (x, y) on layer
+// /dev/vga/layers/N putc -- emit one pixel of color (x, y) on layer
 void px_putc(int layer, int x, int y, int color) {
     set_layer(layer);
     set_pos(x, y);
     write_screen(color);
 }
 
+// Scroll the console text layer up one glyph row.  SSHFT's amount is a
+// signed imm16, so -8 shifts the layer content UP 8px and leaves the
+// vacated bottom row blank -- exactly one line of scrollback lost, the
+// rest preserved.  The oldest line lands in the 8px gutter between the
+// title bar (subtitle at y=40) and the first text row (y=56); a filled
+// SRECT in color 0 wipes it so nothing pokes into the chrome gap.
+void scroll_console() {
+    set_layer(5);
+    screen_shift(1, -8);
+    set_color(0);
+    set_pos(0, 48);
+    draw_rect(255, 55, 1);
+}
+
+// Console geometry (absolute 8px glyph cells; window chrome starts at x=16,
+// y=16 and is wide enough for 30 columns):
+//   left margin col = 4, first content row = 7, bottom row = 21.
+// When the bottom row is consumed the viewport scrolls one line up and the
+// cursor stays pinned to the bottom row -- terminal-style scrollback.
+void line_advance() {
+    cursor_col = 4;
+    cursor_row++;
+    if (cursor_row > 21) {
+        scroll_console();
+        cursor_row = 21;
+    }
+}
+
 // /dev/win/console putc -- render one glyph at the window cursor.
-// The console window lives on sprite layer 5.
+// The window lives on sprite layer 5; the cursor advances cell by cell and
+// wraps to a fresh line at the right / bottom edge of the console window.
 void win_putc(int ch) {
+    if (ch == 13 || ch == 10) {     // CR / LF: advance to the next line
+        line_advance();
+        return;
+    }
     set_layer(5);
     set_color(0x1F);
     set_pos(cursor_col * 8, cursor_row * 8);
     draw_char(ch);
     cursor_col++;
-    if (cursor_col > 30) {
-        cursor_col = 2;
-        cursor_row++;
-    }
+    if (cursor_col >= 30) { line_advance(); }
+}
+
+// Draw the "> " command-prompt marker at the cursor; typing follows it.
+void console_prompt() {
+    win_putc(62);   // '>'
+    win_putc(32);   // ' '
 }
 
 // ---- sec3 R: ramdisk -- storage as bank pages behind 0x8000-0xBFFF ---------
 
 // Read one byte from R: page n at window offset off.
-// Bracketed by save/restore of BANK exactly as the spec mandates.
+// Bounded save/restore of BANK *as a critical section* exactly as the spec
+// mandates: interrupts are masked for the whole excursion so an ISR can
+// never observe the window while it points at a page bank.
 int r_read(int n, int off) {
     int prev = read_bank();
+    cli();
     set_bank(n);
     int v = peek(0x8000 + off);
     set_bank(prev);
+    sti();
     return v;
 }
 
 // Write one byte to R: page n at window offset off.
 void r_write(int n, int off, int val) {
     int prev = read_bank();
+    cli();
     set_bank(n);
     poke(0x8000 + off, val);
     set_bank(prev);
+    sti();
 }
 
 // ---- boot ------------------------------------------------------------------
@@ -80,7 +136,6 @@ void clear_video() {
 }
 
 // Install the drive-letter union descriptors into the zero page tables.
-// Pure bookkeeping per sec3: a drive is a search list over memory regions.
 // Layout (byte slots): 0x0010-11 = C: base segment 0x1000,
 // 0x0012 = R: bank count, 0x0014 = R: window base high byte, 0x0016-17 = SS.
 void mount_tables() {
@@ -99,13 +154,17 @@ void banner() {
     set_pos(4, 4);
     draw_rect(251, 251, 0);
 
-    // Console window chrome on sprite layer 5
-    set_layer(5);
+    // Console window chrome on static background layer 2 (16px frame,
+    // ~22 lines deep).  Chrome is static content: per sec5 it belongs on a
+    // background layer (1-4), keeping sprite layer 5 exclusively for the
+    // scrolling text viewport so SSHFT never drags the frame around.
+    set_layer(2);
     set_color(0x17);
     set_pos(16, 16);
-    draw_rect(240, 64, 0);
+    draw_rect(252, 180, 0);
 
-    // Title bar text
+    // Title bar text (also static chrome, layer 2)
+    set_layer(2);
     set_pos(24, 24);
     write_text("STAR SYSTEM 1", 0x1F);
     set_pos(24, 40);
@@ -128,10 +187,9 @@ void boot() {
     mount_tables();
     banner();
 
-    // Verify the zero-page mount tables actually landed (poke/peek round-trip)
+    // Verify the zero-page mount tables land in the hot-cached zero page
     if (peek(0x0016) != 'S' || peek(0x0012) != 15) {
         set_layer(5);
-        set_color(0x1F);
         set_pos(24, 200);
         write_text("MOUNT TABLE CORRUPT", 0x1C);
     }
@@ -142,7 +200,9 @@ void boot() {
 // ---- sec4 vector 0: scheduler heartbeat ------------------------------------
 
 // Auto-wired at ORG 0x0100 by the compiler; full register save/restore is
-// emitted around the body per the ISR contract.
+// emitted around the body per the ISR contract.  Runs with interrupts masked;
+// because r_read/r_write mask interrupts during every excursion, the heartbeat
+// can never run while the bank window points at a page bank.
 void timer_interrupt() {
     ticks++;
     iret();
@@ -151,7 +211,7 @@ void timer_interrupt() {
 // ---- R: self-test ----------------------------------------------------------
 
 // Write a signature to R: page 3, read it back, and prove the excursion
-// never shadowed base RAM. Leaves a human-readable verdict on screen.
+// never shadowed base RAM.  Leaves a human-readable verdict on its own line.
 void ramdisk_selftest() {
     r_write(3, 0, 'S');
     r_write(3, 1, '1');
@@ -165,14 +225,12 @@ void ramdisk_selftest() {
     if (ok == 1) {
         ramdisk_ok = 1;
         set_layer(5);
-        set_color(0x1F);
-        set_pos(24, 56);
+        set_pos(4 * 8, cursor_row * 8);
         write_text("R: OK", 0x1E);
     } else {
         ramdisk_ok = 2;
         set_layer(5);
-        set_color(0x1F);
-        set_pos(24, 56);
+        set_pos(4 * 8, cursor_row * 8);
         write_text("R: FAIL", 0x1C);
     }
 }
@@ -189,7 +247,10 @@ void shutdown() {
 
 // ---- shell: /dev/key is the whole input device tree -------------------------
 
+// A tiny command line.  The prompt lives on its own row; each command's
+// report is printed on a fresh row beneath it, then a new prompt appears.
 void shell() {
+    console_prompt();
     while (1) {
         if (key_available()) {
             int k = key_read();
@@ -197,9 +258,18 @@ void shell() {
             if (k == 27) {
                 // ESC: orderly power-down
                 shutdown();
-            } else if (k == 114) {
-                // r: exercise the R: ramdisk driver
+            } else if (k == 13 || k == 10) {
+                // Enter: accept the current line, start a fresh prompt
+                line_advance();
+                console_prompt();
+            } else if (k == 'r' || k == 'R') {
+                // r: exercise the R: ramdisk driver on a NEW line so the
+                // report cannot overwrite the prompt (issue #1)
+                win_putc(k);
+                line_advance();
                 ramdisk_selftest();
+                line_advance();
+                console_prompt();
             } else if (k >= 32 && k < 127) {
                 // printable bytes echo through the console window file
                 win_putc(k);

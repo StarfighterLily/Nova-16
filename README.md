@@ -1,6 +1,7 @@
 # Nova-16
 
 A custom 16-bit CPU emulator with integrated graphics, sound, and I/O capabilities, written in Python.
+Now mostly complete and mostly used for development/testing to run on the 8MHz compiled version.
 
 ## Overview
 

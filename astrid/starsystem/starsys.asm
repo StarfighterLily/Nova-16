@@ -35,9 +35,144 @@ MOV P7, R0
 MOV SP, FP
 POP FP
 RET
+; Function: scroll_console
+func_scroll_console:
+ENTER 0
+; Call to set_layer
+MOV P0, 5
+PUSH P0
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P1, R0
+; Call to screen_shift
+MOV P2, -8
+PUSH P2
+MOV P4, 1
+PUSH P4
+CALL builtin_screen_shift
+; Args consumed by callee
+MOV P5, R0
+; Call to set_color
+MOV P6, 0
+PUSH P6
+CALL builtin_set_color
+; Args consumed by callee
+MOV P7, R0
+; Call to set_pos
+MOV P0, 48
+PUSH P0
+MOV P1, 0
+PUSH P1
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P2, R0
+; Call to draw_rect
+MOV P4, 1
+PUSH P4
+MOV P5, 55
+PUSH P5
+MOV P6, 255
+PUSH P6
+CALL builtin_draw_rect
+; Args consumed by callee
+MOV P7, R0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: line_advance
+func_line_advance:
+ENTER 0
+; Assignment to cursor_col
+MOV P0, 4
+MOV [0x8002], P0
+MOV P1, [0x8004]
+MOV P2, P1
+INC P1
+MOV [0x8004], P1
+; If statement
+MOV P4, [0x8004]
+PUSH P4
+MOV P5, 21
+POP P4
+CMP P5, P4
+JC cmp_true_2
+MOV P4, 0
+JMP cmp_end_3
+cmp_true_2:
+MOV P4, 1
+cmp_end_3:
+CMP P4, 0
+JZ if_end_0
+; Call to scroll_console
+CALL func_scroll_console
+MOV P6, P0
+; Assignment to cursor_row
+MOV P7, 21
+MOV [0x8004], P7
+if_end_0:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
 ; Function: win_putc
 func_win_putc:
 ENTER 0
+; If statement
+MOV P0, 10
+PUSH P0
+MOV P1, [FP+4]
+POP P0
+CMP P0, P1
+JZ cmp_true_6
+MOV P0, 0
+JMP cmp_end_7
+cmp_true_6:
+MOV P0, 1
+cmp_end_7:
+PUSH P0
+MOV P2, 13
+PUSH P2
+MOV P4, [FP+4]
+POP P2
+CMP P2, P4
+JZ cmp_true_8
+MOV P2, 0
+JMP cmp_end_9
+cmp_true_8:
+MOV P2, 1
+cmp_end_9:
+POP P0
+CMP P0, 0
+JNZ sc_true_10
+MOV P5, 13
+PUSH P5
+MOV P6, [FP+4]
+POP P5
+CMP P5, P6
+JZ cmp_true_12
+MOV P5, 0
+JMP cmp_end_13
+cmp_true_12:
+MOV P5, 1
+cmp_end_13:
+CMP P5, 0
+JNZ sc_true_10
+MOV P0, 0
+JMP sc_end_11
+sc_true_10:
+MOV P0, 1
+sc_end_11:
+CMP P0, 0
+JZ if_end_4
+; Call to line_advance
+CALL func_line_advance
+MOV P7, P0
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_4:
 ; Call to set_layer
 MOV P0, 5
 PUSH P0
@@ -81,23 +216,38 @@ MOV P5, [0x8002]
 PUSH P5
 MOV P6, 30
 POP P5
-CMP P6, P5
-JC cmp_true_2
+CMP P5, P6
+JNC cmp_true_16
 MOV P5, 0
-JMP cmp_end_3
-cmp_true_2:
+JMP cmp_end_17
+cmp_true_16:
 MOV P5, 1
-cmp_end_3:
+cmp_end_17:
 CMP P5, 0
-JZ if_end_0
-; Assignment to cursor_col
-MOV P7, 2
-MOV [0x8002], P7
-MOV P0, [0x8004]
+JZ if_end_14
+; Call to line_advance
+CALL func_line_advance
+MOV P7, P0
+if_end_14:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: console_prompt
+func_console_prompt:
+ENTER 0
+; Call to win_putc
+MOV P0, 62
+PUSH P0
+CALL func_win_putc
+ADD SP, 2 ; Caller cleans up args
 MOV P1, P0
-INC P0
-MOV [0x8004], P0
-if_end_0:
+; Call to win_putc
+MOV P2, 32
+PUSH P2
+CALL func_win_putc
+ADD SP, 2 ; Caller cleans up args
+MOV P4, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -108,35 +258,41 @@ ENTER 4
 ; var prev = ...
 ; Call to read_bank
 CALL builtin_read_bank
-MOV P2, P0
-MOV [0xC100], P2
+MOV P5, P0
+MOV [0xC280], P5
+; Call to cli
+CALL builtin_cli
+MOV P6, R0
 ; Call to set_bank
-MOV P4, [FP+4]
-PUSH P4
+MOV P7, [FP+4]
+PUSH P7
 CALL builtin_set_bank
 ; Args consumed by callee
-MOV P5, R0
+MOV P0, R0
 ; var v = ...
 ; Call to peek
-MOV P6, 32768
-PUSH P6
-MOV P7, [FP+6]
-POP P6
-ADD P6, P7
-PUSH P6
+MOV P1, 32768
+PUSH P1
+MOV P2, [FP+6]
+POP P1
+ADD P1, P2
+PUSH P1
 CALL builtin_peek
 ; Args consumed by callee
-MOV [0xC102], P0
+MOV P4, P0
+MOV [0xC282], P4
 ; Call to set_bank
-MOV P1, [0xC100]
-PUSH P1
+MOV P5, [0xC280]
+PUSH P5
 CALL builtin_set_bank
 ; Args consumed by callee
-MOV P2, R0
+MOV P6, R0
+; Call to sti
+CALL builtin_sti
+MOV P7, R0
 ; Function return
-MOV P4, [0xC102]
-MOV P0, P4
-MOV R0, P4
+MOV P0, [0xC282]
+MOV R0, P0
 MOV SP, FP
 POP FP
 RET
@@ -146,32 +302,38 @@ ENTER 2
 ; var prev = ...
 ; Call to read_bank
 CALL builtin_read_bank
-MOV P5, P0
-MOV [0xC180], P5
+MOV P1, P0
+MOV [0xC300], P1
+; Call to cli
+CALL builtin_cli
+MOV P2, R0
 ; Call to set_bank
-MOV P6, [FP+4]
-PUSH P6
+MOV P4, [FP+4]
+PUSH P4
 CALL builtin_set_bank
 ; Args consumed by callee
-MOV P7, R0
+MOV P5, R0
 ; Call to poke
-MOV P0, [FP+8]
-PUSH P0
-MOV P1, 32768
-PUSH P1
-MOV P2, [FP+6]
-POP P1
-ADD P1, P2
-PUSH P1
+MOV P6, [FP+8]
+PUSH P6
+MOV P7, 32768
+PUSH P7
+MOV P0, [FP+6]
+POP P7
+ADD P7, P0
+PUSH P7
 CALL builtin_poke
 ; Args consumed by callee
-MOV P4, R0
+MOV P1, R0
 ; Call to set_bank
-MOV P5, [0xC180]
-PUSH P5
+MOV P2, [0xC300]
+PUSH P2
 CALL builtin_set_bank
 ; Args consumed by callee
-MOV P6, R0
+MOV P4, R0
+; Call to sti
+CALL builtin_sti
+MOV P5, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -181,49 +343,49 @@ func_clear_video:
 ENTER 2
 ; For loop
 ; Assignment to i
+MOV P6, 0
+MOV [0xC380], P6
+for_start_18:
+MOV P7, [0xC380]
+PUSH P7
+MOV P0, 8
+POP P7
+CMP P7, P0
+JC cmp_true_21
 MOV P7, 0
-MOV [0xC200], P7
-for_start_4:
-MOV P0, [0xC200]
-PUSH P0
-MOV P1, 8
-POP P0
-CMP P0, P1
-JC cmp_true_7
-MOV P0, 0
-JMP cmp_end_8
-cmp_true_7:
-MOV P0, 1
-cmp_end_8:
-CMP P0, 0
-JZ for_end_5
+JMP cmp_end_22
+cmp_true_21:
+MOV P7, 1
+cmp_end_22:
+CMP P7, 0
+JZ for_end_19
 ; Call to set_layer
-MOV P2, [0xC200]
-PUSH P2
+MOV P1, [0xC380]
+PUSH P1
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P4, R0
+MOV P2, R0
 ; Call to screen_fill
-MOV P5, 0
-PUSH P5
+MOV P4, 0
+PUSH P4
 CALL builtin_screen_fill
 ; Args consumed by callee
-MOV P6, R0
-for_continue_6:
+MOV P5, R0
+for_continue_20:
 ; Wrap-check: save i before update
-MOV P7, [0xC200]
-PUSH P7
-MOV P0, [0xC200]
-MOV P1, P0
-INC P0
-MOV [0xC200], P0
+MOV P6, [0xC380]
+PUSH P6
+MOV P7, [0xC380]
+MOV P0, P7
+INC P7
+MOV [0xC380], P7
 ; Wrap-check: compare i new vs old
-POP P2
-MOV P4, [0xC200]
-CMP P4, P2
-JC for_end_5
-JMP for_start_4
-for_end_5:
+POP P1
+MOV P2, [0xC380]
+CMP P2, P1
+JC for_end_19
+JMP for_start_18
+for_end_19:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -232,53 +394,53 @@ RET
 func_mount_tables:
 ENTER 0
 ; Call to poke
-MOV P5, 16
-PUSH P5
-MOV P6, 16
-PUSH P6
-CALL builtin_poke
-; Args consumed by callee
-MOV P7, R0
-; Call to poke
-MOV P0, 0
-PUSH P0
-MOV P1, 17
-PUSH P1
-CALL builtin_poke
-; Args consumed by callee
-MOV P2, R0
-; Call to poke
-MOV P4, 15
+MOV P4, 16
 PUSH P4
-MOV P5, 18
+MOV P5, 16
 PUSH P5
 CALL builtin_poke
 ; Args consumed by callee
 MOV P6, R0
 ; Call to poke
-MOV P7, 128
+MOV P7, 0
 PUSH P7
-MOV P0, 20
+MOV P0, 17
 PUSH P0
 CALL builtin_poke
 ; Args consumed by callee
 MOV P1, R0
 ; Call to poke
-MOV P2, 83
+MOV P2, 15
 PUSH P2
-MOV P4, 22
+MOV P4, 18
 PUSH P4
 CALL builtin_poke
 ; Args consumed by callee
 MOV P5, R0
 ; Call to poke
-MOV P6, 83
+MOV P6, 128
 PUSH P6
-MOV P7, 23
+MOV P7, 20
 PUSH P7
 CALL builtin_poke
 ; Args consumed by callee
 MOV P0, R0
+; Call to poke
+MOV P1, 83
+PUSH P1
+MOV P2, 22
+PUSH P2
+CALL builtin_poke
+; Args consumed by callee
+MOV P4, R0
+; Call to poke
+MOV P5, 83
+PUSH P5
+MOV P6, 23
+PUSH P6
+CALL builtin_poke
+; Args consumed by callee
+MOV P7, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -287,204 +449,7 @@ RET
 func_banner:
 ENTER 0
 ; Call to set_layer
-MOV P1, 1
-PUSH P1
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P2, R0
-; Call to set_color
-MOV P4, 31
-PUSH P4
-CALL builtin_set_color
-; Args consumed by callee
-MOV P5, R0
-; Call to set_pos
-MOV P6, 4
-PUSH P6
-MOV P7, 4
-PUSH P7
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P0, R0
-; Call to draw_rect
-MOV P1, 0
-PUSH P1
-MOV P2, 251
-PUSH P2
-MOV P4, 251
-PUSH P4
-CALL builtin_draw_rect
-; Args consumed by callee
-MOV P5, R0
-; Call to set_layer
-MOV P6, 5
-PUSH P6
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P7, R0
-; Call to set_color
-MOV P0, 23
-PUSH P0
-CALL builtin_set_color
-; Args consumed by callee
-MOV P1, R0
-; Call to set_pos
-MOV P2, 16
-PUSH P2
-MOV P4, 16
-PUSH P4
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P5, R0
-; Call to draw_rect
-MOV P6, 0
-PUSH P6
-MOV P7, 64
-PUSH P7
-MOV P0, 240
-PUSH P0
-CALL builtin_draw_rect
-; Args consumed by callee
-MOV P1, R0
-; Call to set_pos
-MOV P2, 24
-PUSH P2
-MOV P4, 24
-PUSH P4
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P5, R0
-; Call to write_text
-MOV P6, 31
-PUSH P6
-MOV P7, str_9
-PUSH P7
-CALL builtin_write_text
-; Args consumed by callee
-MOV P0, R0
-; Call to set_pos
-MOV P1, 40
-PUSH P1
-MOV P2, 24
-PUSH P2
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P4, R0
-; Call to write_text
-MOV P5, 23
-PUSH P5
-MOV P6, str_10
-PUSH P6
-CALL builtin_write_text
-; Args consumed by callee
-MOV P7, R0
-; Assignment to cursor_col
-MOV P0, 4
-MOV [0x8002], P0
-; Assignment to cursor_row
-MOV P1, 7
-MOV [0x8004], P1
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: boot
-func_boot:
-ENTER 0
-; Assignment to ticks
-MOV P2, 0
-MOV [0x8000], P2
-; Assignment to cursor_col
-MOV P4, 4
-MOV [0x8002], P4
-; Assignment to cursor_row
-MOV P5, 7
-MOV [0x8004], P5
-; Assignment to last_key
-MOV P6, 0
-MOV [0x8006], P6
-; Assignment to ramdisk_ok
-MOV P7, 0
-MOV [0x8008], P7
-; Assignment to bank_invariant
 MOV P0, 1
-MOV [0x800A], P0
-; Assignment to booted
-MOV P1, 0
-MOV [0x800C], P1
-; Call to clear_video
-CALL func_clear_video
-MOV P2, P0
-; Call to mount_tables
-CALL func_mount_tables
-MOV P4, P0
-; Call to banner
-CALL func_banner
-MOV P5, P0
-; If statement
-; Call to peek
-MOV P6, 18
-PUSH P6
-CALL builtin_peek
-; Args consumed by callee
-MOV P7, P0
-PUSH P7
-MOV P0, 15
-POP P7
-CMP P7, P0
-JNZ cmp_true_13
-MOV P7, 0
-JMP cmp_end_14
-cmp_true_13:
-MOV P7, 1
-cmp_end_14:
-PUSH P7
-; Call to peek
-MOV P1, 22
-PUSH P1
-CALL builtin_peek
-; Args consumed by callee
-MOV P2, P0
-PUSH P2
-MOV P4, 83
-POP P2
-CMP P2, P4
-JNZ cmp_true_15
-MOV P2, 0
-JMP cmp_end_16
-cmp_true_15:
-MOV P2, 1
-cmp_end_16:
-POP P7
-CMP P7, 0
-JNZ sc_true_17
-; Call to peek
-MOV P5, 22
-PUSH P5
-CALL builtin_peek
-; Args consumed by callee
-MOV P6, P0
-PUSH P6
-MOV P7, 83
-POP P6
-CMP P6, P7
-JNZ cmp_true_19
-MOV P6, 0
-JMP cmp_end_20
-cmp_true_19:
-MOV P6, 1
-cmp_end_20:
-CMP P6, 0
-JNZ sc_true_17
-MOV P7, 0
-JMP sc_end_18
-sc_true_17:
-MOV P7, 1
-sc_end_18:
-CMP P7, 0
-JZ if_end_11
-; Call to set_layer
-MOV P0, 5
 PUSH P0
 CALL builtin_set_layer
 ; Args consumed by callee
@@ -496,25 +461,221 @@ CALL builtin_set_color
 ; Args consumed by callee
 MOV P4, R0
 ; Call to set_pos
-MOV P5, 200
+MOV P5, 4
 PUSH P5
-MOV P6, 24
+MOV P6, 4
 PUSH P6
 CALL builtin_set_pos
 ; Args consumed by callee
 MOV P7, R0
-; Call to write_text
-MOV P0, 28
+; Call to draw_rect
+MOV P0, 0
 PUSH P0
-MOV P1, str_21
+MOV P1, 251
 PUSH P1
-CALL builtin_write_text
+MOV P2, 251
+PUSH P2
+CALL builtin_draw_rect
+; Args consumed by callee
+MOV P4, R0
+; Call to set_layer
+MOV P5, 2
+PUSH P5
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P6, R0
+; Call to set_color
+MOV P7, 23
+PUSH P7
+CALL builtin_set_color
+; Args consumed by callee
+MOV P0, R0
+; Call to set_pos
+MOV P1, 16
+PUSH P1
+MOV P2, 16
+PUSH P2
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P4, R0
+; Call to draw_rect
+MOV P5, 0
+PUSH P5
+MOV P6, 180
+PUSH P6
+MOV P7, 252
+PUSH P7
+CALL builtin_draw_rect
+; Args consumed by callee
+MOV P0, R0
+; Call to set_layer
+MOV P1, 2
+PUSH P1
+CALL builtin_set_layer
 ; Args consumed by callee
 MOV P2, R0
-if_end_11:
+; Call to set_pos
+MOV P4, 24
+PUSH P4
+MOV P5, 24
+PUSH P5
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P6, R0
+; Call to write_text
+MOV P7, 31
+PUSH P7
+MOV P0, str_23
+PUSH P0
+CALL builtin_write_text
+; Args consumed by callee
+MOV P1, R0
+; Call to set_pos
+MOV P2, 40
+PUSH P2
+MOV P4, 24
+PUSH P4
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P5, R0
+; Call to write_text
+MOV P6, 23
+PUSH P6
+MOV P7, str_24
+PUSH P7
+CALL builtin_write_text
+; Args consumed by callee
+MOV P0, R0
+; Assignment to cursor_col
+MOV P1, 4
+MOV [0x8002], P1
+; Assignment to cursor_row
+MOV P2, 7
+MOV [0x8004], P2
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: boot
+func_boot:
+ENTER 0
+; Assignment to ticks
+MOV P4, 0
+MOV [0x8000], P4
+; Assignment to cursor_col
+MOV P5, 4
+MOV [0x8002], P5
+; Assignment to cursor_row
+MOV P6, 7
+MOV [0x8004], P6
+; Assignment to last_key
+MOV P7, 0
+MOV [0x8006], P7
+; Assignment to ramdisk_ok
+MOV P0, 0
+MOV [0x8008], P0
+; Assignment to bank_invariant
+MOV P1, 1
+MOV [0x800A], P1
 ; Assignment to booted
+MOV P2, 0
+MOV [0x800C], P2
+; Call to clear_video
+CALL func_clear_video
+MOV P4, P0
+; Call to mount_tables
+CALL func_mount_tables
+MOV P5, P0
+; Call to banner
+CALL func_banner
+MOV P6, P0
+; If statement
+; Call to peek
+MOV P7, 18
+PUSH P7
+CALL builtin_peek
+; Args consumed by callee
+PUSH P0
+MOV P1, 15
+POP P0
+CMP P0, P1
+JNZ cmp_true_27
+MOV P0, 0
+JMP cmp_end_28
+cmp_true_27:
+MOV P0, 1
+cmp_end_28:
+PUSH P0
+; Call to peek
+MOV P2, 22
+PUSH P2
+CALL builtin_peek
+; Args consumed by callee
+MOV P4, P0
+PUSH P4
+MOV P5, 83
+POP P4
+CMP P4, P5
+JNZ cmp_true_29
+MOV P4, 0
+JMP cmp_end_30
+cmp_true_29:
 MOV P4, 1
-MOV [0x800C], P4
+cmp_end_30:
+POP P0
+CMP P0, 0
+JNZ sc_true_31
+; Call to peek
+MOV P6, 22
+PUSH P6
+CALL builtin_peek
+; Args consumed by callee
+MOV P7, P0
+PUSH P7
+MOV P0, 83
+POP P7
+CMP P7, P0
+JNZ cmp_true_33
+MOV P7, 0
+JMP cmp_end_34
+cmp_true_33:
+MOV P7, 1
+cmp_end_34:
+CMP P7, 0
+JNZ sc_true_31
+MOV P0, 0
+JMP sc_end_32
+sc_true_31:
+MOV P0, 1
+sc_end_32:
+CMP P0, 0
+JZ if_end_25
+; Call to set_layer
+MOV P1, 5
+PUSH P1
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P2, R0
+; Call to set_pos
+MOV P4, 200
+PUSH P4
+MOV P5, 24
+PUSH P5
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P6, R0
+; Call to write_text
+MOV P7, 28
+PUSH P7
+MOV P0, str_35
+PUSH P0
+CALL builtin_write_text
+; Args consumed by callee
+MOV P1, R0
+if_end_25:
+; Assignment to booted
+MOV P2, 1
+MOV [0x800C], P2
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -541,10 +702,10 @@ PUSH R6
 PUSH R7
 PUSH R8
 PUSH R9
-MOV P5, [0x8000]
-MOV P6, P5
-INC P5
-MOV [0x8000], P5
+MOV P4, [0x8000]
+MOV P5, P4
+INC P4
+MOV [0x8000], P4
 POP R9
 POP R8
 POP R7
@@ -569,180 +730,175 @@ IRET
 func_ramdisk_selftest:
 ENTER 2
 ; Call to r_write
-MOV P7, 83
+MOV P6, 83
+PUSH P6
+MOV P7, 0
 PUSH P7
+MOV P0, 3
+PUSH P0
+CALL func_r_write
+ADD SP, 6 ; Caller cleans up args
+MOV P1, P0
+; Call to r_write
+MOV P2, 49
+PUSH P2
+MOV P4, 1
+PUSH P4
+MOV P5, 3
+PUSH P5
+CALL func_r_write
+ADD SP, 6 ; Caller cleans up args
+MOV P6, P0
+; var ok = ...
+MOV P7, 1
+MOV [0xC600], P7
+; If statement
+; Call to r_read
 MOV P0, 0
 PUSH P0
 MOV P1, 3
 PUSH P1
-CALL func_r_write
-ADD SP, 6 ; Caller cleans up args
+CALL func_r_read
+ADD SP, 4 ; Caller cleans up args
 MOV P2, P0
-; Call to r_write
-MOV P4, 49
-PUSH P4
-MOV P5, 1
-PUSH P5
-MOV P6, 3
-PUSH P6
-CALL func_r_write
-ADD SP, 6 ; Caller cleans up args
-MOV P7, P0
-; var ok = ...
-MOV P0, 1
-MOV [0xC480], P0
-; If statement
-; Call to r_read
-MOV P1, 0
-PUSH P1
-MOV P2, 3
 PUSH P2
-CALL func_r_read
-ADD SP, 4 ; Caller cleans up args
-MOV P4, P0
-PUSH P4
-MOV P5, 83
-POP P4
-CMP P4, P5
-JNZ cmp_true_24
-MOV P4, 0
-JMP cmp_end_25
-cmp_true_24:
-MOV P4, 1
-cmp_end_25:
-CMP P4, 0
-JZ if_end_22
+MOV P4, 83
+POP P2
+CMP P2, P4
+JNZ cmp_true_38
+MOV P2, 0
+JMP cmp_end_39
+cmp_true_38:
+MOV P2, 1
+cmp_end_39:
+CMP P2, 0
+JZ if_end_36
 ; Assignment to ok
-MOV P6, 0
-MOV [0xC480], P6
-if_end_22:
+MOV P5, 0
+MOV [0xC600], P5
+if_end_36:
 ; If statement
 ; Call to r_read
-MOV P7, 1
+MOV P6, 1
+PUSH P6
+MOV P7, 3
 PUSH P7
-MOV P0, 3
-PUSH P0
 CALL func_r_read
 ADD SP, 4 ; Caller cleans up args
-MOV P1, P0
-PUSH P1
-MOV P2, 49
-POP P1
-CMP P1, P2
-JNZ cmp_true_28
-MOV P1, 0
-JMP cmp_end_29
-cmp_true_28:
-MOV P1, 1
-cmp_end_29:
-CMP P1, 0
-JZ if_end_26
+PUSH P0
+MOV P1, 49
+POP P0
+CMP P0, P1
+JNZ cmp_true_42
+MOV P0, 0
+JMP cmp_end_43
+cmp_true_42:
+MOV P0, 1
+cmp_end_43:
+CMP P0, 0
+JZ if_end_40
 ; Assignment to ok
-MOV P4, 0
-MOV [0xC480], P4
-if_end_26:
+MOV P2, 0
+MOV [0xC600], P2
+if_end_40:
 ; If statement
 ; Call to read_bank
 CALL builtin_read_bank
-MOV P5, P0
-PUSH P5
-MOV P6, 0
-POP P5
-CMP P5, P6
-JNZ cmp_true_32
-MOV P5, 0
-JMP cmp_end_33
-cmp_true_32:
-MOV P5, 1
-cmp_end_33:
-CMP P5, 0
-JZ if_end_30
-; Assignment to ok
-MOV P7, 0
-MOV [0xC480], P7
-; Assignment to bank_invariant
-MOV P0, 0
-MOV [0x800A], P0
-if_end_30:
-; If statement
-MOV P1, 1
-PUSH P1
-MOV P2, [0xC480]
-POP P1
-CMP P1, P2
-JZ cmp_true_36
-MOV P1, 0
-JMP cmp_end_37
-cmp_true_36:
-MOV P1, 1
-cmp_end_37:
-CMP P1, 0
-JZ if_else_35
-; Assignment to ramdisk_ok
-MOV P4, 1
-MOV [0x8008], P4
-; Call to set_layer
-MOV P5, 5
-PUSH P5
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P6, R0
-; Call to set_color
-MOV P7, 31
-PUSH P7
-CALL builtin_set_color
-; Args consumed by callee
-MOV P0, R0
-; Call to set_pos
-MOV P1, 56
-PUSH P1
-MOV P2, 24
-PUSH P2
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P4, R0
-; Call to write_text
-MOV P5, 30
-PUSH P5
-MOV P6, str_38
-PUSH P6
-CALL builtin_write_text
-; Args consumed by callee
-MOV P7, R0
-JMP if_end_34
-if_else_35:
-; Assignment to ramdisk_ok
-MOV P0, 2
-MOV [0x8008], P0
-; Call to set_layer
-MOV P1, 5
-PUSH P1
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P2, R0
-; Call to set_color
-MOV P4, 31
+MOV P4, P0
 PUSH P4
-CALL builtin_set_color
+MOV P5, 0
+POP P4
+CMP P4, P5
+JNZ cmp_true_46
+MOV P4, 0
+JMP cmp_end_47
+cmp_true_46:
+MOV P4, 1
+cmp_end_47:
+CMP P4, 0
+JZ if_end_44
+; Assignment to ok
+MOV P6, 0
+MOV [0xC600], P6
+; Assignment to bank_invariant
+MOV P7, 0
+MOV [0x800A], P7
+if_end_44:
+; If statement
+MOV P0, 1
+PUSH P0
+MOV P1, [0xC600]
+POP P0
+CMP P0, P1
+JZ cmp_true_50
+MOV P0, 0
+JMP cmp_end_51
+cmp_true_50:
+MOV P0, 1
+cmp_end_51:
+CMP P0, 0
+JZ if_else_49
+; Assignment to ramdisk_ok
+MOV P2, 1
+MOV [0x8008], P2
+; Call to set_layer
+MOV P4, 5
+PUSH P4
+CALL builtin_set_layer
 ; Args consumed by callee
 MOV P5, R0
 ; Call to set_pos
-MOV P6, 56
+MOV P6, [0x8004]
+; Unrolled shift SHL by 3
+SHL P6, 1
+SHL P6, 1
+SHL P6, 1
 PUSH P6
-MOV P7, 24
+MOV P7, 32
 PUSH P7
 CALL builtin_set_pos
 ; Args consumed by callee
 MOV P0, R0
 ; Call to write_text
-MOV P1, 28
+MOV P1, 30
 PUSH P1
-MOV P2, str_39
+MOV P2, str_52
 PUSH P2
 CALL builtin_write_text
 ; Args consumed by callee
 MOV P4, R0
-if_end_34:
+JMP if_end_48
+if_else_49:
+; Assignment to ramdisk_ok
+MOV P5, 2
+MOV [0x8008], P5
+; Call to set_layer
+MOV P6, 5
+PUSH P6
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P7, R0
+; Call to set_pos
+MOV P0, [0x8004]
+; Unrolled shift SHL by 3
+SHL P0, 1
+SHL P0, 1
+SHL P0, 1
+PUSH P0
+MOV P1, 32
+PUSH P1
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P2, R0
+; Call to write_text
+MOV P4, 28
+PUSH P4
+MOV P5, str_53
+PUSH P5
+CALL builtin_write_text
+; Args consumed by callee
+MOV P6, R0
+if_end_48:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -752,32 +908,32 @@ func_shutdown:
 ENTER 0
 ; Call to clear_video
 CALL func_clear_video
-MOV P5, P0
+MOV P7, P0
 ; Call to set_layer
-MOV P6, 5
-PUSH P6
+MOV P0, 5
+PUSH P0
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P7, R0
+MOV P1, R0
 ; Call to set_pos
-MOV P0, 120
-PUSH P0
-MOV P1, 96
-PUSH P1
+MOV P2, 120
+PUSH P2
+MOV P4, 96
+PUSH P4
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P2, R0
+MOV P5, R0
 ; Call to write_text
-MOV P4, 31
-PUSH P4
-MOV P5, str_40
-PUSH P5
+MOV P6, 31
+PUSH P6
+MOV P7, str_54
+PUSH P7
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P6, R0
+MOV P0, R0
 ; Call to halt
 CALL builtin_halt
-MOV P7, R0
+MOV P1, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -785,122 +941,228 @@ RET
 ; Function: shell
 func_shell:
 ENTER 2
+; Call to console_prompt
+CALL func_console_prompt
+MOV P2, P0
 ; While loop
-while_start_41:
-MOV P0, 1
-CMP P0, 0
-JZ while_end_42
+while_start_55:
+MOV P4, 1
+CMP P4, 0
+JZ while_end_56
 ; If statement
 ; Call to key_available
 CALL builtin_key_available
-MOV P1, P0
-CMP P1, 0
-JZ if_end_43
+MOV P5, P0
+CMP P5, 0
+JZ if_end_57
 ; var k = ...
 ; Call to key_read
 CALL builtin_key_read
-MOV P2, P0
-MOV [0xC580], P2
+MOV P6, P0
+MOV [0xC700], P6
 ; Assignment to last_key
-MOV P4, [0xC580]
-MOV [0x8006], P4
+MOV P7, [0xC700]
+MOV [0x8006], P7
 ; If statement
-MOV P5, 27
-PUSH P5
-MOV P6, [0xC580]
-POP P5
-CMP P5, P6
-JZ cmp_true_47
-MOV P5, 0
-JMP cmp_end_48
-cmp_true_47:
-MOV P5, 1
-cmp_end_48:
-CMP P5, 0
-JZ if_else_46
-; Call to shutdown
-CALL func_shutdown
-MOV P7, P0
-JMP if_end_45
-if_else_46:
-; If statement
-MOV P0, 114
+MOV P0, 27
 PUSH P0
-MOV P1, [0xC580]
+MOV P1, [0xC700]
 POP P0
 CMP P0, P1
-JZ cmp_true_51
-MOV P0, 0
-JMP cmp_end_52
-cmp_true_51:
-MOV P0, 1
-cmp_end_52:
-CMP P0, 0
-JZ if_else_50
-; Call to ramdisk_selftest
-CALL func_ramdisk_selftest
-MOV P2, P0
-JMP if_end_49
-if_else_50:
-; If statement
-MOV P4, [0xC580]
-PUSH P4
-MOV P5, 127
-POP P4
-CMP P4, P5
-JC cmp_true_55
-MOV P4, 0
-JMP cmp_end_56
-cmp_true_55:
-MOV P4, 1
-cmp_end_56:
-PUSH P4
-MOV P6, [0xC580]
-PUSH P6
-MOV P7, 32
-POP P6
-CMP P6, P7
-JNC cmp_true_57
-MOV P6, 0
-JMP cmp_end_58
-cmp_true_57:
-MOV P6, 1
-cmp_end_58:
-POP P4
-CMP P4, 0
-JZ sc_false_59
-MOV P0, [0xC580]
-PUSH P0
-MOV P1, 32
-POP P0
-CMP P0, P1
-JNC cmp_true_61
+JZ cmp_true_61
 MOV P0, 0
 JMP cmp_end_62
 cmp_true_61:
 MOV P0, 1
 cmp_end_62:
 CMP P0, 0
-JZ sc_false_59
-MOV P4, 1
-JMP sc_end_60
-sc_false_59:
+JZ if_else_60
+; Call to shutdown
+CALL func_shutdown
+MOV P2, P0
+JMP if_end_59
+if_else_60:
+; If statement
+MOV P4, 10
+PUSH P4
+MOV P5, [0xC700]
+POP P4
+CMP P4, P5
+JZ cmp_true_65
 MOV P4, 0
-sc_end_60:
+JMP cmp_end_66
+cmp_true_65:
+MOV P4, 1
+cmp_end_66:
+PUSH P4
+MOV P6, 13
+PUSH P6
+MOV P7, [0xC700]
+POP P6
+CMP P6, P7
+JZ cmp_true_67
+MOV P6, 0
+JMP cmp_end_68
+cmp_true_67:
+MOV P6, 1
+cmp_end_68:
+POP P4
 CMP P4, 0
-JZ if_end_53
+JNZ sc_true_69
+MOV P0, 13
+PUSH P0
+MOV P1, [0xC700]
+POP P0
+CMP P0, P1
+JZ cmp_true_71
+MOV P0, 0
+JMP cmp_end_72
+cmp_true_71:
+MOV P0, 1
+cmp_end_72:
+CMP P0, 0
+JNZ sc_true_69
+MOV P4, 0
+JMP sc_end_70
+sc_true_69:
+MOV P4, 1
+sc_end_70:
+CMP P4, 0
+JZ if_else_64
+; Call to line_advance
+CALL func_line_advance
+MOV P2, P0
+; Call to console_prompt
+CALL func_console_prompt
+MOV P4, P0
+JMP if_end_63
+if_else_64:
+; If statement
+MOV P5, 114
+PUSH P5
+MOV P6, [0xC700]
+POP P5
+CMP P5, P6
+JZ cmp_true_75
+MOV P5, 0
+JMP cmp_end_76
+cmp_true_75:
+MOV P5, 1
+cmp_end_76:
+PUSH P5
+MOV P7, 82
+PUSH P7
+MOV P0, [0xC700]
+POP P7
+CMP P7, P0
+JZ cmp_true_77
+MOV P7, 0
+JMP cmp_end_78
+cmp_true_77:
+MOV P7, 1
+cmp_end_78:
+POP P5
+CMP P5, 0
+JNZ sc_true_79
+MOV P1, 82
+PUSH P1
+MOV P2, [0xC700]
+POP P1
+CMP P1, P2
+JZ cmp_true_81
+MOV P1, 0
+JMP cmp_end_82
+cmp_true_81:
+MOV P1, 1
+cmp_end_82:
+CMP P1, 0
+JNZ sc_true_79
+MOV P5, 0
+JMP sc_end_80
+sc_true_79:
+MOV P5, 1
+sc_end_80:
+CMP P5, 0
+JZ if_else_74
 ; Call to win_putc
-MOV P2, [0xC580]
-PUSH P2
+MOV P4, [0xC700]
+PUSH P4
 CALL func_win_putc
 ADD SP, 2 ; Caller cleans up args
-MOV P4, P0
-if_end_53:
-if_end_49:
-if_end_45:
-if_end_43:
-JMP while_start_41
-while_end_42:
+MOV P5, P0
+; Call to line_advance
+CALL func_line_advance
+MOV P6, P0
+; Call to ramdisk_selftest
+CALL func_ramdisk_selftest
+MOV P7, P0
+; Call to line_advance
+CALL func_line_advance
+; Call to console_prompt
+CALL func_console_prompt
+MOV P1, P0
+JMP if_end_73
+if_else_74:
+; If statement
+MOV P2, [0xC700]
+PUSH P2
+MOV P4, 127
+POP P2
+CMP P2, P4
+JC cmp_true_85
+MOV P2, 0
+JMP cmp_end_86
+cmp_true_85:
+MOV P2, 1
+cmp_end_86:
+PUSH P2
+MOV P5, [0xC700]
+PUSH P5
+MOV P6, 32
+POP P5
+CMP P5, P6
+JNC cmp_true_87
+MOV P5, 0
+JMP cmp_end_88
+cmp_true_87:
+MOV P5, 1
+cmp_end_88:
+POP P2
+CMP P2, 0
+JZ sc_false_89
+MOV P7, [0xC700]
+PUSH P7
+MOV P0, 32
+POP P7
+CMP P7, P0
+JNC cmp_true_91
+MOV P7, 0
+JMP cmp_end_92
+cmp_true_91:
+MOV P7, 1
+cmp_end_92:
+CMP P7, 0
+JZ sc_false_89
+MOV P2, 1
+JMP sc_end_90
+sc_false_89:
+MOV P2, 0
+sc_end_90:
+CMP P2, 0
+JZ if_end_83
+; Call to win_putc
+MOV P1, [0xC700]
+PUSH P1
+CALL func_win_putc
+ADD SP, 2 ; Caller cleans up args
+MOV P2, P0
+if_end_83:
+if_end_73:
+if_end_63:
+if_end_59:
+if_end_57:
+JMP while_start_55
+while_end_56:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -910,25 +1172,25 @@ func_main:
 ENTER 0
 ; Call to boot
 CALL func_boot
-MOV P5, P0
+MOV P4, P0
 ; Call to set_timer
+MOV P5, 3
+PUSH P5
 MOV P6, 3
 PUSH P6
-MOV P7, 3
+MOV P7, 64
 PUSH P7
-MOV P0, 64
+MOV P0, 0
 PUSH P0
-MOV P1, 0
-PUSH P1
 CALL builtin_set_timer
 ; Args consumed by callee
-MOV P2, R0
+MOV P1, R0
 ; Call to sti
 CALL builtin_sti
-MOV P4, R0
+MOV P2, R0
 ; Call to shell
 CALL func_shell
-MOV P5, P0
+MOV P4, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -936,12 +1198,12 @@ RET
 ;
 ; Data Section
 ;
-str_9: DEFSTR "STAR SYSTEM 1"
-str_10: DEFSTR "C: R: ONLINE - ESC HALTS"
-str_21: DEFSTR "MOUNT TABLE CORRUPT"
-str_38: DEFSTR "R: OK"
-str_39: DEFSTR "R: FAIL"
-str_40: DEFSTR "HALT"
+str_23: DEFSTR "STAR SYSTEM 1"
+str_24: DEFSTR "C: R: ONLINE - ESC HALTS"
+str_35: DEFSTR "MOUNT TABLE CORRUPT"
+str_52: DEFSTR "R: OK"
+str_53: DEFSTR "R: FAIL"
+str_54: DEFSTR "HALT"
 ; Built-in Function Implementations
 builtin_set_layer:
 POP P0
@@ -985,6 +1247,14 @@ POP P1
 MOV VC, P1
 PUSH P0
 RET
+builtin_screen_shift:
+; Args: axis, amount
+POP P0
+POP P1
+POP P2
+SSHFT P1, P2
+PUSH P0
+RET
 builtin_draw_char:
 ; Args: char (uses VX/VY position, VC color)
 POP P0
@@ -1016,6 +1286,9 @@ PUSH P0
 RET
 builtin_sti:
 STI
+RET
+builtin_cli:
+CLI
 RET
 builtin_key_available:
 KEYSTAT P0

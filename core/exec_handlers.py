@@ -1681,9 +1681,21 @@ def _srot(cpu, values) -> int:
 
 
 def _sshft(cpu, values) -> int:
-    """SSHFT: shift screen."""
+    """SSHFT: shift screen.
+
+    The shift amount is a SIGNED 16-bit value: the assembler encodes
+    negative amounts as two's-complement imm16 (see
+    tests/unit/test_new_assembler_negative_immediate.py), so a raw
+    0xFFF8 means "shift up by 8", not "+65528".  Without the sign
+    extension, numpy executes the huge positive shift as "copy an
+    empty slice, then zero the whole layer" -- wiping the active
+    layer instead of scrolling it (StarSys1 console scrolling relies
+    on exactly this negative-amount behavior).
+    """
     axis = values[0]
     amount = values[1]
+    if amount & 0x8000:
+        amount -= 0x10000
     if axis == 0:
         cpu.gfx.shift_x(amount)
     elif axis == 1:
