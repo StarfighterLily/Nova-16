@@ -1,7 +1,7 @@
 """Regression tests for interrupt-handler (ISR) context preservation.
 
-Root cause of the starfield regression: the CPU's interrupt entry pushes
-only PC + flags. The compiled timer_interrupt handler clobbered general
+Root cause of the original starfield regression: the CPU's interrupt entry
+pushes only PC + flags. The compiled timer_interrupt handler clobbered general
 registers without saving them, so live register state in the interrupted
 main program was corrupted across the interrupt. In starfield.ast this
 manifested once scroll_y() calls lengthened the handler: the while(1)
@@ -11,10 +11,19 @@ hit HLT.
 
 The compiler now emits a full register save/restore in the ISR prologue /
 epilogue (before local allocation / after deallocation, before IRET).
+
+These tests intentionally do NOT depend on the external ``starfield.ast``
+file: that program is user-written and its contents (notably its timer
+configuration) have changed over time, which made the historical
+``test_starfield_survives_repeated_interrupts`` flaky -- ``starfield.ast``
+programs its timer with a very slow divider (``TS=255, TM=255``), so only a
+single interrupt would fire within the test's cycle budget. The starfield
+scenario is therefore inlined below with a fast, deterministic timer, so the
+test stays valid regardless of external program edits.
 """
 import os
-import re
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -22,27 +31,55 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nova_main import initialize_system
 
 
-def _compile_ast(path):
-    """Compile a COPY of an existing .ast file; return (asm_path, tmp_source)."""
-    import shutil
-    import tempfile
-    fd, tmp_src = tempfile.mkstemp(suffix=".ast")
-    os.close(fd)
-    shutil.copyfile(path, tmp_src)
-    from astrid_compiler import main as compiler_main
-    out = tmp_src.replace(".ast", ".asm")
-    old_argv = sys.argv
-    sys.argv = [old_argv[0], tmp_src, "-o", out]
-    try:
-        compiler_main()
-    finally:
-        sys.argv = old_argv
-    return out, tmp_src
+# A self-contained starfield-style program: a register-heavy timer ISR that
+# re-arms the timer, plus a main() that populates three star layers and then
+# spins in an infinite loop. The timer is configured for a fast, deterministic
+# fire rate (TM=16, TS=2 -> ~48 cycles per interrupt, the same proven
+# configuration used by test_live_registers_survive_interrupt), guaranteeing
+# multiple dispatches within the cycle budget regardless of external files.
+_STARFIELD_SOURCE = """\
+int ticks;
+
+void draw_stars(int layer, int start, int finish, int step, int cmin, int cmax) {
+    int p, x, y, color, rnd;
+    set_layer(layer);
+    for (p = start; p <= finish; p += step) {
+        rnd = random();
+        x = (rnd >> 8) & 0xFF;
+        y = rnd & 0xFF;
+        color = random_range(cmin, cmax);
+        set_pos(x, y);
+        write_screen(color);
+    }
+}
+
+void timer_interrupt() {
+    int a = random();
+    int b = a * 3 + 7;
+    int c = b ^ 0xF00F;
+    ticks = ticks + c - c + 1;
+    set_timer(0, 16, 2, 0);   // disable timer while mutating registers
+    set_timer(0, 16, 2, 3);   // re-enable: TC=3 (enable + interrupt)
+    iret();
+}
+
+void main() {
+    set_vmode(1);
+    set_pos(0, 0);
+    draw_stars(1, 0, 65535, 32, 0, 4);
+    draw_stars(2, 0, 65535, 128, 4, 7);
+    draw_stars(3, 0, 65535, 256, 7, 15);
+    sti();
+    set_timer(0, 16, 2, 3);
+    while (1) {
+        // spin: live register state here is preserved by the ISR save/restore
+    }
+}
+"""
 
 
 def _compile_source(source):
     """Compile source text; return (asm_path, tmp_source)."""
-    import tempfile
     fd = tempfile.NamedTemporaryFile(mode="w", suffix=".ast", delete=False,
                                      encoding="utf-8")
     fd.write(source)
@@ -66,12 +103,14 @@ def _cleanup(asm_path, tmp_source=None):
         if os.path.exists(p):
             os.unlink(p)
 
-
 def test_isr_emits_register_save_restore():
-    """The compiled timer_interrupt must push/pop caller-saved registers."""
-    astrid_dir = os.path.dirname(os.path.abspath(__file__))
-    src = os.path.join(astrid_dir, "starfield.ast")
-    asm_path, tmp_src = _compile_ast(src)
+    """The compiled timer_interrupt must push/pop caller-saved registers.
+
+    Driven by the inlined _STARFIELD_SOURCE so it does not depend on the
+    external starfield.ast file. Any timer_interrupt() body triggers the
+    unconditional full-register save/restore prologue/epilogue.
+    """
+    asm_path, tmp_src = _compile_source(_STARFIELD_SOURCE)
     try:
         with open(asm_path, encoding="utf-8") as f:
             text = f.read()
@@ -81,11 +120,19 @@ def test_isr_emits_register_save_restore():
         # Prologue: registers pushed before locals are allocated
         assert "PUSH P0" in body, "ISR prologue missing register saves"
         assert "PUSH R9" in body, "ISR prologue missing R-register saves"
-        # Epilogue: reverse-order pops immediately before IRET. Use the FIRST
-        # IRET after the ISR label: lazily-linked stubs (e.g. builtin_iret,
-        # pulled in when parallax() calls iret()) are emitted after functions
-        # and would otherwise be mistaken for the handler's epilogue.
-        idx_iret = body.find("IRET")
+        # Epilogue: reverse-order pops immediately before IRET. Locate the real
+        # IRET *instruction* line (a line whose stripped text is exactly "IRET")
+        # rather than a bare "IRET" substring: the epilogue also emits a comment
+        # containing "; Deallocate locals before IRET" whose embedded "IRET"
+        # would otherwise shadow the real instruction. The line-strip scan is
+        # indent-agnostic so it survives peephole reformatting of the .asm.
+        idx_iret = -1
+        offset = 0
+        for line in body.splitlines(keepends=True):
+            if line.strip() == "IRET":
+                idx_iret = offset
+                break
+            offset += len(line)
         assert idx_iret >= 0, "IRET not found in ISR"
         tail = body[max(0, idx_iret - 400):idx_iret]
         assert "POP P0" in tail, "ISR epilogue missing register restores before IRET"
@@ -95,12 +142,18 @@ def test_isr_emits_register_save_restore():
         _cleanup(asm_path, tmp_src)
 
 
+
 def test_starfield_survives_repeated_interrupts():
-    """starfield.ast must keep running its while(1) loop across many timer
-    interrupts without halting (register corruption regression)."""
-    astrid_dir = os.path.dirname(os.path.abspath(__file__))
-    src = os.path.join(astrid_dir, "starfield.ast")
-    asm_path, tmp_src = _compile_ast(src)
+    """An inlined starfield scenario must keep running its while(1) loop across
+    many timer interrupts without halting (register corruption regression),
+    and must leave the star layers populated.
+
+    Uses a fast, deterministic timer (TM=16, TS=2, TC=3) so at least two
+    interrupts always fire within the cycle budget -- the historical failure
+    was caused by starfield.ast's very slow timer divider yielding only a
+    single dispatch.
+    """
+    asm_path, tmp_src = _compile_source(_STARFIELD_SOURCE)
     try:
         from nova_assembler import Assembler
         Assembler().assemble(asm_path)
@@ -144,6 +197,7 @@ def test_starfield_survives_repeated_interrupts():
               f"(cycles={cycle}, dispatches={dispatches[0]}, stars={nz1}/{nz2}/{nz3})")
     finally:
         _cleanup(asm_path, tmp_src)
+
 
 
 def test_live_registers_survive_interrupt():
@@ -198,7 +252,7 @@ int main() {
 
 
 def _guard_addr_value(asm_path, mem):
-    """Read the gvar_guard_ok value via its symbol-table address."""
+    """Read the gvar_ticks value via its symbol-table address."""
     sym_path = asm_path.replace(".asm", ".sym")
     with open(sym_path, encoding="utf-8") as f:
         for line in f:
@@ -213,3 +267,4 @@ if __name__ == "__main__":
     test_starfield_survives_repeated_interrupts()
     test_live_registers_survive_interrupt()
     print("All ISR context-preservation tests passed!")
+

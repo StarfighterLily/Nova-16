@@ -2554,14 +2554,22 @@ class CodeGenerator:
         reg = self.get_register()
         self._emit_var_load(reg, expr.operand.name)
         step = self._pointer_step(expr.operand.name)
+        # Float variables increment/decrement by 1.0 (256 in Q8.8),
+        # not by 1/256 (the INC/DEC unit in Q8.8 space).
+        is_float = self._cast_source_type(expr.operand) == 'float'
+        float_step = 256  # 1.0 in Q8.8 fixed-point
         if expr.op == '++':
             if step and step > 1:
                 self.emit(f"    ADD {reg}, {step}")
+            elif is_float:
+                self.emit(f"    ADD {reg}, {float_step}")
             else:
                 self.emit(f"    INC {reg}")
         elif expr.op == '--':
             if step and step > 1:
                 self.emit(f"    SUB {reg}, {step}")
+            elif is_float:
+                self.emit(f"    SUB {reg}, {float_step}")
             else:
                 self.emit(f"    DEC {reg}")
         else:
@@ -3235,13 +3243,26 @@ class CodeGenerator:
                 self.emit(f"    MOV {result_reg}, {reg}")
                 # Pointer postfix ++/-- advance by the pointee size (C).
                 step = self._pointer_step(expr.left.name)
+                # Float variables increment/decrement by 1.0 (256 in Q8.8),
+                # not by 1/256 (the INC/DEC unit in Q8.8 space).
+                is_float = self._cast_source_type(expr.left) == 'float'
+                float_step = 256  # 1.0 in Q8.8 fixed-point
                 if expr.op == '++':
-                    if step and step > 1: self.emit(f"    ADD {reg}, {step}")
-                    else: self.emit(f"    INC {reg}")
+                    if step and step > 1:
+                        self.emit(f"    ADD {reg}, {step}")
+                    elif is_float:
+                        self.emit(f"    ADD {reg}, {float_step}")
+                    else:
+                        self.emit(f"    INC {reg}")
                 elif expr.op == '--':
-                    if step and step > 1: self.emit(f"    SUB {reg}, {step}")
-                    else: self.emit(f"    DEC {reg}")
-                else: raise SyntaxError(f"Unknown postfix operator '{expr.op}'")
+                    if step and step > 1:
+                        self.emit(f"    SUB {reg}, {step}")
+                    elif is_float:
+                        self.emit(f"    SUB {reg}, {float_step}")
+                    else:
+                        self.emit(f"    DEC {reg}")
+                else:
+                    raise SyntaxError(f"Unknown postfix operator '{expr.op}'")
                 self._emit_var_store(expr.left.name, reg)
                 self.free_register()
                 return result_reg
@@ -3526,9 +3547,26 @@ class CodeGenerator:
                 return self.var_types.get(expr.left.name)
         if isinstance(expr, ArrayAccess):
             try:
-                return self._get_array_info(expr.name)['elem_type']
+                info = self._get_array_info(expr.name)
             except NameError:
                 return None
+            if 'elem_type' in info:
+                return info['elem_type']
+            # Pointer subscript (p[i] where p is a pointer variable): the
+            # element type is the pointee type, looked up from the pointer's
+            # declared base type (var_types for locals/params, global_vars for
+            # file-scope pointers). This keeps char*/int*/float*/etc. indexing
+            # typing-consistent with the rest of the cast machinery.
+            if info.get('is_pointer'):
+                pt = self.var_types.get(expr.name)
+                if pt is None:
+                    g = self.global_vars.get(expr.name)
+                    if g and not g.get('is_array') and not g.get('is_pointer'):
+                        pt = g['type']
+                    elif g and g.get('is_pointer'):
+                        pt = g['type']
+                return pt  # None if the pointer's type can't be resolved
+            return None
         if isinstance(expr, BinaryOp):
             # An arithmetic/comparison expression is float if either operand
             # is float (implicit promotion), otherwise integer-valued.
