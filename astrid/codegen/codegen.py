@@ -1082,7 +1082,7 @@ class CodeGenerator:
         # Pointers and array parameters always occupy 2 bytes (an address).
         if name in self.pointer_vars or name in self.address_params:
             return 2
-        return 2 if self.var_types.get(name) in ('int', 'string', 'binary') else 1
+        return 2 if self.var_types.get(name) in ('int', 'string', 'binary', 'float') else 1
 
     def _is_int_var(self, name: str) -> bool:
         return self.var_types.get(name) == 'int'
@@ -1146,7 +1146,7 @@ class CodeGenerator:
     def _elem_size(self, var_type: str) -> int:
         # Storage size in bytes for one element of the given type.
         # Struct fields are word slots, so a struct element is also 2 bytes.
-        return 2 if var_type in ('int', 'string', 'binary', 'struct') else 1
+        return 2 if var_type in ('int', 'string', 'binary', 'float', 'struct') else 1
 
     # ------------------------------------------------------------------
     # Struct layout and member access support
@@ -1309,12 +1309,76 @@ class CodeGenerator:
             raise ValueError(f"Array '{decl.name}' must have a positive size")
         return count
 
+    def _contains_float(self, expr) -> bool:
+        """True if `expr` references any floating-point literal (a Number
+        containing a '.'), recursively."""
+        if isinstance(expr, Number):
+            return '.' in expr.value
+        if isinstance(expr, UnaryOp):
+            return self._contains_float(expr.right)
+        if isinstance(expr, BinaryOp):
+            return self._contains_float(expr.left) or self._contains_float(expr.right)
+        return False
+
+    def _const_eval_float(self, expr):
+        """Evaluate a compile-time constant expression that contains a float
+        literal in the floating-point (Python float) domain.
+
+        Used for global `float g = <const>;` initializers.  Because mixed
+        int/float arithmetic promotes to float, integer literals are treated
+        as dimensionless float values (e.g. `1.5 + 2` -> 3.5), and the
+        result is encoded as Q8.8.  Returns the masked 16-bit Q8.8 value or
+        None when not a compile-time constant.
+        """
+        if isinstance(expr, Number):
+            return float(expr.value)
+        if isinstance(expr, CharLiteral):
+            return float(expr.char_value)
+        if isinstance(expr, Identifier):
+            value = self.enum_constants.get(expr.name)
+            return None if value is None else float(value)
+        if isinstance(expr, UnaryOp) and expr.op == '-':
+            inner = self._const_eval_float(expr.right)
+            return None if inner is None else -inner
+        if isinstance(expr, BinaryOp):
+            left = self._const_eval_float(expr.left)
+            right = self._const_eval_float(expr.right)
+            if left is None or right is None:
+                return None
+            op = expr.op
+            if op == '+':
+                fv = left + right
+            elif op == '-':
+                fv = left - right
+            elif op == '*':
+                fv = left * right
+            elif op == '/':
+                if right == 0.0:
+                    return None
+                fv = left / right
+            else:
+                # %, &, |, ^, shifts are not defined on floats at const-fold.
+                return None
+            # Return the raw float value (in the *floating* domain); the
+            # caller encodes the final result to Q8.8 exactly once.
+            return fv
+        return None
+
     def _const_eval(self, expr) -> Optional[int]:
         """Evaluate a compile-time constant expression (global initializers).
 
         Returns the 16-bit masked value, or None if the expression is not a
-        compile-time constant."""
+        compile-time constant.  Expressions containing a floating-point
+        literal are evaluated in the float domain and encoded back to Q8.8.
+        """
         try:
+            # A float literal anywhere in the expression forces float-domain
+            # evaluation (int operands promote), yielding a Q8.8 result.
+            if self._contains_float(expr):
+                fval = self._const_eval_float(expr)
+                if fval is None:
+                    return None
+                return int(round(fval * self._FLOAT_SCALE)) & 0xFFFF
             if isinstance(expr, Number):
                 return int(expr.value, 0) & 0xFFFF
             if isinstance(expr, CharLiteral):
@@ -1735,7 +1799,7 @@ class CodeGenerator:
                         'offset': None, 'is_param': True,
                     }
             else:
-                param_size += 2 if param.var_type in ('int', 'string', 'binary') else 1
+                param_size += 2 if param.var_type in ('int', 'string', 'binary', 'float') else 1
         
         local_size = 0
         for decl in all_local_decls:
@@ -1757,7 +1821,7 @@ class CodeGenerator:
                 # Scalar struct local: one word slot per field.
                 local_size += self._struct_size(decl_tag)
             else:
-                local_size += 2 if decl.var_type in ('int', 'string', 'binary') else 1
+                local_size += 2 if decl.var_type in ('int', 'string', 'binary', 'float') else 1
         
         if func_def.name == 'timer_interrupt':
             # Interrupt handlers must NOT use ENTER/LEAVE because the CPU
@@ -1784,7 +1848,7 @@ class CodeGenerator:
             self.local_vars[param.name] = {'offset': param_offset}
             if param.name in self.array_vars and self.array_vars[param.name].get('is_param'):
                 self.array_vars[param.name]['offset'] = param_offset
-            param_offset += 2 if (param.var_type in ('int', 'string', 'binary')
+            param_offset += 2 if (param.var_type in ('int', 'string', 'binary', 'float')
                                   or param.pointer_depth
                                   or getattr(param, 'is_array_param', False)) else 1
 
@@ -2003,6 +2067,10 @@ class CodeGenerator:
         if var_decl.value:
             self.emit_comment(f"var {var_decl.name} = ...")
             reg = self.generate_expression(var_decl.value)
+            # Implicit int -> float promotion when initializing a float var
+            # with an integer expression (e.g. `float f = 5;`).
+            if self._cast_source_type(Identifier(var_decl.name)) == 'float':
+                self._ensure_float(reg, var_decl.value)
             self._emit_var_store(var_decl.name, reg)
             self.free_register()
 
@@ -2036,6 +2104,13 @@ class CodeGenerator:
                     self.emit(f"    {op_mnemonic} {var_reg}, 1")
             else:
                 rhs_reg = self.generate_expression(value.right)
+                # Float compound assignment (f += x, f *= x, ...): the target
+                # already holds Q8.8; promote the RHS if needed and use
+                # FMUL/FDIV for * and / (add/sub are ordinary fixed-point).
+                is_float = self._cast_source_type(Identifier(assignment.name)) == 'float'
+                if is_float and op in ('+', '-', '*', '/'):
+                    self.emit_comment("Float (Q8.8) compound assignment")
+                    self._ensure_float(rhs_reg, value.right)
                 # Pointer compound arithmetic (p += n / p -= n): scale n by
                 # the pointee size before adding (C semantics).
                 if op in ('+', '-'):
@@ -2046,8 +2121,10 @@ class CodeGenerator:
                         self.emit(f"    MUL {rhs_reg}, {scale_reg}")
                 if op == '+': self.emit(f"    ADD {var_reg}, {rhs_reg}")
                 elif op == '-': self.emit(f"    SUB {var_reg}, {rhs_reg}")
-                elif op == '*': self.emit(f"    MUL {var_reg}, {rhs_reg}")
-                elif op == '/': self.emit(f"    DIV {var_reg}, {rhs_reg}")
+                elif op == '*':
+                    self.emit(f"    {'FMUL' if is_float else 'MUL'} {var_reg}, {rhs_reg}")
+                elif op == '/':
+                    self.emit(f"    {'FDIV' if is_float else 'DIV'} {var_reg}, {rhs_reg}")
                 elif op == '%': self.emit(f"    MOD {var_reg}, {rhs_reg}")
                 elif op == '&': self.emit(f"    AND {var_reg}, {rhs_reg}")
                 elif op == '|': self.emit(f"    OR {var_reg}, {rhs_reg}")
@@ -2058,6 +2135,9 @@ class CodeGenerator:
             self.free_register()
         else:
             reg = self.generate_expression(assignment.value)
+            # Implicit int -> float promotion when assigning to a float var.
+            if self._cast_source_type(Identifier(assignment.name)) == 'float':
+                self._ensure_float(reg, assignment.value)
             self._emit_var_store(assignment.name, reg)
             self.free_register()
 
@@ -2813,12 +2893,18 @@ class CodeGenerator:
     def generate_expression(self, expr: Expression) -> str:
         if isinstance(expr, Number):
             reg = self.get_register()
-            # Normalize the literal to a plain decimal integer: the Nova-16
-            # assembler understands decimal and 0x hex, but not 0b/0o forms.
-            try:
-                literal = int(expr.value, 0)
-            except (ValueError, TypeError):
-                literal = expr.value
+            if '.' in expr.value:
+                # Float literal -> Q8.8 fixed-point integer (16-bit).
+                literal = self._float_to_q8(expr.value)
+                self.emit_comment(f"Float literal {expr.value} -> Q8.8 {literal}")
+            else:
+                # Normalize the literal to a plain decimal integer: the
+                # Nova-16 assembler understands decimal and 0x hex, but not
+                # 0b/0o forms.
+                try:
+                    literal = int(expr.value, 0)
+                except (ValueError, TypeError):
+                    literal = expr.value
             self.emit(f"    MOV {reg}, {literal}")
             return reg
         elif isinstance(expr, StringLiteral):
@@ -2847,9 +2933,41 @@ class CodeGenerator:
             # instructions for expressions like `2 + 3` or `10 * 5`.
             if isinstance(expr.left, Number) and isinstance(expr.right, Number):
                 try:
+                    op = expr.op
+                    if '.' in expr.left.value or '.' in expr.right.value:
+                        # Float-literal constant folding: fold in the
+                        # floating-point domain, then encode the Q8.8 result.
+                        # Handles + - * / (result is Q8.8) and comparisons
+                        # (result is 0/1). Operators not defined on floats
+                        # (% & | ^ shifts) fall through to runtime emission.
+                        lfv = float(expr.left.value)
+                        rfv = float(expr.right.value)
+                        if op == '+':
+                            folded = int(round((lfv + rfv) * 256)) & 0xFFFF
+                        elif op == '-':
+                            folded = int(round((lfv - rfv) * 256)) & 0xFFFF
+                        elif op == '*':
+                            folded = int(round((lfv * rfv) * 256)) & 0xFFFF
+                        elif op == '/':
+                            if rfv == 0.0:
+                                raise ArithmeticError("Division by zero")
+                            folded = int(round((lfv / rfv) * 256)) & 0xFFFF
+                        elif op == '==': folded = 1 if lfv == rfv else 0
+                        elif op == '!=': folded = 1 if lfv != rfv else 0
+                        elif op == '<': folded = 1 if lfv < rfv else 0
+                        elif op == '>': folded = 1 if lfv > rfv else 0
+                        elif op == '<=': folded = 1 if lfv <= rfv else 0
+                        elif op == '>=': folded = 1 if lfv >= rfv else 0
+                        else: folded = None
+                        if folded is not None:
+                            self.emit_comment(
+                                f"Constant folded (float): {expr.left.value} "
+                                f"{op} {expr.right.value} -> Q8.8 {folded}")
+                            reg = self.get_register()
+                            self.emit(f"    MOV {reg}, {folded}")
+                            return reg
                     left_val = int(expr.left.value, 0)
                     right_val = int(expr.right.value, 0)
-                    op = expr.op
                     if op == '+': folded = left_val + right_val
                     elif op == '-': folded = left_val - right_val
                     elif op == '*': folded = left_val * right_val
@@ -2927,6 +3045,28 @@ class CodeGenerator:
             if can_push_left:
                 right_reg = self._pop_preserving(left_reg, right_reg)
             op = expr.op
+            # ---- Float (Q8.8) promotion ----
+            # If either operand is float-typed, the operation happens in
+            # fixed-point: promote any integer side with ITOF so both share
+            # the Q8.8 representation.  * and / then use FMUL/FDIV; + and -
+            # are ordinary ADD/SUB (Q8.8 adds directly). Comparisons promote
+            # too so both operands use an equal representation.
+            if (self._cast_source_type(expr.left) == 'float' or
+                    self._cast_source_type(expr.right) == 'float'):
+                if op in ('+', '-', '*', '/'):
+                    self.emit_comment("Float (Q8.8) operation - promote operands")
+                    self._ensure_float(left_reg, expr.left)
+                    self._ensure_float(right_reg, expr.right)
+                    float_op = True
+                elif op in ['==', '!=', '>', '<', '>=', '<=']:
+                    self.emit_comment("Float (Q8.8) comparison - promote operands")
+                    self._ensure_float(left_reg, expr.left)
+                    self._ensure_float(right_reg, expr.right)
+                    float_op = False  # comparisons yield an int 0/1
+                else:
+                    float_op = False
+            else:
+                float_op = False
             # Pointer arithmetic (C semantics): ptr ± n advances by
             # n * pointee_size bytes. Declared pointers, array parameters,
             # and decayed arrays all participate. The mirrored form
@@ -2951,8 +3091,10 @@ class CodeGenerator:
                     self.emit(f"    MUL {offset_reg}, {scale_reg}")
             if op == '+': self.emit(f"    ADD {left_reg}, {right_reg}")
             elif op == '-': self.emit(f"    SUB {left_reg}, {right_reg}")
-            elif op == '*': self.emit(f"    MUL {left_reg}, {right_reg}")
-            elif op == '/': self.emit(f"    DIV {left_reg}, {right_reg}")
+            elif op == '*':
+                self.emit(f"    {'FMUL' if float_op else 'MUL'} {left_reg}, {right_reg}")
+            elif op == '/':
+                self.emit(f"    {'FDIV' if float_op else 'DIV'} {left_reg}, {right_reg}")
             elif op == '%': self.emit(f"    MOD {left_reg}, {right_reg}")
             elif op in ['==', '!=', '>', '<', '>=', '<=']:
                 # Use unsigned comparisons (JC/JNC) based on carry flag for
@@ -3185,7 +3327,7 @@ class CodeGenerator:
         # *address* — producing the decimal digits of the pointer — instead
         # of simply passing the existing string through.
         source_type = self._cast_source_type(inner)
-        if source_type == target and target in ('string', 'binary', 'int'):
+        if source_type == target and target in ('string', 'binary', 'int', 'char', 'float'):
             reg = self.get_register()
             inner_reg = self.generate_expression(inner)
             if inner_reg != reg:
@@ -3195,21 +3337,38 @@ class CodeGenerator:
 
         # Compile-time optimization: casting a literal is a compile-time op.
         if isinstance(inner, Number):
-            num_val = int(inner.value, 0) & 0xFFFF
+            is_float_const = '.' in inner.value
+            if is_float_const:
+                fval = float(inner.value)
+                num_val = self._float_to_q8(inner.value)  # Q8.8 encoding
+            else:
+                fval = None
+                num_val = int(inner.value, 0) & 0xFFFF
             if target == 'char':
                 reg = self.get_register()
-                self.emit(f"    MOV {reg}, {num_val & 0xFF}")
+                if is_float_const:
+                    # (char)1.5 -> integer part (FTOI), then low byte.
+                    self.emit(f"    MOV {reg}, {int(fval) & 0xFF}")
+                else:
+                    self.emit(f"    MOV {reg}, {num_val & 0xFF}")
                 return reg
-            elif target == 'string':
-                # (string)CONST -> convert at runtime is actually still needed
-                # for decimal string generation, but ITOS works fine at runtime.
-                pass  # fall through to runtime
-            elif target == 'binary':
-                pass  # fall through to runtime
             elif target == 'int':
                 reg = self.get_register()
-                self.emit(f"    MOV {reg}, {num_val}")
+                if is_float_const:
+                    # (int)1.5 -> FTOI: truncate toward zero.
+                    self.emit(f"    MOV {reg}, {int(fval) & 0xFFFF}")
+                else:
+                    self.emit(f"    MOV {reg}, {num_val}")
                 return reg
+            elif target == 'float':
+                reg = self.get_register()
+                if is_float_const:
+                    self.emit(f"    MOV {reg}, {num_val}")
+                else:
+                    # (float)5 -> encode the integer as Q8.8 (5 << 8).
+                    self.emit(f"    MOV {reg}, {num_val * self._FLOAT_SCALE & 0xFFFF}")
+                return reg
+            # string/binary literal casts fall through to runtime
 
         self.emit_comment(f"Type cast: ({target}) expr")
         inner_reg = self.generate_expression(inner)
@@ -3227,22 +3386,41 @@ class CodeGenerator:
             self.emit(f"    ITOB {result_reg}, {inner_reg}")
         elif target == 'int':
             # STOI parses a decimal string; BTOI parses a binary string.
-            # Numeric sources (int/char) already hold their value in a
-            # register, so a plain MOV is correct — no memory dereference.
+            # A float source needs FTOI (Q8.8 -> integer).  Numeric sources
+            # (int/char) already hold their value, so a plain MOV is right.
             if source_type == 'binary':
                 self.emit(f"    BTOI {result_reg}, {inner_reg}")
             elif source_type == 'string':
                 self.emit(f"    STOI {result_reg}, {inner_reg}")
+            elif source_type == 'float':
+                # (int)floatExpr: FTOI truncates the fixed-point value.
+                self.emit(f"    MOV {result_reg}, {inner_reg}")
+                self.emit(f"    FTOI {result_reg}")
             else:
                 # Numeric (int/char): value already in inner_reg; just copy.
                 self.emit(f"    MOV {result_reg}, {inner_reg}")
         elif target == 'char':
-            # Truncate to 8 bits: use the low byte of the register.
-
-            if inner_reg.startswith('P'):
+            # Truncate to 8 bits (low byte).  A float source is first
+            # converted to integer (FTOI) so (char)1.5 -> 1, not 0x80.
+            if source_type == 'float':
+                self.emit(f"    MOV {result_reg}, {inner_reg}")
+                self.emit(f"    FTOI {result_reg}")
+            elif inner_reg.startswith('P'):
                 self.emit(f"    MOV {result_reg}, :{inner_reg}")
             else:
                 self.emit(f"    MOV {result_reg}, {inner_reg}")
+        elif target == 'float':
+            # (float)expr -> ITOF. String/binary sources parse to an int
+            # first, then promote; other numeric sources promote directly.
+            if source_type == 'string':
+                self.emit(f"    STOI {result_reg}, {inner_reg}")
+                self.emit(f"    ITOF {result_reg}")
+            elif source_type == 'binary':
+                self.emit(f"    BTOI {result_reg}, {inner_reg}")
+                self.emit(f"    ITOF {result_reg}")
+            else:
+                self.emit(f"    MOV {result_reg}, {inner_reg}")
+                self.emit(f"    ITOF {result_reg}")
         else:
             raise TypeError(f"Unknown cast target type '{target}'")
 
@@ -3271,6 +3449,47 @@ class CodeGenerator:
             return bool(func and func.get('return_type') in ('string', 'binary'))
         return False
 
+    # ------------------------------------------------------------------
+    # Floating-point (Q8.8 fixed-point) helpers
+    # ------------------------------------------------------------------
+    #
+    # The Nova-16 CPU has no native IEEE-754 floating point; its "float"
+    # support is Q8.8 fixed-point: a 16-bit value whose high byte holds the
+    # signed integer part and low byte holds 1/256ths.  Astrid's `float`
+    # maps directly onto this representation (2 bytes, stored like an int),
+    # calling ITOF/FTOI for conversions and FMUL/FDIV for multiply/divide.
+    # Addition and subtraction need no scaling (fixed-point adds directly).
+    _FLOAT_SCALE = 256
+
+    def _is_float_literal(self, expr: Expression) -> bool:
+        """True if `expr` is a floating-point literal (contains a '.')."""
+        return isinstance(expr, Number) and '.' in expr.value
+
+    def _float_to_q8(self, literal: str) -> int:
+        """Encode a decimal float literal to its Q8.8 fixed-point integer.
+
+        E.g. "1.5" -> 384 (0x0180), "-1.5" -> 0xFE80. The result is masked
+        to 16 bits so it can be emitted as a plain immediate (or DW word).
+        """
+        try:
+            value = float(literal)
+        except ValueError:
+            value = 0.0
+        return int(round(value * self._FLOAT_SCALE)) & 0xFFFF
+
+    def _ensure_float(self, reg: str, expr: Expression):
+        """Emit an in-place ITOF so `reg` holds `expr` as Q8.8.
+
+        `expr`'s value is already in `reg` as a raw integer. If the
+        expression is not already float-typed, promote it to fixed-point.
+        Used when a float arithmetic operand must be Q8.8 while a sibling
+        operand is an integer (implicit int -> float promotion on mixed
+        float expressions, matching C semantics).
+        """
+        if self._cast_source_type(expr) != 'float':
+            self.emit_comment("Promote int operand to float (Q8.8)")
+            self.emit(f"    ITOF {reg}")
+
     def _cast_source_type(self, expr: Expression) -> Optional[str]:
         """Determine the type of an expression's value for cast resolution.
 
@@ -3297,7 +3516,8 @@ class CodeGenerator:
         if isinstance(expr, CharLiteral):
             return 'char'
         if isinstance(expr, Number):
-            return 'int'
+            # A decimal point marks a floating-point literal (Q8.8).
+            return 'float' if '.' in expr.value else 'int'
         if isinstance(expr, FuncCall):
             func = self.functions.get(expr.name)
             return func.get('return_type') if func else None
@@ -3309,11 +3529,32 @@ class CodeGenerator:
                 return self._get_array_info(expr.name)['elem_type']
             except NameError:
                 return None
+        if isinstance(expr, BinaryOp):
+            # An arithmetic/comparison expression is float if either operand
+            # is float (implicit promotion), otherwise integer-valued.
+            if (self._cast_source_type(expr.left) == 'float' or
+                    self._cast_source_type(expr.right) == 'float'):
+                return 'float'
+            return 'int'
+        if isinstance(expr, UnaryOp):
+            # -x / !x / ~x preserve the operand's numeric category.
+            if self._cast_source_type(expr.right) == 'float':
+                return 'float'
+            return 'int'
         return None
 
     def generate_call(self, call: FuncCall) -> str:
         self.emit_comment(f"Call to {call.name}")
-        
+
+        # --- float() conversion call ---
+        # float(x) is a type-conversion call, routed through the cast
+        # machinery so a float variable/expression (Q8.8) is handled with
+        # ITOF/FTOI instead of being treated as an undefined function.
+        # (int/char/string/binary conversion calls already lower to their
+        # builtin stubs further down, so only `float` is special-cased here.)
+        if call.name == 'float' and len(call.args) == 1:
+            return self.generate_cast(Cast('float', call.args[0]))
+
         # --- write_text with a non-string first argument ---
         # The TEXT instruction expects a memory address (null-terminated string).
         # When the first argument is an integer/expression rather than a string

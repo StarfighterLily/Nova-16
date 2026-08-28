@@ -13,7 +13,10 @@ TOKEN_TYPES = [
 # Keywords in Astrid
 KEYWORDS = {
     'int', 'char', 'void', 'if', 'else', 'while', 'for', 'break', 'continue', 'return',
-    'do', 'switch', 'case', 'default', 'string', 'binary',
+    'do', 'switch', 'case', 'default', 'string', 'binary', 'float',
+    # 'float' is a Q8.8 fixed-point type (16-bit: integer part in the high
+    # byte, 1/256 fractional part in the low byte), the floating-point
+    # representation the Nova-16 CPU implements via ITOF/FTOI/FMUL/FDIV.
     # C qualifiers/operators added for expanded C support:
     'const',    # const qualifier (accepted; treated as a normal variable)
     'sizeof',   # sizeof(type) / sizeof(expr) compile-time byte-size operator
@@ -44,7 +47,9 @@ DELIMITERS = {'(', ')', '{', '}', '[', ']', ';', ',', '.', ':'}
 token_specification = [
     # Integer literals: hexadecimal (0x..), binary (0b..), octal (0o..),
     # and decimal. Python's int(value, 0) understands all four forms.
-    ('NUMBER',   r'0x[0-9A-Fa-f]+|0[bB][01]+|0[oO][0-7]+|\d+'),
+    # A decimal point introduces a floating-point literal (e.g. 1.5 or
+    # 0.0625); those are Q8.8 fixed-point values handled by the codegen.
+    ('NUMBER',   r'0x[0-9A-Fa-f]+|0[bB][01]+|0[oO][0-7]+|\d+\.\d+|\d+'),
     ('ID',       r'[A-Za-z_][A-Za-z0-9_]*'),
     ('STRING',   r'"(\\.|[^"\\])*"'),
     # Char literals: single character, standard escapes (\n, \t, ...),

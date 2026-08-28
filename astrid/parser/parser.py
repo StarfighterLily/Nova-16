@@ -13,7 +13,7 @@ STORAGE_QUALIFIERS = {'const', 'register', 'volatile', 'extern', 'static', 'inli
 # Type modifiers normalize to their base type ('int' unless a base type
 # follows): Astrid's type system only distinguishes the base widths.
 TYPE_MODIFIERS = {'signed', 'unsigned', 'long', 'short'}
-BASE_TYPES = {'int', 'char', 'string', 'binary', 'void'}
+BASE_TYPES = {'int', 'char', 'string', 'binary', 'float', 'void'}
 
 # AST Node Classes
 class ASTNode:
@@ -458,7 +458,7 @@ class Parser:
                     globals_.append(g)
                 continue
             if (self.current.type == 'KEYWORD'
-                    and self.current.value in {'int', 'char', 'string', 'binary', 'void'}):
+                    and self.current.value in {'int', 'char', 'string', 'binary', 'float', 'void'}):
                 # Distinguish a function definition/prototype from a global
                 # variable declaration by looking ahead past any pointer
                 # stars: `type [*]* name(` is a function, anything else
@@ -730,7 +730,7 @@ class Parser:
         while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
             ftype = self.current.value
             if self.current.type != 'KEYWORD' or \
-                    ftype not in {'int', 'char', 'string', 'binary'}:
+                    ftype not in {'int', 'char', 'string', 'binary', 'float'}:
                 raise SyntaxError(
                     f"Unsupported struct field type '{ftype}' in struct "
                     f"'{tag}' (line {self.current.line})")
@@ -875,7 +875,7 @@ class Parser:
         if self.current.type == 'KEYWORD' and self.current.value == 'const':
             self.advance()
             self._skip_const()
-        if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'void', 'string', 'binary'}:
+        if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'void', 'string', 'binary', 'float'}:
             # int(x), char(x), string(x), binary(x) at statement start is a
             # function call, not a variable declaration. Peek for '(' after
             # the type keyword to distinguish.
@@ -1058,7 +1058,7 @@ class Parser:
 
         init = None
         if self.current.value != ';':
-            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'string', 'binary'}:
+            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'string', 'binary', 'float'}:
                 init = self.parse_var_decl(expect_semicolon=False)  # This returns a list of decls
             else:
                 init = self.parse_expression()
@@ -1326,7 +1326,7 @@ class Parser:
             self.advance()
             self.expect('DELIMITER', '(')
             if (self.current.type == 'KEYWORD'
-                    and self.current.value in {'int', 'char', 'string', 'binary', 'void'}):
+                    and self.current.value in {'int', 'char', 'string', 'binary', 'float', 'void'}):
                 type_name = self.current.value
                 self.advance()
                 # Allow pointer forms: sizeof(int*)
@@ -1345,7 +1345,7 @@ class Parser:
             inner = self.parse_expression()
             self.expect('DELIMITER', ')')
             return SizeofExpr(inner)
-        elif token.type == 'KEYWORD' and token.value in {'int', 'char', 'string', 'binary'}:
+        elif token.type == 'KEYWORD' and token.value in {'int', 'char', 'string', 'binary', 'float'}:
             # Builtin conversion functions used inside expressions, e.g.
             # `int b = int(a);` or `return char(c);`. The lexer classifies
             # these names as KEYWORDs, so they never reach the IDENTIFIER
@@ -1371,7 +1371,7 @@ class Parser:
         elif token.type == 'DELIMITER' and token.value == '(':
             self.advance()
             # Check for type cast: (int)expr, (char)expr, (string)expr, (binary)expr
-            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'string', 'binary'}:
+            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'string', 'binary', 'float'}:
                 target_type = self.current.value
                 self.advance()
                 self.expect('DELIMITER', ')')

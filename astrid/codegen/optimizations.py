@@ -29,7 +29,10 @@ def _is_number_literal(expr: Any, expected: int) -> bool:
 
 def _expression_key(expr: Any) -> str:
     if isinstance(expr, Number):
-        return f"num:{_num_value(expr)}"
+        # Floats have no int form (_num_value -> None); use the raw literal
+        # so distinct float literals don't collide in the CSE cache.
+        iv = _num_value(expr)
+        return f"num:{iv}" if iv is not None else f"numF:{expr.value}"
     if isinstance(expr, Identifier):
         return f"var:{expr.name}"
     if isinstance(expr, StringLiteral):
