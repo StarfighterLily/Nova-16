@@ -43,12 +43,9 @@ void parallax() {
 			scroll_x(layer, 0, 4);
 		}
 	}
-	// ISR discipline: parallax runs with interrupts masked, so it must be
-	// SHORT.  The TS=80 divisor already throttles the fire rate -- busy-
-	// looping here (the old nop()x5000 debounce) only guaranteed that every
-	// subsequent timer fire landed while I=0 and was dropped, and the
-	// explicit iret() below relied on an accidental stack unwind (the
-	// compiler already emits the ISR epilogue + IRET in timer_interrupt).
+	for (int i= 0; i < 2500; i++) {
+		nop();
+	}
 }
 
 void main() {
@@ -69,7 +66,7 @@ void main() {
 	//draw_text();
 
 	sti();	// enable interrupts
-	set_timer(0, 255, 80, 3);     // TT, TM, TS, TC
+	set_timer(0, 255, 255, 3);     // TT, TM, TS, TC
 
 	while (1) {
 		// Infinite loop
@@ -78,5 +75,7 @@ void main() {
 
 // Timer interrupt handler (vector at 0x0100)
 void timer_interrupt() {
-	parallax();
+	set_timer(0, 255, 255, 0);    // disable timer to do our thing because
+	parallax();                   // We'll be in here a goodly amount of cycles
+	set_timer(0, 255, 255, 3);    // Now re-enable timer
 }

@@ -176,7 +176,7 @@ POP FP
 RET
 ; Function: parallax
 func_parallax:
-ENTER 2
+ENTER 4
 ; For loop
 ; var layer = ...
 MOV P5, 1
@@ -316,6 +316,42 @@ CMP P2, P1
 JC for_end_7
 JMP for_start_6
 for_end_7:
+; For loop
+; var i = ...
+MOV P4, 0
+MOV [0xC182], P4
+for_start_27:
+MOV P5, [0xC182]
+PUSH P5
+MOV P6, 2500
+POP P5
+CMP P5, P6
+JC cmp_true_30
+MOV P5, 0
+JMP cmp_end_31
+cmp_true_30:
+MOV P5, 1
+cmp_end_31:
+CMP P5, 0
+JZ for_end_28
+; Call to nop
+CALL builtin_nop
+MOV P7, R0
+for_continue_29:
+; Wrap-check: save i before update
+MOV P0, [0xC182]
+PUSH P0
+MOV P1, [0xC182]
+MOV P2, P1
+INC P1
+MOV [0xC182], P1
+; Wrap-check: compare i new vs old
+POP P4
+MOV P5, [0xC182]
+CMP P5, P4
+JC for_end_28
+JMP for_start_27
+for_end_28:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -325,77 +361,77 @@ func_main:
 ENTER 0
 ; Call to setup
 CALL func_setup
+MOV P6, P0
+; Call to draw_stars
+MOV P7, 4
+PUSH P7
+MOV P0, 0
+PUSH P0
+MOV P1, 32
+PUSH P1
+MOV P2, 1
+PUSH P2
+CALL func_draw_stars
+ADD SP, 8 ; Caller cleans up args
 MOV P4, P0
 ; Call to draw_stars
-MOV P5, 4
+MOV P5, 7
 PUSH P5
-MOV P6, 0
+MOV P6, 4
 PUSH P6
-MOV P7, 32
+MOV P7, 128
 PUSH P7
-MOV P0, 1
+MOV P0, 2
 PUSH P0
 CALL func_draw_stars
 ADD SP, 8 ; Caller cleans up args
 MOV P1, P0
 ; Call to draw_stars
-MOV P2, 7
+MOV P2, 10
 PUSH P2
-MOV P4, 4
+MOV P4, 7
 PUSH P4
-MOV P5, 128
+MOV P5, 256
 PUSH P5
-MOV P6, 2
+MOV P6, 3
 PUSH P6
 CALL func_draw_stars
 ADD SP, 8 ; Caller cleans up args
 MOV P7, P0
 ; Call to draw_stars
-MOV P0, 10
+MOV P0, 15
 PUSH P0
-MOV P1, 7
+MOV P1, 10
 PUSH P1
-MOV P2, 256
+MOV P2, 512
 PUSH P2
-MOV P4, 3
+MOV P4, 4
 PUSH P4
 CALL func_draw_stars
 ADD SP, 8 ; Caller cleans up args
 MOV P5, P0
-; Call to draw_stars
-MOV P6, 15
-PUSH P6
-MOV P7, 10
-PUSH P7
-MOV P0, 512
-PUSH P0
-MOV P1, 4
-PUSH P1
-CALL func_draw_stars
-ADD SP, 8 ; Caller cleans up args
-MOV P2, P0
 ; Call to sti
 CALL builtin_sti
-MOV P4, R0
+MOV P6, R0
 ; Call to set_timer
-MOV P5, 3
-PUSH P5
-MOV P6, 80
-PUSH P6
-MOV P7, 255
+MOV P7, 3
 PUSH P7
-MOV P0, 0
+MOV P0, 255
 PUSH P0
+MOV P1, 255
+PUSH P1
+MOV P2, 0
+PUSH P2
 CALL builtin_set_timer
 ; Args consumed by callee
-MOV P1, R0
+MOV P4, R0
 ; While loop
-while_start_27:
-MOV P2, 1
-CMP P2, 0
-JZ while_end_28
-JMP while_start_27
-while_end_28:
+while_start_32:
+MOV P5, 1
+CMP P5, 0
+JZ while_end_33
+JMP while_start_32
+while_end_33:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -422,9 +458,33 @@ PUSH R6
 PUSH R7
 PUSH R8
 PUSH R9
+; Call to set_timer
+MOV P6, 0
+PUSH P6
+MOV P7, 255
+PUSH P7
+MOV P0, 255
+PUSH P0
+MOV P1, 0
+PUSH P1
+CALL builtin_set_timer
+; Args consumed by callee
+MOV P2, R0
 ; Call to parallax
 CALL func_parallax
 MOV P4, P0
+; Call to set_timer
+MOV P5, 3
+PUSH P5
+MOV P6, 255
+PUSH P6
+MOV P7, 255
+PUSH P7
+MOV P0, 0
+PUSH P0
+CALL builtin_set_timer
+; Args consumed by callee
+MOV P1, R0
 ; Implicit ISR return
 POP R9
 POP R8
@@ -529,4 +589,7 @@ POP P1
 POP P2
 RNDR P0, P1, P2
 PUSH P3
+RET
+builtin_nop:
+NOP
 RET
