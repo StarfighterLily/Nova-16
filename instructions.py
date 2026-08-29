@@ -3777,8 +3777,10 @@ class Splay(BaseInstruction):
         super().__init__("SPLAY", opcode_val)
     
     def execute(self, cpu):
-        # Use channel from SW register (sound waveform/control register)
-        channel = cpu.sound.SW & 0x07  # Lower 3 bits for channel
+        # Channel lives in SW bits 3-5; bits 0-2 are the waveform field.
+        # Masking the low bits here would play the waveform as a channel
+        # number (e.g. SW=0x87 = waveform 7 on channel 0 would hit channel 7).
+        channel = (cpu.sound.SW >> 3) & 0x07
         success = cpu.sound.splay(channel)
         # Could set flags based on success, but for now just execute
 
@@ -3789,8 +3791,8 @@ class Sstop(BaseInstruction):
         super().__init__("SSTOP", opcode_val)
     
     def execute(self, cpu):
-        # Use channel from SW register (sound waveform/control register)
-        channel = cpu.sound.SW & 0x07  # Lower 3 bits for channel
+        # Channel lives in SW bits 3-5; bits 0-2 are the waveform field.
+        channel = (cpu.sound.SW >> 3) & 0x07
         success = cpu.sound.sstop(channel)
         # Could set flags based on success, but for now just execute
 

@@ -288,11 +288,26 @@ class CodeGenerator:
             'POP P0', 'POP P1', 'LCOPY P1', 'PUSH P0', 'RET',
         ],
         # --- Sound ---
+        # SPLAY/SSTOP are ZERO-operand opcodes (0x57/0x58): the assembler
+        # silently discards any operands written after them, and the hardware
+        # takes every parameter from the SA/SF/SV/SW special registers (SW
+        # bits 0-2 waveform, 3-5 channel, 6 loop, 7 enable). So the builtin
+        # stubs move their stack arguments into those registers first.
         'builtin_sound_play': [
-            'POP P0', 'POP P1', 'POP P2', 'POP P3', 'SPLAY P3, P2, P1', 'PUSH P0', 'RET',
+            '; Args: freq (-> SF), volume (-> SV), SW control word (-> SW).',
+            '; SA is intentionally untouched: set it before the call for',
+            '; waveform-7 memory samples. SPLAY plays the channel encoded in',
+            '; SW bits 3-5; bit 7 must be set or the play is ignored.',
+            'POP P0', 'POP P1', 'POP P2', 'POP P3',
+            '; Args pushed in reversed source order: stack top->bottom after POP P0 is',
+            '; [arg0=freq, arg1=vol, arg2=sw]. So POP P1=freq, P2=vol, P3=sw.',
+            'MOV SF, P1', 'MOV SV, P2', 'MOV SW, P3', 'SPLAY', 'PUSH P0', 'RET',
         ],
         'builtin_sound_stop': [
-            'POP P0', 'POP P1', 'SPLAY P1, 0, 0', 'PUSH P0', 'RET',
+            '; Args: channel (0-7). SSTOP is zero-operand and reads the channel',
+            '; from SW bits 3-5, so shift the channel into place before SSTOP.',
+            'POP P0', 'POP P1',
+            'MOV P2, P1', 'SHL P2, 3', 'MOV SW, P2', 'SSTOP', 'PUSH P0', 'RET',
         ],
         'builtin_sound_trigger': [
             'POP P0', 'POP P1', 'STRIG P1', 'PUSH P0', 'RET',
@@ -578,6 +593,60 @@ class CodeGenerator:
         'builtin_mouse_ctrl': [
             'POP P3', 'POP P1', 'MOUSECTRL P1', 'MOV P0, P1', 'PUSH P3', 'RET',
         ],
+    }
+
+    # Return types for builtin functions. Builtins are not registered in
+    # self.functions (which only holds user-defined functions), so without
+    # this table _cast_source_type cannot know that e.g. sin() returns a
+    # float.  That gap caused mixed float/int expressions like
+    # `sin(x * freq) * amplitude` to silently use integer MUL instead of
+    # FMUL, producing wildly wrong results.
+    BUILTIN_RETURN_TYPES: Dict[str, str] = {
+        # --- Math: Q8.8 fixed-point trig/transcendental (float in/out) ---
+        'sin': 'float', 'cos': 'float', 'atan': 'float',
+        'asin': 'float', 'acos': 'float',
+        'log': 'float', 'exp': 'float',
+        # deg() takes plain degrees (int) and returns Q8.8 radians.
+        'deg': 'float',
+        # --- Math: integer-returning ---
+        'tan': 'int',   # scaled by 1000, but integer domain
+        'sqrt': 'int', 'rad': 'int',
+        'floor': 'int', 'ceil': 'int', 'round': 'int',
+        'trunc': 'int', 'intgr': 'int', 'frac': 'int',
+        'abs': 'int', 'min': 'int', 'max': 'int',
+        'clz': 'int', 'ctz': 'int', 'popcnt': 'int',
+        'powr': 'int',
+        # --- Graphics: void / status ---
+        'set_mode': 'int', 'set_layer': 'int', 'set_pos': 'int',
+        'write_screen': 'int', 'screen_fill': 'int', 'read_screen': 'int',
+        'scroll_x': 'int', 'scroll_y': 'int',
+        # --- Keyboard / Mouse ---
+        'key_available': 'int', 'key_read': 'int', 'key_clear': 'int',
+        'key_count': 'int', 'key_ctrl': 'int', 'mouse_ctrl': 'int',
+        # --- Random ---
+        'random': 'int', 'random_range': 'int',
+        # --- String (return type depends on the function) ---
+        'strlen': 'int', 'strcmp': 'int', 'strfind': 'int', 'strfindi': 'int',
+        # --- Serial ---
+        'ser_out': 'int', 'ser_in': 'int', 'ser_stat': 'int', 'ser_ctrl': 'int',
+        # --- Memory ---
+        'memcpy': 'int', 'memset': 'int', 'memmove': 'int', 'memcmp': 'int',
+        'memtest': 'int', 'memswap': 'int', 'peek': 'int', 'poke': 'int',
+        'set_bank': 'int', 'read_bank': 'int',
+        # --- Bit manipulation ---
+        'btst': 'int', 'bset': 'int', 'bclr': 'int', 'bflip': 'int',
+        # --- Misc ---
+        'swap': 'int', 'xchng': 'int', 'nop': 'int',
+        'pushf': 'int', 'popf': 'int', 'pusha': 'int', 'popa': 'int',
+        'halt': 'int',
+        # --- Interrupts ---
+        'enable_interrupts': 'int', 'disable_interrupts': 'int',
+        'software_int': 'int',
+        # --- BCD ---
+        'sed': 'int', 'cld': 'int', 'cla': 'int',
+        'bcd2bin': 'int', 'bin2bcd': 'int',
+        'bcdadd': 'int', 'bcdsub': 'int', 'bcda': 'int', 'bcds': 'int',
+        'bcdcmp': 'int',
     }
 
     def __init__(self, enable_peephole: bool = True, debug_optimizations: bool = False,
@@ -3541,7 +3610,11 @@ class CodeGenerator:
             return 'float' if '.' in expr.value else 'int'
         if isinstance(expr, FuncCall):
             func = self.functions.get(expr.name)
-            return func.get('return_type') if func else None
+            if func:
+                return func.get('return_type')
+            # Builtin functions aren't in self.functions; look up their
+            # return type from the dedicated table.
+            return self.BUILTIN_RETURN_TYPES.get(expr.name)
         if isinstance(expr, PostfixOp):
             if isinstance(expr.left, Identifier):
                 return self.var_types.get(expr.left.name)
