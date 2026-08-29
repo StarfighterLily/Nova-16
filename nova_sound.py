@@ -308,21 +308,25 @@ class NovaSound:
             
             # Create pygame Sound object and play
             try:
-                if not self.mixer_initialized:
-                    # In test environment, just update state without playing
-                    pass
-                else:
-                    sound = pygame.mixer.Sound(audio_data)
-                    loops = -1 if loop_flag else 0  # -1 = infinite loop
-                    
-                    # Stop any existing sound on this channel
-                    if self.sound_channels[channel] is not None:
-                        pygame.mixer.stop()
-                    
-                    # Play the new sound
-                    sound.play(loops=loops)
-                    self.sound_channels[channel] = sound
-                
+                if self.mixer_initialized:
+                    try:
+                        sound = pygame.mixer.Sound(audio_data)
+                        loops = -1 if loop_flag else 0  # -1 = infinite loop
+
+                        # Stop any existing sound on this channel
+                        if self.sound_channels[channel] is not None:
+                            pygame.mixer.stop()
+
+                        # Play the new sound
+                        sound.play(loops=loops)
+                        self.sound_channels[channel] = sound
+                    except Exception:
+                        # No usable audio device (e.g. headless runs): the
+                        # mixer passed init but cannot serve buffers. Degrade
+                        # to state-only playback so programs observe the same
+                        # channel behavior with or without audio hardware.
+                        pass
+
                 # Update channel state
                 self.channel_states[channel].update({
                     'playing': True,
@@ -343,30 +347,30 @@ class NovaSound:
     def sstop(self, channel: int = None) -> bool:
         """
         SSTOP instruction implementation
-        Stop sound on specified channel, or all channels if channel is None
+        Stop sound on specified channel, or all channels if channel is None.
+
+        The per-channel path never touches other channels, even when no audio
+        device is available (headless runs) -- a targeted SSTOP ch3 must not
+        silence ch0-ch7, and the channel state must still be observable.
         """
         try:
-            # Check if mixer is initialized before trying to stop sounds
-            if not pygame.mixer.get_init():
-                # Mixer not initialized, just reset our internal state
-                for i in range(self.max_channels):
-                    self.sound_channels[i] = None
-                    self.channel_states[i]['playing'] = False
-                return True
-            
             if channel is None:
-                # Stop all channels
-                pygame.mixer.stop()
+                # Stop all channels. pygame.mixer.stop() raises when the
+                # mixer is not initialized, so guard it.
+                if pygame.mixer.get_init():
+                    pygame.mixer.stop()
                 for i in range(self.max_channels):
                     self.sound_channels[i] = None
                     self.channel_states[i]['playing'] = False
             else:
-                if channel < self.max_channels:
-                    # Stop specific channel
+                if 0 <= channel < self.max_channels:
+                    # Stop the requested channel. The state must be cleared
+                    # even when no pygame Sound object exists (headless runs
+                    # where playback is state-only), so SSTOP stays observable.
                     if self.sound_channels[channel] is not None:
                         self.sound_channels[channel].stop()
                         self.sound_channels[channel] = None
-                        self.channel_states[channel]['playing'] = False
+                    self.channel_states[channel]['playing'] = False
             
             return True
             

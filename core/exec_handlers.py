@@ -1885,14 +1885,20 @@ def _get_layer_buffer(gfx, layer_num):
 # ------------------------------------------------------------------------------
 
 def _splay(cpu) -> int:
-    """SPLAY: play sound on channel from SW."""
-    channel = cpu.sound.SW & 0x07
+    """SPLAY: play sound on channel from SW bits 3-5.
+
+    SW layout: bits 0-2 waveform, bits 3-5 channel, bit 6 loop, bit 7 enable.
+    Bits 0-2 are the WAVEFORM, not the channel -- masking SW & 0x07 here would
+    select the channel from the waveform field (e.g. MOV SW, 0x87 = waveform 7
+    on channel 0 would wrongly play on channel 7).
+    """
+    channel = (cpu.sound.SW >> 3) & 0x07
     return cpu.sound.splay(channel)
 
 
 def _sstop(cpu) -> int:
-    """SSTOP: stop sound on channel from SW."""
-    channel = cpu.sound.SW & 0x07
+    """SSTOP: stop sound on channel from SW bits 3-5 (see _splay for layout)."""
+    channel = (cpu.sound.SW >> 3) & 0x07
     return cpu.sound.sstop(channel)
 
 

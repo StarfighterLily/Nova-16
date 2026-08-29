@@ -219,7 +219,7 @@ NON_FOLDABLE_BUILTINS = [
     "write_text(1, 2)", "set_font(0)", "layer_swap(1)", "layer_move(2)",
     "layer_copy(3)",
     # Sound
-    "sound_play(1, 2, 3)", "sound_stop()", "sound_trigger(0)",
+    "sound_play(1, 2, 3)", "sound_stop(0)", "sound_trigger(0)",
     "set_timer(0, 255, 80, 3)",
     # Interrupts
     "sti()", "cli()", "iret()", "software_int(0)",

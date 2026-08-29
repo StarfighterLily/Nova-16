@@ -288,11 +288,26 @@ class CodeGenerator:
             'POP P0', 'POP P1', 'LCOPY P1', 'PUSH P0', 'RET',
         ],
         # --- Sound ---
+        # SPLAY/SSTOP are ZERO-operand opcodes (0x57/0x58): the assembler
+        # silently discards any operands written after them, and the hardware
+        # takes every parameter from the SA/SF/SV/SW special registers (SW
+        # bits 0-2 waveform, 3-5 channel, 6 loop, 7 enable). So the builtin
+        # stubs move their stack arguments into those registers first.
         'builtin_sound_play': [
-            'POP P0', 'POP P1', 'POP P2', 'POP P3', 'SPLAY P3, P2, P1', 'PUSH P0', 'RET',
+            '; Args: freq (-> SF), volume (-> SV), SW control word (-> SW).',
+            '; SA is intentionally untouched: set it before the call for',
+            '; waveform-7 memory samples. SPLAY plays the channel encoded in',
+            '; SW bits 3-5; bit 7 must be set or the play is ignored.',
+            'POP P0', 'POP P1', 'POP P2', 'POP P3',
+            '; Args pushed in reversed source order: stack top->bottom after POP P0 is',
+            '; [arg0=freq, arg1=vol, arg2=sw]. So POP P1=freq, P2=vol, P3=sw.',
+            'MOV SF, P1', 'MOV SV, P2', 'MOV SW, P3', 'SPLAY', 'PUSH P0', 'RET',
         ],
         'builtin_sound_stop': [
-            'POP P0', 'POP P1', 'SPLAY P1, 0, 0', 'PUSH P0', 'RET',
+            '; Args: channel (0-7). SSTOP is zero-operand and reads the channel',
+            '; from SW bits 3-5, so shift the channel into place before SSTOP.',
+            'POP P0', 'POP P1',
+            'MOV P2, P1', 'SHL P2, 3', 'MOV SW, P2', 'SSTOP', 'PUSH P0', 'RET',
         ],
         'builtin_sound_trigger': [
             'POP P0', 'POP P1', 'STRIG P1', 'PUSH P0', 'RET',
