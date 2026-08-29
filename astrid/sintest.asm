@@ -46,7 +46,7 @@ POP FP
 RET
 ; Function: main
 func_main:
-ENTER 2
+ENTER 0
 ; Call to set_mode
 MOV P7, 1
 PUSH P7
@@ -73,191 +73,26 @@ PUSH P7
 CALL builtin_set_color
 ; Args consumed by callee
 MOV P0, R0
-; While loop
-while_start_0:
-MOV P1, 1
-CMP P1, 0
-JZ while_end_1
-; Assignment to oldx
-MOV P2, [0x8000]
-MOV [0x8004], P2
-; Assignment to oldy
-MOV P4, [0x8002]
-MOV [0x8006], P4
-MOV P5, [0x8000]
-MOV P6, P5
-INC P5
-MOV [0x8000], P5
-; If statement
-MOV P7, 255
-PUSH P7
-MOV P0, [0x8000]
-POP P7
-CMP P7, P0
-JZ cmp_true_4
-MOV P7, 0
-JMP cmp_end_5
-cmp_true_4:
-MOV P7, 1
-cmp_end_5:
-CMP P7, 0
-JZ if_end_2
-; Assignment to x
-MOV P1, 0
-MOV [0x8000], P1
-; Call to screen_fill
-MOV P2, 0
+; Call to sti
+CALL builtin_sti
+MOV P1, R0
+; Call to set_timer
+MOV P2, 3
 PUSH P2
-CALL builtin_screen_fill
-; Args consumed by callee
-MOV P4, R0
-if_end_2:
-; Call to sine
-CALL func_sine
-MOV P5, P0
-; var coin = ...
-; Call to random_range
-MOV P6, 31
-PUSH P6
-MOV P7, 0
-PUSH P7
-CALL builtin_random_range
-; Args consumed by callee
-MOV [0xC080], P0
-; If statement
-MOV P1, 0
-PUSH P1
-MOV P2, [0xC080]
-POP P1
-CMP P1, P2
-JZ cmp_true_8
-MOV P1, 0
-JMP cmp_end_9
-cmp_true_8:
-MOV P1, 1
-cmp_end_9:
-CMP P1, 0
-JZ if_else_7
-MOV P4, [0x800A]
-MOV P5, P4
-INC P4
-MOV [0x800A], P4
-JMP if_end_6
-if_else_7:
-; If statement
-MOV P6, 7
-PUSH P6
-MOV P7, [0xC080]
-POP P6
-CMP P6, P7
-JZ cmp_true_12
+MOV P4, 256
+PUSH P4
+MOV P5, 255
+PUSH P5
 MOV P6, 0
-JMP cmp_end_13
-cmp_true_12:
-MOV P6, 1
-cmp_end_13:
-CMP P6, 0
-JZ if_else_11
-MOV P0, [0x800A]
-MOV P1, P0
-DEC P0
-MOV [0x800A], P0
-JMP if_end_10
-if_else_11:
-; If statement
-MOV P2, 15
-PUSH P2
-MOV P4, [0xC080]
-POP P2
-CMP P2, P4
-JZ cmp_true_16
-MOV P2, 0
-JMP cmp_end_17
-cmp_true_16:
-MOV P2, 1
-cmp_end_17:
-CMP P2, 0
-JZ if_else_15
-; Assignment to amplitude
-MOV P5, [0x800A]
-MOV P6, 2
-ADD P5, P6
-MOV [0x800A], P5
-JMP if_end_14
-if_else_15:
-; If statement
-MOV P7, 31
-PUSH P7
-MOV P0, [0xC080]
-POP P7
-CMP P7, P0
-JZ cmp_true_20
-MOV P7, 0
-JMP cmp_end_21
-cmp_true_20:
-MOV P7, 1
-cmp_end_21:
-CMP P7, 0
-JZ if_end_18
-; Assignment to amplitude
-MOV P1, [0x800A]
-MOV P2, 2
-SUB P1, P2
-MOV [0x800A], P1
-if_end_18:
-if_end_14:
-if_end_10:
-if_end_6:
-; If statement
-MOV P4, [0x800A]
-PUSH P4
-MOV P5, 82
-POP P4
-CMP P5, P4
-JC cmp_true_24
-MOV P4, 0
-JMP cmp_end_25
-cmp_true_24:
-MOV P4, 1
-cmp_end_25:
-CMP P4, 0
-JZ if_end_22
-; Assignment to amplitude
-MOV P6, 82
-MOV [0x800A], P6
-if_end_22:
-; If statement
-MOV P7, [0x800A]
-PUSH P7
-MOV P0, 2
-POP P7
-CMP P7, P0
-JC cmp_true_28
-MOV P7, 0
-JMP cmp_end_29
-cmp_true_28:
-MOV P7, 1
-cmp_end_29:
-CMP P7, 0
-JZ if_end_26
-; Assignment to amplitude
-MOV P1, 2
-MOV [0x800A], P1
-if_end_26:
-; Call to set_pos
-MOV P2, [0x8000]
-PUSH P2
-MOV P4, [0x8002]
-PUSH P4
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P5, R0
-; Call to write_screen
-MOV P6, 95
 PUSH P6
-CALL builtin_write_screen
+CALL builtin_set_timer
 ; Args consumed by callee
 MOV P7, R0
+; While loop
+while_start_0:
+MOV P0, 1
+CMP P0, 0
+JZ while_end_1
 JMP while_start_0
 while_end_1:
 ; Implicit return for void function
@@ -287,29 +122,85 @@ PUSH R7
 PUSH R8
 PUSH R9
 ; Call to set_timer
-MOV P0, 0
-PUSH P0
-MOV P1, 255
+MOV P1, 0
 PUSH P1
 MOV P2, 255
 PUSH P2
-MOV P4, 0
+MOV P4, 255
 PUSH P4
+MOV P5, 0
+PUSH P5
 CALL builtin_set_timer
 ; Args consumed by callee
-MOV P5, R0
-; Call to set_timer
-MOV P6, 3
-PUSH P6
-MOV P7, 256
-PUSH P7
-MOV P0, 255
-PUSH P0
+MOV P6, R0
+; Assignment to oldx
+MOV P7, [0x8000]
+MOV [0x8004], P7
+; Assignment to oldy
+MOV P0, [0x8002]
+MOV [0x8006], P0
+MOV P1, [0x8000]
+MOV P2, P1
+INC P1
+MOV [0x8000], P1
+; If statement
+MOV P4, 255
+MOV P5, [0x8000]
+CMP P4, P5
+JZ cmp_true_4
+MOV P4, 0
+JMP cmp_end_5
+cmp_true_4:
+MOV P4, 1
+cmp_end_5:
+CMP P4, 0
+JZ if_end_2
+; Assignment to x
+MOV P6, 0
+MOV [0x8000], P6
+if_end_2:
+; If statement
+MOV P7, [0x8000]
+MOV P0, 2
+MOD P7, P0
+CMP P7, 0
+JZ if_end_6
+; Call to screen_fill
 MOV P1, 0
 PUSH P1
-CALL builtin_set_timer
+CALL builtin_screen_fill
 ; Args consumed by callee
 MOV P2, R0
+if_end_6:
+; Call to sine
+CALL func_sine
+MOV P4, P0
+; Call to set_pos
+MOV P5, [0x8000]
+PUSH P5
+MOV P6, [0x8002]
+PUSH P6
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P7, R0
+; Call to write_screen
+MOV P0, 95
+PUSH P0
+CALL builtin_write_screen
+; Args consumed by callee
+MOV P1, R0
+; Call to set_timer
+MOV P2, 3
+PUSH P2
+MOV P4, 255
+PUSH P4
+MOV P5, 255
+PUSH P5
+MOV P6, 0
+PUSH P6
+CALL builtin_set_timer
+; Args consumed by callee
+MOV P7, R0
 ; Implicit ISR return
 POP R9
 POP R8
@@ -385,16 +276,8 @@ MOV TS, P3
 MOV TC, P4
 PUSH P0
 RET
-builtin_random_range:
-; Save return address in P3 (not P0, since RNDR will write its result to P0).
-; Stack: [ret_addr, color_max, color_min] (top = last pushed = color_min)
-; builtins with P0 as destination use P3 for the return address (see
-; builtin_set_pointers for the same pattern).
-POP P3
-POP P1
-POP P2
-RNDR P0, P1, P2
-PUSH P3
+builtin_sti:
+STI
 RET
 builtin_sin:
 POP P3
@@ -416,6 +299,6 @@ DS 2
 gvar_center_y:
 DW 128
 gvar_amplitude:
-DW 64
+DW 128
 gvar_frequency:
 DW 50

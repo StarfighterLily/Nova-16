@@ -551,7 +551,10 @@ def handle_run_until_memory(args, *, ensure_emulator, state) -> str:
     start_pc = cpu.pc
 
     def read_slice(addr: int, count: int) -> bytes:
-        return bytes(int(memory.read(addr + offset)) for offset in range(count))
+        # memory.read() is a legacy alias that wraps bytes in np.array with the
+        # default int64 dtype, so tobytes() would emit 8 bytes per value. Use
+        # read_bytes_direct(), which returns plain ints 0-255.
+        return bytes(memory.read_bytes_direct(addr, count))
 
     while cycles < max_cycles and not cpu.halted:
         if read_slice(address, len(expected)) == expected:

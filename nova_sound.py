@@ -296,7 +296,7 @@ class NovaSound:
         volume = self.SV / 255.0
         
         # Generate sound sample (0.5 second duration for one-shot, longer for loops)
-        duration = 2.0 if loop_flag else 0.5
+        duration = 0.5 if loop_flag else 0.075
         sample_data = self._generate_waveform_sample(waveform_type, frequency, duration, volume)
         
         # Convert to stereo (duplicate mono to both channels)

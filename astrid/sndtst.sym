@@ -1,0 +1,13 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+func_main 0x100F
+while_start_0 0x1012
+if_else_3 0x105D
+if_end_2 0x1065
+while_end_1 0x1069
+builtin_sound_play 0x1071
+builtin_key_available 0x108E
+builtin_key_read 0x1092
+builtin_key_clear 0x1096
+builtin_nop 0x1098
