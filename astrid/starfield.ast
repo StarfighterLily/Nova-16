@@ -15,6 +15,14 @@ void draw_stars(int layer, int step, int color_min, int color_max) {
 		color = random_range(color_min, color_max);
 		set_pos(x, y);
 		write_screen(color);
+		if (random_range(0,15) == 0) {
+			set_color(color);
+			draw_circle(1,1);
+		}
+		if (random_range(0,63) == 0) {
+			set_color(color);
+			draw_circle(2,1);
+		}
 	}
 }
 
@@ -43,12 +51,10 @@ void parallax() {
 			scroll_x(layer, 0, 4);
 		}
 	}
-	for (int i= 0; i < 2500; i++) {
-		nop();
-	}
 }
 
 void main() {
+	int counter = 0;
 	setup();
 
 	// Layer 1: many dim stars
@@ -62,20 +68,13 @@ void main() {
 
 	// Layer 4: fewest, brightest stars
 	draw_stars(4, 512, 0x0A, 0x0F);
-
-	//draw_text();
-
-	sti();	// enable interrupts
-	set_timer(0, 255, 255, 3);     // TT, TM, TS, TC
-
+	
 	while (1) {
 		// Infinite loop
+		counter++;
+		if ((counter % 5120) == 0) {
+			parallax();
+			counter = 0;
+		}
 	}
-}
-
-// Timer interrupt handler (vector at 0x0100)
-void timer_interrupt() {
-	set_timer(0, 255, 255, 0);    // disable timer to do our thing because
-	parallax();                   // We'll be in here a goodly amount of cycles
-	set_timer(0, 255, 255, 3);    // Now re-enable timer
 }
