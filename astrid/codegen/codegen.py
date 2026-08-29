@@ -580,6 +580,60 @@ class CodeGenerator:
         ],
     }
 
+    # Return types for builtin functions. Builtins are not registered in
+    # self.functions (which only holds user-defined functions), so without
+    # this table _cast_source_type cannot know that e.g. sin() returns a
+    # float.  That gap caused mixed float/int expressions like
+    # `sin(x * freq) * amplitude` to silently use integer MUL instead of
+    # FMUL, producing wildly wrong results.
+    BUILTIN_RETURN_TYPES: Dict[str, str] = {
+        # --- Math: Q8.8 fixed-point trig/transcendental (float in/out) ---
+        'sin': 'float', 'cos': 'float', 'atan': 'float',
+        'asin': 'float', 'acos': 'float',
+        'log': 'float', 'exp': 'float',
+        # deg() takes plain degrees (int) and returns Q8.8 radians.
+        'deg': 'float',
+        # --- Math: integer-returning ---
+        'tan': 'int',   # scaled by 1000, but integer domain
+        'sqrt': 'int', 'rad': 'int',
+        'floor': 'int', 'ceil': 'int', 'round': 'int',
+        'trunc': 'int', 'intgr': 'int', 'frac': 'int',
+        'abs': 'int', 'min': 'int', 'max': 'int',
+        'clz': 'int', 'ctz': 'int', 'popcnt': 'int',
+        'powr': 'int',
+        # --- Graphics: void / status ---
+        'set_mode': 'int', 'set_layer': 'int', 'set_pos': 'int',
+        'write_screen': 'int', 'screen_fill': 'int', 'read_screen': 'int',
+        'scroll_x': 'int', 'scroll_y': 'int',
+        # --- Keyboard / Mouse ---
+        'key_available': 'int', 'key_read': 'int', 'key_clear': 'int',
+        'key_count': 'int', 'key_ctrl': 'int', 'mouse_ctrl': 'int',
+        # --- Random ---
+        'random': 'int', 'random_range': 'int',
+        # --- String (return type depends on the function) ---
+        'strlen': 'int', 'strcmp': 'int', 'strfind': 'int', 'strfindi': 'int',
+        # --- Serial ---
+        'ser_out': 'int', 'ser_in': 'int', 'ser_stat': 'int', 'ser_ctrl': 'int',
+        # --- Memory ---
+        'memcpy': 'int', 'memset': 'int', 'memmove': 'int', 'memcmp': 'int',
+        'memtest': 'int', 'memswap': 'int', 'peek': 'int', 'poke': 'int',
+        'set_bank': 'int', 'read_bank': 'int',
+        # --- Bit manipulation ---
+        'btst': 'int', 'bset': 'int', 'bclr': 'int', 'bflip': 'int',
+        # --- Misc ---
+        'swap': 'int', 'xchng': 'int', 'nop': 'int',
+        'pushf': 'int', 'popf': 'int', 'pusha': 'int', 'popa': 'int',
+        'halt': 'int',
+        # --- Interrupts ---
+        'enable_interrupts': 'int', 'disable_interrupts': 'int',
+        'software_int': 'int',
+        # --- BCD ---
+        'sed': 'int', 'cld': 'int', 'cla': 'int',
+        'bcd2bin': 'int', 'bin2bcd': 'int',
+        'bcdadd': 'int', 'bcdsub': 'int', 'bcda': 'int', 'bcds': 'int',
+        'bcdcmp': 'int',
+    }
+
     def __init__(self, enable_peephole: bool = True, debug_optimizations: bool = False,
                  enable_expr_simplify: bool = True, enable_live_range: bool = True,
                  enable_optimizations: bool = True,
@@ -3520,7 +3574,11 @@ class CodeGenerator:
             return 'float' if '.' in expr.value else 'int'
         if isinstance(expr, FuncCall):
             func = self.functions.get(expr.name)
-            return func.get('return_type') if func else None
+            if func:
+                return func.get('return_type')
+            # Builtin functions aren't in self.functions; look up their
+            # return type from the dedicated table.
+            return self.BUILTIN_RETURN_TYPES.get(expr.name)
         if isinstance(expr, PostfixOp):
             if isinstance(expr.left, Identifier):
                 return self.var_types.get(expr.left.name)

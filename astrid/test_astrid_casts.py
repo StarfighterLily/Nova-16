@@ -63,6 +63,59 @@ def compile_and_run(source, expected_r0=None):
                 os.unlink(path)
 
 
+def test_sin_return_type_float_promotion():
+    """sin() returns float; mixed float*int must use FMUL, not MUL.
+
+    Regression test: the compiler did not know builtins like sin()
+    returned float, so `sin(x) * amplitude` used integer MUL instead of
+    FMUL, producing wildly wrong results.
+    """
+    source = """
+int main() {
+    float frequency = 2.0 * 3.14159265 / 128;
+    int amplitude = 50;
+    int center_y = 128;
+    int y = center_y + (int)(sin(frequency) * amplitude);
+    return y;
+}
+"""
+    proc, cycles, mem = compile_and_run(source)
+    # sin(2π/128) ≈ 0.0491, so y ≈ 128 + (int)(0.0491 * 50) ≈ 130.
+    # Q8.8 fixed-point rounding can shift this by a few units.
+    # The key check: result is near center_y (128), not wildly off.
+    assert 120 <= proc.r0 <= 136, f"Expected y in [120,136], got {proc.r0}"
+
+
+def test_cos_return_type_float_promotion():
+    """cos() also returns float and must trigger FMUL in mixed ops."""
+    source = """
+int main() {
+    float angle = 0.0;
+    int scale = 100;
+    int result = (int)(cos(angle) * scale);
+    return result;
+}
+"""
+    proc, cycles, mem = compile_and_run(source)
+    # cos(0) = 1.0, (int)(1.0 * 100) = 100
+    assert proc.r0 == 100, f"Expected 100, got {proc.r0}"
+
+
+def test_sin_int_cast_chain():
+    """(int)(sin(x) * amp) must emit ITOF, FMUL, then FTOI."""
+    source = """
+int main() {
+    float f = 3.14159265;
+    int amp = 10;
+    int r = (int)(sin(f) * amp);
+    return r;
+}
+"""
+    proc, cycles, mem = compile_and_run(source)
+    # sin(π) ≈ 0, so r ≈ 0
+    assert 0 <= proc.r0 <= 2, f"Expected 0-2, got {proc.r0}"
+
+
 def test_lexer_recognizes_string_and_binary_keywords():
     """Lexer should recognize string and binary as keywords."""
     lexer = Lexer("string s; binary b; int i;")

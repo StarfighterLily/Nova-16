@@ -1,0 +1,57 @@
+int x = 0;
+int y = 0;
+int oldx;
+int oldy;
+int center_y = 128;
+int amplitude = 64;
+float frequency = 8.0 * 3.14 / 128;
+
+void sine() {
+    y = center_y + (int)(sin(x * (frequency)) * (amplitude));
+}
+
+void main() {
+    set_mode(1);
+    set_layer(1);
+    set_pos(0,0);
+    set_color(0x00);
+    //sti();	// enable interrupts
+	//set_timer(0, 255, 256, 3);     // TT, TM, TS, TC
+    while (1) {
+        oldx = x;
+        oldy = y;
+        x++;
+        if (x == 255) {
+            x = 0;
+            screen_fill(0x00);
+        }
+        sine();
+        int coin = random_range(0,31);
+        if (coin == 0) {
+            amplitude++;
+        } else if (coin == 7) {
+            amplitude--;
+        } else if (coin == 15) {
+            amplitude = amplitude + 2;
+        } else if (coin == 31) {
+            amplitude = amplitude - 2;
+        }
+        if (amplitude > 82) {
+            amplitude = 82;
+        }
+        if (amplitude < 2) {
+            amplitude = 2;
+        }
+        //set_pos(oldy, oldx);
+        //write_screen(0x00);
+        set_pos(y, x);
+        write_screen(0x5F);
+    }
+}
+
+void timer_interrupt() {
+    set_timer(0, 255, 255, 0);
+
+
+    set_timer(0, 255, 256, 3);
+}
