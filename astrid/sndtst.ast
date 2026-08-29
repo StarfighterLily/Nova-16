@@ -2,8 +2,7 @@ void main() {
     while (1) {
         if (key_available()) {
             sound_play(key_read(), 128, 0b10001010);
-            //sound_stop(1);
-            key_clear();
+            //key_clear();
         } else {
             nop();
         }

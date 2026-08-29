@@ -5,18 +5,15 @@ MOV SP, 0xFFFF ; Set stack pointer to high memory
 MOV FP, 0xFFFF ; Also init frame pointer
 CALL func_main
 HLT
-ORG 0x0100
-DW func_timer_interrupt
-ORG 0x0120
 ; Function: sine
 func_sine:
 ENTER 0
 ; Assignment to y
 ; Type cast: (int) expr
 ; Call to sin
-MOV P0, [0x800C]
+MOV P0, [0x800E]
 PUSH P0
-MOV P1, [0x8000]
+MOV P1, [0x8002]
 POP P0
 ; Float (Q8.8) operation - promote operands
 ; Promote int operand to float (Q8.8)
@@ -27,7 +24,7 @@ CALL builtin_sin
 ; Args consumed by callee
 MOV P2, P0
 PUSH P2
-MOV P4, [0x800A]
+MOV P4, [0x800C]
 POP P2
 ; Float (Q8.8) operation - promote operands
 ; Promote int operand to float (Q8.8)
@@ -36,10 +33,10 @@ FMUL P2, P4
 MOV P5, P2
 FTOI P5
 PUSH P5
-MOV P6, [0x8008]
+MOV P6, [0x800A]
 POP P5
 ADD P5, P6
-MOV [0x8002], P5
+MOV [0x8004], P5
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -73,155 +70,102 @@ PUSH P7
 CALL builtin_set_color
 ; Args consumed by callee
 MOV P0, R0
-; Call to sti
-CALL builtin_sti
-MOV P1, R0
-; Call to set_timer
-MOV P2, 3
-PUSH P2
-MOV P4, 256
-PUSH P4
-MOV P5, 255
-PUSH P5
-MOV P6, 0
-PUSH P6
-CALL builtin_set_timer
-; Args consumed by callee
-MOV P7, R0
 ; While loop
 while_start_0:
-MOV P0, 1
-CMP P0, 0
+MOV P1, 1
+CMP P1, 0
 JZ while_end_1
+MOV P2, [0x8000]
+MOV P4, P2
+INC P2
+MOV [0x8000], P2
+; Assignment to oldx
+MOV P5, [0x8002]
+MOV [0x8006], P5
+; Assignment to oldy
+MOV P6, [0x8004]
+MOV [0x8008], P6
+MOV P7, [0x8002]
+MOV P0, P7
+INC P7
+MOV [0x8002], P7
+; If statement
+MOV P1, 255
+PUSH P1
+MOV P2, [0x8002]
+POP P1
+CMP P1, P2
+JZ cmp_true_4
+MOV P1, 0
+JMP cmp_end_5
+cmp_true_4:
+MOV P1, 1
+cmp_end_5:
+CMP P1, 0
+JZ if_end_2
+; Assignment to x
+MOV P4, 0
+MOV [0x8002], P4
+if_end_2:
+; If statement
+MOV P5, [0x8000]
+PUSH P5
+MOV P6, 60
+POP P5
+MOD P5, P6
+PUSH P5
+MOV P7, 0
+POP P5
+CMP P5, P7
+JZ cmp_true_8
+MOV P5, 0
+JMP cmp_end_9
+cmp_true_8:
+MOV P5, 1
+cmp_end_9:
+CMP P5, 0
+JZ if_end_6
+; Call to screen_fill
+MOV P0, 0
+PUSH P0
+CALL builtin_screen_fill
+; Args consumed by callee
+MOV P1, R0
+; Call to sine
+CALL func_sine
+MOV P2, P0
+; Call to set_pos
+MOV P4, [0x8002]
+PUSH P4
+MOV P5, [0x8004]
+PUSH P5
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P6, R0
+; Call to set_color
+MOV P7, 95
+PUSH P7
+CALL builtin_set_color
+; Args consumed by callee
+MOV P0, R0
+; Call to draw_circle
+MOV P1, 1
+PUSH P1
+MOV P2, 1
+PUSH P2
+CALL builtin_draw_circle
+; Args consumed by callee
+MOV P4, R0
+; Assignment to counter
+MOV P5, 0
+MOV [0x8000], P5
+if_end_6:
 JMP while_start_0
 while_end_1:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-; Function: timer_interrupt
-func_timer_interrupt:
-; Save general registers (interrupt entry only saves PC+flags)
-PUSH P0
-PUSH P1
-PUSH P2
-PUSH P3
-PUSH P4
-PUSH P5
-PUSH P6
-PUSH P7
-PUSH P9
-PUSH R0
-PUSH R1
-PUSH R2
-PUSH R3
-PUSH R4
-PUSH R5
-PUSH R6
-PUSH R7
-PUSH R8
-PUSH R9
-; Call to set_timer
-MOV P1, 0
-PUSH P1
-MOV P2, 255
-PUSH P2
-MOV P4, 255
-PUSH P4
-MOV P5, 0
-PUSH P5
-CALL builtin_set_timer
-; Args consumed by callee
-MOV P6, R0
-; Assignment to oldx
-MOV P7, [0x8000]
-MOV [0x8004], P7
-; Assignment to oldy
-MOV P0, [0x8002]
-MOV [0x8006], P0
-MOV P1, [0x8000]
-MOV P2, P1
-INC P1
-MOV [0x8000], P1
-; If statement
-MOV P4, 255
-MOV P5, [0x8000]
-CMP P4, P5
-JZ cmp_true_4
-MOV P4, 0
-JMP cmp_end_5
-cmp_true_4:
-MOV P4, 1
-cmp_end_5:
-CMP P4, 0
-JZ if_end_2
-; Assignment to x
-MOV P6, 0
-MOV [0x8000], P6
-if_end_2:
-; If statement
-MOV P7, [0x8000]
-MOV P0, 2
-MOD P7, P0
-CMP P7, 0
-JZ if_end_6
-; Call to screen_fill
-MOV P1, 0
-PUSH P1
-CALL builtin_screen_fill
-; Args consumed by callee
-MOV P2, R0
-if_end_6:
-; Call to sine
-CALL func_sine
-MOV P4, P0
-; Call to set_pos
-MOV P5, [0x8000]
-PUSH P5
-MOV P6, [0x8002]
-PUSH P6
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P7, R0
-; Call to write_screen
-MOV P0, 95
-PUSH P0
-CALL builtin_write_screen
-; Args consumed by callee
-MOV P1, R0
-; Call to set_timer
-MOV P2, 3
-PUSH P2
-MOV P4, 255
-PUSH P4
-MOV P5, 255
-PUSH P5
-MOV P6, 0
-PUSH P6
-CALL builtin_set_timer
-; Args consumed by callee
-MOV P7, R0
-; Implicit ISR return
-POP R9
-POP R8
-POP R7
-POP R6
-POP R5
-POP R4
-POP R3
-POP R2
-POP R1
-POP R0
-POP P9
-POP P7
-POP P6
-POP P5
-POP P4
-POP P3
-POP P2
-POP P1
-POP P0
-IRET
 ; Built-in Function Implementations
 builtin_set_vmode:
 POP P0
@@ -243,12 +187,6 @@ MOV VX, P1
 MOV VY, P2
 PUSH P0
 RET
-builtin_write_screen:
-POP P0
-POP P1
-SWRITE P1
-PUSH P0
-RET
 builtin_screen_fill:
 POP P0
 POP P1
@@ -262,22 +200,13 @@ POP P1
 MOV VC, P1
 PUSH P0
 RET
-builtin_set_timer:
+builtin_draw_circle:
+; Args: radius, filled
 POP P0
 POP P1
 POP P2
-POP P3
-POP P4
-; Args pushed in reversed source order: stack top->bottom after POP P0 is
-; [arg0=TT, arg1=TM, arg2=TS, arg3=TC]. So POP P1=TT, P2=TM, P3=TS, P4=TC.
-MOV TT, P1
-MOV TM, P2
-MOV TS, P3
-MOV TC, P4
+SCIRC P1, P2
 PUSH P0
-RET
-builtin_sti:
-STI
 RET
 builtin_sin:
 POP P3
@@ -288,6 +217,8 @@ PUSH P3
 RET
 ORG 0x8000
 ; Global Variables
+gvar_counter:
+DW 0
 gvar_x:
 DW 0
 gvar_y:
@@ -299,6 +230,6 @@ DS 2
 gvar_center_y:
 DW 128
 gvar_amplitude:
-DW 128
+DW 32
 gvar_frequency:
 DW 50

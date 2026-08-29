@@ -31,14 +31,11 @@ PUSH P5
 CALL builtin_sound_play
 ; Args consumed by callee
 MOV P6, R0
-; Call to key_clear
-CALL builtin_key_clear
-MOV P7, R0
 JMP if_end_2
 if_else_3:
 ; Call to nop
 CALL builtin_nop
-MOV P0, R0
+MOV P7, R0
 if_end_2:
 JMP while_start_0
 while_end_1:
@@ -69,9 +66,6 @@ KEYSTAT P0
 RET
 builtin_key_read:
 KEYIN P0
-RET
-builtin_key_clear:
-KEYCLEAR
 RET
 builtin_nop:
 NOP

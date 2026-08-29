@@ -1,9 +1,10 @@
+int counter = 0;
 int x = 0;
 int y = 0;
 int oldx;
 int oldy;
 int center_y = 128;
-int amplitude = 128;
+int amplitude = 32;
 float frequency = 8.0 * 3.14 / 128;
 
 void sine() {
@@ -15,25 +16,22 @@ void main() {
     set_layer(1);
     set_pos(0,0);
     set_color(0x00);
-    sti();	// enable interrupts
-	set_timer(0, 255, 256, 3);     // TT, TM, TS, TC
-    while (1) {
-    }
-}
 
-void timer_interrupt() {
-    set_timer(0, 255, 255, 0);
-    oldx = x;
-    oldy = y;
-    x++;
-    if (x == 255) {
-        x = 0;
+    while (1) {
+        counter++;
+        oldx = x;
+        oldy = y;
+        x++;
+        if (x == 255) {
+            x = 0;
+        }
+        if ((counter % 60) == 0) {
+            screen_fill(0x00);
+            sine();
+            set_pos(y, x);
+            set_color(0x5F);
+            draw_circle(1, 1);
+            counter = 0;
+        }
     }
-    if (x % 2) {
-        screen_fill(0x00);
-    }
-    sine();
-    set_pos(y, x);
-    write_screen(0x5F);
-    set_timer(0, 255, 255, 3);
 }
