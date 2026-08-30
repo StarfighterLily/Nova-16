@@ -1,0 +1,10 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+func_main 0x100F
+cmp_true_2 0x1045
+cmp_end_3 0x1049
+cmp_true_6 0x1070
+cmp_end_7 0x1074
+if_end_4 0x1090
+if_end_0 0x1090

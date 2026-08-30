@@ -1,0 +1,5 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+func_getx 0x100F
+func_main 0x102B

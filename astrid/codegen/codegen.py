@@ -1222,10 +1222,32 @@ class CodeGenerator:
     # ------------------------------------------------------------------
 
     def _struct_fields(self, tag: str) -> List[str]:
+        """Return just the field names for a struct tag.
+
+        The stored format is a list of (name, type) tuples so the codegen
+        can also resolve per-field types; this helper extracts names for
+        callers that only need the ordering / count.
+        """
         fields = self.struct_defs.get(tag)
         if fields is None:
             raise NameError(f"Undefined struct type '{tag}'")
-        return fields
+        return [f[0] if isinstance(f, tuple) else f for f in fields]
+
+    def _struct_field_type(self, tag: str, field: str) -> Optional[str]:
+        """Return the declared type of a struct field ('int', 'char',
+        'float', 'string', 'binary'), or None if not found."""
+        fields = self.struct_defs.get(tag)
+        if fields is None:
+            return None
+        for entry in fields:
+            if isinstance(entry, tuple):
+                fname, ftype = entry
+            else:
+                # Backwards-compatible: bare name (treat as 'int').
+                fname, ftype = entry, 'int'
+            if fname == field:
+                return ftype
+        return None
 
     def _struct_size(self, tag: str) -> int:
         """Total byte size of one struct value (each field is a word slot)."""
@@ -1363,19 +1385,55 @@ class CodeGenerator:
         return decl.is_array
 
     def _resolve_array_count(self, decl: VarDecl) -> int:
-        """Resolve an array's element count at compile time."""
-        if decl.init_list is not None:
-            return len(decl.init_list)
-        if isinstance(decl.array_size, Number):
-            count = int(decl.array_size.value, 0)
-        else:
-            # Enum constants (or any constant expression) are valid sizes.
-            count = self._const_eval(decl.array_size)
-            if count is None:
+        """Resolve an array's element count at compile time.
+
+        An explicit size is authoritative (C semantics): a shorter
+        initializer list zero-fills the remainder (the runtime zero-fill
+        for locals is emitted by generate_var_decl), and a longer one is
+        a compile error. Without an explicit size the initializer list
+        determines the count. Struct arrays take flat WORD initializers,
+        so the initializer budget is size * words-per-struct and a sizeless
+        struct array derives its element count from the word count."""
+        declared = None
+        if decl.array_size is not None:
+            if isinstance(decl.array_size, Number):
+                declared = int(decl.array_size.value, 0)
+            else:
+                # Enum constants (or any constant expression) are valid sizes.
+                declared = self._const_eval(decl.array_size)
+                if declared is None:
+                    raise TypeError(
+                        f"Array '{decl.name}' size must be a compile-time constant")
+        decl_tag = getattr(decl, 'struct_tag', None)
+        words_per_struct = (self._struct_size(decl_tag) // 2) if decl_tag else 1
+        init_count = len(decl.init_list) if decl.init_list is not None else None
+        if declared is not None:
+            if init_count is not None and init_count > declared * words_per_struct:
                 raise TypeError(
-                    f"Array '{decl.name}' size must be a compile-time constant")
+                    f"Array '{decl.name}' declared with {declared} element(s) "
+                    f"but has {init_count} initializer value(s)")
+            count = declared
+        elif init_count is not None:
+            count = init_count
+            if decl_tag:
+                if init_count % words_per_struct:
+                    raise TypeError(
+                        f"Struct array '{decl.name}' needs a whole number of "
+                        f"struct initializer values ({init_count} words for "
+                        f"{words_per_struct}-word structs)")
+                count = init_count // words_per_struct
+        else:
+            raise TypeError(
+                f"Array '{decl.name}' size must be a compile-time constant")
         if count <= 0:
             raise ValueError(f"Array '{decl.name}' must have a positive size")
+        if count > 0x8000:
+            # Negative literal sizes arrive here masked to 16 bits
+            # (e.g. a[-2] -> 65534); a frame can never exceed the 64KB
+            # address space, so reject absurd element counts outright.
+            raise ValueError(
+                f"Array '{decl.name}' size {count} is out of range "
+                f"(max 32768 elements)")
         return count
 
     def _contains_float(self, expr) -> bool:
@@ -1543,6 +1601,11 @@ class CodeGenerator:
                                 f"explicit size or a whole-number-of-structs "
                                 f"initializer list")
                         count = n_words // fields_per_struct
+                    if decl.init_list and len(decl.init_list) > count * fields_per_struct:
+                        raise TypeError(
+                            f"Global struct array '{decl.name}' declared with "
+                            f"{count} element(s) but has {len(decl.init_list)} "
+                            f"initializer value(s)")
                     for e in (decl.init_list or []):
                         v = self._const_eval(e)
                         if v is None:
@@ -1777,7 +1840,11 @@ class CodeGenerator:
         if name in self.array_vars:
             info = self.array_vars[name]
             if self.current_function == 'timer_interrupt':
-                base_sp = -info['offset'] - info['count'] * info['elem_size']
+                # SP-relative decay: use the array stride (struct arrays
+                # step by the whole struct size, not elem_size) so the
+                # decayed base matches _emit_array_addr's layout.
+                base_sp = (-info['offset']
+                           - info['count'] * self._array_stride(info))
                 self.emit(f"    MOV {reg}, SP")
                 self.emit(f"    ADD {reg}, {base_sp}")
             else:
@@ -1858,6 +1925,12 @@ class CodeGenerator:
                 # Pointers and array parameters hold a 16-bit address.
                 param_size += 2
                 self.pointer_vars.add(param.name)
+                if getattr(param, 'struct_tag', None):
+                    # `struct Point *p` parameters remember their pointee
+                    # layout so p->field resolves member offsets (mirrors
+                    # how local/global struct pointer declarators register
+                    # their tag in the locals loop below).
+                    self.pointer_struct_tags[param.name] = param.struct_tag
                 if getattr(param, 'is_array_param', False):
                     self.address_params.add(param.name)
                     # Register layout info so arr[i] indexing works on the
@@ -2122,7 +2195,16 @@ class CodeGenerator:
             info = self._get_array_info(var_decl.name)
             self.emit_comment(f"array {var_decl.name}[{info['count']}]")
             if var_decl.init_list and not info.get('is_global'):
-                for i, init_expr in enumerate(var_decl.init_list):
+                # C semantics: with a partial initializer the remaining
+                # elements are zero-filled (an automatic array with NO
+                # initializer stays indeterminate, also matching C).
+                # Struct arrays take flat word initializers: total slots
+                # is count * words-per-struct (stride / elem_size).
+                total_slots = (info['count']
+                               * (self._array_stride(info) // info['elem_size']))
+                for i in range(total_slots):
+                    init_expr = (var_decl.init_list[i]
+                                 if i < len(var_decl.init_list) else Number('0'))
                     reg = self.generate_expression(init_expr)
                     addr_reg = self.get_register()
                     # Initializer lists fill the flat word slots of struct
@@ -2163,14 +2245,28 @@ class CodeGenerator:
             var_reg = self.get_register()
             self._emit_var_load(var_reg, assignment.name)
             if op in ['<<', '>>']:
-                # Shift operations: amount must be a constant (parser requires this)
-                if not isinstance(value.right, Number):
-                    raise TypeError("Shift amount must be a constant integer for this compiler version.")
-                shift_amount = int(value.right.value, 0)
-                op_mnemonic = "SHR" if op == '>>' else "SHL"
-                self.emit_comment(f"Compound shift {op_mnemonic} by {shift_amount}")
-                for _ in range(shift_amount):
-                    self.emit(f"    {op_mnemonic} {var_reg}, 1")
+                # Shift operations: constant amounts unroll; variable amounts
+                # (any int expression) use a counted runtime loop.
+                if isinstance(value.right, Number):
+                    self._emit_shift(var_reg, int(value.right.value, 0),
+                                     op == '>>', prefix="shift")
+                else:
+                    can_push = self.current_function != 'timer_interrupt'
+                    if can_push:
+                        self.emit(f"    PUSH {var_reg}")
+                        count_reg = self.generate_expression(value.right)
+                        count_reg = self._pop_preserving(var_reg, count_reg)
+                    else:
+                        # ISR: no stack protection; the SP-relative target
+                        # load allocates nothing, so re-home the count and
+                        # shift in place without evaluating anything else.
+                        count_reg = self.generate_expression(value.right)
+                        saved = self.get_register(exclude={count_reg})
+                        self.emit(f"    MOV {saved}, {count_reg}")
+                        count_reg = saved
+                    self._emit_shift(var_reg, count_reg, op == '>>',
+                                     prefix="shift")
+                    self.free_register()
             else:
                 rhs_reg = self.generate_expression(value.right)
                 # Float compound assignment (f += x, f *= x, ...): the target
@@ -2276,14 +2372,15 @@ class CodeGenerator:
                 self.emit(f"    POP {addr_reg}")
                 rhs_reg = self._pop_preserving(acc_reg, rhs_reg)
             if compound_op in ('<<', '>>'):
-                if not isinstance(rhs, Number):
-                    raise TypeError(
-                        "Shift amount must be a constant integer for this "
-                        "compiler version.")
-                shift_amount = int(rhs.value, 0)
-                op_mnemonic = "SHR" if compound_op == '>>' else "SHL"
-                for _ in range(shift_amount):
-                    self.emit(f"    {op_mnemonic} {acc_reg}, 1")
+                if isinstance(rhs, Number):
+                    self._emit_shift(acc_reg, int(rhs.value, 0),
+                                     compound_op == '>>', prefix="shift")
+                else:
+                    # Variable shift count: rhs was evaluated across the
+                    # PUSH/POP protection of acc (stack top addr, then acc);
+                    # rhs_reg now holds the runtime count.
+                    self._emit_shift(acc_reg, rhs_reg, compound_op == '>>',
+                                     prefix="shift")
             elif compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
             elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
             elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
@@ -2339,11 +2436,16 @@ class CodeGenerator:
             rhs = stmt.value.right
 
         self.emit_comment(f"Array assignment to {target.name}[...]")
+
+        if not can_push:
+            # ISR: no PUSH protection possible (see helper).
+            return self._generate_isr_array_assignment(
+                target, info, compound_op, rhs)
+
         idx_reg = self.generate_expression(target.index)
-        if can_push:
-            # Preserve the index across RHS evaluation: expression temporaries
-            # are round-robin reused and a deep RHS could clobber idx_reg.
-            self.emit(f"    PUSH {idx_reg}")
+        # Preserve the index across RHS evaluation: expression temporaries
+        # are round-robin reused and a deep RHS could clobber idx_reg.
+        self.emit(f"    PUSH {idx_reg}")
 
         store_reg = None
         if compound_op:
@@ -2352,23 +2454,26 @@ class CodeGenerator:
             acc_reg = self.get_register()
             self._emit_mem_load(acc_reg, addr_reg, info['elem_size'])
             if compound_op in ('<<', '>>'):
-                # Shift amounts are compile-time constants: no codegen runs
-                # between the load and the shifts, so acc cannot be clobbered.
-                if not isinstance(rhs, Number):
-                    raise TypeError("Shift amount must be a constant integer for this compiler version.")
-                shift_amount = int(rhs.value, 0)
-                op_mnemonic = "SHR" if compound_op == '>>' else "SHL"
-                for _ in range(shift_amount):
-                    self.emit(f"    {op_mnemonic} {acc_reg}, 1")
+                if isinstance(rhs, Number):
+                    self._emit_shift(acc_reg, int(rhs.value, 0),
+                                     compound_op == '>>', prefix="shift")
+                else:
+                    # Variable shift count: stash the loaded element on the
+                    # stack (the index sits below it) while the count is
+                    # evaluated, then restore and apply the counted loop.
+                    self.emit(f"    PUSH {acc_reg}")
+                    rhs_reg = self.generate_expression(rhs)
+                    rhs_reg = self._pop_preserving(acc_reg, rhs_reg)
+                    self._emit_shift(acc_reg, rhs_reg, compound_op == '>>',
+                                     prefix="shift")
+                    self.free_register()
             else:
                 # Stash the loaded element across RHS evaluation, restore it,
                 # THEN apply the operation (applying before the POP would let
                 # the stale stacked value overwrite the computed result).
-                if can_push:
-                    self.emit(f"    PUSH {acc_reg}")
+                self.emit(f"    PUSH {acc_reg}")
                 rhs_reg = self.generate_expression(rhs)
-                if can_push:
-                    rhs_reg = self._pop_preserving(acc_reg, rhs_reg)
+                rhs_reg = self._pop_preserving(acc_reg, rhs_reg)
                 if compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
                 elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
                 elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
@@ -2383,12 +2488,78 @@ class CodeGenerator:
             val_reg = self.generate_expression(rhs)
             store_reg = val_reg
 
-        if can_push:
-            # The index was stashed across RHS evaluation; restore it without
-            # destroying the computed value (register names can alias).
-            store_reg = self._pop_preserving(idx_reg, store_reg)
+        # The index was stashed across RHS evaluation; restore it without
+        # destroying the computed value (register names can alias).
+        store_reg = self._pop_preserving(idx_reg, store_reg)
         addr_reg = self.get_register(exclude={idx_reg, store_reg})
         self._emit_array_addr(info, idx_reg, addr_reg)
+        self._emit_mem_store(addr_reg, store_reg, info['elem_size'])
+        return store_reg
+
+    def _generate_isr_array_assignment(self, target, info, compound_op, rhs):
+        """ISR variant of generate_array_assignment.
+
+        The stack is reserved for the handler's SP-relative frame, so the
+        index cannot be PUSH-protected across RHS evaluation the way the
+        normal path does. Round-robin temporaries wrap after seven
+        allocations, so an RHS evaluating several array reads would
+        otherwise clobber the target's index register before the final
+        store recomputes the address from it. Evaluate the RHS FIRST:
+        the index and address temporaries are then allocated last and
+        stay live only across the load/store pair."""
+        rhs_reg = None
+        rhs_const_shift = None
+        if compound_op not in ('<<', '>>'):
+            # Every non-shift RHS is evaluated up front.
+            rhs_reg = self.generate_expression(rhs)
+            # Re-home the RHS result into a register allocated AFTER the
+            # whole RHS evaluation. The round-robin revisits a register
+            # every 7 allocations, and the RHS result's register may be
+            # revisited as early as the very next allocation (deep RHS).
+            # A fresh allocation here can never alias the result register
+            # within one wrap period (or it resets the revisit clock if
+            # it does), giving the index evaluation below a full safe
+            # distance before the final store needs the value.
+            result_reg = self.get_register()
+            self.emit(f"    MOV {result_reg}, {rhs_reg}")
+            rhs_reg = result_reg
+        else:
+            # Shift amounts may be a compile-time constant (unrolled) or any
+            # runtime integer expression (counted loop).
+            rhs_const_shift = (int(rhs.value, 0)
+                               if isinstance(rhs, Number) else None)
+            if rhs_const_shift is None:
+                rhs_reg = self.generate_expression(rhs)
+                result_reg = self.get_register()
+                self.emit(f"    MOV {result_reg}, {rhs_reg}")
+                rhs_reg = result_reg
+
+        idx_reg = self.generate_expression(target.index)
+        excluded = {idx_reg} | ({rhs_reg} if rhs_reg else set())
+        addr_reg = self.get_register(exclude=excluded)
+        self._emit_array_addr(info, idx_reg, addr_reg)
+        if compound_op:
+            acc_reg = self.get_register(exclude=excluded | {addr_reg})
+            self._emit_mem_load(acc_reg, addr_reg, info['elem_size'])
+            if compound_op in ('<<', '>>'):
+                if rhs_const_shift is not None:
+                    self._emit_shift(acc_reg, rhs_const_shift,
+                                     compound_op == '>>', prefix="shift")
+                elif rhs_reg is not None:
+                    self._emit_shift(acc_reg, rhs_reg, compound_op == '>>',
+                                     prefix="shift")
+            elif compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
+            elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
+            elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
+            elif compound_op == '/': self.emit(f"    DIV {acc_reg}, {rhs_reg}")
+            elif compound_op == '%': self.emit(f"    MOD {acc_reg}, {rhs_reg}")
+            elif compound_op == '&': self.emit(f"    AND {acc_reg}, {rhs_reg}")
+            elif compound_op == '|': self.emit(f"    OR {acc_reg}, {rhs_reg}")
+            elif compound_op == '^': self.emit(f"    XOR {acc_reg}, {rhs_reg}")
+            else: raise SyntaxError(f"Unknown compound operator '{compound_op}'")
+            store_reg = acc_reg
+        else:
+            store_reg = rhs_reg
         self._emit_mem_store(addr_reg, store_reg, info['elem_size'])
         return store_reg
 
@@ -2471,7 +2642,19 @@ class CodeGenerator:
             rhs_reg = self.generate_expression(rhs)
             if can_push:
                 rhs_reg = self._pop_preserving(acc_reg, rhs_reg)
-            if compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
+            if compound_op == '<<':
+                if isinstance(rhs, Number):
+                    self._emit_shift(acc_reg, int(rhs.value, 0), False,
+                                     prefix="shift")
+                else:
+                    self._emit_shift(acc_reg, rhs_reg, False, prefix="shift")
+            elif compound_op == '>>':
+                if isinstance(rhs, Number):
+                    self._emit_shift(acc_reg, int(rhs.value, 0), True,
+                                     prefix="shift")
+                else:
+                    self._emit_shift(acc_reg, rhs_reg, True, prefix="shift")
+            elif compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
             elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
             elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
             elif compound_op == '/': self.emit(f"    DIV {acc_reg}, {rhs_reg}")
@@ -2513,6 +2696,46 @@ class CodeGenerator:
             self.emit(f"    MOV {dst_reg}, R0")
         else:
             self.emit(f"    MOV {dst_reg}, [{addr_reg}]")
+
+    def _emit_shift(self, reg: str, shift, is_right: bool,
+                    prefix: str = "shift"):
+        """Shift a register left/right by a constant OR a runtime count.
+
+        ``shift`` is either a Python int (the count is a compile-time
+        literal, so the shift unrolls into count single-step instructions --
+        branch-free and fast) or a register name holding the count at
+        runtime, in which case a counted loop is emitted:
+
+            CMP count, 0
+            JZ  done
+        loop:
+            SHL/SHR reg, 1
+            DEC  count
+            JNZ  loop
+        done:
+
+        The count register is consumed (decremented to zero), matching C's
+        by-value expression semantics for shift amounts.  The loop shares no
+        temporaries across iterations, so a variable shift amount is fully
+        general where the previous compiler version required a constant
+        (``TypeError: Shift amount must be a constant integer``).
+        """
+        mnemonic = "SHR" if is_right else "SHL"
+        if isinstance(shift, int):
+            self.emit_comment(f"Unrolled shift {mnemonic} by {shift}")
+            for _ in range(shift):
+                self.emit(f"    {mnemonic} {reg}, 1")
+            return
+        end_label = self.generate_label(f"{prefix}_end")
+        loop_label = self.generate_label(f"{prefix}_loop")
+        self.emit_comment(f"Runtime shift {mnemonic} by register {shift}")
+        self.emit(f"    CMP {shift}, 0")
+        self.emit(f"    JZ {end_label}")
+        self.emit_label(loop_label)
+        self.emit(f"    {mnemonic} {reg}, 1")
+        self.emit(f"    DEC {shift}")
+        self.emit(f"    JNZ {loop_label}")
+        self.emit_label(end_label)
 
     def _pointee_size(self, ptr_expr) -> int:
         """Element size a pointer expression points at (2 unless char*)."""
@@ -3100,14 +3323,32 @@ class CodeGenerator:
                     return result_reg
             
             if expr.op == '>>' or expr.op == '<<':
-                if not isinstance(expr.right, Number):
-                    raise TypeError("Shift amount must be a constant integer for this compiler version.")
-                left_reg = self.generate_expression(expr.left)
-                shift_amount = int(expr.right.value, 0)
-                op_mnemonic = "SHR" if expr.op == '>>' else "SHL"
-                self.emit_comment(f"Unrolled shift {op_mnemonic} by {shift_amount}")
-                for _ in range(shift_amount):
-                    self.emit(f"    {op_mnemonic} {left_reg}, 1")
+                can_push = self.current_function != 'timer_interrupt'
+                is_right = (expr.op == '>>')
+                if isinstance(expr.right, Number):
+                    left_reg = self.generate_expression(expr.left)
+                    self._emit_shift(left_reg, int(expr.right.value, 0),
+                                     is_right, prefix="shift")
+                    return left_reg
+                # Variable shift count (C allows any int expression): protect
+                # the left operand across RHS evaluation (round-robin temps).
+                if can_push:
+                    left_reg = self.generate_expression(expr.left)
+                    self.emit(f"    PUSH {left_reg}")
+                    count_reg = self.generate_expression(expr.right)
+                    count_reg = self._pop_preserving(left_reg, count_reg)
+                else:
+                    # ISR: no stack protection possible. Evaluate the count
+                    # FIRST and re-home it into a fresh register (allocated
+                    # after the whole RHS, so the LHS evaluation below cannot
+                    # revisit it within one wrap period).
+                    count_reg = self.generate_expression(expr.right)
+                    saved = self.get_register(exclude={count_reg})
+                    self.emit(f"    MOV {saved}, {count_reg}")
+                    count_reg = saved
+                    left_reg = self.generate_expression(expr.left)
+                self._emit_shift(left_reg, count_reg, is_right, prefix="shift")
+                self.free_register()
                 return left_reg
 
             left_reg = self.generate_expression(expr.left)
@@ -3174,30 +3415,38 @@ class CodeGenerator:
                 self.emit(f"    {'FDIV' if float_op else 'DIV'} {left_reg}, {right_reg}")
             elif op == '%': self.emit(f"    MOD {left_reg}, {right_reg}")
             elif op in ['==', '!=', '>', '<', '>=', '<=']:
-                # Use unsigned comparisons (JC/JNC) based on carry flag for
-                # <, >, <=, >=.  After CMP a,b (a-b), carry = 1 (borrow) iff
-                # a < b (unsigned).  For > and <= we swap operands so a single
-                # conditional jump suffices.
                 true_label = self.generate_label("cmp_true")
                 end_label = self.generate_label("cmp_end")
-                if op == '==':
+                if op in ('==', '!='):
+                    # Equality is the same under both interpretations.
                     self.emit(f"    CMP {left_reg}, {right_reg}")
-                    self.emit(f"    JZ {true_label}")
-                elif op == '!=':
+                    self.emit(f"    {'JZ' if op == '==' else 'JNZ'} {true_label}")
+                elif self._use_signed_comparison(expr.left, expr.right):
+                    # Signed (two's-complement) comparison via the CPU's
+                    # overflow⊕sign jumps: CMP left, right then JLT/JGE/JGT/JLE
+                    # maps exactly to C's signed relational operators.  Used
+                    # when a float (Q8.8) or a negative-valued constant is
+                    # involved; plain byte/pointer comparisons stay unsigned.
+                    self.emit_comment("Signed comparison (two's complement)")
                     self.emit(f"    CMP {left_reg}, {right_reg}")
-                    self.emit(f"    JNZ {true_label}")
+                    cmp_jump = {'<': 'JLT', '>=': 'JGE',
+                                '>': 'JGT', '<=': 'JLE'}[op]
+                    self.emit(f"    {cmp_jump} {true_label}")
                 elif op == '<':
+                    # Unsigned: after CMP a,b (a-b) the borrow/carry flag is
+                    # set iff a < b.
                     self.emit(f"    CMP {left_reg}, {right_reg}")
-                    self.emit(f"    JC {true_label}")     # borrow → left < right (unsigned)
+                    self.emit(f"    JC {true_label}")
                 elif op == '>=':
                     self.emit(f"    CMP {left_reg}, {right_reg}")
-                    self.emit(f"    JNC {true_label}")   # no borrow → left >= right (unsigned)
+                    self.emit(f"    JNC {true_label}")
                 elif op == '>':
+                    # Swap operands so a single carry test suffices.
                     self.emit(f"    CMP {right_reg}, {left_reg}")
-                    self.emit(f"    JC {true_label}")     # borrow of (right-left) → right < left → left > right (unsigned)
+                    self.emit(f"    JC {true_label}")
                 elif op == '<=':
                     self.emit(f"    CMP {right_reg}, {left_reg}")
-                    self.emit(f"    JNC {true_label}")   # no borrow → right >= left → left <= right (unsigned)
+                    self.emit(f"    JNC {true_label}")
                 self.emit(f"    MOV {left_reg}, 0")
                 self.emit(f"    JMP {end_label}")
                 self.emit_label(true_label)
@@ -3653,6 +3902,50 @@ class CodeGenerator:
                 return 'float'
             return 'int'
         return None
+
+    def _use_signed_comparison(self, left: Expression,
+                               right: Expression) -> bool:
+        """Whether a relational <, <=, >, >= should use signed jumps.
+
+        Nova-16 offers both unsigned (JC/JNC borrow-based) and signed
+        (JLT/JGE/JGT/JLE, overflow XOR sign) comparison families.  Astrid
+        mirrors C's default-signed semantics wherever the operands' types
+        or values make the intent unambiguous:
+
+        * ``char`` / ``binary`` / ``string`` values are byte-oriented and
+          compare unsigned (their high bit legitimately encodes 128-255).
+        * Q8.8 ``float`` uses a signed fixed-point representation, so any
+          float comparison is signed.
+        * A compile-time constant whose top bit is set (negative literal
+          such as -1 or -0x8000, or a hex constant 0x8000+ written
+          directly) flips the comparison to signed -- the C interpretation
+          of such a constant is a negative number.
+
+        Everything else keeps the historical unsigned behavior: pointer
+        values, addresses, and program counters live at 0x8000+ and must
+        not be treated as negatives.
+        """
+        ltype = self._cast_source_type(left)
+        rtype = self._cast_source_type(right)
+        if ltype in ('char', 'binary', 'string') or \
+                rtype in ('char', 'binary', 'string'):
+            return False
+        if ltype == 'float' or rtype == 'float':
+            return True
+        lval = self._const_eval(left)
+        rval = self._const_eval(right)
+        if lval is not None and (lval & 0x8000):
+            return True
+        if rval is not None and (rval & 0x8000):
+            return True
+        # A direct comparison with literal zero is C's most common sign
+        # check (`x < 0`, `x >= 0`, `0 < x`): treat it as signed.  The
+        # char/binary/string exclusions above already keep byte values
+        # unsigned, and no existing Nova-16 program compares addresses
+        # against 0 (null pointers use ==/!=).
+        if lval == 0 or rval == 0:
+            return True
+        return False
 
     def generate_call(self, call: FuncCall) -> str:
         self.emit_comment(f"Call to {call.name}")

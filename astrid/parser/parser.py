@@ -59,7 +59,7 @@ class PostfixOp(Expression):
 class Program(ASTNode):
     def __init__(self, functions: List["FunctionDef"], globals_: Optional[List["VarDecl"]] = None,
                  enum_constants: Optional[Dict[str, int]] = None,
-                 structs: Optional[Dict[str, List[str]]] = None):
+                                   structs: Optional[Dict[str, List]] = None):
         self.functions = functions
         # Top-level (global) variable declarations. Empty for sources that
         # only define functions; populated when the source declares variables
@@ -69,10 +69,12 @@ class Program(ASTNode):
         # Shared dict instance also held by the parser so enums declared
         # inside function bodies are visible program-wide.
         self.enum_constants: Dict[str, int] = enum_constants if enum_constants is not None else {}
-        # Struct definitions (tag -> ordered list of field names). Every
-        # field occupies one 16-bit word slot, so a struct's byte size is
-        # len(fields) * 2 and field i lives at byte offset i * 2.
-        self.structs: Dict[str, List[str]] = structs if structs is not None else {}
+                # Struct definitions (tag -> ordered list of (field_name, field_type)
+        # tuples). Every field occupies one 16-bit word slot, so a struct's
+        # byte size is len(fields) * 2 and field i lives at byte offset i * 2.
+        # The type is retained so the code generator can resolve float/char
+        # member types for comparison and promotion decisions.
+        self.structs: Dict[str, List] = structs if structs is not None else {}
 
 class FunctionDef(ASTNode):
     def __init__(self, return_type: str, name: str, params: List["VarDecl"], body: List["ASTNode"]):
@@ -726,7 +728,7 @@ class Parser:
         tag = self.current.value
         self.expect('IDENTIFIER')
         self.expect('DELIMITER', '{')
-        fields: List[str] = []
+        fields: List = []
         while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
             ftype = self.current.value
             if self.current.type != 'KEYWORD' or \
@@ -738,11 +740,14 @@ class Parser:
             while True:
                 fname = self.current.value
                 self.expect('IDENTIFIER')
-                if fname in fields:
+                # Duplicate-field check: compare field names only (not types),
+                # so `int x; float x;` is still caught as a redeclaration.
+                _existing = [name for name, _ in fields]
+                if fname in _existing:
                     raise SyntaxError(
                         f"Duplicate field '{fname}' in struct '{tag}' "
                         f"(line {self.current.line})")
-                fields.append(fname)
+                fields.append((fname, ftype))
                 if self.current.type == 'DELIMITER' and self.current.value == ',':
                     self.advance()
                 else:
@@ -754,6 +759,8 @@ class Parser:
         self.expect('DELIMITER', '}')
         if not fields:
             raise SyntaxError(f"Struct '{tag}' has no fields")
+        # fields now holds (name, type) tuples; the layout comparison and
+        # codegen extract names/types from this shape.
         if tag in self.struct_defs and self.struct_defs[tag] != fields:
             raise SyntaxError(
                 f"Struct '{tag}' redefined with a different layout")
@@ -804,16 +811,25 @@ class Parser:
             self._skip_const()
             var_type = self.current.value
             self.expect('KEYWORD')
+            struct_tag = None
             if var_type == 'struct':
                 tag_tok = self.current
                 if tag_tok.type != 'IDENTIFIER':
                     raise SyntaxError(
                         f"Expected a struct tag name after 'struct' in "
                         f"parameter list (line {tag_tok.line})")
-                raise SyntaxError(
-                    f"Struct parameters are not supported "
-                    f"(parameter near line {tag_tok.line}); pass a pointer "
-                    f"(struct Tag *p) or individual fields instead")
+                struct_tag = tag_tok.value
+                self.advance()
+                # By-value struct parameters are unsupported (no hidden
+                # copy semantics); pointer forms (`struct Tag *p`) are
+                # accepted and decoded via the pointee layout for ->field.
+                if not (self.current.type == 'OPERATOR'
+                        and self.current.value == '*'):
+                    raise SyntaxError(
+                        f"Struct parameters are not supported by value; "
+                        f"pass a pointer (struct {struct_tag} *p) or "
+                        f"individual fields instead "
+                        f"(parameter near line {tag_tok.line})")
             pointer_depth = 0
             while self.current.type == 'OPERATOR' and self.current.value == '*':
                 pointer_depth += 1
@@ -831,7 +847,8 @@ class Parser:
                 is_array_param = True
             params.append(VarDecl(var_type, name, None,
                                   pointer_depth=pointer_depth,
-                                  is_array_param=is_array_param))
+                                  is_array_param=is_array_param,
+                                  struct_tag=struct_tag))
             if self.current.type == 'DELIMITER' and self.current.value == ',':
                 self.advance()
             else:

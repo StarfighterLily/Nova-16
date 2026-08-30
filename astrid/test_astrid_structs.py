@@ -99,14 +99,14 @@ def test_parser_struct_definition_recorded():
     ast = parse_source(
         'struct Point { int x; int y; };' + chr(10) +
         'void main() { }')
-    assert ast.structs == {'Point': ['x', 'y']}
+    assert ast.structs == {'Point': [('x', 'int'), ('y', 'int')]}
 
 
 def test_parser_struct_multi_name_fields():
     ast = parse_source(
         'struct S { int a, b; char c; };' + chr(10) +
         'void main() { }')
-    assert ast.structs == {'S': ['a', 'b', 'c']}
+    assert ast.structs == {'S': [('a', 'int'), ('b', 'int'), ('c', 'char')]}
 
 
 def test_parser_struct_definition_inside_function():
@@ -115,7 +115,7 @@ def test_parser_struct_definition_inside_function():
         '    struct Inner { int v; };' + chr(10) +
         '    return 0;' + chr(10) +
         '}')
-    assert ast.structs == {'Inner': ['v']}
+    assert ast.structs == {'Inner': [('v', 'int')]}
 
 
 def test_parser_member_access_node():
@@ -764,7 +764,7 @@ def test_include_merges_struct_definitions(unit):
         '}',
     ]))
     ast = unit.parse('main.ast')
-    assert ast.structs == {'Vec': ['dx', 'dy']}
+    assert ast.structs == {'Vec': [('dx', 'int'), ('dy', 'int')]}
     proc, cycles, mem = unit.compile_and_run('main.ast')
     assert proc.r0 == 42
     print(f'PASS test_include_merges_struct_definitions (R0={proc.r0})')
@@ -807,7 +807,7 @@ def test_parser_footer_declarators_recorded():
     ast = parse_source(
         'struct P { int x; int y; } a, b[2], *c;' + chr(10) +
         'void main() { }')
-    assert ast.structs == {'P': ['x', 'y']}
+    assert ast.structs == {'P': [('x', 'int'), ('y', 'int')]}
     names = [(g.name, g.struct_tag) for g in ast.globals]
     assert names == [('a', 'P'), ('b', 'P'), ('c', 'P')]
     assert not ast.globals[0].is_array

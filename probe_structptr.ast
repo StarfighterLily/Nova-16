@@ -1,0 +1,10 @@
+struct Point { int x; int y; };
+int getx(struct Point *p) {
+    return p->x;
+}
+int main() {
+    struct Point pt;
+    pt.x = 42;
+    pt.y = 7;
+    return getx(&pt);
+}
