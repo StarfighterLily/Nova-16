@@ -1,4 +1,0 @@
-int main() {
-    int x = (int)"1234";
-    return x;
-}

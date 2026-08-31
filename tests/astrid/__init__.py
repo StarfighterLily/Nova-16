@@ -1,0 +1,1 @@
+"""Astrid compiler tests."""

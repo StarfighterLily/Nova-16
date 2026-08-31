@@ -559,23 +559,30 @@ class NovaSound:
         """Get status of all sound channels"""
         return [state.copy() for state in self.channel_states]
     
-    def cleanup(self):
-        """Clean up sound system resources"""
+    def cleanup(self, quiet=False):
+        """Clean up sound system resources.
+
+        quiet=True suppresses the status prints -- used by __del__, whose
+        output would otherwise leak into whatever code is running when the
+        garbage collector finalizes the instance (e.g. mid-assertion in a
+        test capturing stdout).
+        """
         try:
             # Check if mixer is still initialized before trying to stop sounds
             if pygame.mixer.get_init():
                 self.sstop()  # Stop all sounds
                 pygame.mixer.quit()
-                print("Nova Sound System cleaned up")
-            else:
+                if not quiet:
+                    print("Nova Sound System cleaned up")
+            elif not quiet:
                 print("")
         except Exception as e:
             print(f"Error during sound cleanup: {e}")
-    
+
     def __del__(self):
         """Destructor to ensure cleanup"""
         try:
-            self.cleanup()
+            self.cleanup(quiet=True)
         except:
             pass  # Ignore cleanup errors during destruction
 
