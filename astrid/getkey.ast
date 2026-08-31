@@ -1,0 +1,9 @@
+void main() {
+    while (1) {
+        if (key_available()) {
+            screen_fill(0x00);
+            set_pos(128, 128);
+            write_text((string)key_read(), 0x1F);
+        }
+    }
+}

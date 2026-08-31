@@ -256,10 +256,22 @@ class CodeGenerator:
             'POP P0', 'POP P1', 'POP P2', 'SCIRC P1, P2', 'PUSH P0', 'RET',
         ],
         'builtin_screen_invert': [
-            'SINV', 'RET',
+            'POP P0', 'SINV', 'PUSH P0', 'RET',
         ],
         'builtin_screen_blit': [
-            'SBLIT', 'RET',
+            'POP P0', 'SBLIT', 'PUSH P0', 'RET',
+        ],
+        'builtin_sprite_blit': [
+            '; sprite_blit(sprite_id): blit the sprite with the given ID (0-15).',
+            '; The SCB (16 bytes per sprite at 0xF000 + id*16) must already be',
+            '; programmed: data address (big-endian word = two poke() calls),',
+            '; x, y, width, height, flags, transparency color.',
+            'POP P0', 'POP P1', 'SPBLIT P1', 'PUSH P0', 'RET',
+        ],
+        'builtin_sprite_blitall': [
+            '; sprite_blitall(): blit all active sprites (0-15) from their SCBs.',
+            '; Clears sprite layers 5-8 first, then renders every active sprite.',
+            'POP P0', 'SPBLITALL', 'PUSH P0', 'RET',
         ],
         'builtin_set_blend_mode': [
             'POP P0', 'POP P1', 'SBLEND P1', 'PUSH P0', 'RET',
@@ -464,7 +476,7 @@ class CodeGenerator:
         'builtin_memcpy': [
             'POP P3', 'POP P1', 'POP P2', 'POP P4', 'MEMCPY P1, P2, P4', 'MOV P0, P1', 'PUSH P3', 'RET',
         ],
-        'builtin_memset': [
+        'builtin_memset': [    # memset(addr, value, length)
             'POP P3', 'POP P1', 'POP P2', 'POP P4', 'MEMSET P1, P2, P4', 'MOV P0, P1', 'PUSH P3', 'RET',
         ],
         'builtin_memmove': [
@@ -762,7 +774,8 @@ class CodeGenerator:
             'set_mode': 'builtin_set_vmode', 'set_vmode': 'builtin_set_vmode',
             'set_layer': 'builtin_set_layer', 'set_pos': 'builtin_set_pos',
             'write_screen': 'builtin_write_screen', 'read_screen': 'builtin_read_screen',
-            'screen_fill': 'builtin_screen_fill',
+            'screen_fill': 'builtin_screen_fill', 'sprite_blit': 'builtin_sprite_blit',
+            'sprite_blitall': 'builtin_sprite_blitall',
             # scroll_x/scroll_y/roll_x/roll_y are dispatched to arity-specific
             # stubs at call sites (see ARITY_BUILTINS); these base labels cover
             # the 1-argument form scroll_x(layer).

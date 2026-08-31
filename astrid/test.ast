@@ -1,0 +1,86 @@
+void memsprite(int addr, int sprite[64]) {
+    set_bank(1);
+    for (int x = 0; x < 64; x++) {
+        poke(addr + x, sprite[x]);
+    }
+    set_bank(0);
+}
+
+void SCBwrite(int id, int addrhi, int addrlo, int x, int y, int w, int h, int flags, int transparency) {
+    int base;
+    base = 0xF000 + (id * 16);
+    poke(base+0, addrhi);
+    poke(base+1, addrlo);
+    poke(base+2, x);
+    poke(base+3, y);
+    poke(base+4, w);
+    poke(base+5, h);
+    poke(base+6, flags);
+    poke(base+7, transparency);
+}
+
+void sprblit(int id) {
+    set_bank(1);
+    sprite_blit(id);
+    set_bank(0);
+}
+
+void movesprite(int id) {
+    int x = peek((0xf000 + (id * 16)) + 2);
+    int y = peek((0xf000 + (id * 16)) + 3);    
+    switch (key_read()) {
+        case 119:
+            y -= 4;
+            break;
+        case 115:
+            y += 4;
+            break;
+        case 97:
+            x -= 4;
+            break;
+        case 100:
+            x += 4;
+            break;
+    }
+    if (x > 255) {
+        x = 255;
+    }
+    if (y > 255) {
+        y = 255;
+    }
+    if (x < 0) {
+        x = 0;
+    }
+    if (y < 0) {
+        y = 0;
+    }
+    poke((0xf000 + (id * 16)) + 2, x);
+    poke((0xf000 + (id * 16)) + 3, y);
+}
+
+void main() {
+    int counter = 0;
+    int sprite[64] = {00,00,00,10,10,00,00,00,
+                      00,00,15,10,10,15,00,00,
+                      00,00,00,10,10,00,00,00,
+                      00,00,00,15,15,00,00,00,
+                      15,00,15,15,15,15,00,15,
+                      15,15,08,15,15,08,15,15,
+                      00,00,31,00,00,31,00,00,
+                      00,00,127,00,00,127,00,00};
+
+    memsprite(0x8000, sprite);
+    SCBwrite(0, 0x80, 0x00, 128, (255-8), 8, 8, 0b00000011, 0xFF);
+
+    while (1) {
+        counter++;
+        if ((counter % 60) == 0) {
+            counter = 0;
+            set_layer(5);
+            screen_fill(0x00);
+            set_layer(0);
+            sprblit(0);
+        }
+        movesprite(0);
+    }
+}

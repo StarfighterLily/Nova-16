@@ -1,0 +1,32 @@
+void main() {
+    int x = 0;
+    int y = 0;
+    int color = 0;
+    int counter = 0;
+    while (y != 255) {
+        x++;
+        if (x == 255) {
+            x = 0;
+            y++;
+            if ((y % 8) == 0) {
+                roll_x(0,1);
+            }
+        }
+        color++;
+        if (color == 255) {
+            color = 0;
+        }
+        set_pos(x, y);
+        write_screen(color);
+    }
+    set_layer(5);
+    set_pos((256-(14*8))/2, (256-(1*8))/2);
+    write_text("De Nova Stella", 0x5F);
+    while (1) {
+        counter++;
+        if (counter % 5120 == 0) {
+            roll_x(0,1);
+            counter = 0;
+        }
+    }
+}

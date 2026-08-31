@@ -1,0 +1,12 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+func_main 0x100F
+while_start_0 0x1012
+if_end_2 0x1073
+while_end_1 0x1077
+builtin_set_pos 0x107F
+builtin_screen_fill 0x1094
+builtin_write_text 0x10A1
+builtin_key_available 0x10B5
+builtin_key_read 0x10B9

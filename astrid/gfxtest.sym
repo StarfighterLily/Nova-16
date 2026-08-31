@@ -1,0 +1,30 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+func_main 0x100F
+while_start_0 0x1036
+cmp_true_2 0x1056
+cmp_end_3 0x105A
+cmp_true_6 0x1093
+cmp_end_7 0x1097
+cmp_true_10 0x10E6
+cmp_end_11 0x10EA
+if_end_8 0x1108
+if_end_4 0x1108
+cmp_true_14 0x1139
+cmp_end_15 0x113D
+if_end_12 0x114E
+while_end_1 0x117A
+while_start_17 0x11B6
+cmp_true_21 0x1201
+cmp_end_22 0x1205
+if_end_19 0x122C
+while_end_18 0x1230
+str_16 0x1238
+builtin_set_layer 0x1247
+builtin_set_pos 0x1255
+builtin_write_screen 0x126A
+builtin_roll_x_2 0x1277
+builtin_roll_x_2_fwd 0x1299
+builtin_roll_x_2_end 0x129D
+builtin_write_text 0x12A5

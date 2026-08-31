@@ -1,0 +1,15 @@
+include "data.ash";
+include "shell.ash";
+
+void main() {
+    levelDraw();
+    while (!Enemy.ehit) {
+        Player.counter++;
+        clearSword();
+        chkKey();
+        drawPlayer(Player.x, Player.y);
+        enemy();
+    }
+    clearLayers();
+    print(1, (256-(3*8))/2, (256-(1*8))/2, input(), 0x5F);
+}

@@ -521,7 +521,7 @@ def handle_memory_search(args, *, ensure_emulator, state) -> str:
     if end < start:
         return json.dumps({"error": "end must be >= start"})
 
-    data = bytes(int(memory.read(index)) for index in range(start, end + 1))
+    data = bytes(memory.read_bytes_direct(start, end - start + 1))
     matches: List[int] = []
     idx = 0
     while idx <= len(data) - len(pattern) and len(matches) < max_results:
