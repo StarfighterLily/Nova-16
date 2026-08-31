@@ -74,7 +74,7 @@ void main() {
 
     while (1) {
         counter++;
-        if ((counter % 60) == 0) {
+        if (!(counter % 60)) {
             counter = 0;
             set_layer(5);
             screen_fill(0x00);

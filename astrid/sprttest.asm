@@ -307,7 +307,7 @@ switch_end_5:
 ; If statement
 MOV P1, [0xC180]
 PUSH P1
-MOV P2, 248
+MOV P2, 255
 POP P1
 CMP P2, P1
 JC cmp_true_12
@@ -325,7 +325,7 @@ if_end_10:
 ; If statement
 MOV P5, [0xC182]
 PUSH P5
-MOV P6, 248
+MOV P6, 255
 POP P5
 CMP P6, P5
 JC cmp_true_16
@@ -696,7 +696,7 @@ PUSH P7
 CALL func_memsprite
 ADD SP, 4 ; Caller cleans up args
 ; Call to SCBwrite
-MOV P1, 255
+MOV P1, 0
 PUSH P1
 MOV P2, 3
 PUSH P2
@@ -732,52 +732,49 @@ PUSH P0
 MOV P1, 60
 POP P0
 MOD P0, P1
-PUSH P0
-MOV P2, 0
-POP P0
-CMP P0, P2
-JZ cmp_true_30
+CMP P0, 0
+JZ not_true_30
 MOV P0, 0
-JMP cmp_end_31
-cmp_true_30:
+JMP not_end_31
+not_true_30:
 MOV P0, 1
-cmp_end_31:
+not_end_31:
 CMP P0, 0
 JZ if_end_28
 ; Assignment to counter
-MOV P4, 0
-MOV [0xC200], P4
+MOV P2, 0
+MOV [0xC200], P2
 ; Call to set_layer
-MOV P5, 5
-PUSH P5
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P6, R0
-; Call to screen_fill
-MOV P7, 0
-PUSH P7
-CALL builtin_screen_fill
-; Args consumed by callee
-MOV P0, R0
-; Call to set_layer
-MOV P1, 0
-PUSH P1
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P2, R0
-; Call to sprblit
-MOV P4, 0
+MOV P4, 5
 PUSH P4
-CALL func_sprblit
-ADD SP, 2 ; Caller cleans up args
-MOV P5, P0
-if_end_28:
-; Call to movesprite
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P5, R0
+; Call to screen_fill
 MOV P6, 0
 PUSH P6
+CALL builtin_screen_fill
+; Args consumed by callee
+MOV P7, R0
+; Call to set_layer
+MOV P0, 0
+PUSH P0
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P1, R0
+; Call to sprblit
+MOV P2, 0
+PUSH P2
+CALL func_sprblit
+ADD SP, 2 ; Caller cleans up args
+MOV P4, P0
+if_end_28:
+; Call to movesprite
+MOV P5, 0
+PUSH P5
 CALL func_movesprite
 ADD SP, 2 ; Caller cleans up args
-MOV P7, P0
+MOV P6, P0
 JMP while_start_26
 while_end_27:
 ; Implicit return for void function
