@@ -30,6 +30,13 @@ KEYWORDS = {
     'register', 'volatile', 'extern', 'static', 'inline',
     # C type modifiers (normalized to their base type by the parser):
     'signed', 'unsigned', 'long', 'short',
+    # C type alias:
+    'typedef',   # typedef int myint; -- declare a type alias
+    # C unconditional jump:
+    'goto',      # goto label; -- jump to a labeled statement
+    # C overlapping storage (all members share byte offset 0):
+    'union',     # union Tag { int i; char c; }; -- like struct, but overlapping
+
     # Multi-file compilation units:
     'include',   # include "file";   -- splice another file's definitions in
     'inherits',  # inherits "file";  -- pull in a base file, allowing overrides

@@ -59,7 +59,9 @@ class PostfixOp(Expression):
 class Program(ASTNode):
     def __init__(self, functions: List["FunctionDef"], globals_: Optional[List["VarDecl"]] = None,
                  enum_constants: Optional[Dict[str, int]] = None,
-                                   structs: Optional[Dict[str, List]] = None):
+                 structs: Optional[Dict[str, List]] = None,
+                 union_defs: Optional[Dict[str, List]] = None,
+                 type_aliases: Optional[Dict[str, str]] = None):
         self.functions = functions
         # Top-level (global) variable declarations. Empty for sources that
         # only define functions; populated when the source declares variables
@@ -69,12 +71,17 @@ class Program(ASTNode):
         # Shared dict instance also held by the parser so enums declared
         # inside function bodies are visible program-wide.
         self.enum_constants: Dict[str, int] = enum_constants if enum_constants is not None else {}
-                # Struct definitions (tag -> ordered list of (field_name, field_type)
+        # Struct definitions (tag -> ordered list of (field_name, field_type)
         # tuples). Every field occupies one 16-bit word slot, so a struct's
         # byte size is len(fields) * 2 and field i lives at byte offset i * 2.
         # The type is retained so the code generator can resolve float/char
         # member types for comparison and promotion decisions.
         self.structs: Dict[str, List] = structs if structs is not None else {}
+        # Union definitions (tag -> ordered list of field names). All fields
+        # share byte offset 0; the union size is the max field size.
+        self.union_defs: Dict[str, List] = union_defs if union_defs is not None else {}
+        # Type aliases from typedef declarations (alias -> base_type).
+        self.type_aliases: Dict[str, str] = type_aliases if type_aliases is not None else {}
 
 class FunctionDef(ASTNode):
     def __init__(self, return_type: str, name: str, params: List["VarDecl"], body: List["ASTNode"]):
@@ -268,6 +275,29 @@ class SizeofExpr(Expression):
         # expression node whose inferred type determines the size.
         self.target = target
 
+class CommaOp(Expression):
+    """Comma operator: (a, b) evaluates a, then b, yielding b."""
+    def __init__(self, left: "Expression", right: "Expression"):
+        self.left = left
+        self.right = right
+
+class Goto(ASTNode):
+    """goto label; -- unconditional jump to a labeled statement."""
+    def __init__(self, label: str):
+        self.label = label
+
+class Label(ASTNode):
+    """label: statement -- a goto target."""
+    def __init__(self, name: str, stmt: Optional["ASTNode"] = None):
+        self.name = name
+        self.stmt = stmt
+
+class TypedefDecl(ASTNode):
+    """typedef int myint; -- declare a type alias."""
+    def __init__(self, base_type: str, alias: str):
+        self.base_type = base_type
+        self.alias = alias
+
 class Parser:
     def __init__(self, tokens: List[Token], source_path: Optional[str] = None,
                  include_state: Optional[Dict] = None):
@@ -283,6 +313,12 @@ class Parser:
         # Struct definitions accumulate here as `struct Tag { ... };`
         # declarations are parsed; shared with the resulting Program node.
         self.struct_defs: Dict[str, List[str]] = {}
+        # Union definitions accumulate here as `union Tag { ... };`
+        # declarations are parsed. All fields share byte offset 0.
+        self.union_defs: Dict[str, List[str]] = {}
+        # Type aliases from typedef declarations (alias -> base_type).
+        # Shared with the Program node so the codegen can resolve them.
+        self.type_aliases: Dict[str, str] = {}
         # Multi-file support: source_path anchors relative include/inherits
         # paths to the directory of the file being parsed. include_state is
         # shared across the whole compilation so cycles are detected and
@@ -413,6 +449,18 @@ class Parser:
             if self.current.type == 'KEYWORD' and self.current.value == 'enum':
                 self.parse_enum()
                 continue
+            # Typedef declarations introduce type aliases:
+            #   typedef int myint;
+            #   typedef char byte;
+            #   typedef struct Tag mytag;  (also works with existing struct types)
+            if self.current.type == 'KEYWORD' and self.current.value == 'typedef':
+                self.parse_typedef()
+                continue
+            # Union definitions: like struct, but all members share byte offset 0.
+            #   union Tag { int i; char c; };
+            if self.current.type == 'KEYWORD' and self.current.value == 'union':
+                self.parse_union_definition()
+                continue
             # Top-level const qualifiers prefix either functions or globals.
             if self.current.type == 'KEYWORD' and self.current.value == 'const':
                 self.advance()
@@ -452,6 +500,42 @@ class Parser:
                         f"Returning structs from functions is not supported "
                         f"(line {self.current.line})")
                 new_globals = self.parse_var_decl(struct_tag=tag_tok.value)
+                for g in new_globals:
+                    if any(e.name == g.name for e in globals_):
+                        raise SyntaxError(
+                            f"Duplicate definition of global '{g.name}' "
+                            f"at top level")
+                    globals_.append(g)
+                continue
+            # Top-level union-typed global variables:
+            #   union Tag u;  union Tag us[4];
+            if self.current.type == 'KEYWORD' and self.current.value == 'union':
+                tag_tok = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+                if tag_tok is None or tag_tok.type != 'IDENTIFIER':
+                    raise SyntaxError(
+                        f"Expected a union tag name after 'union' "
+                        f"(line {self.current.line})")
+                after = (self.tokens[self.pos + 2]
+                         if self.pos + 2 < len(self.tokens) else None)
+                if after is not None and after.type == 'DELIMITER' and after.value == '{':
+                    # Union definition (already handled above), but footer
+                    # declarators become global variables.
+                    for g in self.parse_union_definition():
+                        if any(e.name == g.name for e in globals_):
+                            raise SyntaxError(
+                                f"Duplicate definition of global '{g.name}' "
+                                f"at top level")
+                        globals_.append(g)
+                    continue
+                # Consume 'union' and the tag name, then parse declarators
+                self.advance()  # consume 'union'
+                if self.current.type != 'IDENTIFIER':
+                    raise SyntaxError(
+                        f"Expected a union tag name after 'union' "
+                        f"(line {self.current.line})")
+                tag = self.current.value
+                self.expect('IDENTIFIER')
+                new_globals = self._parse_declarators('struct', struct_tag=tag)
                 for g in new_globals:
                     if any(e.name == g.name for e in globals_):
                         raise SyntaxError(
@@ -534,7 +618,14 @@ class Parser:
             # rule as enums: the child's own definitions win).
             for tag, fields in unit.structs.items():
                 self.struct_defs.setdefault(tag, fields)
-        return Program(functions, globals_, self.enum_constants, self.struct_defs)
+            # Base-file union definitions fill gaps only (same override rule).
+            for tag, fields in unit.union_defs.items():
+                self.union_defs.setdefault(tag, fields)
+            # Base-file type aliases fill gaps only (same override rule).
+            for alias, base_type in unit.type_aliases.items():
+                self.type_aliases.setdefault(alias, base_type)
+        return Program(functions, globals_, self.enum_constants, self.struct_defs,
+                       self.union_defs, self.type_aliases)
 
     # ------------------------------------------------------------------
     # Multi-file compilation units: include / inherits
@@ -707,6 +798,96 @@ class Parser:
             raise SyntaxError(f"Unknown enum constant '{tok.value}' in enum initializer")
         raise SyntaxError(f"Invalid enum constant value near {tok}")
 
+    def parse_typedef(self):
+        """Parse a typedef declaration: typedef <type> alias;
+
+        Records the alias in self.type_aliases (shared with the Program
+        node). Supports base types and struct/union tags:
+            typedef int myint;
+            typedef char byte;
+            typedef struct Point PointTag;
+        """
+        self.expect('KEYWORD', 'typedef')
+        # Optional 'const' qualifier (ignored, like other qualifiers)
+        self._skip_const()
+        # Handle 'struct Tag' or 'union Tag' as the base type
+        base_type = self.current.value
+        if self.current.type == 'KEYWORD' and base_type in ('struct', 'union'):
+            self.advance()
+            tag = self.current.value
+            self.expect('IDENTIFIER')
+            base_type = f'{base_type} {tag}'
+        elif self.current.type == 'KEYWORD' and base_type in BASE_TYPES:
+            self.advance()
+        elif self.current.type == 'IDENTIFIER' and base_type in self.type_aliases:
+            # typedef myint anotherint; (alias of an alias)
+            self.advance()
+            base_type = self.type_aliases[base_type]
+        else:
+            raise SyntaxError(
+                f"Expected a type name after 'typedef' (line {self.current.line})")
+        # The alias name
+        alias = self.current.value
+        self.expect('IDENTIFIER')
+        if alias in self.type_aliases:
+            raise SyntaxError(f"Type alias '{alias}' already defined")
+        self.type_aliases[alias] = base_type
+        self.expect('DELIMITER', ';')
+
+    def parse_union_definition(self) -> List[VarDecl]:
+        """Parse a union definition with optional footer declarators:
+
+            union Tag { int i; char c; };          -- plain definition
+            union Tag { ... } u1, u2;              -- C-style instances
+
+        Every field shares byte offset 0 (unlike struct where fields are
+        sequential). The union's byte size is the max field size (2 bytes
+        for int/struct, 1 for char). The definition is recorded in
+        self.union_defs.
+        """
+        self.expect('KEYWORD', 'union')
+        tag = self.current.value
+        self.expect('IDENTIFIER')
+        self.expect('DELIMITER', '{')
+        fields: List = []
+        while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
+            ftype = self.current.value
+            if self.current.type != 'KEYWORD' or \
+                    ftype not in {'int', 'char', 'string', 'binary', 'float'}:
+                raise SyntaxError(
+                    f"Unsupported union field type '{ftype}' in union "
+                    f"'{tag}' (line {self.current.line})")
+            self.advance()
+            while True:
+                fname = self.current.value
+                self.expect('IDENTIFIER')
+                _existing = [name for name, _ in fields]
+                if fname in _existing:
+                    raise SyntaxError(
+                        f"Duplicate field '{fname}' in union '{tag}' "
+                        f"(line {self.current.line})")
+                fields.append((fname, ftype))
+                if self.current.type == 'DELIMITER' and self.current.value == ',':
+                    self.advance()
+                else:
+                    break
+            if self.current.type == 'DELIMITER' and self.current.value == ';':
+                self.advance()
+        self.expect('DELIMITER', '}')
+        if not fields:
+            raise SyntaxError(f"Union '{tag}' has no fields")
+        if tag in self.union_defs and self.union_defs[tag] != fields:
+            raise SyntaxError(
+                f"Union '{tag}' redefined with a different layout")
+        self.union_defs[tag] = fields
+        # Optional C-style footer declarators
+        decls: List[VarDecl] = []
+        if self.current.type == 'IDENTIFIER':
+            decls = self._parse_declarators('union', struct_tag=tag)
+        if self.current.type == 'DELIMITER' and self.current.value == ';':
+            self.advance()
+        return decls
+
     def parse_struct_definition(self) -> List[VarDecl]:
         """Parse a struct definition with optional footer declarators:
 
@@ -810,26 +991,55 @@ class Parser:
         while True:
             self._skip_const()
             var_type = self.current.value
-            self.expect('KEYWORD')
             struct_tag = None
-            if var_type == 'struct':
+            # Handle typedef alias as parameter type: void f(myint x)
+            if self.current.type == 'IDENTIFIER' and var_type in self.type_aliases:
+                base = self.type_aliases[var_type]
+                self.advance()
+                if base.startswith('struct ') or base.startswith('union '):
+                    struct_tag = base.split(' ', 1)[1]
+                    var_type = 'struct'
+                else:
+                    var_type = base
+            # Handle union type parameter: void f(union Tag *u)
+            elif self.current.type == 'KEYWORD' and var_type == 'union':
+                self.advance()
                 tag_tok = self.current
                 if tag_tok.type != 'IDENTIFIER':
                     raise SyntaxError(
-                        f"Expected a struct tag name after 'struct' in "
+                        f"Expected a union tag name after 'union' in "
                         f"parameter list (line {tag_tok.line})")
                 struct_tag = tag_tok.value
                 self.advance()
-                # By-value struct parameters are unsupported (no hidden
-                # copy semantics); pointer forms (`struct Tag *p`) are
-                # accepted and decoded via the pointee layout for ->field.
+                var_type = 'struct'  # unions use the same var_type as struct
+                # By-value union parameters are unsupported
                 if not (self.current.type == 'OPERATOR'
                         and self.current.value == '*'):
                     raise SyntaxError(
-                        f"Struct parameters are not supported by value; "
-                        f"pass a pointer (struct {struct_tag} *p) or "
+                        f"Union parameters are not supported by value; "
+                        f"pass a pointer (union {struct_tag} *p) or "
                         f"individual fields instead "
                         f"(parameter near line {tag_tok.line})")
+            else:
+                self.expect('KEYWORD')
+                if var_type == 'struct':
+                    tag_tok = self.current
+                    if tag_tok.type != 'IDENTIFIER':
+                        raise SyntaxError(
+                            f"Expected a struct tag name after 'struct' in "
+                            f"parameter list (line {tag_tok.line})")
+                    struct_tag = tag_tok.value
+                    self.advance()
+                    # By-value struct parameters are unsupported (no hidden
+                    # copy semantics); pointer forms (`struct Tag *p`) are
+                    # accepted and decoded via the pointee layout for ->field.
+                    if not (self.current.type == 'OPERATOR'
+                            and self.current.value == '*'):
+                        raise SyntaxError(
+                            f"Struct parameters are not supported by value; "
+                            f"pass a pointer (struct {struct_tag} *p) or "
+                            f"individual fields instead "
+                            f"(parameter near line {tag_tok.line})")
             pointer_depth = 0
             while self.current.type == 'OPERATOR' and self.current.value == '*':
                 pointer_depth += 1
@@ -892,6 +1102,33 @@ class Parser:
         if self.current.type == 'KEYWORD' and self.current.value == 'const':
             self.advance()
             self._skip_const()
+        # Union-typed local variables: union Tag u;
+        if self.current.type == 'KEYWORD' and self.current.value == 'union':
+            tag_tok = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+            after = self.tokens[self.pos + 2] if self.pos + 2 < len(self.tokens) else None
+            if tag_tok is not None and tag_tok.type == 'IDENTIFIER' and \
+                    after is not None and after.type == 'DELIMITER' and after.value == '{':
+                return self.parse_union_definition()
+            if tag_tok is None or tag_tok.type != 'IDENTIFIER':
+                raise SyntaxError(
+                    f"Expected a union tag name after 'union' "
+                    f"(line {self.current.line})")
+            # Consume 'union' and the tag name, then parse declarators
+            self.advance()  # consume 'union'
+            tag = self.current.value
+            self.expect('IDENTIFIER')
+            return self._parse_declarators('struct', struct_tag=tag)
+        # Typedef alias used as a type: myint x;
+        if self.current.type == 'IDENTIFIER' and self.current.value in self.type_aliases:
+            alias = self.current.value
+            self.advance()
+            # Resolve the alias to its base type and parse declarators
+            base_type = self.type_aliases[alias]
+            # Handle struct/union base types
+            if base_type.startswith('struct ') or base_type.startswith('union '):
+                tag = base_type.split(' ', 1)[1]
+                return self._parse_declarators('struct', struct_tag=tag)
+            return self._parse_declarators(base_type)
         if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'void', 'string', 'binary', 'float'}:
             # int(x), char(x), string(x), binary(x) at statement start is a
             # function call, not a variable declaration. Peek for '(' after
@@ -904,7 +1141,7 @@ class Parser:
                 args = []
                 if self.current.type != 'DELIMITER' or self.current.value != ')':
                     while True:
-                        args.append(self.parse_expression())
+                        args.append(self.parse_binary_op(1))
                         if self.current.type == 'DELIMITER' and self.current.value == ',':
                             self.advance()
                         else:
@@ -933,11 +1170,33 @@ class Parser:
             self.advance()
             self.expect('DELIMITER', ';')
             return [Continue()]
+        elif self.current.type == 'KEYWORD' and self.current.value == 'goto':
+            self.advance()
+            label_name = self.current.value
+            self.expect('IDENTIFIER')
+            self.expect('DELIMITER', ';')
+            return [Goto(label_name)]
         elif self.current.value == '{':
              self.advance()
              block = self.parse_block()
              self.expect('DELIMITER', '}')
              return block
+        elif self.current.type == 'IDENTIFIER':
+            # Could be a label definition (label: stmt) or an expression
+            # statement starting with an identifier. Peek ahead for ':'.
+            next_tok = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+            if next_tok is not None and next_tok.type == 'DELIMITER' and next_tok.value == ':':
+                # Label definition: label: stmt
+                label_name = self.current.value
+                self.advance()  # consume identifier
+                self.advance()  # consume ':'
+                # Parse the statement that follows the label
+                inner_stmts = self.parse_statement()
+                return [Label(label_name, inner_stmts[0] if inner_stmts else None)]
+            # Not a label: fall through to expression statement
+            expr = self.parse_expression()
+            self.expect('DELIMITER', ';')
+            return [expr]
         else:
             # Fallback to expression statement
             expr = self.parse_expression()
@@ -982,7 +1241,10 @@ class Parser:
                     init_list = []
                     if not (self.current.type == 'DELIMITER' and self.current.value == '}'):
                         while True:
-                            init_list.append(self.parse_expression())
+                            # Parse initializer elements as assignment-expressions
+                            # (NOT full expressions) so commas between elements are
+                            # separators, not comma operators.
+                            init_list.append(self.parse_binary_op(1))
                             if self.current.value == ',':
                                 self.advance()
                             else:
@@ -1148,7 +1410,17 @@ class Parser:
         return Switch(expr, cases, default_body)
 
     def parse_expression(self):
-        return self.parse_binary_op(1)  # Start with lowest precedence
+        # Parse the first assignment-expression (precedence 1 covers all
+        # binary operators including assignment). Then handle the comma
+        # operator which binds looser than assignment and is left-associative:
+        #   a = b, c  parses as  (a = b), c
+        #   a, b, c   parses as  ((a, b), c)
+        left = self.parse_binary_op(1)
+        while (self.current.type == 'DELIMITER' and self.current.value == ','):
+            self.advance()
+            right = self.parse_binary_op(1)
+            left = CommaOp(left, right)
+        return left
 
     def get_precedence(self, op):
         if op in ['=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=']: return 1
@@ -1303,7 +1575,10 @@ class Parser:
                 args = []
                 if self.current.type != 'DELIMITER' or self.current.value != ')':
                     while True:
-                        args.append(self.parse_expression())
+                        # Parse arguments as assignment-expressions (NOT full
+                        # expressions) so the comma between arguments is consumed
+                        # here as a separator, not as a comma operator.
+                        args.append(self.parse_binary_op(1))
                         if self.current.type == 'DELIMITER' and self.current.value == ',':
                             self.advance()
                         else:
@@ -1377,7 +1652,9 @@ class Parser:
                 args = []
                 if self.current.type != 'DELIMITER' or self.current.value != ')':
                     while True:
-                        args.append(self.parse_expression())
+                        # Parse arguments as assignment-expressions so commas
+                        # between arguments are separators, not comma operators.
+                        args.append(self.parse_binary_op(1))
                         if self.current.type == 'DELIMITER' and self.current.value == ',':
                             self.advance()
                         else:

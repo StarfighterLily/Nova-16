@@ -12,6 +12,7 @@ from astrid.parser.parser import (
     ArrayAccess, ArrayAssignment, TernaryOp, PrefixOp,
     AddressOf, Deref, DerefAssignment, SizeofExpr,
     MemberAccess, MemberAssignment,
+    CommaOp, Goto, Label, TypedefDecl,
 )
 from astrid.codegen.optimizations import (
     ExpressionSimplifier,
@@ -686,6 +687,12 @@ class CodeGenerator:
         # Struct layouts: tag -> ordered field names. Every field is one
         # 16-bit word slot; field i lives at byte offset i*2.
         self.struct_defs: Dict[str, List[str]] = {}
+        # Union layouts: tag -> ordered field names. All fields share byte
+        # offset 0; the union size is the max field size (always 2 bytes
+        # for int/struct fields).
+        self.union_defs: Dict[str, List[str]] = {}
+        # Type aliases: alias -> base_type (from typedef declarations).
+        self.type_aliases: Dict[str, str] = {}
         self.global_vars = {}  # name -> {'address', 'type', 'size', 'is_array', 'count', 'init_values'}
         self.array_vars = {}   # per-function LOCAL arrays: name -> {'elem_type', 'count', 'elem_size', 'offset'}
         self.local_vars = {}
@@ -697,6 +704,9 @@ class CodeGenerator:
         # Struct pointers (`struct Point *pp`): name -> struct tag, so
         # pp->field resolves the member offset through the pointee layout.
         self.pointer_struct_tags: Dict[str, str] = {}
+        # Struct/union variables: name -> tag name. Used for struct assignment
+        # detection (s1 = s2 copies all fields when both are the same tag).
+        self.struct_tag_vars: Dict[str, str] = {}
         self.functions = {}
         self.strings = {}
         self.string_counter = 0
@@ -910,6 +920,12 @@ class CodeGenerator:
         # Adopt the parser's struct layout table so member accesses resolve
         # field offsets through their struct's definition.
         self.struct_defs = dict(getattr(ast, 'structs', None) or {})
+        # Adopt the parser's union layout table. All union fields share byte
+        # offset 0; member access resolves to the same base address.
+        self.union_defs = dict(getattr(ast, 'union_defs', None) or {})
+        # Adopt the parser's type alias table so typedef aliases resolve to
+        # their base types during variable declaration code generation.
+        self.type_aliases = dict(getattr(ast, 'type_aliases', None) or {})
         # Run front-end expression simplifier (constant-folding, algebraic
         # simplifications, and CSE) to reduce register pressure and code size.
         if self.enable_optimizations and self.enable_expr_simplify:
@@ -1235,7 +1251,7 @@ class CodeGenerator:
     # ------------------------------------------------------------------
 
     def _struct_fields(self, tag: str) -> List[str]:
-        """Return just the field names for a struct tag.
+        """Return the field names for a struct or union tag.
 
         The stored format is a list of (name, type) tuples so the codegen
         can also resolve per-field types; this helper extracts names for
@@ -1243,13 +1259,17 @@ class CodeGenerator:
         """
         fields = self.struct_defs.get(tag)
         if fields is None:
-            raise NameError(f"Undefined struct type '{tag}'")
+            fields = self.union_defs.get(tag)
+        if fields is None:
+            raise NameError(f"Undefined struct/union type '{tag}'")
         return [f[0] if isinstance(f, tuple) else f for f in fields]
 
     def _struct_field_type(self, tag: str, field: str) -> Optional[str]:
-        """Return the declared type of a struct field ('int', 'char',
+        """Return the declared type of a struct or union field ('int', 'char',
         'float', 'string', 'binary'), or None if not found."""
         fields = self.struct_defs.get(tag)
+        if fields is None:
+            fields = self.union_defs.get(tag)
         if fields is None:
             return None
         for entry in fields:
@@ -1263,17 +1283,66 @@ class CodeGenerator:
         return None
 
     def _struct_size(self, tag: str) -> int:
-        """Total byte size of one struct value (each field is a word slot)."""
+        """Total byte size of one struct or union value.
+
+        For structs, each field is a word slot (len(fields) * 2).
+        For unions, all fields overlap at offset 0, so the size is the
+        max field size (2 bytes for int/struct fields).
+        """
+        if self._is_union_type(tag):
+            return 2  # All union fields share offset 0; max field is 1 word
         return len(self._struct_fields(tag)) * 2
 
     def _struct_field_offset(self, tag: str, field: str) -> int:
-        """Byte offset of a field within the struct, or a clear error."""
+        """Byte offset of a field within the struct or union, or a clear error.
+
+        For structs, field i lives at byte offset i*2. For unions, all
+        fields share byte offset 0.
+        """
+        if self._is_union_type(tag):
+            return self._union_field_offset(tag, field)
         fields = self._struct_fields(tag)
         if field not in fields:
             raise NameError(
                 f"Struct '{tag}' has no field '{field}' "
                 f"(fields: {', '.join(fields)})")
         return fields.index(field) * 2
+
+    def _resolve_type(self, name: str) -> str:
+        """Resolve a type name through typedef aliases to its base type.
+
+        If 'name' is a typedef alias, follow the chain until a base type
+        ('int', 'char', 'struct Tag', etc.) is found. Non-alias names are
+        returned unchanged.
+        """
+        seen = set()
+        current = name
+        while current in self.type_aliases and current not in seen:
+            seen.add(current)
+            current = self.type_aliases[current]
+        return current
+
+    def _is_union_type(self, tag: str) -> bool:
+        """Return True if 'tag' names a union type."""
+        return tag in self.union_defs
+
+    def _union_field_offset(self, tag: str, field: str) -> int:
+        """Byte offset of a field within a union (always 0)."""
+        fields = self.union_defs.get(tag)
+        if fields is None:
+            raise NameError(f"Undefined union type '{tag}'")
+        field_names = [f[0] if isinstance(f, tuple) else f for f in fields]
+        if field not in field_names:
+            raise NameError(
+                f"Union '{tag}' has no field '{field}' "
+                f"(fields: {', '.join(field_names)})")
+        return 0  # All union fields share byte offset 0
+
+    def _aggregate_field_offset(self, tag: str, field: str, is_union: bool = False) -> int:
+        """Byte offset for a field in either a struct or union."""
+        if is_union:
+            return self._union_field_offset(tag, field)
+        return self._struct_field_offset(tag, field)
 
     def _var_struct_tag(self, name: str) -> Optional[str]:
         """Struct tag for a declared struct variable/pointer/array, if any."""
@@ -1669,6 +1738,9 @@ class CodeGenerator:
                     # resolves member offsets through the pointee type.
                     **({'tag': struct_tag} if struct_tag else {}),
                 }
+                # Track scalar struct/union variables for struct assignment
+                if struct_tag and not self.global_vars[decl.name].get('is_array'):
+                    self.struct_tag_vars[decl.name] = struct_tag
                 next_addr += elem_size
 
     def _emit_globals_data(self):
@@ -1960,6 +2032,11 @@ class CodeGenerator:
         for decl in all_local_decls:
             self.var_types[decl.name] = decl.var_type
             decl_tag = getattr(decl, 'struct_tag', None)
+            if decl_tag and not self._decl_is_true_array(decl):
+                # Track struct/union variables for struct assignment detection.
+                # Arrays of structs are excluded: assigning an array to a pointer
+                # must decay to a base address, not copy element-by-element.
+                self.struct_tag_vars[decl.name] = decl_tag
             if self._decl_is_true_array(decl):
                 # Arrays occupy count * elem_size contiguous bytes in the
                 # frame; arrays of structs step by the full struct size.
@@ -2183,6 +2260,10 @@ class CodeGenerator:
                 self.generate_break()
             elif isinstance(statement, Continue):
                 self.generate_continue()
+            elif isinstance(statement, Goto):
+                self.generate_goto(statement)
+            elif isinstance(statement, Label):
+                self.generate_user_label(statement)
             elif isinstance(statement, FuncCall):
                 if statement.name == 'iret' and self.current_function == 'timer_interrupt':
                     # Special handling for iret: don't emit normal epilogue
@@ -2240,6 +2321,17 @@ class CodeGenerator:
 
     def generate_assignment(self, assignment: Assignment):
         self.emit_comment(f"Assignment to {assignment.name}")
+        # Struct/union assignment: s1 = s2 copies all fields from s2 to s1.
+        # Detected when the RHS is a simple Identifier naming a struct/union
+        # variable and the LHS is also a struct/union variable of the same tag.
+        if (isinstance(assignment.value, Identifier)
+                and assignment.name in self.struct_tag_vars
+                and assignment.value.name in self.struct_tag_vars):
+            lhs_tag = self.struct_tag_vars[assignment.name]
+            rhs_tag = self.struct_tag_vars[assignment.value.name]
+            if lhs_tag == rhs_tag:
+                self._generate_struct_assignment(assignment.name, assignment.value.name, lhs_tag)
+                return
         # Check for compound assignment pattern: x = x <op> rhs
         # The parser decomposes x += y into Assignment('x', BinaryOp(Identifier('x'), '+', y)).
         # NOTE: the ExpressionSimplifier may canonicalize commutative ops
@@ -2318,6 +2410,64 @@ class CodeGenerator:
                 self._ensure_float(reg, assignment.value)
             self._emit_var_store(assignment.name, reg)
             self.free_register()
+
+    def _generate_struct_assignment(self, lhs_name: str, rhs_name: str, tag: str):
+        """Generate field-by-field copy for struct/union assignment: lhs = rhs.
+
+        Each field is one 16-bit word slot. For structs, field i lives at
+        byte offset i*2; for unions, all fields share byte offset 0 (so a
+        union assignment is effectively a single-word copy of the active
+        field, but we copy all declared fields for correctness).
+        """
+        is_union = self._is_union_type(tag)
+        if is_union:
+            fields = self.union_defs.get(tag, [])
+        else:
+            fields = self.struct_defs.get(tag, [])
+        if not fields:
+            return
+        field_names = [f[0] if isinstance(f, tuple) else f for f in fields]
+        self.emit_comment(f"Struct/union assignment: {lhs_name} = {rhs_name} ({tag})")
+        for fname in field_names:
+            if is_union:
+                src_off = 0
+                dst_off = 0
+            else:
+                src_off = self._struct_field_offset(tag, fname)
+                dst_off = self._struct_field_offset(tag, fname)
+            # Load field from RHS
+            src_reg = self.get_register()
+            self._emit_member_field_load(src_reg, rhs_name, src_off)
+            # Store field to LHS
+            self._emit_member_field_store(lhs_name, dst_off, src_reg)
+
+    def _emit_member_field_load(self, reg: str, var_name: str, offset: int):
+        """Load a struct/union field (at byte offset from the variable's
+        base address) into reg."""
+        if var_name in self.local_vars:
+            # Local variable: FP-relative addressing
+            fp_off = self._get_local_offset(var_name)
+            field_fp_off = fp_off + offset
+            self.emit(f"    MOV {reg}, [FP{field_fp_off:+d}]")
+        elif var_name in self.global_vars:
+            # Global variable: absolute addressing
+            base_addr = self.global_vars[var_name].get('address', 0x8000)
+            self.emit(f"    MOV {reg}, [0x{base_addr + offset:04X}]")
+        else:
+            raise NameError(f"Unknown variable '{var_name}' in struct field load")
+
+    def _emit_member_field_store(self, var_name: str, offset: int, src_reg: str):
+        """Store a register value to a struct/union field (at byte offset
+        from the variable's base address)."""
+        if var_name in self.local_vars:
+            fp_off = self._get_local_offset(var_name)
+            field_fp_off = fp_off + offset
+            self.emit(f"    MOV [FP{field_fp_off:+d}], {src_reg}")
+        elif var_name in self.global_vars:
+            base_addr = self.global_vars[var_name].get('address', 0x8000)
+            self.emit(f"    MOV [0x{base_addr + offset:04X}], {src_reg}")
+        else:
+            raise NameError(f"Unknown variable '{var_name}' in struct field store")
 
     def _member_targets_equal(self, a: MemberAccess, b: MemberAccess) -> bool:
         """Structural equality of two member targets (for compound-assignment
@@ -3203,6 +3353,39 @@ class CodeGenerator:
         self.emit_comment("continue")
         self.emit(f"    JMP {continue_label}")
 
+    def generate_goto(self, stmt: Goto):
+        """Generate goto label; -- unconditional jump to a labeled statement.
+
+        Labels are function-scoped; the label name is emitted as-is with
+        a 'label_' prefix to avoid collisions with user-defined symbols.
+        """
+        label_codegen_name = self._user_label_codegen_name(stmt.label)
+        self.emit_comment(f"goto {stmt.label}")
+        self.emit(f"    JMP {label_codegen_name}")
+
+    def generate_user_label(self, stmt: Label):
+        """Generate label: statement -- a goto target.
+
+        Emits the label, then generates the attached statement (if any).
+        The label name is prefixed to avoid collisions with other symbols.
+        """
+        label_codegen_name = self._user_label_codegen_name(stmt.name)
+        self.emit_comment(f"label {stmt.name}:")
+        self.emit_label(label_codegen_name)
+        if stmt.stmt is not None:
+            # Generate the statement attached to this label
+            stmts = stmt.stmt if isinstance(stmt.stmt, list) else [stmt.stmt]
+            self.generate_block(stmts)
+
+    def _user_label_codegen_name(self, name: str) -> str:
+        """Return the assembly-safe label name for a user label.
+
+        Prefixes with 'label_' and includes the current function name to
+        keep labels function-scoped.
+        """
+        func_prefix = self.current_function or 'global'
+        return f"label_{func_prefix}_{name}"
+
     def generate_expression(self, expr: Expression) -> str:
         if isinstance(expr, Number):
             reg = self.get_register()
@@ -3564,6 +3747,11 @@ class CodeGenerator:
             return reg
         elif isinstance(expr, TernaryOp):
             return self.generate_ternary(expr)
+        elif isinstance(expr, CommaOp):
+            # Comma operator: evaluate left (discard result), then evaluate
+            # right and return its value. Matches C semantics.
+            self.generate_expression(expr.left)
+            return self.generate_expression(expr.right)
         elif isinstance(expr, PrefixOp):
             return self.generate_prefix(expr)
         elif isinstance(expr, PostfixOp):
