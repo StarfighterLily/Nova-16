@@ -1,4 +1,0 @@
-# Symbol table
-# Format: <symbol> <value>
-subroutine 0x000C
-done 0x0019

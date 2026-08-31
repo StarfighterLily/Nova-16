@@ -1,6 +1,0 @@
-int main() {
-    float f = -1.5;
-    float g = 0.25;
-    if (f < g) { return 222; }
-    return 9;
-}

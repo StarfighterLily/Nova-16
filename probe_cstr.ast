@@ -1,4 +1,0 @@
-int main() {
-    char *s = "abc";
-    return s[0] * 100 + s[1] * 10 + s[2];
-}

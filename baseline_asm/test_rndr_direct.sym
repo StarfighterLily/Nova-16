@@ -1,4 +1,0 @@
-# Symbol table
-# Format: <symbol> <value>
-LOOP 0x020C
-END 0x0237

@@ -1,8 +1,0 @@
-int main() {
-    int a = -1;
-    int b = 5;
-    if (b > -2) {
-        if (a < 0) { return 111; }
-    }
-    return 9;
-}

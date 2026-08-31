@@ -1,8 +1,0 @@
-# Symbol table
-# Format: <symbol> <value>
-START 0x104E
-MAIN_LOOP 0x1064
-CMD_PEEK 0x10C7
-CMD_WRITE 0x10F7
-CMD_REGS 0x112D
-CMD_QUIT 0x118E

@@ -1,4 +1,0 @@
-# Symbol table
-# Format: <symbol> <value>
-SUB_DATA 0x0000
-SUB_LABEL 0x1234

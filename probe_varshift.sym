@@ -1,6 +1,0 @@
-# Symbol table
-# Format: <symbol> <value>
-start 0x1000
-func_main 0x100F
-shift_loop_1 0x103C
-shift_end_0 0x1047
