@@ -51,7 +51,7 @@ from core.exec_handlers import (
     _itob, _btoi, _itos, _stoi,
     _strcpy, _strcat, _strcmp, _strlen, _strupr, _strlwr, _strrev, _strfind, _strfindi, _strext, _strexti,
     _memcpy, _memset, _memtest, _memmove, _memcmp, _memswap,
-    _sblend, _sread, _swrite, _srol, _srot, _sshft, _sflip, _sline, _srect, _scirc, _sinv, _sblit, _sfill,
+    _sblend, _salpha, _sread, _swrite, _srol, _srot, _sshft, _sflip, _sline, _srect, _scirc, _sinv, _sblit, _sfill,
     _vread, _vwrite, _vblit, _char, _text, _spblit, _spblitall,
     _lswap, _lmove, _lcopy,
     _splay, _sstop, _strig,
@@ -682,6 +682,9 @@ HANDLER_INSTRUCTIONS: Dict[int, Instruction] = {
     0xB0: Instruction('LSWAP', 0xB0, num_operands=1, handler=_lswap),
     0xB1: Instruction('LMOVE', 0xB1, num_operands=1, handler=_lmove),
     0xB2: Instruction('LCOPY', 0xB2, num_operands=1, handler=_lcopy),
+
+    # Blend alpha (1 operand)
+    0xB4: Instruction('SALPHA', 0xB4, num_operands=1, handler=_salpha),
 
     # Sound (1 operand)
     0x59: Instruction('STRIG', 0x59, num_operands=1, handler=_strig),

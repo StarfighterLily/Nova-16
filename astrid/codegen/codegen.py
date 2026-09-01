@@ -290,6 +290,9 @@ class CodeGenerator:
         'builtin_set_blend_mode': [
             'POP P0', 'POP P1', 'SBLEND P1', 'PUSH P0', 'RET',
         ],
+        'builtin_set_blend_alpha': [
+            'POP P0', 'POP P1', 'SALPHA P1', 'PUSH P0', 'RET',
+        ],
         'builtin_draw_char': [
             '; Args: char (uses VX/VY position, VC color)',
             'POP P0', 'POP P1', 'CHAR P1', 'PUSH P0', 'RET',
@@ -816,6 +819,7 @@ class CodeGenerator:
             'screen_flip': 'builtin_screen_flip', 'draw_line': 'builtin_draw_line',
             'draw_circle': 'builtin_draw_circle', 'screen_invert': 'builtin_screen_invert',
             'screen_blit': 'builtin_screen_blit', 'set_blend_mode': 'builtin_set_blend_mode',
+            'set_blend_alpha': 'builtin_set_blend_alpha',
             'draw_char': 'builtin_draw_char',
             'set_pointers': 'builtin_set_pointers', 'write_text': 'builtin_write_text',
             'set_font': 'builtin_set_font',

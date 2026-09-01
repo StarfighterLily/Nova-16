@@ -1646,6 +1646,12 @@ def _sblend(cpu, values) -> int:
     return values[0]
 
 
+def _salpha(cpu, values) -> int:
+    """SALPHA: set blend alpha (0-255)."""
+    cpu.gfx.set_blend_alpha(values[0])
+    return values[0]
+
+
 def _sread(cpu, values) -> int:
     """SREAD: read pixel at (VX, VY)."""
     color = cpu.gfx.get_screen_val()
