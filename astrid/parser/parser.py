@@ -206,6 +206,19 @@ class ArrayAccess(Expression):
         self.name = name
         self.index = index
 
+
+class StringIndexAccess(Expression):
+    """String-literal element access: "abc"[index].
+
+    Keeps BOTH the raw (escape-preserving) literal, which is what the
+    assembler's DEFSTR resolves to byte-for-byte, and the unescaped form so
+    indexing sees logical characters (\"a\\tb\"[1] is the TAB, not '\\').
+    """
+    def __init__(self, raw: str, unescaped: str, index: "Expression"):
+        self.raw = raw
+        self.value = unescaped
+        self.index = index
+
 class ArrayAssignment(ASTNode):
     """Assignment to an array element: arr[index] = value (or compound op)."""
     def __init__(self, target: "ArrayAccess", value: "Expression"):
@@ -1558,6 +1571,15 @@ class Parser:
             while self.current.type == 'STRING':
                 raw += self.current.value.strip('"')
                 self.advance()
+            # C-style string literal indexing: "abc"[i]. The index may be a
+            # compile-time constant (folded to a CharLiteral) or a runtime
+            # expression (emitted as a byte load at the DEFSTR address).
+            if self.current.type == 'DELIMITER' and self.current.value == '[':
+                self.advance()
+                index = self.parse_expression()
+                self.expect('DELIMITER', ']')
+                return StringIndexAccess(
+                    raw, Parser._unescape_string(raw), index)
             return StringLiteral(raw)
         elif token.type == 'CHAR':
             self.advance()

@@ -9,7 +9,7 @@ from astrid.parser.parser import (
     Switch, Case,
     Expression, Number, StringLiteral, CharLiteral, Identifier, BinaryOp, UnaryOp, PostfixOp,
     Break, Continue, Cast,
-    ArrayAccess, ArrayAssignment, TernaryOp, PrefixOp,
+    ArrayAccess, ArrayAssignment, StringIndexAccess, TernaryOp, PrefixOp,
     AddressOf, Deref, DerefAssignment, SizeofExpr,
     MemberAccess, MemberAssignment,
     CommaOp, Goto, Label, TypedefDecl,
@@ -44,6 +44,19 @@ class CodeGenerator:
     SPILL_REGION_END = 0xF000
     LIVE_RANGE_SCHEDULER_MAX_LINES = 384
     LIVE_RANGE_SCHEDULER_MAX_WORK = 24576
+
+    # Fixed RAM buffers for RUNTIME string concatenation results ("a" + "b").
+    # Each is 256 bytes so a concatenated string can be copied and appended
+    # with STRCPY/STRCAT without overflowing.  The addresses sit in the free
+    # gap between the ITOB buffer (0xA100) and the spill region (0xC000), so
+    # they never collide with globals (0x8000+), the stack (0xFF00), the
+    # sprite SCB (0xF000) or per-function spill windows (0xC000+).  Buffers
+    # are scratch storage: a concat expression's value is valid until the
+    # next concat; deep nested right-hand concat expressions (a + (b + ...))
+    # consume one buffer per nesting level, capped by this table.
+    STRING_CONCAT_BUFFERS = (0xA200, 0xA300, 0xA400, 0xA500,
+                                  0xA600, 0xA700)
+    STRING_CONCAT_BUF_SIZE = 256
 
     # Static implementations for every builtin, keyed by assembly label.
     # Builtins are LAZILY LINKED: generate_builtins() only emits entries whose
@@ -714,6 +727,11 @@ class CodeGenerator:
         self.reg_counter = 0 
         self.current_function = None
         self.builtin_functions = self._init_builtins()
+        # Next scratch buffer to allocate for a runtime string concat
+        # ("a" + "b"). Reset per codegen run only (concat buffer scratch is
+        # sequential at each call site, so a flat chain reuses one buffer
+        # while nested right-hand concats advance through the table).
+        self._concat_buf_index = 0
         # Labels of builtins actually referenced during code generation.
         # Only these get emitted into the output assembly (lazy linking).
         self.used_builtins: Set[str] = set()
@@ -1064,6 +1082,9 @@ class CodeGenerator:
             # Newer expression/statement nodes: recurse manually since the
             # shared ExpressionSimplifier does not know their shape.
             if isinstance(node, ArrayAccess):
+                node.index = simplify_node(node.index)
+                return node
+            if isinstance(node, StringIndexAccess):
                 node.index = simplify_node(node.index)
                 return node
             if isinstance(node, MemberAccess):
@@ -1721,7 +1742,18 @@ class CodeGenerator:
             else:
                 init_value = None
                 if decl.value is not None:
-                    init_value = self._const_eval(decl.value)
+                    if (decl.var_type in ('string', 'binary')
+                            and isinstance(decl.value, StringLiteral)):
+                        # Global string/binary scalars hold a POINTER to the
+                        # literal's DEFSTR bytes.  The initializer is the
+                        # label, which the assembler resolves to the string's
+                        # address when the DW is emitted (matches how local
+                        # string vars get their pointer from get_string_label).
+                        # The RAW form is used (get_string_label keys by it,
+                        # shared with local literals of the same text).
+                        init_value = self.get_string_label(decl.value.value)
+                    else:
+                        init_value = self._const_eval(decl.value)
                     if init_value is None:
                         raise TypeError(
                             f"Global variable '{decl.name}' initializer must be "
@@ -2583,6 +2615,58 @@ class CodeGenerator:
     def generate_array_assignment(self, stmt: ArrayAssignment):
         """Generate arr[index] = value (simple or compound)."""
         target = stmt.target
+        # String/binary scalar variables: s[i] = c writes one byte through
+        # (pointer stored in s) + i.
+        if self._is_string_or_binary_scalar(target.name):
+            self.emit_comment(f"String index assignment to {target.name}[...]")
+            compound_op = None
+            rhs = stmt.value
+            if (isinstance(stmt.value, BinaryOp)
+                    and isinstance(stmt.value.left, ArrayAccess)
+                    and stmt.value.left.name == target.name
+                    and stmt.value.left.index is target.index):
+                compound_op = stmt.value.op
+                rhs = stmt.value.right
+            base_reg = self.get_register()
+            self._emit_var_load(base_reg, target.name)
+            idx_reg = self.generate_expression(target.index)
+            self.emit(f"    ADD {base_reg}, {idx_reg}")
+            self.free_register()  # idx_reg
+            # Protect the byte address across RHS evaluation (round-robin
+            # temporaries would otherwise clobber it).
+            self.emit(f"    PUSH {base_reg}")
+            if compound_op is not None:
+                acc_reg = self.get_register(exclude={base_reg})
+                self._emit_mem_load(acc_reg, base_reg, 1)
+                rhs_reg = self.generate_expression(rhs)
+                rhs_reg = self._pop_preserving(base_reg, rhs_reg)
+                if compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
+                elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
+                elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
+                elif compound_op == '/': self.emit(f"    DIV {acc_reg}, {rhs_reg}")
+                elif compound_op == '%': self.emit(f"    MOD {acc_reg}, {rhs_reg}")
+                elif compound_op == '&': self.emit(f"    AND {acc_reg}, {rhs_reg}")
+                elif compound_op == '|': self.emit(f"    OR {acc_reg}, {rhs_reg}")
+                elif compound_op == '^': self.emit(f"    XOR {acc_reg}, {rhs_reg}")
+                elif compound_op in ('<<', '>>'):
+                    if isinstance(rhs, Number):
+                        self._emit_shift(acc_reg, int(rhs.value, 0),
+                                         compound_op == '>>', prefix="shift")
+                    else:
+                        self.emit(f"    PUSH {acc_reg}")
+                        rhs_reg = self.generate_expression(rhs)
+                        rhs_reg = self._pop_preserving(acc_reg, rhs_reg)
+                        self._emit_shift(acc_reg, rhs_reg,
+                                         compound_op == '>>', prefix="shift")
+                        self.free_register()
+                else:
+                    raise SyntaxError(f"Unknown compound operator '{compound_op}'")
+                self._emit_mem_store(base_reg, acc_reg, 1)
+            else:
+                val_reg = self.generate_expression(rhs)
+                val_reg = self._pop_preserving(base_reg, val_reg)
+                self._emit_mem_store(base_reg, val_reg, 1)
+            return val_reg if not compound_op else None
         info = self._get_array_info(target.name)
         can_push = self.current_function != 'timer_interrupt'
 
@@ -2936,6 +3020,19 @@ class CodeGenerator:
 
     def generate_array_access(self, expr: ArrayAccess) -> str:
         """Read arr[index]: compute the element address, then load through it."""
+        # String/binary SCALAR variables hold a char* pointer, so s[i] is a
+        # byte read through (pointer stored in s) + i.  _get_array_info would
+        # reject them, so handle them before the real-array path.
+        if self._is_string_or_binary_scalar(expr.name):
+            base_reg = self.get_register()
+            self._emit_var_load(base_reg, expr.name)
+            idx_reg = self.generate_expression(expr.index)
+            self.emit(f"    ADD {base_reg}, {idx_reg}")
+            self.free_register()  # idx_reg
+            result_reg = self.get_register(exclude={base_reg})
+            self._emit_mem_load(result_reg, base_reg, 1)
+            self.free_register()  # base_reg
+            return result_reg
         info = self._get_array_info(expr.name)
         idx_reg = self.generate_expression(expr.index)
         addr_reg = self.get_register()
@@ -3412,6 +3509,33 @@ class CodeGenerator:
             reg = self.get_register()
             self.emit(f"    MOV {reg}, {expr.char_value}")
             return reg
+        elif isinstance(expr, StringIndexAccess):
+            # C-style string literal indexing: "abc"[i].  A compile-time
+            # index folds to the character constant (validated in range, so
+            # an off-by-one is caught at build time); a runtime index emits a
+            # single-byte load through the DEFSTR address.
+            index_val = self._const_eval(expr.index)
+            if index_val is not None:
+                index_val &= 0xFFFF
+                text = expr.value  # unescaped logical characters
+                if not (0 <= index_val < len(text)):
+                    raise IndexError(
+                        f"String index {index_val} out of bounds for \"{expr.raw}\" (len {len(text)})")
+                result_reg = self.get_register()
+                self.emit(f"    MOV {result_reg}, {ord(text[index_val])}")
+                return result_reg
+            # Runtime index: byte load from (label + index). Temporal
+            # registers are always P0-P7 (never R0), so the R0 scratch used
+            # inside _emit_mem_load cannot clobber the live address.
+            base_reg = self.get_register()
+            self.emit(f"    MOV {base_reg}, {self.get_string_label(expr.raw)}")
+            idx_reg = self.generate_expression(expr.index)
+            self.emit(f"    ADD {base_reg}, {idx_reg}")
+            self.free_register()  # idx_reg
+            result_reg = self.get_register(exclude={base_reg})
+            self._emit_mem_load(result_reg, base_reg, 1)
+            self.free_register()  # base_reg
+            return result_reg
         elif isinstance(expr, Cast):
             return self.generate_cast(expr)
         elif isinstance(expr, Identifier):
@@ -3423,6 +3547,17 @@ class CodeGenerator:
             self._emit_var_load(reg, expr.name)
             return reg
         elif isinstance(expr, BinaryOp):
+            # String concatenation via '+': when BOTH sides are string- or
+            # binary-typed values, 'a' + 'b' means concatenate their bytes
+            # (C's string operators don't exist, so Astrid borrows the '+'
+            # spelling from languages like Java/JS).  A '+' with a numeric
+            # or pointer operand on either side still means pointer/address
+            # arithmetic (char *p + 1, &arr[i] + n), so this check leaves
+            # those alone.
+            if (expr.op == '+'
+                    and self._is_string_expr(expr.left)
+                    and self._is_string_expr(expr.right)):
+                return self._generate_string_concat(expr)
             # Constant folding: evaluate simple binary ops with two numeric
             # literal operands at compile time (brought over from NoBASIC's
             # ExpressionSimplifier). This avoids emitting MOV/ADD/SUB/etc.
@@ -3987,7 +4122,105 @@ class CodeGenerator:
         if isinstance(expr, FuncCall):
             func = self.functions.get(expr.name)
             return bool(func and func.get('return_type') in ('string', 'binary'))
+        if isinstance(expr, BinaryOp) and self._is_string_concat(expr):
+            # "a" + "b" produces a string value (a scratch-buffer address).
+            return True
         return False
+
+    def _is_string_expr(self, expr: Expression) -> bool:
+        """True when `expr` produces a string/binary VALUE (not an address
+        into one).  String literals, (string)/(binary) casts, string/binary
+        scalar variables, and string-returning user functions qualify;
+        char* / int* pointer variables and single-character string-index
+        expressions ("abc"[i], which yield a byte) do not."""
+        if isinstance(expr, StringLiteral):
+            return True
+        if isinstance(expr, Identifier):
+            if expr.name in self.var_types:
+                return self.var_types[expr.name] in ('string', 'binary')
+            g = self.global_vars.get(expr.name)
+            return bool(g and not g.get('is_array') and not g.get('is_pointer')
+                        and g['type'] in ('string', 'binary'))
+        if isinstance(expr, Cast):
+            return expr.target_type in ('string', 'binary')
+        if isinstance(expr, FuncCall):
+            func = self.functions.get(expr.name)
+            return bool(func and func.get('return_type') in ('string', 'binary'))
+        if isinstance(expr, BinaryOp) and self._is_string_concat(expr):
+            return True
+        return False
+
+    def _is_string_concat(self, expr: Expression) -> bool:
+        return (isinstance(expr, BinaryOp) and expr.op == '+'
+                and self._is_string_expr(expr.left)
+                and self._is_string_expr(expr.right))
+
+    def _is_string_or_binary_scalar(self, name: str) -> bool:
+        """True when `name` is a SCALAR string/binary variable (local or
+        global).  Such variables store a char* pointer, so `name[i]` means a
+        byte read/write through that pointer -- distinct from declared char
+        arrays (which index their own inline storage) and from arrays of
+        strings (which the array machinery already lays out as word slots)."""
+        if name in self.var_types:
+            return self.var_types[name] in ('string', 'binary')
+        g = self.global_vars.get(name)
+        return bool(g and not g.get('is_array') and not g.get('is_pointer')
+                    and g['type'] in ('string', 'binary'))
+
+    def _alloc_concat_buffer(self) -> int:
+        """Reserve the next scratch buffer for a runtime string concatenation.
+
+        Each emitted '+' operator consumes exactly one fresh buffer (never a
+        re-use), so neither operand's bytes can be clobbered by a nested
+        concat during evaluation -- the left operand's ADDRESS is safe on the
+        stack because its bytes live in a DEFSTR or a buffer that will never
+        be touched again within this concat tree."""
+        if self._concat_buf_index >= len(self.STRING_CONCAT_BUFFERS):
+            raise SyntaxError(
+                "String concatenation nesting exceeds the scratch buffer "
+                "capacity ({}) -- split the expression or use strcat/strcpy"
+                .format(len(self.STRING_CONCAT_BUFFERS)))
+        addr = self.STRING_CONCAT_BUFFERS[self._concat_buf_index]
+        self._concat_buf_index += 1
+        return addr
+
+    def _generate_string_concat(self, expr: BinaryOp) -> str:
+        """Generate a runtime string concatenation `expr`.
+
+        Strategy: materialize the LEFT operand, save its address on the stack
+        while the RIGHT is evaluated (it may itself be a nested concat), then
+        STRCPY left + STRCAT right into a freshly allocated scratch buffer and
+        return that buffer's address in a register.
+
+        The left operand is evaluated FIRST (C left-to-right order), then
+        pushed; a fresh buffer per operator guarantees the right side can't
+        corrupt the left's storage."""
+        if not isinstance(expr, BinaryOp) or expr.op != '+':
+            raise SyntaxError(
+                "internal: _generate_string_concat requires a '+' BinaryOp")
+        self.emit_comment("String concatenation")
+        left_reg = self._string_operand(expr.left)
+        self.emit(f"    PUSH {left_reg}")
+        right_reg = self._string_operand(expr.right)
+        # _pop_preserving pops the stack TOP into its FIRST argument
+        # (left_reg, the saved left address) while protecting the second
+        # argument (right_reg), relocating it if the names alias.  The return
+        # value is the (possibly relocated) protected-register handle.
+        right_reg = self._pop_preserving(left_reg, right_reg)
+        buf_addr = self._alloc_concat_buffer()
+        result_reg = self.get_register(exclude={left_reg, right_reg})
+        self.emit(f"    MOV {result_reg}, 0x{buf_addr:04X}")
+        self.emit(f"    STRCPY {result_reg}, {left_reg}")
+        self.emit(f"    STRCAT {result_reg}, {right_reg}")
+        self.free_register()  # left_reg
+        self.free_register()  # right_reg
+        return result_reg
+
+    def _string_operand(self, expr: Expression) -> str:
+        """Evaluate a concat operand and return a register holding its address."""
+        if self._is_string_concat(expr):
+            return self._generate_string_concat(expr)
+        return self.generate_expression(expr)
 
     # ------------------------------------------------------------------
     # Floating-point (Q8.8 fixed-point) helpers
@@ -4053,6 +4286,9 @@ class CodeGenerator:
             return expr.target_type  # (string)x yields a string value
         if isinstance(expr, StringLiteral):
             return 'string'
+        if isinstance(expr, StringIndexAccess):
+            # "abc"[i] / "abc"[CONST] yields a single character byte.
+            return 'char'
         if isinstance(expr, CharLiteral):
             return 'char'
         if isinstance(expr, Number):
@@ -4069,6 +4305,9 @@ class CodeGenerator:
             if isinstance(expr.left, Identifier):
                 return self.var_types.get(expr.left.name)
         if isinstance(expr, ArrayAccess):
+            # s[i] on a string/binary scalar is a single-byte character read.
+            if self._is_string_or_binary_scalar(expr.name):
+                return 'char'
             try:
                 info = self._get_array_info(expr.name)
             except NameError:
@@ -4091,8 +4330,11 @@ class CodeGenerator:
                 return pt  # None if the pointer's type can't be resolved
             return None
         if isinstance(expr, BinaryOp):
-            # An arithmetic/comparison expression is float if either operand
-            # is float (implicit promotion), otherwise integer-valued.
+            # A '+' of two string/binary values yields a string; otherwise
+            # an arithmetic/comparison expression is float if either operand
+            # is float (implicit promotion), else integer-valued.
+            if self._is_string_concat(expr):
+                return 'string'
             if (self._cast_source_type(expr.left) == 'float' or
                     self._cast_source_type(expr.right) == 'float'):
                 return 'float'

@@ -40,6 +40,11 @@ def _write_result(cpu, operand_index: int, value: int,
     register's natural width.
     """
     op = cpu.operands[operand_index]
+    # Coerce to a plain Python int BEFORE masking.  Graphics reads hand us
+    # numpy uint8 scalars (e.g. gfx.screen[y, x]), and `value & 0xFFFF`
+    # raises OverflowError under numpy 2.x (NEP 50) because the Python
+    # literal 0xFFFF does not fit in uint8 -- SREAD crashed on every call.
+    value = int(value)
     if op.is_register:
         # Fast path for R/P — see matching note in core/exec.py's
         # _resolve_single_operand. Masking mirrors RegisterFile's own
