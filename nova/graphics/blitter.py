@@ -75,8 +75,15 @@ class Blitter:
         new = max(0, min(255, int(new)))
         alpha = max(0, min(255, int(self._blend_alpha)))
 
-        if self._blend_mode == 0:  # Normal (overwrite)
-            return new
+        if self._blend_mode == 0:  # Normal (alpha-blend toward new)
+            # When alpha == 255 this collapses to a pure overwrite (return new).
+            # When alpha < 255 we linearly interpolate existing -> new by alpha,
+            # which is the transparency effect the fast-path gate in
+            # _update_blend_enabled() already accounts for.
+            if alpha >= 255:
+                return new
+            result = existing + ((new - existing) * alpha + 127) // 255
+            return max(0, min(255, result))
         elif self._blend_mode == 1:  # Additive
             result = existing + ((new * alpha + 127) // 255)
             return min(255, result)
@@ -120,7 +127,13 @@ class Blitter:
             inv_new = 255 - new
             result = 255 - ((inv_existing * inv_new * alpha + 32512) // 65025)
             result = np.clip(result, 0, 255)
-        else:  # Normal (overwrite) / unknown mode
+        elif self._blend_mode == 0:  # Normal (alpha-blend toward new)
+            if alpha >= 255:
+                result = new
+            else:
+                result = existing + ((new - existing) * alpha + 127) // 255
+                result = np.clip(result, 0, 255)
+        else:  # Unknown mode
             result = new
 
         return np.broadcast_to(result, existing.shape).astype(np.uint8)
