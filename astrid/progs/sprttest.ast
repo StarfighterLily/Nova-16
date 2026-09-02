@@ -1,3 +1,67 @@
+struct Missile {
+    int pmissile1;
+    int mx1;
+    int my1;
+    int pmissile2;
+    int mx2;
+    int my2;
+    int pmissile3;
+    int mx3;
+    int my3;
+} Missile = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+impl Missile {
+    void fireMissile(self) {
+        if (self.pmissile1 == 0) {
+            self.mx1 = peek(0xf000 + 2);
+            self.my1 = peek(0xf000 + 3);
+            self.pmissile1 = 1;
+            SCBwrite(1, 0x80, 0x40, self.mx1, self.my1, 8, 8, 0b00000011, 0x00);
+        } else if (self.pmissile2 == 0) {
+            self.mx2 = peek(0xf000 + 2);
+            self.my2 = peek(0xf000 + 3);
+            self.pmissile2 = 1;
+            SCBwrite(2, 0x80, 0x40, self.mx2, self.my2, 8, 8, 0b00000011, 0x00);
+        } else if (self.pmissile3 == 0) {
+            self.mx3 = peek(0xf000 + 2);
+            self.my3 = peek(0xf000 + 3);
+            self.pmissile3 = 1;
+            SCBwrite(3, 0x80, 0x40, self.mx3, self.my3, 8, 8, 0b00000011, 0x00);
+        }
+        // All three slots busy: the shot is silently dropped
+    }
+
+    void updateMissile(self) {
+        if (self.pmissile1 == 1) {
+            self.my1 -= 8;
+            if (self.my1 < 0) {
+                self.pmissile1 = 0;
+                SCBwrite(1, 0x80, 0x40, 0, 0, 8, 8, 0b00000000, 0x00);
+            } else {
+                SCBwrite(1, 0x80, 0x40, self.mx1, self.my1, 8, 8, 0b00000011, 0x00);
+            }
+        }
+        if (self.pmissile2 == 1) {
+            self.my2 -= 8;
+            if (self.my2 < 0) {
+                self.pmissile2 = 0;
+                SCBwrite(2, 0x80, 0x40, 0, 0, 8, 8, 0b00000000, 0x00);
+            } else {
+                SCBwrite(2, 0x80, 0x40, self.mx2, self.my2, 8, 8, 0b00000011, 0x00);
+            }
+        }
+        if (self.pmissile3 == 1) {
+            self.my3 -= 8;
+            if (self.my3 < 0) {
+                self.pmissile3 = 0;
+                SCBwrite(3, 0x80, 0x40, 0, 0, 8, 8, 0b00000000, 0x00);
+            } else {
+                SCBwrite(3, 0x80, 0x40, self.mx3, self.my3, 8, 8, 0b00000011, 0x00);
+            }
+        }
+    }
+}
+
 void memsprite(int addr, int sprite[64]) {
     set_bank(1);
     for (int x = 0; x < 64; x++) {
@@ -25,49 +89,41 @@ void sprblit(int id) {
     set_bank(0);
 }
 
-int getPlayerPos() {
-    int pos[2] = {peek(0xf000 + 2), peek(0xf000 + 3)};
-    return pos;
-}
-
-void movesprite(int id) {
-    int pos[2] = getPlayerPos();
-    int x = pos[0];
-    int y = pos[1];
-
-    switch (key_read()) {
-        case 119:
+void movePlayer(int direction) {
+    int x = peek(0xf000 + 2);
+    int y = peek(0xf000 + 3);
+    switch (direction) {
+        case 0:
             y -= 4;
             break;
-        case 115:
+        case 1:
             y += 4;
             break;
-        case 97:
+        case 2:
             x -= 4;
             break;
-        case 100:
+        case 3:
             x += 4;
             break;
     }
-    if (x > 255) {
-        x = 255;
+    if (x > 248) {
+        x = 248;
     }
-    if (y > 255) {
-        y = 255;
+    if (y > 248) {
+        y = 248;
     }
-    if (x < 0) {
-        x = 0;
+    if (x <= 4) {
+        x = 4;
     }
-    if (y < 0) {
-        y = 0;
+    if (y <= 4) {
+        y = 4;
     }
-    poke((0xf000 + (id * 16)) + 2, x);
-    poke((0xf000 + (id * 16)) + 3, y);
+    poke(0xf000 + 2, x);
+    poke(0xf000 + 3, y);
+    key_clear();
 }
 
 void loadMissile() {
-    int px = peek(0xf000 + 2);
-    int py = peek(0xf000 + 3);
     int missile[64] = {
         00,00,00,10,10,00,00,00,
         00,00,10,15,15,10,00,00,
@@ -79,13 +135,12 @@ void loadMissile() {
         00,00,00,127,127,00,00,00
     };
     memsprite(0x8040, missile);
-    SCBwrite(1, 0x80, 0x40, px, py, 8, 8, 0b00000011, 0x00);
 }
 
-void fireMissile() {
-    if (key_read() == 101) {
-
-    }
+void sprblitall() {
+    set_bank(1);
+    sprite_blitall();
+    set_bank(0);
 }
 
 void main() {
@@ -103,18 +158,33 @@ void main() {
 
     memsprite(0x8000, sprite);
     SCBwrite(0, 0x80, 0x00, 128, 128, 8, 8, 0b00000011, 0x00);
-    
+    loadMissile();
 
     while (1) {
         counter++;
-        if (!(counter % 60)) {
-            counter = 0;
-            set_layer(5);
-            screen_fill(0x00);
-            set_layer(0);
-            sprblit(0);
-            sprblit(1);
+        if ((counter % 2560) == 0) {
+            Missile.updateMissile();
         }
-        movesprite(0);
+        if ((counter % 5120) == 0) {
+            sprblitall();
+
+            switch (key_read()) {
+                case 119:
+                    movePlayer(0);
+                    break;
+                case 115:
+                    movePlayer(1);
+                    break;
+                case 97:
+                    movePlayer(2);
+                    break;
+                case 100:
+                    movePlayer(3);
+                    break;
+                case 101:
+                    Missile.fireMissile();
+                    break;
+            }
+        }
     }
 }

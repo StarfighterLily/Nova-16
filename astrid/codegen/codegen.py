@@ -13,6 +13,7 @@ from astrid.parser.parser import (
     AddressOf, Deref, DerefAssignment, SizeofExpr,
     MemberAccess, MemberAssignment,
     CommaOp, Goto, Label, TypedefDecl,
+    ImplBlock, MethodCall,
 )
 from astrid.codegen.optimizations import (
     ExpressionSimplifier,
@@ -1020,6 +1021,31 @@ class CodeGenerator:
                 'params': len(func_def.params),
                 'return_type': func_def.return_type
             }
+        # Pre-register impl-block methods under namespaced keys
+        # "TypeName::method" so `p.method()` call sites resolve. Method
+        # labels are namespaced too (func_TypeName_method), allowing two
+        # structs to share a method name without label collisions. A regular
+        # function may not reuse a namespaced method label.
+        used_labels = {v['label'] for v in self.functions.values()}
+        for block in getattr(ast, 'impl_blocks', None) or []:
+            for method in block.methods:
+                key = f'{block.tag}::{method.name}'
+                if key in self.functions:
+                    raise SyntaxError(
+                        f"Duplicate method '{method.name}' for type "
+                        f"'{block.tag}'")
+                method_label = f'func_{block.tag}_{method.name}'
+                if method_label in used_labels:
+                    raise SyntaxError(
+                        f"Method label '{method_label}' collides with an "
+                        f"existing function")
+                used_labels.add(method_label)
+                self.functions[key] = {
+                    'label': method_label,
+                    'params': len(method.params),
+                    'return_type': method.return_type,
+                }
+                method.impl_tag = block.tag
 
         # Main entry point MUST be first segment so emulator sets PC correctly
         self.assembly.append("ORG 0x1000")
@@ -1041,6 +1067,11 @@ class CodeGenerator:
         # Generate all functions and data AFTER interrupt vector
         for func_def in ast.functions:
             self.generate_function(func_def)
+
+        # Generate impl-block method bodies (namespaced labels).
+        for block in getattr(ast, 'impl_blocks', None) or []:
+            for method in block.methods:
+                self.generate_function(method)
 
         self.generate_strings()
         self.generate_builtins()
@@ -1095,6 +1126,11 @@ class CodeGenerator:
                 # Simplify the base chain in place; field names are plain
                 # identifiers with nothing to fold.
                 node.base = simplify_node(node.base) or node.base
+                return node
+            if isinstance(node, MethodCall):
+                # Simplify method-call arguments in place (the receiver chain
+                # and method name are plain identifiers / field names).
+                node.args = [simplify_node(a) for a in node.args]
                 return node
             if isinstance(node, ArrayAssignment):
                 node.target.index = simplify_node(node.target.index)
@@ -1479,6 +1515,86 @@ class CodeGenerator:
             # element j of its underlying N-word array layout.
             info = data
             self._emit_array_const_addr(info, offset // 2, addr_reg)
+
+    def _receiver_struct_tag(self, expr) -> Optional[str]:
+        """Struct/union tag of a method-call receiver expression.
+
+        Accepts an Identifier (scalar struct variable, struct pointer, or
+        `self`) or an ArrayAccess (element of an array of structs). Returns
+        None when the receiver is not a struct-typed value."""
+        if isinstance(expr, Identifier):
+            return self._var_struct_tag(expr.name)
+        if isinstance(expr, ArrayAccess):
+            info = self.array_vars.get(expr.name)
+            if info is None:
+                g = self.global_vars.get(expr.name)
+                if g and g.get('is_array'):
+                    info = {'elem_type': g['type'], 'count': g['count'],
+                            'elem_size': self._elem_size(g['type']),
+                            'stride': g.get('stride'),
+                            'base_addr': g['address'], 'is_global': True,
+                            **({'tag': g['tag']} if g.get('tag') else {})}
+            if info is not None:
+                return info.get('tag')
+            return None
+        return None
+
+    def _emit_receiver_addr(self, expr, addr_reg: str,
+                            idx_reg: Optional[str] = None):
+        """Emit code computing the byte address of a method receiver.
+
+        Supports the three receiver shapes used by method calls:
+          p.m()      -- p is a scalar struct variable (local or global)
+          pp->m()    -- pp is a struct pointer; its VALUE is the address
+          pts[i].m() -- pts is an array of structs, element i
+        Also covers `self.m()` inside methods (self is a struct pointer).
+        """
+        if isinstance(expr, Identifier):
+            name = expr.name
+            g = self.global_vars.get(name)
+            is_ptr = (name in self.pointer_vars
+                      or name in self.address_params
+                      or (g is not None and g.get('is_pointer')))
+            if is_ptr:
+                # Struct pointer: load the pointer value (the struct address).
+                self._emit_var_load(addr_reg, name)
+                return
+            info = self.array_vars.get(name)
+            if info is not None and info.get('tag'):
+                # Scalar struct local: laid out as an N-word array; element 0
+                # is the struct base address.
+                self._emit_array_const_addr(info, 0, addr_reg)
+                return
+            if g is not None and g.get('tag'):
+                # Scalar struct global: absolute base address.
+                gin = {'elem_type': 'struct', 'count': g['count'],
+                       'elem_size': 2, 'stride': g.get('stride', 2),
+                       'base_addr': g['address'], 'is_global': True}
+                self._emit_array_const_addr(gin, 0, addr_reg)
+                return
+            raise NameError(
+                f"'{name}' is not a struct variable or struct pointer")
+        if isinstance(expr, ArrayAccess):
+            arr_name = expr.name
+            info = self.array_vars.get(arr_name)
+            if info is None:
+                g = self.global_vars.get(arr_name)
+                if g and g.get('is_array'):
+                    info = {'elem_type': g['type'], 'count': g['count'],
+                            'elem_size': self._elem_size(g['type']),
+                            'stride': g.get('stride'),
+                            'base_addr': g['address'], 'is_global': True,
+                            **({'tag': g['tag']} if g.get('tag') else {})}
+                else:
+                    raise NameError(f"Undefined array '{arr_name}'")
+            if not info.get('tag'):
+                raise NameError(
+                    f"'{arr_name}' is not an array of structs")
+            if idx_reg is None:
+                idx_reg = self.generate_expression(expr.index)
+            self._emit_array_addr(info, idx_reg, addr_reg)
+            return
+        raise SyntaxError("Unsupported method-call receiver expression")
 
 
     def _decl_is_true_array(self, decl):
@@ -1999,12 +2115,30 @@ class CodeGenerator:
             return
         raise NameError(f"Undefined variable '{name}'")
 
+    def _function_label(self, func_def: FunctionDef) -> str:
+        """Assembly label for a function or impl-block method.
+
+        Top-level functions use func_name; impl methods are namespaced to
+        the owning type (func_TypeName_method) so two structs may define
+        the same method name without label collisions."""
+        tag = getattr(func_def, 'impl_tag', None)
+        if tag:
+            return f'func_{tag}_{func_def.name}'
+        return f'func_{func_def.name}'
+
     def generate_function(self, func_def: FunctionDef):
+        label = self._function_label(func_def)
         self.functions[func_def.name] = {
-            'label': f'func_{func_def.name}',
+            'label': label,
             'params': len(func_def.params),
             'return_type': func_def.return_type
         }
+        # Only a top-level function named timer_interrupt is an ISR. A method
+        # inside an `impl` block is never an interrupt handler, even if it
+        # happens to be called timer_interrupt.
+        is_interrupt_handler = (
+            func_def.name == 'timer_interrupt'
+            and not getattr(func_def, 'impl_tag', None))
 
         # Clear spill allocations for this function (per-function scope)
         self.spill_allocations = {}
@@ -2033,7 +2167,7 @@ class CodeGenerator:
         self.address_params = set()  # per-function array/pointer parameters
         
         self.assembly.append(f"; Function: {func_def.name}")
-        self.assembly.append(f"func_{func_def.name}:")
+        self.assembly.append(f"{label}:")
         
         all_local_decls = self.find_local_vars(func_def.body)
         
@@ -2091,7 +2225,7 @@ class CodeGenerator:
             else:
                 local_size += 2 if decl.var_type in ('int', 'string', 'binary', 'float') else 1
         
-        if func_def.name == 'timer_interrupt':
+        if is_interrupt_handler:
             # Interrupt handlers must NOT use ENTER/LEAVE because the CPU
             # already pushed PC and flags on the stack. Use direct SP
             # manipulation instead so IRET can find the saved context.
@@ -2144,13 +2278,19 @@ class CodeGenerator:
                 local_offset += 2
                 self.local_vars[decl.name] = {'offset': -local_offset}
             elif decl_tag:
-                # Scalar struct local: register as an N-word array so all
-                # array addressing paths (member loads, &p, decay) apply.
-                n_fields = len(self._struct_fields(decl_tag))
-                local_offset += n_fields * 2
+                # Scalar struct/union local: register as an N-word array so
+                # all array addressing paths (member loads, &p, decay) apply.
+                # The element count mirrors the ACTUAL frame allocation
+                # (_struct_size): a N-field struct is N words, a union is a
+                # single overlapping word. Using field_count*2 for unions
+                # would misaddress the slot (frames allocate only 1 word),
+                # letting nested call stack activity clobber it.
+                struct_bytes = self._struct_size(decl_tag)
+                local_offset += struct_bytes
+                n_words = struct_bytes // 2
                 self.local_vars[decl.name] = {'offset': -local_offset}
                 self.array_vars[decl.name] = {
-                    'elem_type': 'struct', 'count': n_fields,
+                    'elem_type': 'struct', 'count': n_words,
                     'elem_size': 2, 'offset': -local_offset,
                     'tag': decl_tag,
                 }
@@ -2160,7 +2300,7 @@ class CodeGenerator:
                 self.local_vars[decl.name] = {'offset': -local_offset}
 
         # Store locals_size for iret() cleanup
-        self._timer_interrupt_locals_size = local_size if func_def.name == 'timer_interrupt' else 0
+        self._timer_interrupt_locals_size = local_size if is_interrupt_handler else 0
         self._emitted_return = False
 
         # Run a lightweight register-coloring pass to record assignment hints.
@@ -2219,7 +2359,7 @@ class CodeGenerator:
 
         # Only emit implicit return if the function didn't already return (e.g. via iret)
         if func_def.return_type == 'void' and not self._emitted_return:
-            if func_def.name == 'timer_interrupt':
+            if is_interrupt_handler:
                 # ISR without an explicit iret() call: restore the saved
                 # context and return from the interrupt. A normal RET here
                 # would pop the pushed flags word as a return address and
@@ -3983,6 +4123,8 @@ class CodeGenerator:
             raise SyntaxError("Postfix operators can only be applied to variables, pointers, or array elements")
         elif isinstance(expr, FuncCall):
             return self.generate_call(expr)
+        elif isinstance(expr, MethodCall):
+            return self.generate_method_call(expr)
         else:
             raise RuntimeError(f"Unknown expression type: {type(expr)}")
 
@@ -4516,6 +4658,64 @@ class CodeGenerator:
             self.emit(f"    MOV {result_reg}, P0")
         else:
             self.emit(f"    MOV {result_reg}, R0")
+        return result_reg
+
+    def generate_method_call(self, call: MethodCall) -> str:
+        """Generate an instance-method call: p.method(...), pp->method(...).
+
+        The receiver is resolved at compile time to its struct/union tag,
+        and the method is looked up under the namespaced key
+        "TypeName::method". The receiver ADDRESS is pushed as the first
+        argument (the callee's `self` parameter), followed by the explicit
+        arguments (pushed in reverse source order, matching generate_call's
+        cdecl-style convention where caller cleans up). User-defined methods
+        return their 16-bit result in P0, like top-level user functions.
+        """
+        member = call.base  # MemberAccess(receiver_expr, method_name, arrow)
+        receiver_expr = member.base
+        method_name = member.field
+
+        tag = self._receiver_struct_tag(receiver_expr)
+        if tag is None:
+            raise NameError(
+                f"Method call '{method_name}' requires a struct/union "
+                f"receiver (variable, pointer, or array element)")
+        key = f'{tag}::{method_name}'
+        info = self.functions.get(key)
+        if info is None:
+            available = sorted(
+                k.split('::', 1)[1]
+                for k in self.functions if k.startswith(f'{tag}::'))
+            hint = (f" (available: {', '.join(available) or 'none'})"
+                    if available else "")
+            raise NameError(
+                f"Type '{tag}' has no method '{method_name}'{hint}")
+
+        self.emit_comment(f"Method call {tag}::{method_name}")
+
+        # Push the explicit arguments in reverse source order so the stack
+        # top ends up as the LAST argument (the callee reads params at
+        # ascending FP offsets, so the first parameter -- `self` -- must be
+        # pushed last, right before the CALL).
+        for arg in reversed(call.args):
+            arg_reg = self.generate_expression(arg)
+            self.emit(f"    PUSH {arg_reg}")
+            self.free_register()
+
+        # Evaluate and push the receiver address (the implicit `self` arg).
+        recv_reg = self.get_register()
+        self._emit_receiver_addr(receiver_expr, recv_reg)
+        self.emit(f"    PUSH {recv_reg} ; Receiver := self")
+        self.free_register()
+
+        self.emit(f"    CALL {info['label']}")
+        # User-function callees restore SP to the frame base, leaving the
+        # caller-pushed arguments on the stack; deallocate all of them
+        # (receiver + explicit args), one word each, cdecl-style.
+        self.emit(f"    ADD SP, {(len(call.args) + 1) * 2} ; Caller cleans up args + receiver")
+
+        result_reg = self.get_register()
+        self.emit(f"    MOV {result_reg}, P0")
         return result_reg
 
     def generate_builtins(self):

@@ -40,6 +40,9 @@ KEYWORDS = {
     # Multi-file compilation units:
     'include',   # include "file";   -- splice another file's definitions in
     'inherits',  # inherits "file";  -- pull in a base file, allowing overrides
+
+    # Rust-style implementation blocks:
+    'impl',      # impl TypeName { int method(self, ...) { ... } }
 }
 
 # Operators and delimiters

@@ -61,7 +61,8 @@ class Program(ASTNode):
                  enum_constants: Optional[Dict[str, int]] = None,
                  structs: Optional[Dict[str, List]] = None,
                  union_defs: Optional[Dict[str, List]] = None,
-                 type_aliases: Optional[Dict[str, str]] = None):
+                 type_aliases: Optional[Dict[str, str]] = None,
+                 impl_blocks: Optional[List["ImplBlock"]] = None):
         self.functions = functions
         # Top-level (global) variable declarations. Empty for sources that
         # only define functions; populated when the source declares variables
@@ -82,6 +83,9 @@ class Program(ASTNode):
         self.union_defs: Dict[str, List] = union_defs if union_defs is not None else {}
         # Type aliases from typedef declarations (alias -> base_type).
         self.type_aliases: Dict[str, str] = type_aliases if type_aliases is not None else {}
+        # impl blocks attach methods to struct/union types:
+        #   ImplBlock(tag, [FunctionDef, ...])  -- methods have impl_tag set.
+        self.impl_blocks: List["ImplBlock"] = impl_blocks if impl_blocks is not None else []
 
 class FunctionDef(ASTNode):
     def __init__(self, return_type: str, name: str, params: List["VarDecl"], body: List["ASTNode"]):
@@ -89,6 +93,10 @@ class FunctionDef(ASTNode):
         self.name = name
         self.params = params
         self.body = body
+        # Set when the function is a method inside an `impl TypeName { }`
+        # block. The code generator then namespaces the emitted label as
+        # `func_TypeName_method` so two structs may share method names.
+        self.impl_tag: Optional[str] = None
 
 class VarDecl(ASTNode):
     def __init__(self, var_type: str, name: str, value: Optional["ASTNode"],
@@ -252,6 +260,28 @@ class MemberAssignment(ASTNode):
         self.target = target
         self.value = value
 
+class ImplBlock(ASTNode):
+    """Rust-style implementation block: `impl TypeName { ... methods ... }`.
+
+    Methods are ordinary FunctionDefs whose first parameter is the receiver
+    `self` (implicitly `struct TypeName *self`, so `self.field` works).
+    Every method carries impl_tag == TypeName so the code generator can
+    namespace its label (func_TypeName_method) and resolve method calls.
+    """
+    def __init__(self, tag: str, methods: List["FunctionDef"]):
+        self.tag = tag
+        self.methods = methods
+
+class MethodCall(Expression):
+    """Instance-method invocation: p.method(args), pp->method(args).
+
+    base is the MemberAccess the parser built from the receiver chain; its
+    .field names the method and its .base is the receiver expression.
+    The receiver is implicitly passed as the first argument (`self`)."""
+    def __init__(self, base: "MemberAccess", args: List["Expression"]):
+        self.base = base
+        self.args = args
+
 class TernaryOp(Expression):
     """Ternary conditional expression: cond ? then_expr : else_expr."""
     def __init__(self, cond: "Expression", then_expr: "Expression", else_expr: "Expression"):
@@ -355,6 +385,16 @@ class Parser:
         # directly in this file always win over both.
         self.included_fn_names: set = set()
         self.included_gl_names: set = set()
+        # impl blocks accumulate here as `impl Tag { ... }` declarations are
+        # parsed; shared with the resulting Program node.
+        self.impl_blocks: List["ImplBlock"] = []
+        # Method keys "Tag::name" declared in THIS file or merged via plain
+        # include (strict duplicate detection for include semantics).
+        self.impl_keys: set = set()
+        # Subset of impl_keys that arrived via `include`; used at EOF so an
+        # inherited ("more derived") method can shadow an included one while
+        # methods written directly in this file always win over both.
+        self.included_impl_keys: set = set()
 
     @staticmethod
     def _normalize_type_tokens(tokens: List[Token]) -> List[Token]:
@@ -473,6 +513,11 @@ class Parser:
             #   union Tag { int i; char c; };
             if self.current.type == 'KEYWORD' and self.current.value == 'union':
                 self.parse_union_definition()
+                continue
+            # impl blocks attach methods to a struct/union type:
+            #   impl TypeName { int method(self, ...) { ... } }
+            if self.current.type == 'KEYWORD' and self.current.value == 'impl':
+                self.parse_impl_block()
                 continue
             # Top-level const qualifiers prefix either functions or globals.
             if self.current.type == 'KEYWORD' and self.current.value == 'const':
@@ -602,6 +647,9 @@ class Parser:
         # only when the child does not define its own version (override).
         own_fn_names = {f.name for f in functions} - self.included_fn_names
         own_gl_names = {g.name for g in globals_} - self.included_gl_names
+        # Same override rule for impl methods: keys declared in this file
+        # (own) always win; inherited methods only fill gaps.
+        own_impl_keys = self.impl_keys - self.included_impl_keys
         for unit in self.inherited_units:
             for f in unit.functions:
                 if f.name in own_fn_names:
@@ -637,8 +685,44 @@ class Parser:
             # Base-file type aliases fill gaps only (same override rule).
             for alias, base_type in unit.type_aliases.items():
                 self.type_aliases.setdefault(alias, base_type)
+            # Base-file impl methods fill gaps only. Precedence mirrors the
+            # function rules: methods written directly in the inheriting file
+            # always win; inherited methods shadow same-named methods that
+            # arrived via plain include.
+            for block in unit.impl_blocks:
+                for method in block.methods:
+                    key = f'{block.tag}::{method.name}'
+                    if key in own_impl_keys:
+                        continue  # this file's own method wins
+                    method.impl_tag = block.tag
+                    target = next((b for b in self.impl_blocks
+                                   if b.tag == block.tag), None)
+                    if target is None:
+                        self.impl_blocks.append(
+                            ImplBlock(block.tag, [method]))
+                    else:
+                        existing = next(
+                            (i for i, m in enumerate(target.methods)
+                             if m.name == method.name), None)
+                        if existing is not None:
+                            # Shadow a plain-include definition.
+                            target.methods[existing] = method
+                        else:
+                            target.methods.append(method)
+                    own_impl_keys.add(key)
+        # Validate impl blocks reference a defined struct/union type (checked
+        # at EOF so impl blocks may legally appear before the type definition
+        # in the same compilation unit, and so structs merged from included
+        # files count).
+        for block in self.impl_blocks:
+            if (block.tag not in self.struct_defs
+                    and block.tag not in self.union_defs):
+                raise SyntaxError(
+                    f"impl {block.tag}: no struct or union named "
+                    f"'{block.tag}' is defined "
+                    f"(line {self.current.line})")
         return Program(functions, globals_, self.enum_constants, self.struct_defs,
-                       self.union_defs, self.type_aliases)
+                       self.union_defs, self.type_aliases, self.impl_blocks)
 
     # ------------------------------------------------------------------
     # Multi-file compilation units: include / inherits
@@ -759,6 +843,103 @@ class Parser:
                     f"Struct '{tag}' redefined with a different layout via "
                     f"include")
             self.struct_defs.setdefault(tag, fields)
+        # impl methods merge strictly, like functions: redefining a method
+        # for the same type after an include is an error. Diamond includes
+        # dedupe through `include_state['seen']`, so the same method can
+        # never be re-merged from the same file twice.
+        for block in unit.impl_blocks:
+            for method in block.methods:
+                key = f'{block.tag}::{method.name}'
+                if key in self.impl_keys:
+                    raise SyntaxError(
+                        f"Duplicate method '{method.name}' for type "
+                        f"'{block.tag}' after include (previously defined "
+                        f"in this unit or another included file)")
+                self.impl_keys.add(key)
+                self.included_impl_keys.add(key)
+                self._add_impl_block(ImplBlock(block.tag, [method]))
+
+    def _add_impl_block(self, block: "ImplBlock"):
+        """Append an impl block, merging into any existing block for the
+        same type tag so codegen can group a type's methods together."""
+        target = next((b for b in self.impl_blocks if b.tag == block.tag), None)
+        if target is None:
+            self.impl_blocks.append(block)
+        else:
+            for method in block.methods:
+                method.impl_tag = block.tag
+                target.methods.append(method)
+
+    def parse_impl_block(self):
+        """Parse a Rust-style implementation block:
+
+            impl TypeName {
+                int distance(self, int ax, int ay) { ... }
+                void move(self, int dx, int dy) { ... }
+            }
+
+        Every method's first parameter must be the receiver `self`, which
+        binds to the struct/union instance the method is invoked on. `self`
+        is implicitly `struct TypeName *` (structs are passed by address in
+        Astrid), so `self.field` resolves through the pointee layout. The
+        receiver is registered under self.impl_blocks and grouped by tag.
+        """
+        self.expect('KEYWORD', 'impl')
+        tag = self.current.value
+        self.expect('IDENTIFIER')
+        self.expect('DELIMITER', '{')
+        methods: List[FunctionDef] = []
+        while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
+            # Parse the method header exactly like parse_function but with
+            # the receiver requirement and no prototype declarations.
+            return_type = self.current.value
+            if self.current.type != 'KEYWORD':
+                raise SyntaxError(
+                    f"impl {tag}: expected a method definition, got "
+                    f"{self.current.type} '{self.current.value}' "
+                    f"(line {self.current.line})")
+            self.expect('KEYWORD')
+            pointer_depth = 0
+            while self.current.type == 'OPERATOR' and self.current.value == '*':
+                pointer_depth += 1
+                self.advance()
+            name = self.current.value
+            self.expect('IDENTIFIER')
+            key = f'{tag}::{name}'
+            if key in self.impl_keys:
+                raise SyntaxError(
+                    f"Duplicate method '{name}' for type '{tag}' "
+                    f"(line {self.current.line})")
+            self.impl_keys.add(key)
+            self.expect('DELIMITER', '(')
+            # The receiver must be the literal identifier `self`. It is NOT
+            # routed through parse_params (which requires a type keyword or
+            # typedef alias): the receiver is implicitly typed by the block.
+            if self.current.type != 'IDENTIFIER' or self.current.value != 'self':
+                got = f"{self.current.type} '{self.current.value}'"
+                raise SyntaxError(
+                    f"Method '{name}' in impl {tag} must take `self` as "
+                    f"its first parameter (got {got}, line "
+                    f"{self.current.line})")
+            self.advance()  # consume `self`
+            params: List[VarDecl] = [
+                VarDecl('struct', 'self', None, pointer_depth=1,
+                        struct_tag=tag,
+                        array_syntax=False)]
+            if self.current.type == 'DELIMITER' and self.current.value == ',':
+                self.advance()
+                params.extend(self.parse_params())
+            self.expect('DELIMITER', ')')
+            self.expect('DELIMITER', '{')
+            body = self.parse_block()
+            self.expect('DELIMITER', '}')
+            method = FunctionDef(return_type, name, params, body)
+            method.impl_tag = tag
+            methods.append(method)
+        self.expect('DELIMITER', '}')
+        if not methods:
+            raise SyntaxError(f"impl {tag} has no methods")
+        self._add_impl_block(ImplBlock(tag, methods))
 
     def parse_enum(self):
         """Parse an enum declaration: enum [Tag] { A, B = 5, C };
@@ -1634,6 +1815,26 @@ class Parser:
                     node = MemberAccess(node, field, arrow=True)
                 else:
                     break
+            # Method call: p.method(...), pp->method(...), pts[i].method(...).
+            # The member-access loop just built the MemberAccess whose
+            # .field names the method; an immediate '(' turns it into an
+            # instance-method call (implicit receiver argument).
+            if (isinstance(node, MemberAccess)
+                    and self.current.type == 'DELIMITER'
+                    and self.current.value == '('):
+                self.advance()
+                args = []
+                if self.current.type != 'DELIMITER' or self.current.value != ')':
+                    while True:
+                        # Parse arguments as assignment-expressions so commas
+                        # between arguments are separators, not comma operators.
+                        args.append(self.parse_binary_op(1))
+                        if self.current.type == 'DELIMITER' and self.current.value == ',':
+                            self.advance()
+                        else:
+                            break
+                self.expect('DELIMITER', ')')
+                node = MethodCall(node, args)
             return node
         elif token.type == 'KEYWORD' and token.value == 'sizeof':
             # sizeof(type) or sizeof(expr): compile-time byte size.
