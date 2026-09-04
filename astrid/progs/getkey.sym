@@ -2,11 +2,18 @@
 # Format: <symbol> <value>
 start 0x1000
 func_main 0x100F
-while_start_0 0x1012
-if_end_2 0x1073
-while_end_1 0x1077
-builtin_set_pos 0x107F
-builtin_screen_fill 0x1094
-builtin_write_text 0x10A1
-builtin_key_available 0x10B5
-builtin_key_read 0x10B9
+while_start_0 0x102A
+cmp_true_4 0x1075
+cmp_end_5 0x1079
+if_end_6 0x10D0
+if_end_2 0x117A
+while_end_1 0x117E
+builtin_set_pos 0x1186
+builtin_screen_fill 0x119B
+builtin_write_text 0x11A8
+builtin_key_available 0x11BC
+builtin_key_read 0x11C0
+builtin_mouse_ctrl 0x11C4
+builtin_mouse_read 0x11D5
+builtin_mouse_pos 0x11DA
+.mouse_pos_done 0x11F0

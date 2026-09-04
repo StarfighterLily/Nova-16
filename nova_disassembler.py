@@ -223,7 +223,6 @@ def disassemble_instruction_new(bytecode, pc, opcode_map, register_map):
     # For new format, read mode byte
     if pc + 1 >= len(bytecode):
         return mnemonic, [], 1  # Incomplete instruction
-        return mnemonic, [], 1  # Incomplete instruction
     
     mode_byte = bytecode[pc + 1]
     

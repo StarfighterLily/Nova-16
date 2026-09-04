@@ -7,17 +7,42 @@ CALL func_main
 HLT
 ; Function: main
 func_main:
-ENTER 0
+ENTER 2
+; Call to mouse_ctrl
+MOV P0, 1
+PUSH P0
+CALL builtin_mouse_ctrl
+; Args consumed by callee
+MOV P1, P0
+; var counter = ...
+MOV P2, 0
+MOV [0xC000], P2
 ; While loop
 while_start_0:
-MOV P0, 1
-CMP P0, 0
+MOV P4, 1
+CMP P4, 0
 JZ while_end_1
+MOV P5, [0xC000]
+MOV P6, P5
+INC P5
+MOV [0xC000], P5
 ; If statement
-; Call to key_available
-CALL builtin_key_available
-MOV P1, P0
-CMP P1, 0
+MOV P7, [0xC000]
+PUSH P7
+MOV P0, 5120
+POP P7
+MOD P7, P0
+PUSH P7
+MOV P1, 0
+POP P7
+CMP P7, P1
+JZ cmp_true_4
+MOV P7, 0
+JMP cmp_end_5
+cmp_true_4:
+MOV P7, 1
+cmp_end_5:
+CMP P7, 0
 JZ if_end_2
 ; Call to screen_fill
 MOV P2, 0
@@ -26,25 +51,97 @@ CALL builtin_screen_fill
 ; Args consumed by callee
 MOV P4, R0
 ; Call to set_pos
-MOV P5, 128
+MOV P5, 16
 PUSH P5
-MOV P6, 128
+MOV P6, 16
 PUSH P6
 CALL builtin_set_pos
 ; Args consumed by callee
 MOV P7, R0
+; If statement
+; Call to key_available
+CALL builtin_key_available
+CMP P0, 0
+JZ if_end_6
 ; Call to write_text
-MOV P0, 31
-PUSH P0
+MOV P1, 31
+PUSH P1
 ; Type cast: (string) expr
 ; Call to key_read
 CALL builtin_key_read
-MOV P1, P0
-ITOS P2, P1
-PUSH P2
+MOV P2, P0
+ITOS P4, P2
+PUSH P4
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P4, R0
+MOV P5, R0
+if_end_6:
+; Call to set_pos
+MOV P6, 32
+PUSH P6
+MOV P7, 16
+PUSH P7
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P0, R0
+; Call to write_text
+MOV P1, 31
+PUSH P1
+; Type cast: (string) expr
+; Call to mouse_read
+CALL builtin_mouse_read
+MOV P2, P0
+ITOS P4, P2
+PUSH P4
+CALL builtin_write_text
+; Args consumed by callee
+MOV P5, R0
+; Call to set_pos
+MOV P6, 48
+PUSH P6
+MOV P7, 16
+PUSH P7
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P0, R0
+; Call to write_text
+MOV P1, 31
+PUSH P1
+; Type cast: (string) expr
+; Call to mouse_pos
+MOV P2, 0
+PUSH P2
+CALL builtin_mouse_pos
+; Args consumed by callee
+MOV P4, P0
+ITOS P5, P4
+PUSH P5
+CALL builtin_write_text
+; Args consumed by callee
+MOV P6, R0
+; Call to set_pos
+MOV P7, 48
+PUSH P7
+MOV P0, 96
+PUSH P0
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P1, R0
+; Call to write_text
+MOV P2, 31
+PUSH P2
+; Type cast: (string) expr
+; Call to mouse_pos
+MOV P4, 1
+PUSH P4
+CALL builtin_mouse_pos
+; Args consumed by callee
+MOV P5, P0
+ITOS P6, P5
+PUSH P6
+CALL builtin_write_text
+; Args consumed by callee
+MOV P7, R0
 if_end_2:
 JMP while_start_0
 while_end_1:
@@ -80,4 +177,25 @@ KEYSTAT P0
 RET
 builtin_key_read:
 KEYIN P0
+RET
+builtin_mouse_ctrl:
+POP P3
+POP P1
+MOUSECTRL P1
+MOV P0, P1
+PUSH P3
+RET
+builtin_mouse_read:
+MOV P0, MB
+RET
+builtin_mouse_pos:
+; Mouse position readout: axis 0=X, 1=Y
+POP P3
+POP P1
+MOV P0, MX
+CMP P1, 0
+JZ .mouse_pos_done
+MOV P0, MY
+.mouse_pos_done:
+PUSH P3
 RET

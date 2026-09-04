@@ -8,67 +8,53 @@ struct Missile {
     int pmissile3;
     int mx3;
     int my3;
-} Missile = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    int cooldown;
+} Missile = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+// Asteroid generations: 0=large -> 1=medium -> 2=small -> 3=tiny.
+// Hitting a rock splits it into two children of the next generation;
+// generation 3 is the final stage and is simply destroyed.
+struct Asteroid {
+    int x;
+    int y;
+    int dx;
+    int dy;
+    int gen;
+    int alive;
+};
+
+// 28 slots: one chain needs 15 (1+2+4+8); two overlapping chains fit with headroom
+struct Asteroid rocks[28];
 
 struct Player {
     int x;
     int y;
-    int hit;
-} Player = {0, 0, 0};
+    signed int hit;
+} Player = {0, 0, 10};
 
 impl Player {
-    void movePlayer(self, int direction) {
-        switch (direction) {
-            case 0:
-                self.y -= 4;
-                break;
-            case 1:
-                self.y += 4;
-                break;
-            case 2:
-                self.x -= 4;
-                break;
-            case 3:
-                self.x += 4;
-                break;
-        }
-        if (self.x > 248) {
-            self.x = 248;
-        }
-        if (self.y > 248) {
-            self.y = 248;
-        }
-        if (self.x <= 4) {
-            self.x = 4;
-        }
-        if (self.y <= 4) {
-            self.y = 4;
-        }
-        // Update the SCB so the sprite is rendered at the new position
-        SCBwrite(0, 0x80, 0x00, self.x, self.y, 8, 8, 0b00000011, 0x00);
-        //key_clear();
+    void movePlayer(self) {
+        SCBwrite(0, 0x80, 0x00, mouse_pos(0), mouse_pos(1), 8, 8, 0b00000011, 0x00);
     }
 }
 
 impl Missile {
     void fireMissile(self) {
-        if (self.pmissile1 == 0) {
+        if (self.pmissile1 == 0 && !self.cooldown) {
             self.mx1 = peek(0xf000 + 2);
             self.my1 = peek(0xf000 + 3);
             self.pmissile1 = 1;
             SCBwrite(1, 0x80, 0x40, self.mx1, self.my1, 8, 8, 0b00000011, 0x00);
-        } else if (self.pmissile2 == 0) {
+        } else if (self.pmissile2 == 0 && !self.cooldown) {
             self.mx2 = peek(0xf000 + 2);
             self.my2 = peek(0xf000 + 3);
             self.pmissile2 = 1;
             SCBwrite(2, 0x80, 0x40, self.mx2, self.my2, 8, 8, 0b00000011, 0x00);
-        } else if (self.pmissile3 == 0) {
+        } else if (self.pmissile3 == 0 && !self.cooldown) {
             self.mx3 = peek(0xf000 + 2);
             self.my3 = peek(0xf000 + 3);
             self.pmissile3 = 1;
             SCBwrite(3, 0x80, 0x40, self.mx3, self.my3, 8, 8, 0b00000011, 0x00);
         }
-        // All three slots busy: the shot is silently dropped
     }
 
     void updateMissile(self) {
@@ -102,6 +88,166 @@ impl Missile {
     }
 }
 
+// ── Asteroid field ─────────────────────────────────────────────────────────
+// Rocks drift and wrap around the 256x256 screen. Shooting one splits it into
+// two faster children of the next generation; the final generation (3) just
+// dies. Rendering uses draw_circle(radius, filled) on layer 4 (the former
+// 4th star layer): layer 0 is the final composed output, the star parallax
+// owns layers 1-3, and sprite_blitall() rebuilds (and wipes) layers 5-8 every
+// frame, so the rocks must live on layer 4 to persist.
+
+int asteroidRadius(int gen) {
+    if (gen == 0) {
+        return 9;
+    }
+    if (gen == 1) {
+        return 6;
+    }
+    if (gen == 2) {
+        return 4;
+    }
+    return 2;
+}
+
+int asteroidColor(int gen) {
+    if (gen == 0) {
+        return 0x7F;
+    }
+    if (gen == 1) {
+        return 0x7B;
+    }
+    if (gen == 2) {
+        return 0x78;
+    }
+    return 0x75;
+}
+
+// Claim the first free slot; silently drops the spawn if the field is full
+void spawnAsteroid(int x, int y, int gen, int dx, int dy) {
+    int slot = -1;
+    for (int i = 0; i < 28; i++) {
+        if (rocks[i].alive == 0 && slot < 0) {
+            slot = i;
+        }
+    }
+    if (slot >= 0) {
+        rocks[slot].x = x;
+        rocks[slot].y = y;
+        rocks[slot].dx = dx;
+        rocks[slot].dy = dy;
+        rocks[slot].gen = gen;
+        rocks[slot].alive = 1;
+    }
+}
+
+// Children inherit the parent's drift, then diverge diagonally so the pair
+// visibly separates after the split
+void destroyAsteroid(int i) {
+    int gen = rocks[i].gen;
+    int px = rocks[i].x;
+    int py = rocks[i].y;
+    int pdx = rocks[i].dx;
+    int pdy = rocks[i].dy;
+    rocks[i].alive = 0;
+    if (gen < 3) {
+        spawnAsteroid(px, py, gen + 1, pdx + 1 + random_range(0, 3), pdy - random_range(1, 4));
+        spawnAsteroid(px, py, gen + 1, pdx - 1 - random_range(0, 3), pdy + random_range(1, 4));
+    }
+}
+
+// Spawn a wave of large rocks dropping in from the top edge
+void spawnWave() {
+    int n = random_range(1, 2);
+    for (int i = 0; i < n; i++) {
+        spawnAsteroid(random_range(8, 247), 0, 0, random_range(-2, 2), random_range(1, 2));
+    }
+}
+
+void updateAsteroids() {
+    for (int i = 0; i < 28; i++) {
+        if (rocks[i].alive == 1) {
+            rocks[i].x += rocks[i].dx;
+            rocks[i].y += rocks[i].dy;
+            // toroidal wrap so rocks re-enter from the opposite edge
+            if (rocks[i].x < 0) {
+                rocks[i].x += 256;
+            }
+            if (rocks[i].x > 255) {
+                rocks[i].x -= 256;
+            }
+            if (rocks[i].y < 0) {
+                rocks[i].y += 256;
+            }
+            if (rocks[i].y > 255) {
+                rocks[i].y -= 256;
+            }
+        }
+    }
+}
+
+// Layer 4 (the former 4th star layer) belongs to the rocks: it is a regular
+// non-scrolled layer that survives sprite blits, so a full clear each redraw
+// avoids stale trails
+void drawAsteroids() {
+    set_layer(4);
+    screen_fill(0x00);
+    for (int i = 0; i < 28; i++) {
+        if (rocks[i].alive == 1) {
+            set_pos(rocks[i].x, rocks[i].y);
+            set_color(asteroidColor(rocks[i].gen));
+            draw_circle(asteroidRadius(rocks[i].gen), 1);
+        }
+    }
+}
+
+// Bounding-box missile/rock test (square approximation of the radius).
+// A hit kills the missile and splits (or destroys) the rock.
+void checkMissileHits() {
+    for (int i = 0; i < 28; i++) {
+        if (rocks[i].alive == 1) {
+            int r = asteroidRadius(rocks[i].gen);
+            if (Missile.pmissile1 == 1) {
+                if (abs(Missile.mx1 - rocks[i].x) <= r && abs(Missile.my1 - rocks[i].y) <= r) {
+                    Missile.pmissile1 = 0;
+                    SCBwrite(1, 0x80, 0x40, 0, 0, 8, 8, 0b00000000, 0x00);
+                    destroyAsteroid(i);
+                }
+            }
+            if (Missile.pmissile2 == 1) {
+                if (abs(Missile.mx2 - rocks[i].x) <= r && abs(Missile.my2 - rocks[i].y) <= r) {
+                    Missile.pmissile2 = 0;
+                    SCBwrite(2, 0x80, 0x40, 0, 0, 8, 8, 0b00000000, 0x00);
+                    destroyAsteroid(i);
+                }
+            }
+            if (Missile.pmissile3 == 1) {
+                if (abs(Missile.mx3 - rocks[i].x) <= r && abs(Missile.my3 - rocks[i].y) <= r) {
+                    Missile.pmissile3 = 0;
+                    SCBwrite(3, 0x80, 0x40, 0, 0, 8, 8, 0b00000000, 0x00);
+                    destroyAsteroid(i);
+                }
+            }
+        }
+    }
+}
+
+void checkShipCollision() {
+    int px, py, i, r, dmg;
+    px = peek(0xF000 + 2);
+    py = peek(0xF000 + 3);
+    for (i = 0; i < 28; i++) {
+        if (rocks[i].alive == 1) {
+            // ship is an 8x8 sprite: treat its half-extent as 4px
+            r = asteroidRadius(rocks[i].gen) + 4;
+            if (abs(px - rocks[i].x) <= r && abs(py - rocks[i].y) <= r) {
+                dmg = 8 >> rocks[i].gen;
+                Player.hit -= dmg;
+                rocks[i].alive = 0;
+            }
+        }
+    }
+}
+
 void draw_stars(int layer, int step, int color_min, int color_max) {
 	int p, x, y, color;
 	int start = 0;
@@ -118,27 +264,20 @@ void draw_stars(int layer, int step, int color_min, int color_max) {
 			set_color(color);
 			draw_circle(1,1);
 		}
-		if (random_range(0,127) == 0) {
-			set_color(color);
-			draw_circle(2,1);
-		}
 	}
 }
 
 void parallax() {
-	for (int layer = 1; layer <= 4; layer++) {
+	for (int layer = 1; layer <= 3; layer++) {
 		set_layer(layer);
-		if (layer == 1){
+		if (layer == 1) {
 			scroll_y(layer, 1, 1);
 		}
-		if (layer == 2){
+		if (layer == 2) {
 			scroll_y(layer, 1, 2);
 		}
-		if (layer == 3){
+		if (layer == 3) {
 			scroll_y(layer, 1, 3);
-		}
-		if (layer == 4){
-			scroll_y(layer, 1, 4);
 		}
 	}
 }
@@ -207,8 +346,49 @@ void loadPlayer() {
     Player.y = peek(0xf000 + 3);
 }
 
+void endScreen() {
+    for (int i = 0; i <= 8; i++) {
+        set_layer(i);
+        screen_fill(0x00);
+    }
+    set_pos(128 - (8*8), 128);
+    write_text("You died", 0x1F);
+}
+
+void winScreen() {
+    for (int i = 0; i <= 8; i++) {
+        set_layer(i);
+        screen_fill(0x00);
+    }
+    set_pos(128 - (8*8), 128);
+    write_text("You WIN!", 0x3F);
+}
+
+void HUD(){
+    int hcolor = 0;
+    if (Player.hit < 0) {
+        Player.hit = 0;
+    }
+    if (Player.hit >= 10) {
+        hcolor = 0x2F;
+    } else if (Player.hit < 10 && Player.hit > 5) {
+        hcolor = 0x2A;
+    } else if (Player.hit < 5) {
+        hcolor = 0x25;
+    }
+    set_pos(0,0);
+    set_layer(8);
+    write_text("SHLD",0x2F);
+    set_pos(0,8);
+    write_text((string)Player.hit, hcolor);
+    set_layer(0);
+}
+
 void main() {
     int counter = 0;
+    int resets = 0;
+    int disttimes = 0;
+
     // Layer 1: many dim stars
 	draw_stars(1, 32, 0x00, 0x04);
 
@@ -218,37 +398,49 @@ void main() {
 	// Layer 3: fewer, brighter stars
 	draw_stars(3, 256, 0x07, 0x0A);
 
-	// Layer 4: fewest, brightest stars
-	draw_stars(4, 512, 0x0A, 0x0F);
-
     loadPlayer();
     loadMissile();
-
-    while (1) {
+    mouse_ctrl(1);
+    // Exit when health is exhausted; hit is signed so the compiler emits
+    // signed comparison jumps and 10-8-4 (negative) terminates correctly.
+    while (Player.hit > 0) {
         counter++;
         if ((counter % 2560) == 0) {
             Missile.updateMissile();
-            switch (key_read()) {
-                case 119:
-                    Player.movePlayer(0);
-                    break;
-                case 115:
-                    Player.movePlayer(1);
-                    break;
-                case 97:
-                    Player.movePlayer(2);
-                    break;
-                case 100:
-                    Player.movePlayer(3);
-                    break;
-                case 101:
+            Player.movePlayer();
+            updateAsteroids();
+            checkShipCollision();
+            checkMissileHits();
+            switch (mouse_read()) {
+                case 1:
                     Missile.fireMissile();
-                    break;
+                    Missile.cooldown = 1;
             }
         }
         if ((counter % 5120) == 0) {
+            drawAsteroids();
             sprblitall();
             parallax();
+            HUD();
         }
+        if ((counter % 40820) == 0) {
+            Missile.cooldown = 0;
+            resets++;
+            disttimes++;
+            if (disttimes >= 512) {
+                break;
+            }
+            if (resets == 20) {
+                spawnWave();
+                resets = 0;
+            }
+            counter = 0;
+        }
+    }
+    if (Player.hit <= 0) {
+        endScreen();
+    }
+    if (Player.hit > 0 && disttimes >= 100) {
+        winScreen();
     }
 }

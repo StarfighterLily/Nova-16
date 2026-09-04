@@ -501,6 +501,66 @@ void main() {
     print(f"PASS test_mouse_ctrl_builtin (cycles={cycles})")
 
 
+def test_mouse_read_builtin():
+    """mouse_read() builtin should return mouse button state."""
+    source = """
+int main() {
+    int buttons = mouse_read();
+    return buttons;
+}
+"""
+    proc, cycles, mem = compile_and_run(source)
+    # mouse_read() returns MB register (mouse buttons)
+    # Default state is 0 (no buttons pressed)
+    assert proc.r0 == 0, f"Expected R0=0 (no buttons), got {proc.r0}"
+    print(f"PASS test_mouse_read_builtin (cycles={cycles}, R0={proc.r0})")
+
+
+def test_mouse_pos_builtin_x():
+    """mouse_pos(0) should return mouse X position."""
+    source = """
+int main() {
+    int x = mouse_pos(0);
+    return x;
+}
+"""
+    proc, cycles, mem = compile_and_run(source)
+    # mouse_pos(0) returns MX register (mouse X position)
+    # Default state is 0
+    assert proc.r0 == 0, f"Expected R0=0 (default X), got {proc.r0}"
+    print(f"PASS test_mouse_pos_builtin_x (cycles={cycles}, R0={proc.r0})")
+
+
+def test_mouse_pos_builtin_y():
+    """mouse_pos(1) should return mouse Y position."""
+    source = """
+int main() {
+    int y = mouse_pos(1);
+    return y;
+}
+"""
+    proc, cycles, mem = compile_and_run(source)
+    # mouse_pos(1) returns MY register (mouse Y position)
+    # Default state is 0
+    assert proc.r0 == 0, f"Expected R0=0 (default Y), got {proc.r0}"
+    print(f"PASS test_mouse_pos_builtin_y (cycles={cycles}, R0={proc.r0})")
+
+
+def test_mouse_pos_builtin_both():
+    """mouse_pos() should return different values for X and Y axes."""
+    source = """
+int main() {
+    int x = mouse_pos(0);
+    int y = mouse_pos(1);
+    // Both should return 0 in default state
+    // Return x + y (should be 0)
+    return x + y;
+}
+"""
+    proc, cycles, mem = compile_and_run(source, expected_r0=0)
+    print(f"PASS test_mouse_pos_builtin_both (cycles={cycles}, R0={proc.r0})")
+
+
 def test_bcd_builtins():
     """bcd2bin() and bin2bcd() builtins should be available."""
     source = """
@@ -790,6 +850,10 @@ if __name__ == '__main__':
     test_layer_ops_builtins()
     test_sound_trigger_builtin()
     test_mouse_ctrl_builtin()
+    test_mouse_read_builtin()
+    test_mouse_pos_builtin_x()
+    test_mouse_pos_builtin_y()
+    test_mouse_pos_builtin_both()
     test_bcd_builtins()
     test_memcpy_memset_builtins()
     test_software_int_builtin()

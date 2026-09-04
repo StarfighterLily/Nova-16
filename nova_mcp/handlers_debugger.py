@@ -13,6 +13,9 @@ def handle_debugger_init(*, ensure_emulator, state, debugger_module) -> str:
 
     cpu = state["cpu"]
     debugger = debugger_module.NovaDebugger(state["cpu"], state["memory"], state["gfx"], state["sound"], str(program))
+    # Adopt any breakpoints registered at the CPU level (breakpoint_set /
+    # breakpoint_clear / breakpoint_list) so both registries stay coherent.
+    debugger.breakpoints = set(getattr(cpu, "breakpoints", set()) or ())
     state["debugger"] = debugger
     return json.dumps({"status": "debugger_initialized", "program": str(program), "pc": f"0x{cpu.pc:04X}", "symbols_loaded": len(debugger.symbol_table) > 0, "symbol_count": len(debugger.symbol_table)})
 
@@ -67,17 +70,33 @@ def handle_debugger_run_until_breakpoint(args, *, ensure_emulator, state, debugg
     if not debugger:
         return json.dumps({"error": "Failed to initialize debugger"})
 
+    # Honor breakpoints from BOTH registries: the CPU-level set managed by
+    # breakpoint_set/breakpoint_clear/breakpoint_list, and the NovaDebugger
+    # instance's own set. Previously only the debugger's (empty) set was
+    # consulted, so breakpoints set via breakpoint_set never fired here.
+    breakpoints = set(getattr(cpu, "breakpoints", set()) or ()) | set(debugger.breakpoints)
+
     start_pc = cpu.pc
     cycles = 0
     breakpoint_hit = None
+    error = None
     while cycles < max_cycles and not cpu.halted:
-        if cpu.pc in debugger.breakpoints:
-            breakpoint_hit = f"0x{cpu.pc:04X}"
+        # Step first, then check: resuming from a breakpoint must execute the
+        # instruction at the breakpoint instead of re-hitting it immediately.
+        try:
+            cpu.step()
+        except Exception as exc:
+            error = str(exc)
             break
-        cpu.step()
         cycles += 1
         state["cycle_count"] += 1
-    return json.dumps({"status": "ran_until_breakpoint", "start_pc": f"0x{start_pc:04X}", "final_pc": f"0x{cpu.pc:04X}", "cycles": cycles, "halted": cpu.halted, "breakpoint_hit": breakpoint_hit})
+        if cpu.pc in breakpoints:
+            breakpoint_hit = f"0x{cpu.pc:04X}"
+            break
+    result = {"status": "ran_until_breakpoint", "start_pc": f"0x{start_pc:04X}", "final_pc": f"0x{cpu.pc:04X}", "cycles": cycles, "halted": cpu.halted, "breakpoint_hit": breakpoint_hit}
+    if error:
+        result["error"] = error
+    return json.dumps(result)
 
 
 def handle_debugger_print_state(args, *, ensure_emulator, state, disassembler_module) -> str:

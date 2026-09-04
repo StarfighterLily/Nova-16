@@ -623,6 +623,21 @@ class CodeGenerator:
         'builtin_mouse_ctrl': [
             'POP P3', 'POP P1', 'MOUSECTRL P1', 'MOV P0, P1', 'PUSH P3', 'RET',
         ],
+        'builtin_mouse_read': [
+            'MOV P0, MB', 'RET',
+        ],
+        'builtin_mouse_pos': [
+            '; Mouse position readout: axis 0=X, 1=Y',
+            'POP P3',
+            'POP P1',
+            'MOV P0, MX',
+            'CMP P1, 0',
+            'JZ .mouse_pos_done',
+            'MOV P0, MY',
+            '.mouse_pos_done:',
+            'PUSH P3',
+            'RET',
+        ],
     }
 
     # Return types for builtin functions. Builtins are not registered in
@@ -653,6 +668,7 @@ class CodeGenerator:
         # --- Keyboard / Mouse ---
         'key_available': 'int', 'key_read': 'int', 'key_clear': 'int',
         'key_count': 'int', 'key_ctrl': 'int', 'mouse_ctrl': 'int',
+        'mouse_read': 'int', 'mouse_pos': 'int',
         # --- Random ---
         'random': 'int', 'random_range': 'int',
         # --- String (return type depends on the function) ---
@@ -840,6 +856,9 @@ class CodeGenerator:
             'key_available': 'builtin_key_available', 'key_read': 'builtin_key_read',
             'key_clear': 'builtin_key_clear', 'key_count': 'builtin_key_count',
             'key_ctrl': 'builtin_key_ctrl',
+            # Mouse
+            'mouse_read': 'builtin_mouse_read',
+            'mouse_pos': 'builtin_mouse_pos',
             # Random
             'random': 'builtin_random',
             'random_range': 'builtin_random_range',
@@ -1241,10 +1260,10 @@ class CodeGenerator:
         # Pointers and array parameters always occupy 2 bytes (an address).
         if name in self.pointer_vars or name in self.address_params:
             return 2
-        return 2 if self.var_types.get(name) in ('int', 'string', 'binary', 'float') else 1
+        return 2 if self.var_types.get(name) in ('int', 'signed_int', 'unsigned_int', 'string', 'binary', 'float') else 1
 
     def _is_int_var(self, name: str) -> bool:
-        return self.var_types.get(name) == 'int'
+        return self.var_types.get(name) in ('int', 'signed_int', 'unsigned_int')
 
     def _get_local_offset(self, name: str) -> int:
         offset = self.local_vars[name]['offset']
@@ -1305,7 +1324,7 @@ class CodeGenerator:
     def _elem_size(self, var_type: str) -> int:
         # Storage size in bytes for one element of the given type.
         # Struct fields are word slots, so a struct element is also 2 bytes.
-        return 2 if var_type in ('int', 'string', 'binary', 'float', 'struct') else 1
+        return 2 if var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary', 'float', 'struct') else 1
 
     # ------------------------------------------------------------------
     # Struct layout and member access support
@@ -2196,7 +2215,7 @@ class CodeGenerator:
                         'offset': None, 'is_param': True,
                     }
             else:
-                param_size += 2 if param.var_type in ('int', 'string', 'binary', 'float') else 1
+                param_size += 2 if param.var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary', 'float') else 1
         
         local_size = 0
         for decl in all_local_decls:
@@ -2223,7 +2242,7 @@ class CodeGenerator:
                 # Scalar struct local: one word slot per field.
                 local_size += self._struct_size(decl_tag)
             else:
-                local_size += 2 if decl.var_type in ('int', 'string', 'binary', 'float') else 1
+                local_size += 2 if decl.var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary', 'float') else 1
         
         if is_interrupt_handler:
             # Interrupt handlers must NOT use ENTER/LEAVE because the CPU
@@ -2250,7 +2269,7 @@ class CodeGenerator:
             self.local_vars[param.name] = {'offset': param_offset}
             if param.name in self.array_vars and self.array_vars[param.name].get('is_param'):
                 self.array_vars[param.name]['offset'] = param_offset
-            param_offset += 2 if (param.var_type in ('int', 'string', 'binary', 'float')
+            param_offset += 2 if (param.var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary', 'float')
                                   or param.pointer_depth
                                   or getattr(param, 'is_array_param', False)) else 1
 
@@ -2295,7 +2314,7 @@ class CodeGenerator:
                     'tag': decl_tag,
                 }
             else:
-                local_offset += 2 if (decl.var_type in ('int', 'string', 'binary')
+                local_offset += 2 if (decl.var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary')
                                       or decl.pointer_depth) else 1
                 self.local_vars[decl.name] = {'offset': -local_offset}
 
@@ -4128,11 +4147,87 @@ class CodeGenerator:
         else:
             raise RuntimeError(f"Unknown expression type: {type(expr)}")
 
+    def emit_unsigned_to_string(self, dest_reg: str, value_reg: str):
+        """Emit a software unsigned-to-string conversion using only Nova-16 ops.
+
+        This avoids inventing a new hardware instruction while keeping the
+        correct 16-bit unsigned magnitude semantics for values like 655300.
+        The result is stored as a NUL-terminated ASCII string at 0xA000 and the
+        buffer address is returned in dest_reg.
+        """
+        tmp = self.get_register()
+        scratch = self.get_register()
+        quotient = self.get_register()
+        digit = self.get_register()
+        
+        zero_label = self.generate_label("utoa_zero")
+        loop_label = self.generate_label("utoa_loop")
+        done_label = self.generate_label("utoa_done")
+        reverse_label = self.generate_label("utoa_rev")
+        finish_label = self.generate_label("utoa_finish")
+
+        # Check for zero
+        self.emit(f"    CMP {value_reg}, 0")
+        self.emit(f"    JZ {zero_label}")
+        
+        # Generate digits in reverse order at 0xA100
+        self.emit(f"    MOV {tmp}, {value_reg}")
+        self.emit(f"    MOV {scratch}, 0xA100")
+        self.emit_label(loop_label)
+        self.emit(f"    CMP {tmp}, 0")
+        self.emit(f"    JZ {done_label}")
+        self.emit(f"    MOV {quotient}, {tmp}")
+        self.emit(f"    MOV {digit}, 10")
+        self.emit(f"    DIV {quotient}, {digit}")
+        self.emit(f"    MOV {digit}, P3")
+        self.emit(f"    ADD {digit}, 48")
+        # MOV [mem], Psrc writes a 16-bit big-endian word whose high byte
+        # (0x00 for ASCII digits) lands at the target address and pushes the
+        # digit one byte further -- corrupting the next slot.  Route the byte
+        # through R0 (same convention as _emit_mem_store) for an 8-bit write.
+        self.emit(f"    MOV R0, {digit}")
+        self.emit(f"    MOV [{scratch}], R0")
+        self.emit(f"    MOV {tmp}, {quotient}")
+        self.emit(f"    INC {scratch}")
+        self.emit(f"    JMP {loop_label}")
+
+        self.emit_label(done_label)
+        # Now reverse the digits from 0xA100..scratch into 0xA000...
+        # scratch points to ONE PAST the last digit, so DEC back to the last
+        self.emit(f"    DEC {scratch}")
+        # Copy backward: read from scratch (going down), write to 0xA000 (going up)
+        self.emit(f"    MOV {tmp}, 0xA000")
+        self.emit_label(reverse_label)
+        # Unsigned loop: continue while scratch >= 0xA100 (unsigned).
+        # Once scratch drops below 0xA100 (borrow), JC will jump.
+        self.emit(f"    CMP {scratch}, 0xA100")
+        self.emit(f"    JC {finish_label}")  # Unsigned: jump if carry (borrow), i.e., scratch < 0xA100
+        # Byte reads/writes only: the source buffer holds packed ASCII bytes,
+        # so a word read (high byte) or word store (high byte 0x00) would
+        # contaminate the neighbouring cell.
+        self.emit(f"    MOV R0, [{scratch}]")
+        self.emit(f"    MOV [{tmp}], R0")
+        self.emit(f"    INC {tmp}")
+        self.emit(f"    DEC {scratch}")
+        self.emit(f"    JMP {reverse_label}")
+        
+        self.emit_label(finish_label)
+        self.emit(f"    MOV [{tmp}], 0")
+        self.emit(f"    MOV {dest_reg}, 0xA000")
+        self.emit(f"    JMP {finish_label}_end")
+        
+        self.emit_label(zero_label)
+        self.emit(f"    MOV [0xA000], 48")
+        self.emit(f"    MOV [0xA001], 0")
+        self.emit(f"    MOV {dest_reg}, 0xA000")
+        
+        self.emit_label(f"{finish_label}_end")
+
     def generate_cast(self, cast: Cast) -> str:
         """Generate code for type cast expressions using Nova-16 conversion instructions.
         
         Supported casts:
-          (string)expr   -> ITOS:  converts int expr to decimal string at 0xA000, 
+          (string)expr   -> ITOS:  converts int expr to decimal string at 0xA000,
                                     returns buffer address
           (binary)expr   -> ITOB:  converts int expr to binary string at 0xA100,
                                     returns buffer address
@@ -4140,6 +4235,11 @@ class CodeGenerator:
           (char)expr     -> truncates to 8 bits (low byte)
         """
         target = cast.target_type
+        # 'signed_int' / 'unsigned_int' share int's representation and codegen
+        # path; the distinction is kept in type metadata, not in the emitted
+        # register layout.
+        if target in ('signed_int', 'unsigned_int'):
+            target = 'int'
         inner = cast.expr
 
         # Identity cast optimization: casting to the type the expression
@@ -4148,6 +4248,9 @@ class CodeGenerator:
         # *address* — producing the decimal digits of the pointer — instead
         # of simply passing the existing string through.
         source_type = self._cast_source_type(inner)
+        # Preserve the explicit integer signedness until the conversion
+        # instruction is selected. For example, an unsigned 16-bit value must
+        # use UITOS instead of the signed ITOS path.
         if source_type == target and target in ('string', 'binary', 'int', 'char', 'float'):
             reg = self.get_register()
             inner_reg = self.generate_expression(inner)
@@ -4196,9 +4299,13 @@ class CodeGenerator:
         result_reg = self.get_register()
 
         if target == 'string':
-            # ITOS writes the decimal string to the fixed buffer 0xA000 and
-            # writes that buffer address into the destination operand.
-            self.emit(f"    ITOS {result_reg}, {inner_reg}")
+            # Use the built-in ITOS path for signed values. Unsigned values need
+            # a software decimal conversion because the Nova-16 ISA does not have
+            # a UITOS instruction.
+            if source_type == 'unsigned_int':
+                self.emit_unsigned_to_string(result_reg, inner_reg)
+            else:
+                self.emit(f"    ITOS {result_reg}, {inner_reg}")
         elif target == 'binary':
             # ITOB writes the binary string to the fixed buffer 0xA100 and
             # writes that buffer address into the destination operand.
@@ -4412,10 +4519,23 @@ class CodeGenerator:
     def _cast_source_type(self, expr: Expression) -> Optional[str]:
         """Determine the type of an expression's value for cast resolution.
 
-        Returns 'string', 'binary', 'int', 'char', or None if unknown.
+        Returns 'string', 'binary', 'int', 'signed_int', 'unsigned_int',
+        'char', or None if unknown. 'signed_int' and 'unsigned_int' mark
+        values declared with explicit C qualifiers so comparison logic can
+        choose the correct signed/unsigned branch instead of collapsing both
+        to plain int.
         Used by generate_cast to pick STOI/BTOI vs simple MOV for (int) casts,
         and by identity-cast elimination when casting to the same type.
         """
+        if isinstance(expr, MemberAccess):
+            # Struct field read (p.x, pts[i].y): resolve the declared
+            # field type through the struct layout so signed members
+            # propagate their signedness into comparison decisions.
+            try:
+                _, tag = self._member_base_info(expr)
+                return self._struct_field_type(tag, expr.field)
+            except (NameError, SyntaxError):
+                return None
         if isinstance(expr, Identifier):
             # Locals first (shadowing semantics); globals provide the
             # fallback so casts on file-scope string/binary variables pick
@@ -4484,11 +4604,22 @@ class CodeGenerator:
             if (self._cast_source_type(expr.left) == 'float' or
                     self._cast_source_type(expr.right) == 'float'):
                 return 'float'
+            ltype = self._cast_source_type(expr.left)
+            rtype = self._cast_source_type(expr.right)
+            if ltype == 'unsigned_int' or rtype == 'unsigned_int':
+                return 'unsigned_int'
+            if ltype == 'signed_int' or rtype == 'signed_int':
+                return 'signed_int'
             return 'int'
         if isinstance(expr, UnaryOp):
             # -x / !x / ~x preserve the operand's numeric category.
-            if self._cast_source_type(expr.right) == 'float':
+            rtype = self._cast_source_type(expr.right)
+            if rtype == 'float':
                 return 'float'
+            if rtype == 'unsigned_int':
+                return 'unsigned_int'
+            if rtype == 'signed_int':
+                return 'signed_int'
             return 'int'
         return None
 
@@ -4505,6 +4636,9 @@ class CodeGenerator:
           compare unsigned (their high bit legitimately encodes 128-255).
         * Q8.8 ``float`` uses a signed fixed-point representation, so any
           float comparison is signed.
+        * A value declared with the ``signed`` qualifier ('signed_int',
+          e.g. a struct health field) always compares signed: it can
+          legitimately hold negative values such as -1 after damage.
         * A compile-time constant whose top bit is set (negative literal
           such as -1 or -0x8000, or a hex constant 0x8000+ written
           directly) flips the comparison to signed -- the C interpretation
@@ -4520,6 +4654,10 @@ class CodeGenerator:
                 rtype in ('char', 'binary', 'string'):
             return False
         if ltype == 'float' or rtype == 'float':
+            return True
+        if ltype == 'unsigned_int' or rtype == 'unsigned_int':
+            return False
+        if ltype == 'signed_int' or rtype == 'signed_int':
             return True
         lval = self._const_eval(left)
         rval = self._const_eval(right)
@@ -4652,7 +4790,7 @@ class CodeGenerator:
             'swap', 'xchng',
             'bcd2bin', 'bin2bcd', 'bcdadd', 'bcdsub',
             'bcda', 'bcds', 'bcdcmp',
-            'mouse_ctrl',
+            'mouse_ctrl', 'mouse_read', 'mouse_pos',
         }
         if call.name in self.functions or call.name in p0_returning_builtins:
             self.emit(f"    MOV {result_reg}, P0")

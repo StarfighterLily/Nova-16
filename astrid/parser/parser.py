@@ -14,6 +14,7 @@ STORAGE_QUALIFIERS = {'const', 'register', 'volatile', 'extern', 'static', 'inli
 # follows): Astrid's type system only distinguishes the base widths.
 TYPE_MODIFIERS = {'signed', 'unsigned', 'long', 'short'}
 BASE_TYPES = {'int', 'char', 'string', 'binary', 'float', 'void'}
+NORMALIZED_TYPE_KEYWORDS = BASE_TYPES | {'signed_int', 'unsigned_int'}
 
 # AST Node Classes
 class ASTNode:
@@ -408,7 +409,7 @@ class Parser:
         'int' when only modifiers appear). Single base-type keywords pass
         through unchanged, so constructs like the `int(x)` conversion call
         are unaffected."""
-        mergeable = STORAGE_QUALIFIERS | TYPE_MODIFIERS | BASE_TYPES
+        mergeable = STORAGE_QUALIFIERS | TYPE_MODIFIERS | BASE_TYPES | {'signed_int', 'unsigned_int'}
         out: List[Token] = []
         i = 0
         while i < len(tokens):
@@ -419,9 +420,23 @@ class Parser:
                        and tokens[j].value in mergeable):
                     j += 1
                 base = 'int'
+                has_signed = False
+                has_unsigned = False
                 for k in range(i, j):
                     if tokens[k].value in BASE_TYPES:
                         base = tokens[k].value
+                    if tokens[k].value == 'signed':
+                        has_signed = True
+                    if tokens[k].value == 'unsigned':
+                        has_unsigned = True
+                # Preserve the sign bit when the source type was explicitly
+                # qualified so later comparison and string-format logic can
+                # distinguish signed and unsigned integers instead of treating
+                # both as plain int.
+                if has_signed and base == 'int':
+                    base = 'signed_int'
+                elif has_unsigned and base == 'int':
+                    base = 'unsigned_int'
                 out.append(Token('KEYWORD', base, tok.line, tok.column))
                 i = j
                 continue
@@ -602,7 +617,7 @@ class Parser:
                     globals_.append(g)
                 continue
             if (self.current.type == 'KEYWORD'
-                    and self.current.value in {'int', 'char', 'string', 'binary', 'float', 'void'}):
+                    and self.current.value in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float', 'void'}):
                 # Distinguish a function definition/prototype from a global
                 # variable declaration by looking ahead past any pointer
                 # stars: `type [*]* name(` is a function, anything else
@@ -1011,7 +1026,7 @@ class Parser:
             tag = self.current.value
             self.expect('IDENTIFIER')
             base_type = f'{base_type} {tag}'
-        elif self.current.type == 'KEYWORD' and base_type in BASE_TYPES:
+        elif self.current.type == 'KEYWORD' and base_type in NORMALIZED_TYPE_KEYWORDS:
             self.advance()
         elif self.current.type == 'IDENTIFIER' and base_type in self.type_aliases:
             # typedef myint anotherint; (alias of an alias)
@@ -1047,7 +1062,7 @@ class Parser:
         while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
             ftype = self.current.value
             if self.current.type != 'KEYWORD' or \
-                    ftype not in {'int', 'char', 'string', 'binary', 'float'}:
+                    ftype not in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float'}:
                 raise SyntaxError(
                     f"Unsupported union field type '{ftype}' in union "
                     f"'{tag}' (line {self.current.line})")
@@ -1107,7 +1122,7 @@ class Parser:
         while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
             ftype = self.current.value
             if self.current.type != 'KEYWORD' or \
-                    ftype not in {'int', 'char', 'string', 'binary', 'float'}:
+                    ftype not in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float'}:
                 raise SyntaxError(
                     f"Unsupported struct field type '{ftype}' in struct "
                     f"'{tag}' (line {self.current.line})")
@@ -1323,7 +1338,7 @@ class Parser:
                 tag = base_type.split(' ', 1)[1]
                 return self._parse_declarators('struct', struct_tag=tag)
             return self._parse_declarators(base_type)
-        if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'void', 'string', 'binary', 'float'}:
+        if self.current.type == 'KEYWORD' and self.current.value in {'int', 'signed_int', 'unsigned_int', 'char', 'void', 'string', 'binary', 'float'}:
             # int(x), char(x), string(x), binary(x) at statement start is a
             # function call, not a variable declaration. Peek for '(' after
             # the type keyword to distinguish.
@@ -1531,7 +1546,7 @@ class Parser:
 
         init = None
         if self.current.value != ';':
-            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'string', 'binary', 'float'}:
+            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float'}:
                 init = self.parse_var_decl(expect_semicolon=False)  # This returns a list of decls
             else:
                 init = self.parse_expression()
@@ -1841,7 +1856,7 @@ class Parser:
             self.advance()
             self.expect('DELIMITER', '(')
             if (self.current.type == 'KEYWORD'
-                    and self.current.value in {'int', 'char', 'string', 'binary', 'float', 'void'}):
+                    and self.current.value in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float', 'void'}):
                 type_name = self.current.value
                 self.advance()
                 # Allow pointer forms: sizeof(int*)
@@ -1888,7 +1903,7 @@ class Parser:
         elif token.type == 'DELIMITER' and token.value == '(':
             self.advance()
             # Check for type cast: (int)expr, (char)expr, (string)expr, (binary)expr
-            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'char', 'string', 'binary', 'float'}:
+            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float'}:
                 target_type = self.current.value
                 self.advance()
                 self.expect('DELIMITER', ')')

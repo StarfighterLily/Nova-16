@@ -278,6 +278,7 @@ class ExpressionSimplifier:
             "sed", "cld", "cla", "bcd2bin", "bin2bcd",
             "bcdadd", "bcdsub", "bcda", "bcds", "bcdcmp",
             "mouse_ctrl",
+            "mouse_read", "mouse_pos",
         }
         if name in side_effect_builtins:
             return None

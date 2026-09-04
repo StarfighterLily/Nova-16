@@ -1,0 +1,127 @@
+struct World {
+    int gravity;
+    int friction;
+    int groundh;
+} World = {2, 1, 248};
+
+struct Player {
+    int x;
+    int y;
+    int vx;
+    int vy;
+    int runspeed;
+    int jumpspeed;
+} Player = {128, 128, 0, 0, 1, 8};
+
+void memsprite(int addr, int sprite[128]) {
+    set_bank(1);
+    for (int x = 0; x < 128; x++) {
+        poke(addr + x, sprite[x]);
+    }
+    set_bank(0);
+}
+
+void SCBwrite(int id, int addrhi, int addrlo, int x, int y, int w, int h, int flags, int transparency) {
+    int base;
+    base = 0xF000 + (id * 16);
+    poke(base+0, addrhi);
+    poke(base+1, addrlo);
+    poke(base+2, x);
+    poke(base+3, y);
+    poke(base+4, w);
+    poke(base+5, h);
+    poke(base+6, flags);
+    poke(base+7, transparency);
+}
+
+impl Player {
+    void loadPlayer(self) {
+        int player[128] = {
+            00,00,05,05,05,05,05,05,
+            00,05,05,05,05,05,05,05,
+            00,05,05,05,02,15,02,15,
+            05,05,05,15,02,15,02,15,
+            05,05,05,15,15,15,15,15,
+            05,05,05,15,15,15,15,00,
+            05,05,05,95,95,95,95,00,
+            05,05,05,95,95,95,95,95,  //8
+            05,05,05,95,95,95,95,95,  //1
+            05,05,95,15,95,95,95,00,
+            05,05,95,15,95,95,95,00,
+            00,95,95,15,95,95,95,00,
+            00,95,95,95,95,95,95,00,
+            95,95,95,95,95,95,95,95,
+            02,02,02,02,02,02,02,02,
+            02,02,02,02,02,02,02,02
+        };
+        memsprite(0x8000, self.player);
+        SCBwrite(0, 0x80, 0x00, 127, 127, 8, 16, 0b00000011, 0x00);
+    }
+
+    void blitPlayer(self) {
+        set_bank(1);
+        sprite_blitall();
+        set_bank(0);
+    }
+
+    int getPlayerPos(self, int axis) {
+        if (!axis) {
+            int self.x = peek(0xF000 + 2);
+            return self.x;
+        } else {
+            int self.y = peek(0xF000 + 3);
+            return self.y;
+        }
+    }
+
+    void movePlayer(int dir, int amt) {
+        int x = getPlayerPos(0);
+        int y = getPlayerPos(1);
+        switch (dir) {
+            case 0:
+                x--;
+                break;
+            case 1:
+                x++;
+                break;
+            case 2:
+                y--;
+                break;
+            case 3:
+                y++;
+                break;
+        }
+        if (x <= 0){
+            x = 0;
+        } else if (x >= 255) {
+            x = 255;
+        }
+        if (y <= 0) {
+            y = 0;
+        } else if (y >= 255) {
+            y = 255;
+        }
+        SCBwrite(0, 0x80, 0x00, x, y, 8, 16, 0b00000011, 0x00);
+    }
+}
+
+void gravity() {
+    Player.movePlayer(3,1);
+}
+
+void main() {
+    int counter = 0;
+    loadPlayer();
+    while (1) {
+        counter++;
+        if ((counter % 5120) == 0){
+            gravity();
+            jump();
+            if (key_read() == 32) {
+                jumping = 1;
+            }
+            blitPlayer();
+            counter = 0;
+        }
+    }
+}

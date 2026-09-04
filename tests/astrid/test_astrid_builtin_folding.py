@@ -242,6 +242,9 @@ NON_FOLDABLE_BUILTINS = [
     "bcda(1, 2)", "bcds(1, 2)", "bcdcmp(1, 2)",
     # Mouse
     "mouse_ctrl(0)",
+    "mouse_read()",
+    "mouse_pos(0)",
+    "mouse_pos(1)",
 ]
 
 

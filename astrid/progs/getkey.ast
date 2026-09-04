@@ -1,9 +1,20 @@
 void main() {
+    mouse_ctrl(1);              // enable host mouse input (once, not per frame)
+    int counter = 0;
     while (1) {
-        if (key_available()) {
-            screen_fill(0x00);
-            set_pos(128, 128);
-            write_text((string)key_read(), 0x1F);
+        counter++;
+        if ((counter % 5120) == 0) {
+            screen_fill(0x00);      // ONE clear per frame, before any drawing
+            set_pos(16, 16);        // key press readout
+            if (key_available()){
+                write_text((string)key_read(), 0x1F);
+            }
+            set_pos(16, 32);        // mouse buttons (MB)
+            write_text((string)mouse_read(), 0x1F);
+            set_pos(16, 48);        // mouse X (MX)
+            write_text((string)mouse_pos(0), 0x1F);
+            set_pos(96, 48);        // mouse Y (MY)
+            write_text((string)mouse_pos(1), 0x1F);
         }
     }
 }
