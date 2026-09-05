@@ -2,11 +2,6 @@
 # Format: <symbol> <value>
 start 0x1000
 func_main 0x100F
-utoa_loop_1 0x108A
-utoa_done_2 0x10B9
-utoa_rev_3 0x10C1
-utoa_finish_4 0x10DC
-utoa_zero_0 0x10E9
-utoa_finish_4_end 0x10F8
-builtin_set_pos 0x110B
-builtin_write_text 0x1120
+str_0 0x1074
+builtin_set_pos 0x107A
+builtin_write_text 0x108F

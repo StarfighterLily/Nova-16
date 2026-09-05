@@ -4299,10 +4299,22 @@ class CodeGenerator:
         result_reg = self.get_register()
 
         if target == 'string':
+            # A char source is a GLYPH, not a count: (string)'l' must yield
+            # the 1-character string "l", NOT the decimal digits of its code
+            # ("108").  Store the byte as a 1-byte NUL-terminated string in
+            # the ITOS scratch buffer (0xA000) and return its address.  This
+            # mirrors the write_text char handling and keeps (int)char as the
+            # way to render the numeric value as digits.
+            if source_type == 'char':
+                self.emit_comment("Char-to-string: 1-byte glyph string")
+                self.emit(f"    MOV R0, {inner_reg}")
+                self.emit(f"    MOV [0xA000], R0")
+                self.emit(f"    MOV [0xA001], 0")
+                self.emit(f"    MOV {result_reg}, 0xA000")
             # Use the built-in ITOS path for signed values. Unsigned values need
             # a software decimal conversion because the Nova-16 ISA does not have
             # a UITOS instruction.
-            if source_type == 'unsigned_int':
+            elif source_type == 'unsigned_int':
                 self.emit_unsigned_to_string(result_reg, inner_reg)
             else:
                 self.emit(f"    ITOS {result_reg}, {inner_reg}")
@@ -4704,7 +4716,21 @@ class CodeGenerator:
             # ITOS dest, src: converts src (integer) to a decimal ASCII string
             # at the fixed buffer 0xA000, and writes the buffer address into dest.
             str_reg = self.get_register()
-            self.emit(f"    ITOS {str_reg}, {val_reg}")
+            # A char-typed argument (e.g. the result of s[i] on a string
+            # variable, or an explicit (char) cast) is a single glyph code,
+            # NOT a count to be rendered as decimal digits.  ITOS would turn
+            # 'l' (0x6C) into the string "108"; instead, store the byte as a
+            # 1-byte NUL-terminated string at the ITOS scratch buffer (0xA000)
+            # so TEXT draws the actual character the user requested.  This is
+            # safe because the char path never uses ITOS, leaving 0xA000 free.
+            if self._cast_source_type(call.args[0]) == 'char':
+                self.emit_comment("Char argument: store as single-byte string")
+                self.emit(f"    MOV R0, {val_reg}")
+                self.emit(f"    MOV [0xA000], R0")
+                self.emit(f"    MOV [0xA001], 0")
+                self.emit(f"    MOV {str_reg}, 0xA000")
+            else:
+                self.emit(f"    ITOS {str_reg}, {val_reg}")
             self.free_register()  # release val_reg (no longer needed)
             
             # Push arguments in reversed source order so the stack top

@@ -677,3 +677,418 @@ int main() {
 }
 """, expected_r0=0x33)
     print(f"PASS test_layer_swap_preserves_other_layers (cycles={cycles})")
+
+# ---------------------------------------------------------------------------
+# write_text with char vs. int arguments (string/char conversion)
+#
+# Regression for astrid/progs/atest.ast:  write_text((char)final[3], 0x1F)
+# used to ITOS-convert the char byte 'l' (0x6C) into the decimal string
+# "108" and TEXT-draw those three digits instead of the glyph for 'l'.
+# The fix routes char-typed first arguments through a single-byte
+# NUL-terminated string at 0xA000 so TEXT renders the actual character,
+# while int-typed arguments keep their ITOS decimal behaviour.
+# ---------------------------------------------------------------------------
+
+ATEXT_SRC = """
+void main() {
+    string final = "Hello";
+    set_pos(0, 0);
+    write_text((char)final[3], 0x1F);
+}
+"""
+
+
+def compile_and_run_with_gfx(source, max_cycles=2000000):
+    """Compile, assemble, and run; return (proc, cycles, mem, gfx, asm_text)."""
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.ast', delete=False,
+                                     encoding='utf-8') as f:
+        f.write(source)
+        source_path = f.name
+    try:
+        from astrid_compiler import main as compiler_main
+        old_argv = sys.argv
+        sys.argv = [old_argv[0], source_path,
+                    '-o', source_path.replace('.ast', '.asm')]
+        try:
+            compiler_main()
+        finally:
+            sys.argv = old_argv
+        asm_path = source_path.replace('.ast', '.asm')
+        bin_path = source_path.replace('.ast', '.bin')
+        with open(asm_path, encoding='utf-8') as f:
+            asm_text = f.read()
+        from nova_assembler import Assembler
+        Assembler().assemble(asm_path)
+        proc, cycles, mem, gfx = run_binary(bin_path)
+        assert proc.halted, "Program did not halt"
+        return proc, cycles, mem, gfx, asm_text
+    finally:
+        os.unlink(source_path)
+        for ext in ['.asm', '.bin', '.org', '.sym']:
+            path = source_path.replace('.ast', ext)
+            if os.path.exists(path):
+                os.unlink(path)
+
+
+def _screen_pixels(gfx):
+    """Count non-zero pixels on the composed screen buffer."""
+    return int((gfx._compositor._screen != 0).sum())
+
+
+def test_write_text_char_index_codegen_no_itos():
+    """(char)final[3] passed to write_text must emit the char-store pattern,
+    never ITOS (which would render the decimal digits of the glyph code)."""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(ATEXT_SRC)
+    assert 'ITOS' not in asm_text, (
+        "char argument to write_text must NOT be ITOS-converted:\n" + asm_text)
+    assert 'MOV [0xA000], R0' in asm_text, (
+        "char argument must be stored as a single byte at 0xA000:\n" + asm_text)
+    assert 'MOV [0xA001], 0' in asm_text, (
+        "char string buffer must be NUL-terminated at 0xA001:\n" + asm_text)
+    print("PASS test_write_text_char_index_codegen_no_itos")
+
+
+def test_write_text_char_index_runtime_glyph():
+    """write_text((char)final[3], 0x1F) draws the 'l' glyph: buffer holds
+    0x6C + NUL, and the screen shows ONE character glyph (not three digits)."""
+    proc, cycles, mem, gfx, _ = compile_and_run_with_gfx(ATEXT_SRC)
+    assert mem.read_byte(0xA000) == ord('l'), (
+        f"Expected 'l' (0x6C) at 0xA000, got 0x{mem.read_byte(0xA000):02X}")
+    assert mem.read_byte(0xA001) == 0, (
+        f"Expected NUL at 0xA001, got 0x{mem.read_byte(0xA001):02X}")
+    pixels = _screen_pixels(gfx)
+    assert 0 < pixels < 50, (
+        f"Expected a single character glyph (~10 px); got {pixels} px -- "
+        "the old ITOS '108' bug would render 3 digit glyphs (~55 px)")
+    print(f"PASS test_write_text_char_index_runtime_glyph (pixels={pixels})")
+
+
+def test_write_text_string_var_index_no_cast():
+    """write_text(final[3], color) WITHOUT the (char) cast: s[i] on a string
+    scalar is char-typed, so it must also take the char path, not ITOS."""
+    source = """
+void main() {
+    string final = "Hello";
+    set_pos(0, 0);
+    write_text(final[3], 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text, (
+        "string-indexed char must not be ITOS-converted:\n" + asm_text)
+    assert mem.read_byte(0xA000) == ord('l'), (
+        f"Expected 'l' at 0xA000, got 0x{mem.read_byte(0xA000):02X}")
+    assert mem.read_byte(0xA001) == 0
+    pixels = _screen_pixels(gfx)
+    assert 0 < pixels < 50, f"Expected one glyph, got {pixels} px"
+    print(f"PASS test_write_text_string_var_index_no_cast (pixels={pixels})")
+
+
+def test_write_text_char_literal():
+    """write_text('A', color) must draw 'A', not ITOS'd decimal '65'."""
+    source = """
+void main() {
+    set_pos(0, 0);
+    write_text('A', 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text
+    assert mem.read_byte(0xA000) == ord('A')
+    assert mem.read_byte(0xA001) == 0
+    pixels = _screen_pixels(gfx)
+    assert 0 < pixels < 50, f"Expected one glyph, got {pixels} px"
+    print(f"PASS test_write_text_char_literal (pixels={pixels})")
+
+
+def test_write_text_char_cast_from_int():
+    """(char)65 produces the glyph 'A' (65 is the ASCII code), not '65'."""
+    source = """
+void main() {
+    set_pos(0, 0);
+    write_text((char)65, 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text, "cast to char must not ITOS:\n" + asm_text
+    assert mem.read_byte(0xA000) == ord('A')
+    assert mem.read_byte(0xA001) == 0
+    print("PASS test_write_text_char_cast_from_int")
+
+
+def test_write_text_char_from_expr_keeps_full_byte():
+    """A char value with the high bits set (0xFF) must survive: the stored
+    byte must be exactly 0xFF and the glyph lookup consumes it."""
+    source = """
+void main() {
+    set_pos(0, 0);
+    write_text((char)0xFF, 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text
+    assert mem.read_byte(0xA000) == 0xFF, (
+        f"Expected 0xFF at 0xA000, got 0x{mem.read_byte(0xA000):02X}")
+    assert mem.read_byte(0xA001) == 0
+    print("PASS test_write_text_char_from_expr_keeps_full_byte")
+
+
+def test_write_text_int_still_uses_itos():
+    """Regression guard: write_text(65, color) KEEPS the ITOS decimal path
+    and renders the string \"65\" -- ints are counts, chars are glyphs."""
+    source = """
+void main() {
+    set_pos(0, 0);
+    write_text(65, 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' in asm_text, "int argument must still use ITOS:\n" + asm_text
+    assert mem.read_byte(0xA000) == ord('6'), (
+        f"Expected '6' at 0xA000, got 0x{mem.read_byte(0xA000):02X}")
+    assert mem.read_byte(0xA001) == ord('5')
+    assert mem.read_byte(0xA002) == 0, "ITOS string must be NUL-terminated"
+    print("PASS test_write_text_int_still_uses_itos")
+
+
+def test_write_text_string_literal_passes_through():
+    """Regression guard: write_text(\"Hi\", color) passes the literal's DEFSTR
+    address straight to TEXT -- no ITOS, no char-buffer indirection."""
+    source = """
+void main() {
+    set_pos(0, 0);
+    write_text("Hi", 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text, (
+        "string literal must pass through without ITOS:\n" + asm_text)
+    assert 'MOV [0xA000], R0' not in asm_text, (
+        "string literal must not use the char scratch buffer")
+    pixels = _screen_pixels(gfx)
+    assert pixels > 0, "Expected glyphs from the 'Hi' literal"
+    print(f"PASS test_write_text_string_literal_passes_through (pixels={pixels})")
+
+
+def test_write_text_string_var_passes_through():
+    """Regression guard: write_text(s, color) with a string variable passes
+    the pointer directly (a file-scope string was previously ITOS'd as its
+    pointer digits -- guarded by _is_string_or_binary_expr)."""
+    source = """
+void main() {
+    string s = "Hi";
+    set_pos(0, 0);
+    write_text(s, 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text
+    pixels = _screen_pixels(gfx)
+    assert pixels > 0
+    print(f"PASS test_write_text_string_var_passes_through (pixels={pixels})")
+
+
+def test_write_text_multiple_chars_sequential():
+    """Three write_text(char) calls each redraw the scratch buffer; all three
+    glyphs must land on screen and the buffer ends holding the LAST char."""
+    source = """
+void main() {
+    string s = "ABC";
+    set_pos(0, 0);
+    write_text((char)s[0], 0x1F);
+    write_text((char)s[1], 0x1F);
+    write_text((char)s[2], 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text
+    # Scratch buffer holds the last char written ('C').
+    assert mem.read_byte(0xA000) == ord('C'), (
+        f"Expected 'C' at 0xA000, got 0x{mem.read_byte(0xA000):02X}")
+    assert mem.read_byte(0xA001) == 0
+    pixels = _screen_pixels(gfx)
+    assert pixels > 0
+    print(f"PASS test_write_text_multiple_chars_sequential (pixels={pixels})")
+
+
+def test_write_text_char_index_glyph_width():
+    """With the fix the glyph occupies only the first char cell (x < 16).
+    The old ITOS bug rendered three digits for '108', spanning x >= 16."""
+    source = """
+void main() {
+    string final = "Hello";
+    set_pos(0, 0);
+    write_text((char)final[3], 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text
+    screen = gfx._compositor._screen
+    ys, xs = (screen != 0).nonzero()
+    assert len(xs) > 0, "Expected a drawn glyph"
+    max_x = max(int(x) for x in xs)
+    assert max_x < 16, (
+        f"Glyph pixels should be within the first two char cells (x<16); "
+        f"got max x={max_x} -- the old ITOS bug rendered three digits")
+    print(f"PASS test_write_text_char_index_glyph_width (max_x={max_x})")
+
+
+def test_write_text_global_string_index():
+    """The same fix must hold for GLOBAL string scalars: g[i] is char-typed."""
+    source = """
+string g = "World";
+void main() {
+    set_pos(0, 0);
+    write_text((char)g[0], 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text
+    assert mem.read_byte(0xA000) == ord('W'), (
+        f"Expected 'W' at 0xA000, got 0x{mem.read_byte(0xA000):02X}")
+    assert mem.read_byte(0xA001) == 0
+    print("PASS test_write_text_global_string_index")
+
+
+def test_write_text_binary_var_index():
+    """binary scalars share the string code path: b[i] is char-typed too."""
+    source = """
+void main() {
+    binary b = "Z";
+    set_pos(0, 0);
+    write_text((char)b[0], 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text
+    assert mem.read_byte(0xA000) == ord('Z')
+    assert mem.read_byte(0xA001) == 0
+    print("PASS test_write_text_binary_var_index")
+
+
+def test_write_text_char_in_user_function():
+    """Char conversion must also work when write_text is called from a
+    non-main function with the string passed as a parameter."""
+    source = """
+void show(string s) {
+    set_pos(0, 0);
+    write_text((char)s[1], 0x1F);
+}
+
+void main() {
+    show("ABC");
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text
+    assert mem.read_byte(0xA000) == ord('B'), (
+        f"Expected 'B' at 0xA000, got 0x{mem.read_byte(0xA000):02X}")
+    assert mem.read_byte(0xA001) == 0
+    pixels = _screen_pixels(gfx)
+    assert 0 < pixels < 50, f"Expected one glyph, got {pixels} px"
+    print(f"PASS test_write_text_char_in_user_function (pixels={pixels})")
+
+
+# ---------------------------------------------------------------------------
+# (string) and (int) casts on char-typed expressions
+#
+# (string)char  -> 1-character string holding the GLYPH (not the decimal
+#                  digits of its code), via the 0xA000 scratch buffer.
+# (int)char     -> the numeric code (e.g. 108 for 'l'); rendering it with
+#                  write_text produces the decimal digits "108".
+# ---------------------------------------------------------------------------
+
+def test_string_cast_of_string_index():
+    """(string)final[3] yields the 1-char string \"l\": write_text renders the
+    glyph, and the scratch buffer holds 0x6C + NUL (not \"108\")."""
+    source = """
+void main() {
+    string final = "Hello";
+    set_pos(0, 0);
+    write_text((string)final[3], 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' not in asm_text, (
+        "(string)char must not ITOS the character code:\n" + asm_text)
+    assert mem.read_byte(0xA000) == ord('l'), (
+        f"Expected 'l' (0x6C) at 0xA000, got 0x{mem.read_byte(0xA000):02X}")
+    assert mem.read_byte(0xA001) == 0
+    pixels = _screen_pixels(gfx)
+    assert 0 < pixels < 50, f"Expected one glyph, got {pixels} px"
+    print(f"PASS test_string_cast_of_string_index (pixels={pixels})")
+
+
+def test_string_cast_of_char_literal_strlen():
+    """strlen((string)'A') must be 1: the cast produces a real 1-byte string."""
+    compile_and_run('int main() { return strlen((string)\'A\'); }',
+                    expected_r0=1)
+
+
+def test_string_cast_content_via_index():
+    """(string)'Q' yields a real 1-byte string: indexing a variable bound to
+    the cast result reads back the glyph byte 'Q' (0x51)."""
+    compile_and_run("""
+int main() {
+    string s = (string)'Q';
+    return s[0];
+}
+""", expected_r0=ord('Q'))
+
+
+def test_string_cast_of_char_variable():
+    """(string)c where c is a char variable yields a 1-char glyph string."""
+    compile_and_run("""
+int main() {
+    char c = 'z';
+    string s = (string)c;
+    return strlen(s) * 256 + s[0];
+}
+""", expected_p0=(1 << 8) | ord('z'))
+
+
+def test_int_cast_of_string_index_is_numeric():
+    """(int)final[3] keeps the NUMERIC code: 0x6C == 108.  Rendering it with
+    write_text must ITOS to the decimal digits \"108\"."""
+    compile_and_run('int main() { string f = "Hello"; return (int)f[3]; }',
+                    expected_r0=108)
+    source = """
+void main() {
+    string final = "Hello";
+    set_pos(0, 0);
+    write_text((int)final[3], 0x1F);
+}
+"""
+    proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
+    assert 'ITOS' in asm_text, (
+        "(int)char rendered by write_text must use ITOS digits:\n" + asm_text)
+    assert mem.read_byte(0xA000) == ord('1')
+    assert mem.read_byte(0xA001) == ord('0')
+    assert mem.read_byte(0xA002) == ord('8')
+    assert mem.read_byte(0xA003) == 0
+    print("PASS test_int_cast_of_string_index_is_numeric")
+
+
+def test_string_cast_of_int_still_decimal_digits():
+    """Regression guard: (string) of an INT (not char) keeps the ITOS
+    decimal-digit behaviour -- only char-typed sources become glyphs."""
+    compile_and_run('int main() { return strlen((string)65); }',
+                    expected_r0=2)
+    compile_and_run("""
+int main() {
+    string s = (string)65;
+    return s[0] * 256 + s[1];
+}
+""", expected_p0=(ord('6') << 8) | ord('5'))
+
+
+def test_string_cast_concat_with_literal():
+    """(string)'H' + \"i\" concatenates the 1-char glyph string with the
+    literal: strlen must be 2 and the content must be 'H','i'."""
+    compile_and_run("""
+int main() {
+    string s = (string)'H' + "i";
+    return strlen(s) * 65536 / 256 + s[0] + s[1];
+}
+""", expected_r0=((2 * 256) + ord('H') + ord('i')) & 0xFF)

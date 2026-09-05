@@ -19,6 +19,10 @@ def _num_value(expr: Any) -> Optional[int]:
             return int(expr.value, 0)
         except (ValueError, TypeError):
             return None
+    if isinstance(expr, CharLiteral):
+        # Char literals are integer constants too, so folds like 'A' + 1
+        # and (int)'A' keep working after a cast folded to a CharLiteral.
+        return expr.char_value & 0xFFFF
     return None
 
 
@@ -119,7 +123,12 @@ class ExpressionSimplifier:
             num_val = _num_value(simplified_inner)
             if num_val is not None:
                 if expr.target_type == 'char':
-                    return Number(str(num_val & 0xFF))
+                    # Fold to a CharLiteral (not a Number) so the result
+                    # stays char-TYPED: downstream consumers such as the
+                    # write_text conversion check _cast_source_type and
+                    # must see 'char' to render a glyph instead of the
+                    # decimal digits of the character code.
+                    return CharLiteral(num_val & 0xFF)
                 if expr.target_type == 'int':
                     return Number(str(num_val & 0xFFFF))
             return Cast(expr.target_type, simplified_inner)

@@ -7,89 +7,44 @@ CALL func_main
 HLT
 ; Function: main
 func_main:
-ENTER 4
-; var a = ...
-MOV P0, 65535
+ENTER 2
+; var final = ...
+MOV P0, str_0
 MOV [0xC000], P0
-; var b = ...
-MOV P1, 65535
-MOV [0xC002], P1
 ; Call to set_pos
+MOV P1, 0
+PUSH P1
 MOV P2, 0
 PUSH P2
-MOV P4, 0
-PUSH P4
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P5, R0
+MOV P4, R0
 ; Call to write_text
-MOV P6, 31
-PUSH P6
-; Type cast: (string) expr
-MOV P7, [0xC000]
-ITOS P0, P7
-PUSH P0
-CALL builtin_write_text
-; Args consumed by callee
-MOV P1, R0
-; Call to set_pos
-MOV P2, 8
-PUSH P2
-MOV P4, 0
-PUSH P4
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P5, R0
-; Call to write_text
-MOV P6, 31
-PUSH P6
-; Type cast: (string) expr
-MOV P7, [0xC002]
-CMP P7, 0
-JZ utoa_zero_0
-MOV P1, P7
-MOV P2, 0xA100
-utoa_loop_1:
-CMP P1, 0
-JZ utoa_done_2
-MOV P4, P1
-MOV P5, 10
-DIV P4, P5
-MOV P5, P3
-ADD P5, 48
-MOV R0, P5
-MOV [P2], R0
-MOV P1, P4
-INC P2
-JMP utoa_loop_1
-utoa_done_2:
-DEC P2
-MOV P1, 0xA000
-utoa_rev_3:
-CMP P2, 0xA100
-JC utoa_finish_4
-MOV R0, [P2]
-MOV [P1], R0
-INC P1
-DEC P2
-JMP utoa_rev_3
-utoa_finish_4:
-MOV [P1], 0
-MOV P0, 0xA000
-JMP utoa_finish_4_end
-utoa_zero_0:
-MOV [0xA000], 48
+; Integer-to-string conversion for write_text
+MOV P5, [0xC000]
+MOV P6, 3
+ADD P5, P6
+MOV R0, [P5]
+MOV P7, R0
+; Char argument: store as single-byte string
+MOV R0, P7
+MOV [0xA000], R0
 MOV [0xA001], 0
 MOV P0, 0xA000
-utoa_finish_4_end:
+MOV P1, 31
+PUSH P1
 PUSH P0
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P6, R0
+MOV P2, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
+;
+; Data Section
+;
+str_0: DEFSTR "Hello"
 ; Built-in Function Implementations
 builtin_set_pos:
 POP P0

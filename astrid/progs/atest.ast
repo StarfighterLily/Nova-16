@@ -1,9 +1,5 @@
 void main() {
-    signed int a = 65535;
-    unsigned int b = 65535;
-
+    string final = "Hello";
     set_pos(0,0);
-    write_text((string)a,0x1f);
-    set_pos(0,8);
-    write_text((string)b,0x1f);
+    write_text(final[3], 0x1F);
 }
