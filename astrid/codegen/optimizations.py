@@ -2,7 +2,7 @@
 Astrid Optimization utilities (moved into astrid.codegen)
 Contains ExpressionSimplifier and FunctionInliner adapted for Astrid AST
 """
-from typing import Dict, Set, List, Tuple, Optional, Any
+from typing import Dict, Set, List, Tuple, Optional, Any, FrozenSet
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
@@ -31,7 +31,47 @@ def _is_number_literal(expr: Any, expected: int) -> bool:
     return val is not None and val == expected
 
 
-def _expression_key(expr: Any) -> str:
+def _is_string_value(expr: Any,
+                     string_vars: FrozenSet[str] = frozenset(),
+                     string_funcs: FrozenSet[str] = frozenset()) -> bool:
+    """True when `expr` definitely evaluates to a string/binary VALUE.
+
+    '+' between two string values is CONCATENATION, which is not
+    commutative, so the simplifier must never mirror `s + "lit"` into
+    `"lit" + s` and must not give the two forms the same CSE key either.
+
+    Known string producers: StringLiterals, (string)/(binary) casts,
+    nested '+' expressions already known to be concats, identifiers the
+    code generator's pre-scan classified as string/binary variables, and
+    calls to string/binary-returning functions.  Anything else (plain
+    arithmetic operands, unclassified identifiers/calls) is treated as a
+    non-string so numeric canonicalization keeps working; the codegen
+    pre-scan adds every string/binary variable and function it can see,
+    so a genuine var+var concat is still recognized.
+    """
+    if isinstance(expr, StringLiteral):
+        return True
+    if isinstance(expr, Cast):
+        return expr.target_type in ('string', 'binary')
+    if isinstance(expr, BinaryOp):
+        # A '+' with any string operand is itself a concat (string value);
+        # other operators on strings (==, etc.) compare addresses, which
+        # are ordinary numeric values for canonicalization purposes.
+        if expr.op == '+':
+            return (_is_string_value(expr.left, string_vars, string_funcs)
+                    or _is_string_value(expr.right, string_vars,
+                                        string_funcs))
+        return False
+    if isinstance(expr, Identifier):
+        return expr.name in string_vars
+    if isinstance(expr, FuncCall):
+        return expr.name in string_funcs
+    return False
+
+
+def _expression_key(expr: Any,
+                    string_vars: FrozenSet[str] = frozenset(),
+                    string_funcs: FrozenSet[str] = frozenset()) -> str:
     if isinstance(expr, Number):
         # Floats have no int form (_num_value -> None); use the raw literal
         # so distinct float literals don't collide in the CSE cache.
@@ -44,27 +84,42 @@ def _expression_key(expr: Any) -> str:
     if isinstance(expr, CharLiteral):
         return f"char:{expr.char_value}"
     if isinstance(expr, UnaryOp):
-        return f"un:{expr.op}:{_expression_key(expr.right)}"
+        return f"un:{expr.op}:{_expression_key(expr.right, string_vars, string_funcs)}"
     if isinstance(expr, BinaryOp):
-        left_key = _expression_key(expr.left)
-        right_key = _expression_key(expr.right)
+        left_key = _expression_key(expr.left, string_vars, string_funcs)
+        right_key = _expression_key(expr.right, string_vars, string_funcs)
+        # Order-normalize commutative operands so `a + b` and `b + a` share
+        # a CSE key -- EXCEPT for '+' when either side is a string value:
+        # that is concatenation, and `s + "a"` must NOT be CSE-equivalent
+        # to `"a" + s` (different runtime byte content).
         if expr.op in {"+", "*", "&", "|", "^", "==", "!=", "&&", "||"} \
-                and right_key < left_key:
+                and right_key < left_key \
+                and not (expr.op == "+" and (
+                    _is_string_value(expr.left, string_vars, string_funcs)
+                    or _is_string_value(expr.right, string_vars,
+                                        string_funcs))):
             left_key, right_key = right_key, left_key
         return f"bin:{expr.op}:{left_key}:{right_key}"
     if isinstance(expr, PostfixOp):
-        return f"post:{expr.op}:{_expression_key(expr.left)}"
+        return f"post:{expr.op}:{_expression_key(expr.left, string_vars, string_funcs)}"
     if isinstance(expr, FuncCall):
-        args = ",".join(_expression_key(arg) for arg in expr.args)
+        args = ",".join(_expression_key(arg, string_vars, string_funcs)
+                        for arg in expr.args)
         return f"call:{expr.name}({args})"
     if isinstance(expr, Cast):
-        return f"cast:{expr.target_type}:{_expression_key(expr.expr)}"
+        return f"cast:{expr.target_type}:{_expression_key(expr.expr, string_vars, string_funcs)}"
     return repr(expr)
 
 
 @dataclass
 class ExpressionSimplifier:
     debug: bool = False
+    # Names of string/binary-typed variables and string/binary-returning
+    # functions, pre-scanned by the code generator from the AST.  These let
+    # _is_string_value recognize var+var and call+literal concatenations so
+    # their operands are never canonicalized (concat is not commutative).
+    string_vars: FrozenSet[str] = frozenset()
+    string_funcs: FrozenSet[str] = frozenset()
 
     def __post_init__(self):
         self._cse_cache: Dict[str, Any] = {}
@@ -104,7 +159,8 @@ class ExpressionSimplifier:
                 return algebraic
             left, right = self._canonicalize_operands(expr.op, left, right)
             simplified = BinaryOp(left, expr.op, right)
-            key = _expression_key(simplified)
+            key = _expression_key(simplified, self.string_vars,
+                                  self.string_funcs)
             if key in self._cse_cache:
                 return self._cse_cache[key]
             self._cse_cache[key] = simplified
@@ -252,6 +308,17 @@ class ExpressionSimplifier:
 
     def _canonicalize_operands(self, operator: str, left: Any, right: Any) -> Tuple[Any, Any]:
         if operator not in {"+", "*", "&", "|", "^", "==", "!=", "&&", "||"}:
+            return left, right
+        # String concatenation ('+' between two string values) is NOT
+        # commutative: swapping `final + "\r\n"` into `"\r\n" + final`
+        # changes the runtime byte content.  Leave the source order alone
+        # whenever either operand produces a string/binary value.  The
+        # code generator handles both operand orders for pointer arithmetic
+        # and for concat, so skipping the swap costs nothing semantically.
+        if operator == "+" and (
+                _is_string_value(left, self.string_vars, self.string_funcs)
+                or _is_string_value(right, self.string_vars,
+                                    self.string_funcs)):
             return left, right
         left_key = _expression_key(left)
         right_key = _expression_key(right)

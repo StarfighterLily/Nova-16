@@ -156,7 +156,7 @@ class SpriteEngine:
             return
 
         # Clear sprite layers first (indices 5-8) and update pixel counts
-        for idx in range(5, 9):
+        for idx in range(5, 7):  # Layers 5 and 6 for sprites
             comp.layers[idx].fill(0)
             comp._pixel_counts[idx] = 0
 

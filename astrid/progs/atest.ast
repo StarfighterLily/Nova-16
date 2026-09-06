@@ -1,5 +1,5 @@
 void main() {
     string final = "Hello";
     set_pos(0,0);
-    write_text(final[3], 0x1F);
+    write_text(final+"\r\n"+"World!", 0x1F);
 }

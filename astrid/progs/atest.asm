@@ -20,23 +20,27 @@ CALL builtin_set_pos
 ; Args consumed by callee
 MOV P4, R0
 ; Call to write_text
-; Integer-to-string conversion for write_text
-MOV P5, [0xC000]
-MOV P6, 3
-ADD P5, P6
-MOV R0, [P5]
-MOV P7, R0
-; Char argument: store as single-byte string
-MOV R0, P7
-MOV [0xA000], R0
-MOV [0xA001], 0
-MOV P0, 0xA000
-MOV P1, 31
-PUSH P1
+MOV P5, 31
+PUSH P5
+; String concatenation
+; String concatenation
+MOV P6, [0xC000]
+PUSH P6
+MOV P7, str_1
+POP P6
+MOV P0, 0xA200
+STRCPY P0, P6
+STRCAT P0, P7
 PUSH P0
+MOV P1, str_2
+POP P0
+MOV P2, 0xA300
+STRCPY P2, P0
+STRCAT P2, P1
+PUSH P2
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P2, R0
+MOV P4, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -45,6 +49,8 @@ RET
 ; Data Section
 ;
 str_0: DEFSTR "Hello"
+str_1: DEFSTR "\r\n"
+str_2: DEFSTR "World!"
 ; Built-in Function Implementations
 builtin_set_pos:
 POP P0

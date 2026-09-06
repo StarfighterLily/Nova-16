@@ -2,6 +2,8 @@
 # Format: <symbol> <value>
 start 0x1000
 func_main 0x100F
-str_0 0x1074
-builtin_set_pos 0x107A
-builtin_write_text 0x108F
+str_0 0x1081
+str_1 0x1087
+str_2 0x108A
+builtin_set_pos 0x1091
+builtin_write_text 0x10A6

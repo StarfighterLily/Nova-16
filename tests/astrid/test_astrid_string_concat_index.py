@@ -160,6 +160,89 @@ int main() {
     return strlen(c);
 }
 """, expected_r0=4)
+    compile_and_run("""
+int main() {
+    string a = "ab";
+    string c = "cd" + a;
+    return strlen(c);
+}
+""", expected_r0=4)
+
+
+# ---------------------------------------------------------------------------
+# Regression: the ExpressionSimplifier used to canonicalize '+' operands
+# constant-first for ALL types, turning `a + "cd"` into `"cd" + a`.  String
+# concatenation is NOT commutative, so the swap silently reversed the
+# runtime byte content (astrid/progs/atest.ast printed "\r\nHelloWorld!"
+# instead of "Hello\r\nWorld!").  strlen() cannot detect the swap, so these
+# tests assert exact byte content via indexing.
+# ---------------------------------------------------------------------------
+
+def test_simplifier_keeps_string_concat_operand_order():
+    """Unit: the simplifier never mirrors `s + "lit"` into `"lit" + s`,
+    and unknown-typed identifiers keep the historical numeric behavior."""
+    from astrid.codegen.optimizations import ExpressionSimplifier
+    from astrid.parser.parser import BinaryOp, Identifier, StringLiteral
+    # String variable + literal: source order must survive.
+    expr = BinaryOp(Identifier('s'), '+', StringLiteral('cd'))
+    simp = ExpressionSimplifier(string_vars=frozenset({'s'}))
+    out = simp.simplify(expr)
+    assert isinstance(out, BinaryOp) and out.op == '+'
+    assert isinstance(out.left, Identifier) and out.left.name == 's'
+    assert isinstance(out.right, StringLiteral) and out.right.value == 'cd'
+    # Mirror-image literal + string variable: also untouched.
+    expr_m = BinaryOp(StringLiteral('cd'), '+', Identifier('s'))
+    out_m = simp.simplify(expr_m)
+    assert isinstance(out_m.left, StringLiteral)
+    assert isinstance(out_m.right, Identifier)
+    print("PASS test_simplifier_keeps_string_concat_operand_order")
+
+
+def test_simplifier_numeric_canonicalization_still_applies():
+    """Unit: non-string '+' keeps the constant-first canonicalization."""
+    from astrid.codegen.optimizations import ExpressionSimplifier
+    from astrid.parser.parser import BinaryOp, Identifier, Number
+    out = ExpressionSimplifier().simplify(
+        BinaryOp(Identifier('i'), '+', Number('2')))
+    assert isinstance(out.left, Number) and out.left.value == '2'
+    assert isinstance(out.right, Identifier) and out.right.name == 'i'
+    print("PASS test_simplifier_numeric_canonicalization_still_applies")
+
+
+def test_concat_var_literal_byte_order_regression():
+    compile_and_run("""
+int main() {
+    string a = "ab";
+    string c = a + "cd";
+    return c[0] == 'a' && c[1] == 'b' && c[2] == 'c' && c[3] == 'd';
+}
+""", expected_r0=1)
+
+
+def test_concat_crlf_newline_order_regression():
+    """The atest.ast pattern: var + "\\r\\n" + literal keeps source order."""
+    compile_and_run("""
+int main() {
+    string final = "Hello";
+    string out = final + "\\r\\n" + "World!";
+    return strlen(out) == 13
+        && out[0] == 'H' && out[4] == 'o'
+        && out[5] == '\\r' && out[6] == '\\n'
+        && out[7] == 'W' && out[12] == '!';
+}
+""", expected_r0=1)
+
+
+def test_concat_cse_does_not_cross_operand_order():
+    """The CSE cache must not treat `s + "!"` and `"!" + s` as equivalent:
+    `(s + "!") + ("!" + s)` is "a!!a", not "a!a!"."""
+    compile_and_run("""
+int main() {
+    string s = "a";
+    string u = (s + "!") + ("!" + s);
+    return u[0] == 'a' && u[1] == '!' && u[2] == '!' && u[3] == 'a';
+}
+""", expected_r0=1)
 
 
 def test_concat_chain_four_terms():

@@ -972,7 +972,17 @@ class CodeGenerator:
         # simplifications, and CSE) to reduce register pressure and code size.
         if self.enable_optimizations and self.enable_expr_simplify:
             try:
-                simplifier = ExpressionSimplifier(debug=self.debug_optimizations)
+                # Pre-scan for string/binary identifiers so the simplifier
+                # can recognize '+' string concatenations and leave their
+                # operand order (and CSE keys) untouched -- concatenation
+                # is not commutative, and swapping `s + "lit"` into
+                # `"lit" + s` silently reverses the runtime byte content.
+                string_vars, string_funcs = self._collect_string_idents(ast)
+                simplifier = ExpressionSimplifier(
+                    debug=self.debug_optimizations,
+                    string_vars=string_vars,
+                    string_funcs=string_funcs,
+                )
                 for func in ast.functions:
                     self._simplify_function_expressions(func, simplifier)
                 if self.debug_optimizations:
@@ -1125,6 +1135,62 @@ class CodeGenerator:
                 print(f"[CODEGEN] Original: {len(self.assembly)} lines, Optimized: {len(assembly_lines)} lines")
 
         return assembly_lines
+
+    def _collect_string_idents(self, ast: Program) -> Tuple[Set[str], Set[str]]:
+        """Pre-scan the AST for string/binary identifiers.
+
+        The ExpressionSimplifier must never reorder the operands of a '+'
+        whose result is a string value (concatenation is not commutative),
+        so it needs to know which identifiers hold string/binary values and
+        which functions return them.  Returns (string_var_names,
+        string_func_names).
+
+        The scan is deliberately conservative in both directions:
+        * Scalar variables declared `string`/`binary` count; pointers
+          (`string *p`) and arrays of strings (`string arr[4]`) do not --
+          those identifiers decay to addresses, and address arithmetic with
+          '+' stays safely commutative.
+        * Names are collected program-wide (a local `int x` in one function
+          may share its name with a `string x` elsewhere).  Over-approximating
+          only disables an operand swap for an unrelated numeric expression,
+          which is harmless; missing a real string identifier would be a
+          correctness bug.
+        """
+        string_types = ('string', 'binary')
+        string_vars: Set[str] = set()
+        string_funcs: Set[str] = set()
+
+        def visit(node) -> None:
+            if node is None:
+                return
+            if isinstance(node, (list, tuple)):
+                for child in node:
+                    visit(child)
+                return
+            if isinstance(node, VarDecl):
+                # Scalar string/binary variables only: pointers and arrays
+                # hold addresses, and address '+' arithmetic is commutative.
+                if (getattr(node, 'var_type', None) in string_types
+                        and not getattr(node, 'pointer_depth', 0)
+                        and getattr(node, 'array_size', None) is None):
+                    string_vars.add(node.name)
+                # Initializer expressions may themselves declare nothing,
+                # but keep recursing for locals declared inside nested
+                # control-flow bodies and for struct member initializers.
+            elif isinstance(node, FunctionDef):
+                if getattr(node, 'return_type', None) in string_types:
+                    string_funcs.add(node.name)
+            # Recurse into every child attribute so locals inside
+            # if/while/for/switch bodies and impl-block methods are seen.
+            for child in vars(node).values() if hasattr(node, '__dict__') else ():
+                if isinstance(child, (list, tuple)):
+                    for item in child:
+                        visit(item)
+                else:
+                    visit(child)
+
+        visit(ast)
+        return string_vars, string_funcs
 
     def _simplify_function_expressions(self, func: FunctionDef, simplifier: ExpressionSimplifier):
         """Walk a function AST and simplify expression nodes in-place."""
