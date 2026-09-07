@@ -30,6 +30,7 @@ import pytest
 # Path setup handled by tests/astrid/conftest.py
 
 from nova_main import initialize_system
+from astrid.errors import CodeGenError
 from astrid.lexer.lexer import Lexer
 from astrid.parser.parser import (
     Parser, VarDecl, MemberAccess, MemberAssignment,
@@ -659,7 +660,10 @@ def test_unknown_field_is_compile_error():
     # The CLI entry point catches compiler exceptions internally, so drive
     # the Parser + CodeGenerator directly to observe the raise.
     from astrid.codegen.codegen import CodeGenerator
-    with pytest.raises((NameError, TypeError)):
+    # Codegen failures are wrapped in CodeGenError (adds function context);
+    # it still surfaces the original message ("Struct 'Point' has no field
+    # 'z' ...") but is no longer the raw NameError, so accept both shapes.
+    with pytest.raises((NameError, TypeError, CodeGenError)):
         CodeGenerator().generate(parse_source(source))
     print('PASS test_unknown_field_is_compile_error')
 

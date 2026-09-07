@@ -3,8 +3,10 @@
 """Enhanced parser with do-while loops, switch/case statements, and char literals."""
 from __future__ import annotations
 
+import re
 from typing import List, Optional, Dict
-from astrid.lexer.lexer import Lexer, Token
+from astrid.errors import ParserError, did_you_mean
+from astrid.lexer.lexer import Lexer, Token, KEYWORDS
 
 # Storage qualifiers are accepted and ignored: the declared entity behaves
 # exactly like its unqualified counterpart (Astrid has no linker/optimizer
@@ -396,6 +398,16 @@ class Parser:
         # inherited ("more derived") method can shadow an included one while
         # methods written directly in this file always win over both.
         self.included_impl_keys: set = set()
+        # Lazily-loaded source text for diagnostics: when an error is raised
+        # we re-read the source file (if it exists on disk) so the rendered
+        # diagnostic can show the offending line with a caret. Sources that
+        # were tokenized from an in-memory string get line/column info but
+        # no snippet.
+        self._source_text: Optional[str] = None
+        self._source_text_loaded = False
+        # Candidate names for did-you-mean hints: every distinct identifier
+        # in the token stream plus all language keywords. Built once, lazily.
+        self._suggestion_candidates: Optional[List[str]] = None
 
     @staticmethod
     def _normalize_type_tokens(tokens: List[Token]) -> List[Token]:
@@ -451,9 +463,121 @@ class Parser:
         else:
             self.current = Token('EOF', '', self.current.line, self.current.column)
 
+    # ------------------------------------------------------------------
+    # Diagnostics helpers
+    # ------------------------------------------------------------------
+    def _load_source_text(self) -> Optional[str]:
+        """Lazily read the source file so errors can render a snippet.
+
+        Returns ``None`` when the source was tokenized from memory (no
+        path, or the path no longer exists) -- diagnostics then carry
+        position info without the source excerpt.
+        """
+        if not self._source_text_loaded:
+            self._source_text_loaded = True
+            if self.source_path:
+                try:
+                    with open(self.source_path, 'r', encoding='utf-8') as fh:
+                        self._source_text = fh.read()
+                except OSError:
+                    self._source_text = None
+        return self._source_text
+
+    def _suggestions(self) -> List[str]:
+        """Candidate names for did-you-mean hints (keywords + identifiers)."""
+        if self._suggestion_candidates is None:
+            seen: Dict[str, None] = {}
+            for tok in self.tokens:
+                if tok.type in ('IDENTIFIER', 'KEYWORD') and tok.value:
+                    seen.setdefault(tok.value, None)
+            self._suggestion_candidates = list(KEYWORDS) + list(seen)
+        return self._suggestion_candidates
+
+    def _describe_token(self, tok: Token) -> str:
+        """Human-readable description of a token for error messages.
+
+        Replaces raw ``Token(KEYWORD, 'int', 3, 7)`` reprs with the kind
+        of phrasing real compilers use ("end of file", "string literal",
+        "'int'"), which makes parser errors immediately readable.
+        """
+        if tok.type == 'EOF':
+            return 'end of file'
+        value = str(tok.value)
+        if tok.type == 'STRING':
+            shown = value if len(value) <= 20 else value[:17] + '...'
+            return f'string literal {shown}'
+        if tok.type == 'CHAR':
+            return f'character literal {value}'
+        if tok.type == 'NUMBER':
+            return f'number {value}'
+        if tok.type == 'IDENTIFIER':
+            return f"'{value}'"
+        if tok.type in ('KEYWORD', 'OPERATOR', 'DELIMITER'):
+            return f"'{value}'"
+        return f"'{value}'"
+
+    def error(self, message: str, token: Optional[Token] = None,
+              hint: Optional[str] = None) -> ParserError:
+        """Build a positioned ParserError from the current parse context.
+
+        All ``raise SyntaxError`` sites in the parser route through this
+        helper so every parse error carries the current token's position,
+        a source snippet (when the source file is available), and helpful
+        hints (identifier/keyword suggestions, EOF guidance) without each
+        grammar rule having to spell them out.
+
+        Args:
+            message: Core error message. A redundant ``(line N)`` suffix
+                matching the reported position is stripped automatically.
+            token: Token to blame; defaults to the current token.
+            hint: Explicit hint; suggestions may be added on top.
+        """
+        tok = token if token is not None else self.current
+        line = getattr(tok, 'line', None)
+        column = getattr(tok, 'column', None)
+
+        # Messages written before diagnostics carried position info often
+        # end with "(line N)"; drop that suffix when it matches the
+        # position we are about to report so it isn't shown twice.
+        if line is not None:
+            message = re.sub(
+                r'\s*\((?:at )?line %d(?:,\s*col(?:umn)?\s*%d)?\)\s*$' % (line, line),
+                '', message)
+
+        # EOF is the classic "missing }" or "missing ;" symptom.
+        if tok.type == 'EOF' and hint is None:
+            hint = ('unexpected end of file -- check for a missing '
+                    "'}', ';' or closing parenthesis")
+
+        # Typo detection: if the blamed token is an identifier-shaped
+        # name that is close to a keyword or another name in the file,
+        # offer the closest candidate. Skipped when the message already
+        # contains a suggestion.
+        if (hint is None and tok.type == 'IDENTIFIER'
+                and 'did you mean' not in message.lower()):
+            value = str(tok.value)
+            suggestion = did_you_mean(value, self._suggestions())
+            if suggestion is not None:
+                hint = f"'{value}' is not valid here -- did you mean '{suggestion}'?"
+
+        length = len(str(getattr(tok, 'value', '') or '')) or 1
+        if tok.type == 'EOF':
+            length = 1
+        return ParserError(
+            message, filename=self.source_path, line=line, column=column,
+            length=length, hint=hint, source_text=self._load_source_text())
+
     def expect(self, type_, value=None):
         if self.current.type != type_ or (value is not None and self.current.value != value):
-            raise SyntaxError(f"Expected {type_} {value}, got {self.current.type} {self.current.value}")
+            # Phrase the expectation in compiler-diagnostic style rather
+            # than raw token-type vocabulary ("Expected ';', found 'x'"
+            # instead of "Expected DELIMITER ;, got DELIMITER :").
+            if value is None:
+                expected = {'IDENTIFIER': 'an identifier'}.get(type_, type_)
+            else:
+                expected = f"'{value}'"
+            found = self._describe_token(self.current)
+            raise self.error(f'Expected {expected}, found {found}')
         self.advance()
 
     def _skip_const(self):
@@ -544,7 +668,7 @@ class Parser:
             if self.current.type == 'KEYWORD' and self.current.value == 'struct':
                 tag_tok = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
                 if tag_tok is None or tag_tok.type != 'IDENTIFIER':
-                    raise SyntaxError(
+                    raise self.error(
                         f"Expected a struct tag name after 'struct' "
                         f"(line {self.current.line})")
                 after = (self.tokens[self.pos + 2]
@@ -555,7 +679,7 @@ class Parser:
                     # global variables.
                     for g in self.parse_struct_definition():
                         if any(e.name == g.name for e in globals_):
-                            raise SyntaxError(
+                            raise self.error(
                                 f"Duplicate definition of global '{g.name}' "
                                 f"at top level")
                         globals_.append(g)
@@ -569,13 +693,13 @@ class Parser:
                         and call_tok is not None
                         and call_tok.type == 'DELIMITER'
                         and call_tok.value == '('):
-                    raise SyntaxError(
+                    raise self.error(
                         f"Returning structs from functions is not supported "
                         f"(line {self.current.line})")
                 new_globals = self.parse_var_decl(struct_tag=tag_tok.value)
                 for g in new_globals:
                     if any(e.name == g.name for e in globals_):
-                        raise SyntaxError(
+                        raise self.error(
                             f"Duplicate definition of global '{g.name}' "
                             f"at top level")
                     globals_.append(g)
@@ -585,7 +709,7 @@ class Parser:
             if self.current.type == 'KEYWORD' and self.current.value == 'union':
                 tag_tok = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
                 if tag_tok is None or tag_tok.type != 'IDENTIFIER':
-                    raise SyntaxError(
+                    raise self.error(
                         f"Expected a union tag name after 'union' "
                         f"(line {self.current.line})")
                 after = (self.tokens[self.pos + 2]
@@ -595,7 +719,7 @@ class Parser:
                     # declarators become global variables.
                     for g in self.parse_union_definition():
                         if any(e.name == g.name for e in globals_):
-                            raise SyntaxError(
+                            raise self.error(
                                 f"Duplicate definition of global '{g.name}' "
                                 f"at top level")
                         globals_.append(g)
@@ -603,7 +727,7 @@ class Parser:
                 # Consume 'union' and the tag name, then parse declarators
                 self.advance()  # consume 'union'
                 if self.current.type != 'IDENTIFIER':
-                    raise SyntaxError(
+                    raise self.error(
                         f"Expected a union tag name after 'union' "
                         f"(line {self.current.line})")
                 tag = self.current.value
@@ -611,7 +735,7 @@ class Parser:
                 new_globals = self._parse_declarators('struct', struct_tag=tag)
                 for g in new_globals:
                     if any(e.name == g.name for e in globals_):
-                        raise SyntaxError(
+                        raise self.error(
                             f"Duplicate definition of global '{g.name}' "
                             f"at top level")
                     globals_.append(g)
@@ -635,25 +759,25 @@ class Parser:
                     func = self.parse_function()
                     if func is not None:  # None => prototype-only declaration
                         if any(e.name == func.name for e in functions):
-                            raise SyntaxError(
+                            raise self.error(
                                 f"Duplicate definition of function "
                                 f"'{func.name}' at top level")
                         functions.append(func)
                 elif self.current.value == 'void':
-                    raise SyntaxError(
+                    raise self.error(
                         f"Unexpected 'void' at top level (line {self.current.line})")
                 else:
                     new_globals = self.parse_var_decl()
                     for g in new_globals:
                         if any(e.name == g.name for e in globals_):
-                            raise SyntaxError(
+                            raise self.error(
                                 f"Duplicate definition of global '{g.name}' "
                                 f"at top level")
                         globals_.append(g)
             else:
                 func = self.parse_function()
                 if any(e.name == func.name for e in functions):
-                    raise SyntaxError(
+                    raise self.error(
                         f"Duplicate definition of function '{func.name}' "
                         f"at top level")
                 functions.append(func)
@@ -732,12 +856,17 @@ class Parser:
         for block in self.impl_blocks:
             if (block.tag not in self.struct_defs
                     and block.tag not in self.union_defs):
-                raise SyntaxError(
+                raise self.error(
                     f"impl {block.tag}: no struct or union named "
                     f"'{block.tag}' is defined "
                     f"(line {self.current.line})")
-        return Program(functions, globals_, self.enum_constants, self.struct_defs,
-                       self.union_defs, self.type_aliases, self.impl_blocks)
+        program = Program(functions, globals_, self.enum_constants,
+                          self.struct_defs, self.union_defs, self.type_aliases,
+                          self.impl_blocks)
+        # Carry the source path on the AST so codegen-phase diagnostics can
+        # name the file (and render snippets) without extra plumbing.
+        program.source_path = self.source_path
+        return program
 
     # ------------------------------------------------------------------
     # Multi-file compilation units: include / inherits
@@ -756,7 +885,7 @@ class Parser:
         self.advance()  # consume 'include' / 'inherits' keyword
         tok = self.current
         if tok.type != 'STRING':
-            raise SyntaxError(
+            raise self.error(
                 f"Expected a quoted file name after '{mode}' "
                 f"(line {tok.line}), got {tok.type} {tok.value!r}")
         raw = tok.value
@@ -781,7 +910,7 @@ class Parser:
             resolved = _os.path.join(self.base_dir, filename)
         resolved = _os.path.normpath(resolved)
         if not _os.path.isfile(resolved):
-            raise SyntaxError(
+            raise self.error(
                 f"{mode} file not found: {filename!r} "
                 f"(resolved to {resolved!r}, line {line})")
         return _os.path.abspath(resolved)
@@ -798,7 +927,7 @@ class Parser:
         seen = self.include_state['seen']
         if resolved in stack:
             chain = ' -> '.join(stack + [resolved])
-            raise SyntaxError(
+            raise self.error(
                 f"Circular {mode} detected (line {line}): {chain}")
         if resolved in seen:
             return None
@@ -826,7 +955,7 @@ class Parser:
         existing_gls = {g.name for g in globals_}
         for f in unit.functions:
             if f.name in existing_fns:
-                raise SyntaxError(
+                raise self.error(
                     f"Duplicate definition of function '{f.name}' after "
                     f"include (previously defined in this unit or another "
                     f"included file)")
@@ -834,7 +963,7 @@ class Parser:
             functions.append(f)
         for g in unit.globals:
             if g.name in existing_gls:
-                raise SyntaxError(
+                raise self.error(
                     f"Duplicate definition of global '{g.name}' after "
                     f"include (previously defined in this unit or another "
                     f"included file)")
@@ -845,7 +974,7 @@ class Parser:
         for name, value in unit.enum_constants.items():
             if name in self.enum_constants and \
                     self.enum_constants[name] != value:
-                raise SyntaxError(
+                raise self.error(
                     f"Enum constant '{name}' redefined with a different "
                     f"value via include "
                     f"({self.enum_constants[name]} != {value})")
@@ -854,7 +983,7 @@ class Parser:
         # different layout after an include is an error.
         for tag, fields in unit.structs.items():
             if tag in self.struct_defs and self.struct_defs[tag] != fields:
-                raise SyntaxError(
+                raise self.error(
                     f"Struct '{tag}' redefined with a different layout via "
                     f"include")
             self.struct_defs.setdefault(tag, fields)
@@ -866,7 +995,7 @@ class Parser:
             for method in block.methods:
                 key = f'{block.tag}::{method.name}'
                 if key in self.impl_keys:
-                    raise SyntaxError(
+                    raise self.error(
                         f"Duplicate method '{method.name}' for type "
                         f"'{block.tag}' after include (previously defined "
                         f"in this unit or another included file)")
@@ -909,7 +1038,7 @@ class Parser:
             # the receiver requirement and no prototype declarations.
             return_type = self.current.value
             if self.current.type != 'KEYWORD':
-                raise SyntaxError(
+                raise self.error(
                     f"impl {tag}: expected a method definition, got "
                     f"{self.current.type} '{self.current.value}' "
                     f"(line {self.current.line})")
@@ -918,13 +1047,14 @@ class Parser:
             while self.current.type == 'OPERATOR' and self.current.value == '*':
                 pointer_depth += 1
                 self.advance()
+            name_tok = self.current
             name = self.current.value
             self.expect('IDENTIFIER')
             key = f'{tag}::{name}'
             if key in self.impl_keys:
-                raise SyntaxError(
+                raise self.error(
                     f"Duplicate method '{name}' for type '{tag}' "
-                    f"(line {self.current.line})")
+                    f"(line {self.current.line})", token=name_tok)
             self.impl_keys.add(key)
             self.expect('DELIMITER', '(')
             # The receiver must be the literal identifier `self`. It is NOT
@@ -932,7 +1062,7 @@ class Parser:
             # typedef alias): the receiver is implicitly typed by the block.
             if self.current.type != 'IDENTIFIER' or self.current.value != 'self':
                 got = f"{self.current.type} '{self.current.value}'"
-                raise SyntaxError(
+                raise self.error(
                     f"Method '{name}' in impl {tag} must take `self` as "
                     f"its first parameter (got {got}, line "
                     f"{self.current.line})")
@@ -949,11 +1079,15 @@ class Parser:
             body = self.parse_block()
             self.expect('DELIMITER', '}')
             method = FunctionDef(return_type, name, params, body)
+            # Attach the method header position so codegen diagnostics can
+            # point at the source line when generating the method fails.
+            method.line = name_tok.line
+            method.column = name_tok.column
             method.impl_tag = tag
             methods.append(method)
         self.expect('DELIMITER', '}')
         if not methods:
-            raise SyntaxError(f"impl {tag} has no methods")
+            raise self.error(f"impl {tag} has no methods")
         self._add_impl_block(ImplBlock(tag, methods))
 
     def parse_enum(self):
@@ -1004,8 +1138,8 @@ class Parser:
             self.advance()
             if tok.value in self.enum_constants:
                 return sign * self.enum_constants[tok.value]
-            raise SyntaxError(f"Unknown enum constant '{tok.value}' in enum initializer")
-        raise SyntaxError(f"Invalid enum constant value near {tok}")
+            raise self.error(f"Unknown enum constant '{tok.value}' in enum initializer")
+        raise self.error(f"Invalid enum constant value near {tok}")
 
     def parse_typedef(self):
         """Parse a typedef declaration: typedef <type> alias;
@@ -1033,13 +1167,13 @@ class Parser:
             self.advance()
             base_type = self.type_aliases[base_type]
         else:
-            raise SyntaxError(
+            raise self.error(
                 f"Expected a type name after 'typedef' (line {self.current.line})")
         # The alias name
         alias = self.current.value
         self.expect('IDENTIFIER')
         if alias in self.type_aliases:
-            raise SyntaxError(f"Type alias '{alias}' already defined")
+            raise self.error(f"Type alias '{alias}' already defined")
         self.type_aliases[alias] = base_type
         self.expect('DELIMITER', ';')
 
@@ -1063,7 +1197,7 @@ class Parser:
             ftype = self.current.value
             if self.current.type != 'KEYWORD' or \
                     ftype not in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float'}:
-                raise SyntaxError(
+                raise self.error(
                     f"Unsupported union field type '{ftype}' in union "
                     f"'{tag}' (line {self.current.line})")
             self.advance()
@@ -1072,7 +1206,7 @@ class Parser:
                 self.expect('IDENTIFIER')
                 _existing = [name for name, _ in fields]
                 if fname in _existing:
-                    raise SyntaxError(
+                    raise self.error(
                         f"Duplicate field '{fname}' in union '{tag}' "
                         f"(line {self.current.line})")
                 fields.append((fname, ftype))
@@ -1084,9 +1218,9 @@ class Parser:
                 self.advance()
         self.expect('DELIMITER', '}')
         if not fields:
-            raise SyntaxError(f"Union '{tag}' has no fields")
+            raise self.error(f"Union '{tag}' has no fields")
         if tag in self.union_defs and self.union_defs[tag] != fields:
-            raise SyntaxError(
+            raise self.error(
                 f"Union '{tag}' redefined with a different layout")
         self.union_defs[tag] = fields
         # Optional C-style footer declarators
@@ -1123,7 +1257,7 @@ class Parser:
             ftype = self.current.value
             if self.current.type != 'KEYWORD' or \
                     ftype not in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float'}:
-                raise SyntaxError(
+                raise self.error(
                     f"Unsupported struct field type '{ftype}' in struct "
                     f"'{tag}' (line {self.current.line})")
             self.advance()
@@ -1134,7 +1268,7 @@ class Parser:
                 # so `int x; float x;` is still caught as a redeclaration.
                 _existing = [name for name, _ in fields]
                 if fname in _existing:
-                    raise SyntaxError(
+                    raise self.error(
                         f"Duplicate field '{fname}' in struct '{tag}' "
                         f"(line {self.current.line})")
                 fields.append((fname, ftype))
@@ -1148,11 +1282,11 @@ class Parser:
                 self.advance()
         self.expect('DELIMITER', '}')
         if not fields:
-            raise SyntaxError(f"Struct '{tag}' has no fields")
+            raise self.error(f"Struct '{tag}' has no fields")
         # fields now holds (name, type) tuples; the layout comparison and
         # codegen extract names/types from this shape.
         if tag in self.struct_defs and self.struct_defs[tag] != fields:
-            raise SyntaxError(
+            raise self.error(
                 f"Struct '{tag}' redefined with a different layout")
         self.struct_defs[tag] = fields
         # Optional C-style footer declarators: } a, b[2], *c
@@ -1171,6 +1305,7 @@ class Parser:
         while self.current.type == 'OPERATOR' and self.current.value == '*':
             pointer_depth += 1
             self.advance()
+        name_tok = self.current
         name = self.current.value
         self.expect('IDENTIFIER')
         self.expect('DELIMITER', '(')
@@ -1185,7 +1320,12 @@ class Parser:
         self.expect('DELIMITER', '{')
         body = self.parse_block()
         self.expect('DELIMITER', '}')
-        return FunctionDef(return_type, name, params, body)
+        func = FunctionDef(return_type, name, params, body)
+        # Attach the declaration position so codegen diagnostics can point
+        # at the source line when generating the function fails.
+        func.line = name_tok.line
+        func.column = name_tok.column
+        return func
 
     def parse_params(self) -> List["VarDecl"]:
         params = []
@@ -1215,7 +1355,7 @@ class Parser:
                 self.advance()
                 tag_tok = self.current
                 if tag_tok.type != 'IDENTIFIER':
-                    raise SyntaxError(
+                    raise self.error(
                         f"Expected a union tag name after 'union' in "
                         f"parameter list (line {tag_tok.line})")
                 struct_tag = tag_tok.value
@@ -1224,7 +1364,7 @@ class Parser:
                 # By-value union parameters are unsupported
                 if not (self.current.type == 'OPERATOR'
                         and self.current.value == '*'):
-                    raise SyntaxError(
+                    raise self.error(
                         f"Union parameters are not supported by value; "
                         f"pass a pointer (union {struct_tag} *p) or "
                         f"individual fields instead "
@@ -1234,7 +1374,7 @@ class Parser:
                 if var_type == 'struct':
                     tag_tok = self.current
                     if tag_tok.type != 'IDENTIFIER':
-                        raise SyntaxError(
+                        raise self.error(
                             f"Expected a struct tag name after 'struct' in "
                             f"parameter list (line {tag_tok.line})")
                     struct_tag = tag_tok.value
@@ -1244,7 +1384,7 @@ class Parser:
                     # accepted and decoded via the pointee layout for ->field.
                     if not (self.current.type == 'OPERATOR'
                             and self.current.value == '*'):
-                        raise SyntaxError(
+                        raise self.error(
                             f"Struct parameters are not supported by value; "
                             f"pass a pointer (struct {struct_tag} *p) or "
                             f"individual fields instead "
@@ -1281,6 +1421,35 @@ class Parser:
         return stmts
 
     def parse_statement(self):
+        # Typo'd control-flow keyword detection: an identifier at statement
+        # position followed by '(' that is 1 edit away from if/while/for/
+        # switch is probably a misspelled keyword (e.g. `whille (1)`). We
+        # do NOT hard-error here -- `foo(1);` is a legitimate statement and
+        # 'foo' is 1 edit from 'for' -- but if the statement fails to parse
+        # we enrich the error with the suggestion, blaming the real cause.
+        typo = None
+        if self.current.type == 'IDENTIFIER' and self.current.value not in self.type_aliases:
+            nxt = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+            if nxt is not None and nxt.type == 'DELIMITER' and nxt.value == '(':
+                suggestion = did_you_mean(
+                    self.current.value, ('if', 'while', 'for', 'switch'),
+                    max_distance=1)
+                if suggestion is not None:
+                    typo = (self.current.value, suggestion)
+        if typo is None:
+            return self._parse_statement_inner()
+        try:
+            return self._parse_statement_inner()
+        except ParserError as e:
+            # Only enrich, never rewrite: an EOF error bubbling up from a
+            # later line must keep pointing where the file actually ended.
+            if e.hint is None and 'end of file' not in e.message.lower():
+                e.hint = (f"this statement starts with '{typo[0]}', which is "
+                          f"1 edit away from the keyword '{typo[1]}' -- did "
+                          f"you mean '{typo[1]} (...)'?")
+            raise
+
+    def _parse_statement_inner(self):
         # Empty statement: a lone ';' is valid C and produces no code.
         if self.current.type == 'DELIMITER' and self.current.value == ';':
             self.advance()
@@ -1302,7 +1471,7 @@ class Parser:
                 # become local variables of this function.
                 return self.parse_struct_definition()
             if tag_tok is None or tag_tok.type != 'IDENTIFIER':
-                raise SyntaxError(
+                raise self.error(
                     f"Expected a struct tag name after 'struct' "
                     f"(line {self.current.line})")
             return self.parse_var_decl(struct_tag=tag_tok.value)
@@ -1319,7 +1488,7 @@ class Parser:
                     after is not None and after.type == 'DELIMITER' and after.value == '{':
                 return self.parse_union_definition()
             if tag_tok is None or tag_tok.type != 'IDENTIFIER':
-                raise SyntaxError(
+                raise self.error(
                     f"Expected a union tag name after 'union' "
                     f"(line {self.current.line})")
             # Consume 'union' and the tag name, then parse declarators
@@ -1695,7 +1864,7 @@ class Parser:
                             base_op, right)
                     left = MemberAssignment(left, right)
                 else:
-                    raise SyntaxError("Invalid assignment target")
+                    raise self.error("Invalid assignment target")
             else:
                 left = BinaryOp(left, op, right)
 
@@ -1727,7 +1896,7 @@ class Parser:
                 # ++p.x / --p.y: increment/decrement the member in place.
                 return PrefixOp(op, operand)
             if not isinstance(operand, Identifier):
-                raise SyntaxError(f"Prefix '{op}' requires a variable operand")
+                raise self.error(f"Prefix '{op}' requires a variable operand")
             return PrefixOp(op, operand)
 
         if self.current.type == 'OPERATOR' and self.current.value in ('-', '+', '!', '~', '&', '*'):
@@ -1739,7 +1908,7 @@ class Parser:
             if op == '&':
                 operand = self.parse_unary()
                 if not isinstance(operand, (Identifier, ArrayAccess, MemberAccess)):
-                    raise SyntaxError("'&' requires a variable or array element operand")
+                    raise self.error("'&' requires a variable or array element operand")
                 return AddressOf(operand)
             if op == '*':
                 return Deref(self.parse_unary())
@@ -1784,7 +1953,7 @@ class Parser:
             char_content = token.value.strip("'")
             unescaped = Parser._unescape_string(char_content)
             if len(unescaped) != 1:
-                raise SyntaxError(f"Invalid char literal: {token.value}")
+                raise self.error(f"Invalid char literal: {token.value}")
             return CharLiteral(ord(unescaped))
         elif token.type == 'IDENTIFIER':
             self.advance()
@@ -1899,7 +2068,7 @@ class Parser:
                             break
                 self.expect('DELIMITER', ')')
                 return FuncCall(func_name, args)
-            raise SyntaxError(f"Unexpected token in expression: {self.current}")
+            raise self.error(f"Unexpected token in expression: {self._describe_token(self.current)}")
         elif token.type == 'DELIMITER' and token.value == '(':
             self.advance()
             # Check for type cast: (int)expr, (char)expr, (string)expr, (binary)expr
@@ -1913,4 +2082,4 @@ class Parser:
             self.expect('DELIMITER', ')')
             return expr
         else:
-            raise SyntaxError(f"Unexpected token in expression: {self.current}")
+            raise self.error(f"Unexpected token in expression: {self._describe_token(self.current)}")

@@ -5,6 +5,8 @@
 import re
 from typing import List, Optional
 
+from astrid.errors import LexerError, did_you_mean
+
 # Token types
 TOKEN_TYPES = [
     'KEYWORD', 'IDENTIFIER', 'NUMBER', 'STRING', 'CHAR', 'OPERATOR', 'DELIMITER', 'COMMENT', 'EOF'
@@ -115,11 +117,62 @@ class Lexer:
             elif kind == 'SKIP':
                 pass  # Skip whitespace
             elif kind == 'MISMATCH':
-                raise RuntimeError(f'Unexpected character {value!r} at line {line_num} col {column}')
+                # Classify the offending character so the diagnostic says
+                # *why* it is unacceptable and how to fix it, rather than
+                # only naming it. The lexer owns the full source text, so
+                # the error can render a snippet with a caret.
+                self._raise_lex_error(value, line_num, column)
             if '\n' in value:
+                # Advance the line counter and re-anchor line_start to the
+                # FIRST COLUMN of the new line -- the index just past the
+                # last newline in the matched text. Anchoring to mo.end()
+                # instead would swallow the new line's leading indentation
+                # and shift every subsequent column on the line to the left
+                # (a multi-line comment or indented line would then report
+                # columns relative to the first token, not the line).
                 line_num += value.count('\n')
-                line_start = mo.end()
+                line_start = mo.start() + value.rfind('\n') + 1
         self.tokens.append(Token('EOF', '', line_num, 1))
         return self.tokens
+
+    def _raise_lex_error(self, value: str, line_num: int, column: int):
+        """Raise a LexerError for an unlexable character, with a diagnosis.
+
+        The MISMATCH rule catches anything no other pattern matched; this
+        distinguishes the common cases (unterminated string/char literals,
+        stray identifiers with a leading digit context, operator typos)
+        so the message explains the likely cause and the fix.
+        """
+        hint = None
+        if value == '"':
+            message = 'unterminated string literal'
+            hint = ('strings must be closed with a matching double quote '
+                    '(use \\" for a literal quote inside the string)')
+        elif value == "'":
+            message = 'unterminated character literal'
+            hint = ("character literals are a single character in single "
+                    "quotes, e.g. 'A' or '\\n' (use \\' for a literal quote)")
+        elif value.isalpha() or value == '_':
+            # An identifier-shaped character no pattern matched: it must
+            # have started mid-token, e.g. `3abc` (number followed by
+            # identifier characters without a separator).
+            message = (f"unexpected character {value!r} -- identifiers "
+                       f"cannot start here")
+            hint = ('separate numbers from identifiers with a space or '
+                    'operator, or start identifiers with a letter or '
+                    'underscore')
+        else:
+            message = f'unexpected character {value!r}'
+            # Operator typos are the most common cause of stray symbols;
+            # suggest the closest valid operator/keyword spelling.
+            suggestion = did_you_mean(value, OPERATORS, max_distance=1)
+            if suggestion is not None:
+                hint = f"did you mean the operator '{suggestion}'?"
+            else:
+                hint = ('allowed characters: letters, digits, whitespace, '
+                        'operators and delimiters')
+        raise LexerError(
+            message, line=line_num, column=column,
+            length=len(value), hint=hint, source_text=self.code)
 
 

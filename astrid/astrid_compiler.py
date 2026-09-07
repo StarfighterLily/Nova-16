@@ -8,12 +8,23 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from astrid.lexer.lexer import Lexer
 from astrid.parser.parser import Parser
 from astrid.codegen.codegen import CodeGenerator
+from astrid.errors import CompileError
 
 def main():
     import argparse
+    # Progress markers (✓/✗) are non-ASCII; when stdout is a pipe (CI, log
+    # capture) Python falls back to the cp1252 locale codec and printing
+    # them raises UnicodeEncodeError. Force UTF-8 with a safe fallback.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='replace')
     parser = argparse.ArgumentParser(description="Astrid Compiler: Compile Astrid source to Nova-16 assembly")
     parser.add_argument("source", nargs="?", help="Astrid source file (.as or .astrid)")
     parser.add_argument("-o", "--output", help="Output assembly file (.asm)")
+    parser.add_argument("--traceback", action="store_true",
+                        help="Show the full Python traceback even for "
+                             "diagnosed compiler errors (useful when "
+                             "reporting compiler bugs)")
     parser.add_argument("--enable-optimizations", action="store_true", dest="enable_optimizations",
                         default=True, help="Enable compiler optimizations (default: enabled)")
     parser.add_argument("--disable-optimizations", action="store_false", dest="enable_optimizations",
@@ -91,10 +102,32 @@ def main():
             f.write('\n'.join(assembly))
         print(f"✓ Assembly saved to {out_file}")
 
+    except CompileError as e:
+        # Diagnosed compiler error: the exception renders the full
+        # diagnostic (message, file:line:col, source snippet, hint), so
+        # print it cleanly instead of a Python traceback -- the user's
+        # code is wrong, not the compiler (report bugs with --traceback).
+        print(f"✗ Compilation failed:\n{e}", file=sys.stderr)
+        # Return (not sys.exit) so in-process callers (tests, tools that
+        # import main) can inspect the exit code without catching
+        # SystemExit; the __main__ entry point turns it into a process
+        # exit code.
+        return 1
+
     except Exception as e:
-        print(f"✗ Error: {e}")
-        import traceback
-        traceback.print_exc()
+        # Undiagnosed internal error: show a concise summary plus the
+        # traceback (the compiler itself has a bug here; the traceback is
+        # the minimal bug report).
+        print(f"✗ Internal compiler error: {e}", file=sys.stderr)
+        if args.traceback:
+            import traceback
+            traceback.print_exc()
+        else:
+            print("  (run with --traceback to see the full traceback)",
+                  file=sys.stderr)
+        return 2
+
+    return 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
