@@ -140,7 +140,7 @@ def test_astrid_compile_success_with_auto_load():
         assert state['pc'] == '0x1000'
         print('PASS astrid_compile success + auto_load')
     finally:
-        for ext in ('.ast', '.asm', '.bin', '.org', '.sym'):
+        for ext in ('.ast', '.asm', '.bin', '.org', '.sym', '.nex'):
             p = src.replace('.ast', ext)
             if os.path.exists(p):
                 os.unlink(p)

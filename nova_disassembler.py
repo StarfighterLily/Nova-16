@@ -191,6 +191,47 @@ def load_org_segments(org_file_path):
         pass  # ORG file is optional
     return segments
 
+def load_nomf_program(file_path):
+    """
+    Load a program from a NOMF artifact (the default output format).
+
+    Checks ``file_path`` itself first (so .nex files work directly), then
+    the ``.nex`` sibling of a legacy path.  Returns a
+    ``(bytecode, symbol_table, segments)`` tuple in the same shapes the
+    legacy .bin/.sym/.org loaders produce — segments as
+    (start_address, length, binary_offset) with binary offsets referring
+    to the returned bytecode — or ``None`` when no NOMF artifact exists
+    (callers then fall back to the legacy sidecar parsers).
+    """
+    try:
+        from nova import nomf
+    except ImportError:
+        return None
+
+    candidates = [file_path]
+    if '.' in file_path:
+        base = file_path.rsplit('.', 1)[0]
+        if base + '.nex' not in candidates:
+            candidates.append(base + '.nex')
+
+    for cand in candidates:
+        if nomf.file_kind(cand) is None:
+            continue
+        try:
+            doc = nomf.read(cand)
+        except nomf.NomfError:
+            continue  # corrupted sibling: fall back to sidecars
+        if not doc.sections:
+            continue
+        bytecode = doc.flat_image()
+        first_base = min(sec.org_hint for sec in doc.sections)
+        segments = [
+            (sec.org_hint, len(sec.data), sec.org_hint - first_base)
+            for sec in sorted(doc.sections, key=lambda s: s.org_hint)
+        ]
+        return bytecode, doc.symbol_table(), segments
+    return None
+
 def resolve_symbol(value, symbol_table):
     """
     Try to resolve a value to a symbol name.
@@ -402,18 +443,24 @@ def disassemble( file_path, args ):
             print( "No file selected." )
         return
 
-    try:
-        with open( file_path, 'rb' ) as f:
-            bytecode = f.read()
-    except FileNotFoundError:
-        if not args.quiet:
-            print( f"Error: File not found at '{file_path}'" )
-        return
+    # NOMF artifact preferred (default output format); legacy sidecars
+    # (.bin + .sym + .org) as fallback for pre-NOMF binaries.
+    nomf_data = load_nomf_program(file_path)
+    if nomf_data is not None:
+        bytecode, symbol_table, segments = nomf_data
+    else:
+        try:
+            with open( file_path, 'rb' ) as f:
+                bytecode = f.read()
+        except FileNotFoundError:
+            if not args.quiet:
+                print( f"Error: File not found at '{file_path}'" )
+            return
 
-    # Load symbol table and ORG segments
-    base_name = file_path.rsplit('.', 1)[0]  # Remove .bin extension
-    symbol_table = load_symbol_table(base_name + '.sym')
-    segments = load_org_segments(base_name + '.org')
+        # Load symbol table and ORG segments
+        base_name = file_path.rsplit('.', 1)[0]  # Remove .bin extension
+        symbol_table = load_symbol_table(base_name + '.sym')
+        segments = load_org_segments(base_name + '.org')
     
     # Create reverse symbol table (address -> symbol)
     reverse_symbol_table = {}
@@ -2266,40 +2313,54 @@ def interactive_mode(file_path, args):
     Interactive disassembly and analysis mode.
     Provides commands for advanced debugging and analysis.
     """
-    # Load the binary file
-    try:
-        with open(file_path, 'rb') as f:
-            bytecode = f.read()
-    except FileNotFoundError:
-        print(f"Error: File '{file_path}' not found.")
-        return
-    
-    # Load symbol table if available
+    # NOMF artifact preferred (default output format); legacy sidecar
+    # parsing below as fallback for pre-NOMF binaries.
+    nomf_data = load_nomf_program(file_path)
+    bytecode = None
     symbol_table = {}
     reverse_symbol_table = {}
-    symbol_file = file_path.replace('.bin', '.sym')
-    try:
-        with open(symbol_file, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        symbol = parts[0]
-                        addr_str = parts[1]
-                        symbol_table[symbol] = addr_str
-                        if addr_str.startswith('0x'):
-                            try:
-                                addr = int(addr_str, 16)
-                                reverse_symbol_table[addr] = symbol
-                            except ValueError:
-                                pass
-    except FileNotFoundError:
-        pass  # No symbol file, continue without symbols
-    
-    # Load ORG segments (same as main disassembly)
-    org_file = file_path.replace('.bin', '.org')
-    segments = load_org_segments(org_file)
+    segments = None
+    if nomf_data is not None:
+        bytecode, symbol_table, segments = nomf_data
+        for symbol, addr_str in symbol_table.items():
+            if addr_str.startswith('0x'):
+                try:
+                    reverse_symbol_table[int(addr_str, 16)] = symbol
+                except ValueError:
+                    pass
+    else:
+        # Load the binary file
+        try:
+            with open(file_path, 'rb') as f:
+                bytecode = f.read()
+        except FileNotFoundError:
+            print(f"Error: File '{file_path}' not found.")
+            return
+
+        # Load symbol table if available
+        symbol_file = file_path.replace('.bin', '.sym')
+        try:
+            with open(symbol_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            symbol = parts[0]
+                            addr_str = parts[1]
+                            symbol_table[symbol] = addr_str
+                            if addr_str.startswith('0x'):
+                                try:
+                                    addr = int(addr_str, 16)
+                                    reverse_symbol_table[addr] = symbol
+                                except ValueError:
+                                    pass
+        except FileNotFoundError:
+            pass  # No symbol file, continue without symbols
+
+        # Load ORG segments (same as main disassembly)
+        org_file = file_path.replace('.bin', '.org')
+        segments = load_org_segments(org_file)
     if not segments:
         # Fallback: treat entire file as one segment
         segments = [(0x0000, len(bytecode), 0)]

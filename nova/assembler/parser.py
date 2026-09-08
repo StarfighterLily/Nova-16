@@ -41,7 +41,8 @@ DATA_DIRECTIVES = {"DB", "DW", "DEFSTR", "DS", "DEFWORD", "DEFBYTE"}
 
 # Directives that control assembly flow
 CONTROL_DIRECTIVES = {"ORG", "EQU", "MACRO", "ENDM", "INCLUDE",
-                      "IF", "IFDEF", "IFNDEF", "ELSE", "ENDIF"}
+                      "IF", "IFDEF", "IFNDEF", "ELSE", "ENDIF",
+                      "GLOBAL", "EXTERN"}
 
 # Instructions that take zero operands (bare mnemonic = instruction, not label)
 ZERO_OPERAND_INSTRUCTIONS = {
@@ -257,6 +258,16 @@ def _parse_line(line: List[Token]) -> List[IRNode]:
         nodes.append(Label(line[i].value, line_num))
         i += 1
         line_num = line[i].line
+
+    # Directives that the lexer classifies as IDENT (GLOBAL, EXTERN).
+    # Handle them here so they are not mistaken for label definitions.
+    if (line[i].kind == TokenKind.IDENT
+            and line[i].value.upper() in ("GLOBAL", "EXTERN")):
+        name = line[i].value.upper()
+        i += 1
+        args = [_parse_operand_tokens(op) for op in _split_operands(line[i:])]
+        nodes.append(Directive(name, args, line_num))
+        return nodes
 
     # A bare identifier on its own line is treated as a label definition.
     # This matches the old assembler's behavior for labels without colons.

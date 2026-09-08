@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Tuple, Optional, Union
 from opcodes import opcodes
+from nova import nomf
 
 
 # Mnemonics present in opcodes.py (so the CPU allocated an opcode byte for
@@ -1142,6 +1143,8 @@ class Assembler:
                     f.write(f"{symbol} {value}\n")
             self._emit(f"Symbol table written to {sym_file}")
 
+            self._write_nomf(base_name, filename, machine_code, segments, symbol_table)
+
             self._emit(f"Assembly complete: {len(machine_code)} bytes written to {output_file}")
             return True
 
@@ -1153,6 +1156,65 @@ class Assembler:
             return False
 
 
+    def _write_nomf(self, base_name: str, source_filename: str,
+                    machine_code: bytearray,
+                    segments: List[Tuple[int, int, int]],
+                    symbol_table: Dict[str, str]) -> None:
+        """Emit the NOMF artifact (default output format).
+
+        ORG'd programs become a ``.nex`` executable with an explicit
+        entry point (first ORG segment, matching legacy loader
+        semantics); ORG-less units become a ``.nobj`` relocatable object
+        with section-relative symbols, ready for the future linker.
+        """
+        module_name = os.path.basename(base_name)
+        if segments:
+            segments_data = [
+                (start, bytes(machine_code[offset:offset + length]))
+                for start, length, offset in segments
+            ]
+            symbols = self._symbol_int_table(symbol_table)
+            doc = nomf.build_executable(
+                module_name, segments_data, symbols,
+                entry_addr=segments[0][0], source=source_filename)
+            nomf_path = base_name + nomf.EXECUTABLE_EXT
+        else:
+            section = nomf.Section(id=0, type=nomf.SECTION_CODE,
+                                   org_hint=0, data=bytes(machine_code))
+            symbols = [
+                nomf.Symbol(name=name, kind=nomf.SYM_LABEL,
+                            binding=nomf.BIND_GLOBAL, section=0,
+                            value=int(value, 0))
+                for name, value in symbol_table.items()
+                if _is_numeric_symbol_value(value)
+            ]
+            doc = nomf.build_object(module_name, [section], symbols,
+                                    source=source_filename)
+            nomf_path = base_name + nomf.OBJECT_EXT
+        doc.write(nomf_path)
+        self._emit(f"NOMF artifact written to {nomf_path}")
+
+    def _symbol_int_table(self, symbol_table: Dict[str, str]) -> Dict[str, int]:
+        """Convert {name: "0x..."} symbol values to ints, dropping
+        non-numeric EQU expressions that cannot be resolved here."""
+        return {
+            name: int(value, 16) if value.startswith("0x") else int(value, 0)
+            for name, value in symbol_table.items()
+            if _is_numeric_symbol_value(value)
+        }
+
+
+def _is_numeric_symbol_value(value: str) -> bool:
+    """True when a symbol value from the assembler is a literal number."""
+    if value.startswith("0x") or value.startswith("0X"):
+        return True
+    try:
+        int(value, 0)
+        return True
+    except ValueError:
+        return False
+
+
 def main():
     """Main entry point"""
     if len(sys.argv) != 2:
@@ -1160,6 +1222,24 @@ def main():
         return 1
 
     filename = sys.argv[1]
+
+    # Sources declaring GLOBAL/EXTERN directives are relocatable-object
+    # units: the legacy 2-pass assembler below has no object model, so
+    # delegate those to the token-based assembler package, which emits
+    # .nobj via the NOMF library for the nova_linker.py toolchain.
+    try:
+        with open(filename, "r", encoding="utf-8") as _f:
+            declares_symbols = any(
+                re.match(r"^\s*(GLOBAL|EXTERN)\s", line, re.IGNORECASE)
+                for line in _f)
+    except OSError as e:
+        print(f"Cannot read {filename}: {e}")
+        return 1
+
+    if declares_symbols:
+        from nova.assembler import Assembler as _ObjectAssembler
+        return 0 if _ObjectAssembler(log=print).assemble(filename) else 1
+
     assembler = Assembler(log=print, trace=True)
 
     if assembler.assemble(filename):

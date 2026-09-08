@@ -49,7 +49,7 @@ def assemble_and_load_program(cpu, assembler, program_text, start_addr=0x1000):
         
     finally:
         # Clean up temp files
-        for ext in ['.asm', '.bin', '.org']:
+        for ext in ['.asm', '.bin', '.org', '.nex']:
             try:
                 os.unlink(temp_file.replace('.asm', ext))
             except FileNotFoundError:
@@ -81,7 +81,7 @@ def assemble_and_load_program(cpu, assembler, program_text, start_addr=0x1000):
         
     finally:
         # Clean up temp files
-        for ext in ['.asm', '.bin', '.org']:
+        for ext in ['.asm', '.bin', '.org', '.nex']:
             try:
                 os.unlink(temp_file.replace('.asm', ext))
             except FileNotFoundError:

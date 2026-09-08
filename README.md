@@ -49,6 +49,35 @@ Nova-16 is a complete 16-bit computer system emulator featuring a custom instruc
 - **GUI** (`nova_gui.py`): Visual interface for running programs
 - **Graphics Monitor** (`nova_graphics_monitor.py`): Real-time graphics debugging
 
+## Binary Format (default: NOMF)
+
+The assembler's **default output is NOMF** (`nova/nomf.py`) — a single-file,
+versioned, CRC-protected container that replaces the loose `.bin` + `.org` +
+`.sym` sidecar trio:
+
+| Artifact | Meaning |
+|----------|---------|
+| `.nex`   | NOMF executable: absolute load segments, **explicit entry point**, symbol table, link map |
+| `.nobj`  | NOMF relocatable object: section-relative symbols + relocation records (for the future linker) |
+| `.nlib`  | NOMF archive of objects (reserved) |
+
+The legacy `.bin`/`.org`/`.sym` files are still emitted for compatibility and
+still load, but the loader **prefers NOMF automatically** (detected by the
+`NOMF` magic, not the extension):
+
+```bash
+# Assemble: produces program.nex (primary) plus legacy program.bin/.org/.sym
+py -3.13 nova_assembler.py asm/program.asm
+
+# Run — loads the .nex (explicit entry point, integrity-checked) or the .bin
+py -3.13 nova_main.py --headless asm/program.nex --cycles 10000
+```
+
+NOMF benefits: no orphaned sidecars (segments, entry, symbols travel
+together), no silent misloads (CRC + explicit entry chunk), code/data section
+typing, and the section/symbol/relocation model needed for building objects
+and linking programs.
+
 ## NoBASIC Programming Language
 
 NoBASIC is a high-level programming language inspired by TI-BASIC, designed specifically for the Nova-16 emulator. It provides a simple, calculator-like syntax that compiles to Nova-16 assembly code, making it easier to develop programs without directly writing assembly.

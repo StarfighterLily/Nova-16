@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
+from nova import nomf
+
 if TYPE_CHECKING:
     from nova.bus.eventbus import EventBus
 
@@ -373,13 +375,23 @@ class Memory:
     def load(self, file_path: str) -> int:
         """Load a binary file into memory.
 
-        If a corresponding ``.org`` file exists, segment-aware loading is
-        performed.  Returns the entry point address (first ORG segment's
-        start address, or 0x0000 if no .org file).
+        Recognizes (in order):
+          1. NOMF executables (``.nex``) — identified by the ``NOMF``
+             magic, not the extension.  Segments are placed at their
+             declared load addresses and the explicit entry-point chunk
+             is returned.  NOMF objects are rejected with a clear error
+             (they must be linked first) instead of being misloaded.
+          2. Legacy ``.bin`` + optional ``.org`` sidecar, as before.
+
+        Returns the entry point address (0x0000 for legacy files without
+        a .org file).
         """
         if not file_path:
             return 0x0000
         file_path = str(file_path)
+
+        if nomf.file_kind(file_path) is not None:
+            return self._load_nomf(file_path)
 
         # Check if there's a corresponding .org file with segment information
         org_file_path = file_path.replace('.bin', '.org')
@@ -404,6 +416,50 @@ class Memory:
                     self.bus.publish('memory.scb_written', addr)
 
         return 0x0000
+
+    def _load_nomf(self, file_path: str) -> int:
+        """Load a NOMF document (dispatched from ``load`` by magic)."""
+        doc = nomf.read(file_path)
+
+        if doc.kind == nomf.KIND_OBJECT:
+            raise ValueError(
+                f"{file_path} is a relocatable NOMF object (.nobj) and "
+                f"cannot be loaded directly; link it into a .nex first")
+        if doc.kind != nomf.KIND_EXECUTABLE:
+            raise ValueError(
+                f"{file_path}: NOMF kind {doc.kind} is not loadable")
+
+        if not doc.sections:
+            raise ValueError(f"{file_path}: NOMF executable has no "
+                             f"sections to load")
+
+        for start_addr, segment_data in doc.load_segments():
+            self._place_segment(start_addr, segment_data)
+
+        # Explicit entry point from the ENTR chunk.  Tolerate its
+        # absence (fall back to lowest section base) for hand-built
+        # executables, but assembler output always carries one.
+        if doc.entry is not None:
+            return doc.entry.addr & 0xFFFF
+        return min(sec.org_hint for sec in doc.sections)
+
+    def _place_segment(self, start_addr: int, segment_data: bytes) -> None:
+        """Copy ``segment_data`` into memory at ``start_addr`` with
+        bounds checking and SCB-region bus notification.  Shared by the
+        NOMF and legacy ORG loaders."""
+        if start_addr < 0 or start_addr + len(segment_data) > self.size:
+            raise ValueError(
+                f"Segment at 0x{start_addr:04X} extends beyond memory size")
+        if segment_data:
+            self._mem[start_addr:start_addr + len(segment_data)] = segment_data
+
+        # Notify about SCB region writes
+        if (self.bus and start_addr < self._scb_end
+                and start_addr + len(segment_data) > self._scb_start):
+            notify_start = max(start_addr, self._scb_start)
+            notify_end = min(start_addr + len(segment_data), self._scb_end)
+            for addr in range(notify_start, notify_end):
+                self.bus.publish('memory.scb_written', addr)
 
     def load_with_org_info(self, bin_file_path: str, org_file_path: str) -> int:
         """Load a binary file using ORG segment information.

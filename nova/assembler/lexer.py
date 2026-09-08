@@ -348,5 +348,12 @@ def line_text(tokens: List[Token]) -> str:
     for tok in tokens:
         if tok.kind == TokenKind.COMMENT:
             continue
-        parts.append(tok.value)
+        value = tok.value
+        if tok.kind == TokenKind.LABEL_DEF:
+            # The lexer stores the label name *without* the trailing ':'.
+            # Re-add it so macro-expanded text re-tokenizes to LABEL_DEF
+            # again (otherwise "label: MOV ..." becomes "label MOV ..."
+            # and the parser silently drops the line).
+            value += ":"
+        parts.append(value)
     return " ".join(parts)

@@ -25,6 +25,13 @@ OPCODE_VALUES = {name: int(value, 16) for name, value, _ in opcode_definitions}
 def pytest_configure(config):
     """Register custom markers used by the test suite."""
     config.addinivalue_line("markers", "assembler: Tests related to the assembler pipeline")
+    config.addinivalue_line("markers", "unit: Fast, isolated unit tests")
+    config.addinivalue_line("markers", "integration: Component interaction tests")
+    config.addinivalue_line("markers", "cpu: CPU instruction tests")
+    config.addinivalue_line("markers", "graphics: Graphics rendering tests")
+    config.addinivalue_line("markers", "memory: Memory access and caching tests")
+    config.addinivalue_line("markers", "sound: Audio system tests")
+    config.addinivalue_line("markers", "slow: Slow-running tests (> 5s)")
 
 
 @pytest.fixture

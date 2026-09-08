@@ -47,7 +47,7 @@ def test_starfield_compiles_and_assembles():
         print(f"PASS test_starfield_compiles_and_assembles (cycles={cycle}, PC=0x{proc.pc:04X})")
     finally:
         # Clean up generated files
-        for ext in ['.asm', '.bin', '.org', '.sym']:
+        for ext in ['.asm', '.bin', '.org', '.sym', '.nex']:
             path = asm_path.replace('.asm', ext)
             if os.path.exists(path):
                 os.unlink(path)

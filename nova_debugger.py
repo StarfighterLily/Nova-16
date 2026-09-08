@@ -5,6 +5,7 @@ from nova.memory import Memory as ram
 import nova_gfx as gpu
 import nova_sound as sound
 import nova_keyboard as keyboard
+from nova import nomf
 from nova_disassembler import create_reverse_maps, disassemble_instruction_new, is_string_data, format_string_data
 
 class NovaDebugger:
@@ -25,7 +26,36 @@ class NovaDebugger:
             self.load_symbol_table(program_path)
             
     def load_symbol_table(self, program_path):
-        """Load symbol table from .sym file"""
+        """Load symbols for a program.
+
+        NOMF artifacts (the default assembler output) are preferred:
+        ``program_path`` itself if it is NOMF, else its ``.nex`` sibling.
+        Falls back to the legacy ``.sym`` sidecar for pre-NOMF binaries.
+        """
+        candidates = [program_path]
+        if '.' in program_path:
+            base = program_path.rsplit('.', 1)[0]
+            sibling = base + nomf.EXECUTABLE_EXT
+            if sibling not in candidates:
+                candidates.append(sibling)
+
+        for cand in candidates:
+            if nomf.file_kind(cand) is None:
+                continue
+            try:
+                symbols = nomf.read_symbols(cand)
+            except nomf.NomfError:
+                continue  # corrupted artifact: try next candidate/.sym
+            for symbol, value in symbols.items():
+                self.symbol_table[symbol] = value
+                if value.startswith('0x'):
+                    try:
+                        self.reverse_symbol_table[int(value, 16)] = symbol
+                    except ValueError:
+                        pass
+            return
+
+        # Legacy .sym sidecar fallback
         sym_file = program_path.replace('.bin', '.sym')
         try:
             with open(sym_file, 'r') as f:

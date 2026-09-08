@@ -25,6 +25,8 @@ def test_assembler_success():
         os.remove('test_success.org')
     if os.path.exists('test_success.sym'):
         os.remove('test_success.sym')
+    if os.path.exists('test_success.nex'):
+        os.remove('test_success.nex')
 
 def test_assembler_failure():
     """Test failed assembly"""

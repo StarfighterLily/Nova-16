@@ -158,7 +158,9 @@ def test_sprite_blitall_renders_from_scb():
 
 
 def test_sprite_blitall_clears_then_redraws_sprite_layers():
-    """SPBLITALL clears sprite layers 5-8 before redrawing (no ghosting)."""
+    """SPBLITALL clears the sprite layers (5-6) before redrawing so there is
+    no ghosting, but it must NOT touch the text/GUI layers (7-8) -- ink placed
+    there by the program has to survive the re-blit."""
     source = SPRITE_PROGRAM.replace(
         "BLIT;",
         "sprite_blitall();\n"
@@ -168,17 +170,35 @@ def test_sprite_blitall_clears_then_redraws_sprite_layers():
         "    }\n"
         "    sprite_blitall();")
     proc, mem, gfx = _assemble_and_run(source)
-    # After the second SPBLITALL: layer 5 must hold ONLY the redrawn box
-    # (no leftover fill from the manual screen_fill() step), and layers
-    # 6-8 must be completely cleared by SPBLITALL's reset.
+    # SCB still describes the box sprite (the blit did not corrupt it).
+    scb = mem.read_bytes_direct(0xF000, 8)
+    assert (scb[0] << 8) | scb[1] == 0x8000
+    assert scb[2] == 128 and scb[3] == 120 and scb[4] == 8 and scb[5] == 8
+    assert scb[6] == 0b00000011 and scb[7] == 0x0000
+    # Bitmap intact in bank page 1.
+    page = mem._bank_pages[1]
+    assert page[0] == 0x5F and page[7] == 0x5F
+    for r in range(1, 7):
+        assert page[r * 8] == 0x5F and page[r * 8 + 7] == 0x5F
+        assert all(page[r * 8 + i] == 0x00 for i in range(1, 7))
+    # After the second SPBLITALL:
+    #  - sprite layer 5 (index 0) holds ONLY the redrawn box -- the manual
+    #    screen_fill() ink was cleared before the redraw (no ghosting).
+    #  - sprite layer 6 (index 1) was cleared and has no sprite -> empty.
+    #  - GUI layers 7-8 (indices 2-3) are NOT cleared by SPBLITALL, so the
+    #    manual screen_fill() ink is still present (65536 px = full 256x256).
     assert int((gfx.sprite_layers[0] != 0).sum()) == 28, (
         f"sprite layer 5 should hold the 28-px box, "
         f"got {int((gfx.sprite_layers[0] != 0).sum())} px")
-    for i in range(1, 4):
-        assert int((gfx.sprite_layers[i] != 0).sum()) == 0, (
-            f"sprite layer {i+5} still has ink after SPBLITALL re-blit")
-    _assert_outline_box(mem, gfx, "sprite_blitall-redraw")
-    print("PASS sprite layers cleared before re-blit")
+    assert int((gfx.sprite_layers[1] != 0).sum()) == 0, (
+        f"sprite layer 6 still has ink after SPBLITALL re-blit, "
+        f"got {int((gfx.sprite_layers[1] != 0).sum())} px")
+    for i in (2, 3):
+        preserved = int((gfx.sprite_layers[i] != 0).sum())
+        assert preserved == 65536, (
+            f"GUI layer {i + 5} must NOT be cleared by SPBLITALL "
+            f"(ink must survive), got {preserved} px")
+    print("PASS sprite layers cleared before re-blit; GUI layers preserved")
 
 
 # ---------------------------------------------------------------------------

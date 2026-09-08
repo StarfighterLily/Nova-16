@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 
 from .ir import IRNode, Instruction, Data, Directive
 from .symbols import SymbolTable, SymbolError
+from .. import nomf
 
 
 class CodeGenError(Exception):
@@ -76,6 +77,57 @@ class OperandType:
     REGISTER_INDIRECT = "reg_indirect"
     REGISTER_INDEXED = "reg_indexed"
     DIRECT = "direct"
+
+
+def _symbol_ref(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """Split operand text that may reference a symbol.
+
+    Returns ``(name, form)`` where form is one of ``"full"``, ``"hi"``
+    (``NAME:``), ``"lo"`` (``:NAME``).  Returns ``(None, None)`` for
+    non-symbol text (numbers, hex literals, registers, bracket forms).
+    """
+    t = text.strip()
+    if not t:
+        return None, None
+    if t.startswith(":") and len(t) > 1:
+        return t[1:].upper(), "lo"
+    if t.endswith(":") and len(t) > 1:
+        return t[:-1].upper(), "hi"
+    if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", t):
+        return t.upper(), "full"
+    return None, None
+
+
+class ObjectEmitContext:
+    """Live context passed through codegen while assembling a *relocatable
+    object* (.nobj).
+
+    Tracks the current byte position within the section being emitted so
+    every absolute-address operand site can be recorded as a relocation
+    instead of baking in a final address.
+
+    ``symbol_index`` and ``relocatable`` are held by reference so labels
+    added mid-walker (and pre-registered EXTERN symbols) are visible to
+    relocations emitted for forward references.
+    """
+
+    def __init__(self, section_id: int, symbol_index, relocatable, relocs):
+        self.section = section_id
+        self.symbol_index = symbol_index   # live dict: symbol name -> SYMT idx
+        self.relocatable = relocatable     # live set of relocatable names
+        self.relocs = relocs               # growing List[nomf.Reloc]
+        self.offset = 0                    # byte offset within this section
+
+    def is_relocatable(self, name: str) -> bool:
+        return name in self.relocatable
+
+    def emit(self, rtype: int, width: int, anchor: int, symbol: str) -> None:
+        self.relocs.append(nomf.Reloc(
+            section=self.section, offset=anchor, width=width,
+            rtype=rtype, symbol_index=self.symbol_index[symbol], addend=0))
+
+    def advance(self, n: int) -> None:
+        self.offset += n
 
 
 def _parse_immediate(text: str, symbols: SymbolTable, bit_width: int = 16) -> int:
@@ -240,7 +292,37 @@ def data_size(node: Data, symbols: SymbolTable) -> int:
     return 0
 
 
-def generate_data(node: Data, symbols: SymbolTable) -> List[int]:
+def _encode_data_arg(arg: str, symbols: SymbolTable, width: int,
+                     obj_ctx: Optional[ObjectEmitContext] = None,
+                     anchor: int = 0) -> List[int]:
+    """Encode one data-directive value into bytes (1 byte for DB, 2 for DW).
+
+    In object mode, symbol references become relocations (ABS16/HI8/LO8)
+    encoded as zero placeholders.
+    """
+    arg = arg.strip()
+    name, form = _symbol_ref(arg)
+    if obj_ctx is not None and name is not None \
+            and obj_ctx.is_relocatable(name):
+        if form == "hi" or form == "lo":
+            rtype = nomf.RELOC_HI8 if form == "hi" else nomf.RELOC_LO8
+            obj_ctx.emit(rtype, width=8, anchor=anchor, symbol=name)
+            return [0]
+        if width == 16:
+            obj_ctx.emit(nomf.RELOC_ABS16, width=16, anchor=anchor,
+                         symbol=name)
+            return [0, 0]
+        raise CodeGenError(
+            f"Relocatable symbol '{name}' cannot be an 8-bit data value "
+            f"(use '{name}:' or ':{name}')")
+    val = _parse_immediate(arg, symbols, width)
+    if width == 16:
+        return [(val >> 8) & 0xFF, val & 0xFF]
+    return [val & 0xFF]
+
+
+def generate_data(node: Data, symbols: SymbolTable,
+                  obj_ctx: Optional[ObjectEmitContext] = None) -> List[int]:
     """Generate the byte list for a data directive."""
     directive = node.directive.upper()
     result: List[int] = []
@@ -249,28 +331,43 @@ def generate_data(node: Data, symbols: SymbolTable) -> List[int]:
         for arg in node.args:
             arg = arg.strip()
             if arg.startswith('"') and arg.endswith('"'):
-                result.extend(_parse_string_literal(arg))
+                string_bytes = _parse_string_literal(arg)
+                result.extend(string_bytes)
+                if obj_ctx is not None:
+                    obj_ctx.advance(len(string_bytes))
             else:
-                result.append(_parse_immediate(arg, symbols, 8) & 0xFF)
+                anchor = obj_ctx.offset if obj_ctx is not None else 0
+                encoded = _encode_data_arg(arg, symbols, 8, obj_ctx, anchor)
+                result.extend(encoded)
+                if obj_ctx is not None:
+                    obj_ctx.advance(len(encoded))
         return result
 
     if directive in {"DW", "DEFWORD"}:
         for arg in node.args:
-            val = _parse_immediate(arg, symbols, 16) & 0xFFFF
-            result.append((val >> 8) & 0xFF)
-            result.append(val & 0xFF)
+            anchor = obj_ctx.offset if obj_ctx is not None else 0
+            encoded = _encode_data_arg(arg, symbols, 16, obj_ctx, anchor)
+            result.extend(encoded)
+            if obj_ctx is not None:
+                obj_ctx.advance(len(encoded))
         return result
 
     if directive == "DEFSTR":
         if not node.args:
+            if obj_ctx is not None:
+                obj_ctx.advance(1)
             return [0]
         arg = node.args[0].strip()
         result.extend(_parse_string_literal(arg))
         result.append(0)
+        if obj_ctx is not None:
+            obj_ctx.advance(len(result))
         return result
 
     if directive in {"DS", "DEFBYTE"}:
         count = int(node.args[0].strip()) if node.args else 0
+        if obj_ctx is not None:
+            obj_ctx.advance(count)
         return [0] * count
 
     return []
@@ -306,18 +403,42 @@ def _encode_register(text: str) -> int:
     return REGISTER_CODES[text.strip().upper()]
 
 
-def _encode_operand(text: str, op_type: str, symbols: SymbolTable) -> List[int]:
-    """Encode a single operand into bytes."""
+def _encode_operand(text: str, op_type: str, symbols: SymbolTable,
+                    obj_ctx: Optional[ObjectEmitContext] = None,
+                    anchor: int = 0) -> List[int]:
+    """Encode a single operand into bytes.
+
+    When ``obj_ctx`` is provided (relocatable-object mode), references to
+    relocatable symbols are recorded as relocations and encoded as zero
+    placeholders instead of final addresses.
+    """
     text = text.strip()
 
     if op_type == OperandType.REGISTER:
         return [_encode_register(text)]
 
     if op_type == OperandType.IMMEDIATE8:
+        name, form = _symbol_ref(text)
+        if obj_ctx is not None and name is not None \
+                and obj_ctx.is_relocatable(name):
+            if form == "hi" or form == "lo":
+                rtype = nomf.RELOC_HI8 if form == "hi" else nomf.RELOC_LO8
+                obj_ctx.emit(rtype, width=8, anchor=anchor, symbol=name)
+                return [0]
+            raise CodeGenError(
+                f"Relocatable symbol '{name}' cannot be encoded as an 8-bit "
+                f"immediate (use '{name}:' for the high byte or ':{name}' "
+                f"for the low byte)")
         val = _parse_immediate(text, symbols, 8)
         return [val & 0xFF]
 
     if op_type == OperandType.IMMEDIATE16:
+        name, form = _symbol_ref(text)
+        if obj_ctx is not None and name is not None \
+                and obj_ctx.is_relocatable(name):
+            obj_ctx.emit(nomf.RELOC_ABS16, width=16, anchor=anchor,
+                         symbol=name)
+            return [0, 0]
         val = _parse_immediate(text, symbols, 16) & 0xFFFF
         return [(val >> 8) & 0xFF, val & 0xFF]
 
@@ -370,8 +491,13 @@ def _encode_operand(text: str, op_type: str, symbols: SymbolTable) -> List[int]:
 
 
 def generate_instruction(inst: Instruction, symbols: SymbolTable,
-                         location: int) -> List[int]:
-    """Encode an instruction into machine-code bytes."""
+                         location: int,
+                         obj_ctx: Optional[ObjectEmitContext] = None) -> List[int]:
+    """Encode an instruction into machine-code bytes.
+
+    When ``obj_ctx`` is provided (relocatable-object mode), each operand
+    is recorded as a relocation if it references a relocatable symbol.
+    """
     mnemonic = inst.mnemonic.upper()
     if mnemonic in UNIMPLEMENTED_INSTRUCTIONS:
         raise CodeGenError(f"{mnemonic} is not implemented on this CPU")
@@ -380,6 +506,8 @@ def generate_instruction(inst: Instruction, symbols: SymbolTable,
 
     opcode, operand_count = INSTRUCTION_INFO[mnemonic]
     result = [opcode]
+    if obj_ctx is not None:
+        obj_ctx.advance(1)
 
     # Old assembler is lenient about operand counts; match that behavior.
     if operand_count == 0:
@@ -390,6 +518,8 @@ def generate_instruction(inst: Instruction, symbols: SymbolTable,
     # This handles cases like SWRITE with no operand (uses VC implicitly as operand 0).
     if len(inst.operands) == 0:
         result.append(0)  # mode byte with register=0 for implicit VC operand
+        if obj_ctx is not None:
+            obj_ctx.advance(1)
         return result
 
     if len(inst.operands) != operand_count:
@@ -399,9 +529,15 @@ def generate_instruction(inst: Instruction, symbols: SymbolTable,
     operand_types = [classify_operand(op, symbols) for op in inst.operands]
     mode_byte = _calculate_mode_byte(operand_types)
     result.append(mode_byte)
+    if obj_ctx is not None:
+        obj_ctx.advance(1)
 
     for op, op_type in zip(inst.operands, operand_types):
-        result.extend(_encode_operand(op, op_type, symbols))
+        anchor = obj_ctx.offset if obj_ctx is not None else 0
+        encoded = _encode_operand(op, op_type, symbols, obj_ctx, anchor)
+        result.extend(encoded)
+        if obj_ctx is not None:
+            obj_ctx.advance(len(encoded))
 
     return result
 
@@ -409,10 +545,18 @@ def generate_instruction(inst: Instruction, symbols: SymbolTable,
 # ---------------------------------------------------------------------------
 # Pass 2 driver
 # ---------------------------------------------------------------------------
-
 def second_pass(nodes: List[IRNode], symbols: SymbolTable,
-                segments: List[Tuple[int, int, int]]) -> Tuple[bytearray, List[Tuple[int, int, int]]]:
-    """Generate machine code from IR nodes and symbol table."""
+                segments: List[Tuple[int, int, int]],
+                segment_types: Optional[List[str]] = None
+                ) -> Tuple[bytearray, List[Tuple[int, int, int]]]:
+    """Generate machine code from IR nodes and symbol table.
+
+    If ``segment_types`` is a list, it is filled with one of
+    ``"CODE"``/``"DATA"`` per emitted ORG segment (parallel to the
+    returned segment tuples): ``"DATA"`` when the segment contains only
+    data directives, ``"CODE"`` otherwise.  This lets the NOMF emitter
+    type sections without changing the legacy tuple shape.
+    """
     code = bytearray()
     location = 0
     current_segment_start = 0
@@ -420,19 +564,28 @@ def second_pass(nodes: List[IRNode], symbols: SymbolTable,
     emitted_since_org = False
     out_segments: List[Tuple[int, int, int]] = []
     errors: List[str] = []
+    seg_is_data_only = False
+
+    def _close_segment():
+        # Flush the segment that just ended: record its extent and
+        # whether it held only data directives (for NOMF section typing).
+        if emitted_since_org:
+            seg_len = location - current_segment_start
+            out_segments.append((current_segment_start, seg_len,
+                                 current_segment_bin_offset))
+            if segment_types is not None:
+                segment_types.append("DATA" if seg_is_data_only else "CODE")
 
     for node in nodes:
         try:
             if isinstance(node, Directive):
                 if node.name == "ORG":
-                    if emitted_since_org:
-                        seg_len = location - current_segment_start
-                        out_segments.append((current_segment_start, seg_len,
-                                             current_segment_bin_offset))
+                    _close_segment()
                     location = _parse_value(node.args[0], symbols) if node.args else 0
                     current_segment_start = location
                     current_segment_bin_offset = len(code)
                     emitted_since_org = False
+                    seg_is_data_only = True
                     continue
                 if node.name == "EQU":
                     continue
@@ -449,13 +602,12 @@ def second_pass(nodes: List[IRNode], symbols: SymbolTable,
                 code.extend(inst_bytes)
                 location += len(inst_bytes)
                 emitted_since_org = True
+                seg_is_data_only = False
 
         except Exception as e:
             errors.append(f"Line {node.line_num}: {e}")
 
-    if emitted_since_org:
-        seg_len = location - current_segment_start
-        out_segments.append((current_segment_start, seg_len, current_segment_bin_offset))
+    _close_segment()
 
     if errors:
         raise CodeGenError("\n".join(errors))
