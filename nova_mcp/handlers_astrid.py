@@ -3,6 +3,13 @@
 Mirrors the NoBASIC handler contract: compile an Astrid source file to
 assembly and (optionally) binary in-process, with optional auto-load of
 the resulting binary into the emulator.
+
+NOMF compliance: the Astrid codegen always emits ``ORG 0x1000`` (and
+``ORG 0x0100``/``ORG 0x0120`` when a ``timer_interrupt`` handler exists),
+so the assembler produces a NOMF ``.nex`` executable as the primary
+artifact.  The handler surfaces that artifact in the response and prefers
+it for auto-load, falling back to the legacy ``.bin`` only when NOMF
+emission is suppressed.
 """
 
 from __future__ import annotations
@@ -12,11 +19,36 @@ from pathlib import Path
 
 
 def _assemble_in_process(assembly_file: Path, verbose_flag: bool, emit) -> bool:
-    """Assemble generated assembly in-process; returns True on success."""
+    """Assemble generated assembly in-process; returns True on success.
+
+    The assembler defaults to emitting both a NOMF ``.nex`` executable (the
+    primary artifact for ORG'd sources) and the legacy ``.bin``/``.org``/
+    ``.sym`` sidecars.  Astrid output is always ORG'd, so a ``.nex`` is
+    expected alongside the ``.bin``.
+    """
     import nova_assembler as assembler_module
 
     assembler = assembler_module.Assembler(log=None, trace=False)
     return bool(assembler.assemble(str(assembly_file)))
+
+
+def _find_loadable_artifact(assembly_path: Path):
+    """Return the best loadable artifact for the given assembly path.
+
+    Prefers the NOMF ``.nex`` executable (primary artifact for ORG'd
+    sources) over the legacy ``.bin`` sidecar.  Returns a 3-tuple:
+    ``(load_path, artifact_kind, display_suffix)`` where ``artifact_kind``
+    is ``"nomf"`` or ``"legacy"``.
+    """
+    nomf_path = assembly_path.with_suffix(".nex")
+    if nomf_path.exists():
+        return nomf_path, "nomf", ".nex"
+
+    bin_path = assembly_path.with_suffix(".bin")
+    if bin_path.exists():
+        return bin_path, "legacy", ".bin"
+
+    return None, None, None
 
 
 def handle_astrid_compile(
@@ -81,8 +113,14 @@ def handle_astrid_compile(
             result["compiler_output"] = compiler_output[:100000]
         return json.dumps(result)
 
-    binary_path = output_path.with_suffix(".bin")
-    if not binary_path.exists():
+    # Prefer the NOMF .nex executable (primary artifact for ORG'd sources)
+    # over the legacy .bin sidecar.  The Astrid codegen always emits ORG
+    # directives, so a .nex is the canonical loadable artifact.
+    load_path, artifact_kind, _ = _find_loadable_artifact(output_path)
+    if load_path is None:
+        # Neither .nex nor .bin was produced — surface the legacy path in
+        # the error for backward compatibility with existing diagnostics.
+        binary_path = output_path.with_suffix(".bin")
         return json.dumps({
             "error": f"Binary file not created at {binary_path}",
             "assembly_created": str(output_path),
@@ -92,22 +130,27 @@ def handle_astrid_compile(
         "status": "compiled",
         "source": str(source_path),
         "assembly": str(output_path),
-        "binary": str(binary_path),
+        "binary": str(load_path),
     }
+    # Surface the NOMF artifact path explicitly so callers can distinguish
+    # the primary (.nex) artifact from a legacy (.bin) fallback.
+    if artifact_kind == "nomf":
+        result["nomf"] = str(load_path)
     if verbose and compiler_messages:
         result["compiler_output"] = "\n".join(compiler_messages)[:100000]
 
     if auto_load:
         ensure_emulator()
         try:
-            entry_point = state["memory"].load(str(binary_path))
-            state["program_path"] = binary_path
+            entry_point = state["memory"].load(str(load_path))
+            state["program_path"] = load_path
             state["cpu"].pc = entry_point
             state["cpu"].halted = False
             state["cycle_count"] = 0
             state["debugger"] = None
             result["auto_loaded"] = True
             result["entry_point"] = f"0x{entry_point:04X}"
+            result["loaded_artifact"] = artifact_kind
         except Exception as exc:
             result["auto_load_error"] = str(exc)
 

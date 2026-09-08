@@ -135,10 +135,23 @@ def test_astrid_compile_success_with_auto_load():
         assert result['entry_point'] == '0x1000'
         assert os.path.exists(result['assembly'])
         assert os.path.exists(result['binary'])
+        # NOMF compliance: the Astrid codegen always emits ORG 0x1000, so
+        # the assembler produces a .nex executable as the primary artifact.
+        # The handler must surface it in the response and prefer it for
+        # auto-load (loaded_artifact == 'nomf').
+        assert 'nomf' in result, (
+            f'NOMF artifact not reported in compile result: {result}')
+        assert result['nomf'].endswith('.nex'), (
+            f'nomf path should point to .nex file, got: {result['nomf']}')
+        assert os.path.exists(result['nomf']), (
+            f'NOMF artifact does not exist on disk: {result['nomf']}')
+        assert result.get('loaded_artifact') == 'nomf', (
+            f'auto_load should prefer the NOMF .nex, got loaded_artifact='
+            f'{result.get('loaded_artifact')}')
         # The program really is loaded at PC.
         state = json.loads(_handle_state())
         assert state['pc'] == '0x1000'
-        print('PASS astrid_compile success + auto_load')
+        print('PASS astrid_compile success + auto_load (NOMF-compliant)')
     finally:
         for ext in ('.ast', '.asm', '.bin', '.org', '.sym', '.nex'):
             p = src.replace('.ast', ext)
