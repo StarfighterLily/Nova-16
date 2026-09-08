@@ -27,7 +27,7 @@ import pytest
 
 from nova.assembler.codegen import classify_operand, OperandType
 from nova.assembler import Assembler
-from nova_assembler import Assembler as LegacyAssembler
+from nova_assembler1 import Assembler as LegacyAssembler
 
 
 class TestClassifyOperand:
