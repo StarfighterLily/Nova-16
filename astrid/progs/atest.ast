@@ -3,7 +3,7 @@ include "includes\debug.ast"
 void main() {
     unsigned int rtc = get_rtc(1);
     for (unsigned int x = 0; x < 65535; x++) {
-        for (unsigned int y = 0; y < 1; y++) {
+        for (unsigned int y = 0; y < 2; y++) {
             nop();
         }
     }

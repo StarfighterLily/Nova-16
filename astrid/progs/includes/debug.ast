@@ -1,11 +1,16 @@
 struct dbg {
     int x;
     int y;
-} dbg = {0,0};
+    int longest;
+} dbg = {0,0,0};
 
 impl dbg {
     void print(self, string text) {
         int origlayer = get_layer();
+        int curlen = strlen(text);
+        if (curlen > self.longest) {
+            self.longest = curlen;
+        }
         set_layer(8);
         set_pos(self.x, self.y);
         write_text(text, 0x1F);
@@ -13,7 +18,7 @@ impl dbg {
         self.y += 8;
         if (self.y >= 248) {
             self.y = 0;
-            self.x += 32;
+            self.x += (self.longest * 8) + 4;
         }
         if (self.x >= 248) {
             set_layer(8);
@@ -24,7 +29,15 @@ impl dbg {
 
     void peer(self, unsigned int addr, unsigned int length) {
         for (unsigned int x = addr; x < (addr+length); x++) {
-            self.print((string)peek(x));
+            self.print((stringh)peek(x));
         }
+    }
+
+    void scope(self, void var) {
+        self.peer(&var, sizeof(var));
+    }
+
+    void dump(self, unsigned int addr) {
+        self.peer(addr, 216);
     }
 }

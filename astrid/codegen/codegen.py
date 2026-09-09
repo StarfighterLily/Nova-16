@@ -4389,11 +4389,66 @@ class CodeGenerator:
         
         self.emit_label(f"{finish_label}_end")
 
+    def emit_hex_string(self, dest_reg: str, value_reg: str):
+        """Emit a software unsigned-to-hex-string conversion using only Nova-16 ops.
+
+        Converts a 16-bit value to a 4-character hex string (e.g. 0xDEAD -> "DEAD").
+        The result is stored as a NUL-terminated ASCII string at 0xA000 and the
+        buffer address is returned in dest_reg.
+
+        Implementation notes:
+          * R0 is deliberately AVOIDED as a scratch register: this routine runs
+            in the middle of expression evaluation where R0 may still be live
+            (it is the compiler's return-value/scratch register), so all work
+            uses separately-allocated P-register temporaries.
+          * Extraction order: shift THEN mask (SHR Pn, imm; AND Pn, 0x0F), so
+            each nibble of the 16-bit value lands in the low 4 bits in turn.
+          * ASCII selection uses the sign flag from CMP nibble, 10: a negative
+            result means nibble < 10 (digit '0'-'9', add 48); otherwise the
+            nibble is 10-15 (uppercase 'A'-'F', add 55).
+        """
+        tmp = self.get_register(exclude={value_reg, dest_reg})
+        scratch = self.get_register(exclude={value_reg, dest_reg, tmp})
+        nibble = self.get_register(exclude={value_reg, dest_reg, tmp, scratch})
+
+        # Generate 4 hex digits (most significant nibble first)
+        self.emit(f"    MOV {scratch}, 0xA000")
+        self.emit(f"    MOV {tmp}, {value_reg}")
+
+        # Process each nibble from bits 12-15 down to 0-3
+        for shift in (12, 8, 4, 0):
+            self.emit(f"    MOV {nibble}, {tmp}")
+            if shift > 0:
+                self.emit(f"    SHR {nibble}, {shift}")
+            self.emit(f"    AND {nibble}, 0x0F")
+            # Convert nibble to ASCII: 0-9 -> '0'-'9', 10-15 -> 'A'-'F'
+            self.emit(f"    CMP {nibble}, 10")
+            self.emit(f"    JS .hex_digit_{shift}")
+            self.emit(f"    ADD {nibble}, 55")  # 'A' = 65, 65 - 10 = 55
+            self.emit(f"    JMP .hex_done_{shift}")
+            self.emit_label(f".hex_digit_{shift}")
+            self.emit(f"    ADD {nibble}, 48")  # '0' = 48
+            self.emit_label(f".hex_done_{shift}")
+            # MOV [mem], Psrc writes a 16-bit big-endian word whose high byte
+            # (0x00 for ASCII chars) lands at the target address -- it would
+            # shove each hex char one byte forward and corrupt the slot.  Route
+            # the byte through R0 (same convention as _emit_mem_store and
+            # emit_unsigned_to_string) for a strict 8-bit write.
+            self.emit(f"    MOV R0, {nibble}")
+            self.emit(f"    MOV [{scratch}], R0")
+            self.emit(f"    INC {scratch}")
+
+        # NUL terminate
+        self.emit(f"    MOV [{scratch}], 0")
+        self.emit(f"    MOV {dest_reg}, 0xA000")
+
     def generate_cast(self, cast: Cast) -> str:
         """Generate code for type cast expressions using Nova-16 conversion instructions.
-        
+
         Supported casts:
           (string)expr   -> ITOS:  converts int expr to decimal string at 0xA000,
+                                    returns buffer address
+          (stringh)expr  -> converts int expr to hex string at 0xA000,
                                     returns buffer address
           (binary)expr   -> ITOB:  converts int expr to binary string at 0xA100,
                                     returns buffer address
@@ -4484,6 +4539,12 @@ class CodeGenerator:
                 self.emit_unsigned_to_string(result_reg, inner_reg)
             else:
                 self.emit(f"    ITOS {result_reg}, {inner_reg}")
+        elif target == 'stringh':
+            # (stringh)expr converts an integer to a 4-character hex string
+            # (e.g. 0xDEAD -> "DEAD"). Uses the same 0xA000 scratch buffer
+            # as ITOS but produces uppercase hex digits.
+            self.emit_comment("Hex string conversion")
+            self.emit_hex_string(result_reg, inner_reg)
         elif target == 'binary':
             # ITOB writes the binary string to the fixed buffer 0xA100 and
             # writes that buffer address into the destination operand.
@@ -4549,7 +4610,7 @@ class CodeGenerator:
         if isinstance(expr, StringLiteral):
             return True
         if isinstance(expr, Cast):
-            return expr.target_type in ('string', 'binary')
+            return expr.target_type in ('string', 'stringh', 'binary')
         if isinstance(expr, FuncCall):
             func = self.functions.get(expr.name)
             return bool(func and func.get('return_type') in ('string', 'binary'))
@@ -4560,7 +4621,7 @@ class CodeGenerator:
 
     def _is_string_expr(self, expr: Expression) -> bool:
         """True when `expr` produces a string/binary VALUE (not an address
-        into one).  String literals, (string)/(binary) casts, string/binary
+        into one).  String literals, (string)/(stringh)/(binary) casts, string/binary
         scalar variables, and string-returning user functions qualify;
         char* / int* pointer variables and single-character string-index
         expressions ("abc"[i], which yield a byte) do not."""
@@ -4573,7 +4634,7 @@ class CodeGenerator:
             return bool(g and not g.get('is_array') and not g.get('is_pointer')
                         and g['type'] in ('string', 'binary'))
         if isinstance(expr, Cast):
-            return expr.target_type in ('string', 'binary')
+            return expr.target_type in ('string', 'stringh', 'binary')
         if isinstance(expr, FuncCall):
             func = self.functions.get(expr.name)
             return bool(func and func.get('return_type') in ('string', 'binary'))
@@ -4727,6 +4788,9 @@ class CodeGenerator:
                 return g['type']
             return None
         if isinstance(expr, Cast):
+            # (stringh)x yields a string value (hex representation)
+            if expr.target_type == 'stringh':
+                return 'string'
             return expr.target_type  # (string)x yields a string value
         if isinstance(expr, StringLiteral):
             return 'string'

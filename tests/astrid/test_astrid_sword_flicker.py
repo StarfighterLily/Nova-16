@@ -389,7 +389,11 @@ def _run_erase_probe():
             for line in f:
                 parts = line.split()
                 if len(parts) == 2:
-                    syms[parts[0]] = int(parts[1], 16)
+                    # The .sym file writes UPPERCASE symbol names (e.g. START),
+                    # regardless of the case used at the source label.  Index
+                    # by the case-folded name so lookups below (syms["start"],
+                    # syms["phase2"], ...) work with either spelling.
+                    syms[parts[0].upper()] = int(parts[1], 16)
 
         proc, mem, gfx, _, _ = initialize_system(enable_sound=False)
         mem.load(probe.replace(".asm", ".bin"))
@@ -403,11 +407,11 @@ def _run_erase_probe():
                 c += 1
                 proc.step()
 
-        run_to(syms["start"])
+        run_to(syms["START"])
         ink_draw = int((layer5[100:108, 100:116] != 0).sum())
-        run_to(syms["phase2"])
+        run_to(syms["PHASE2"])
         ink_spaces = int((layer5[100:108, 100:116] != 0).sum())
-        run_to(syms["phase3"])
+        run_to(syms["PHASE3"])
         ink_black = int((layer5[100:108, 100:116] != 0).sum())
         return ink_draw, ink_spaces, ink_black
     finally:
@@ -460,11 +464,12 @@ def test_swing_auto_clears_and_player_survives():
         # Player instance base address from the symbol table. game.ast now
         # keeps player state in `struct Player {...} Player`, whose fields
         # are word slots: x=+0x00, y=+0x02, ..., swinging=+0x10.
+        # The .sym file writes UPPERCASE names (GVAR_PLAYER), so fold case.
         gvar_Player = None
         with open(asm_path.replace(".asm", ".sym"), encoding="utf-8") as f:
             for line in f:
                 parts = line.split()
-                if len(parts) == 2 and parts[0] == "gvar_Player":
+                if len(parts) == 2 and parts[0].upper() == "GVAR_PLAYER":
                     gvar_Player = int(parts[1], 16)
         assert gvar_Player is not None, "gvar_Player symbol not found"
 

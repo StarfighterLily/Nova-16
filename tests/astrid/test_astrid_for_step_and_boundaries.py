@@ -279,7 +279,11 @@ def test_game_draws_level_boundaries_headless():
         with open(sym_path, encoding="utf-8") as f:
             for line in f:
                 parts = line.split()
-                if len(parts) == 2 and parts[0].startswith("while_start"):
+                # .sym emits UPPERCASE labels (e.g. WHILE_START_313); meanwhile
+                # the codegen label for the while(1) game loop may carry a
+                # numeric suffix added by later compiler versions.  Match the
+                # case-folded prefix so both spellings resolve.
+                if len(parts) == 2 and parts[0].upper().startswith("WHILE_START"):
                     loop_pc = int(parts[1], 16)
                     break
         assert loop_pc is not None, "while_start symbol not found"

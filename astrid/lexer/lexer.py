@@ -15,7 +15,7 @@ TOKEN_TYPES = [
 # Keywords in Astrid
 KEYWORDS = {
     'int', 'char', 'void', 'if', 'else', 'while', 'for', 'break', 'continue', 'return',
-    'do', 'switch', 'case', 'default', 'string', 'binary', 'float',
+    'do', 'switch', 'case', 'default', 'string', 'stringh', 'binary', 'float',
     # 'float' is a Q8.8 fixed-point type (16-bit: integer part in the high
     # byte, 1/256 fractional part in the low byte), the floating-point
     # representation the Nova-16 CPU implements via ITOF/FTOI/FMUL/FDIV.

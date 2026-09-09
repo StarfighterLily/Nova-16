@@ -1,6 +1,6 @@
 include "includes\debug.ast"
 
 void main() {
-    string var = "hello, world!!";
-    dbg.print((string)strlen(var));
+    int var = 5;
+    dbg.scope(var);
 }

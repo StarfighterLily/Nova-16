@@ -317,8 +317,11 @@ def test_game_movement_and_stack_stability_headless():
         with open(sym_path, encoding="utf-8") as f:
             for line in f:
                 parts = line.split()
-                if len(parts) == 2 and parts[0].startswith("while_start"):
+                # .sym emits UPPERCASE labels (e.g. WHILE_START_313), so fold
+                # case before matching the while(1) game-loop label prefix.
+                if len(parts) == 2 and parts[0].upper().startswith("WHILE_START"):
                     loop_pc = int(parts[1], 16)
+                    break
         assert loop_pc is not None
         sp_samples = []
         for key in (97, 100, 115, 119, 128, 129, 130, 131):

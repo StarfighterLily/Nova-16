@@ -41,7 +41,7 @@ MOV [0xC004], P6
 for_start_5:
 MOV P7, [0xC004]
 PUSH P7
-MOV P0, 1
+MOV P0, 2
 POP P7
 CMP P7, P0
 JC cmp_true_8

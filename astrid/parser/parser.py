@@ -2071,8 +2071,8 @@ class Parser:
             raise self.error(f"Unexpected token in expression: {self._describe_token(self.current)}")
         elif token.type == 'DELIMITER' and token.value == '(':
             self.advance()
-            # Check for type cast: (int)expr, (char)expr, (string)expr, (binary)expr
-            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float'}:
+            # Check for type cast: (int)expr, (char)expr, (string)expr, (binary)expr, (stringh)expr
+            if self.current.type == 'KEYWORD' and self.current.value in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'stringh', 'binary', 'float'}:
                 target_type = self.current.value
                 self.advance()
                 self.expect('DELIMITER', ')')

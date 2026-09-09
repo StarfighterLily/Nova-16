@@ -23,7 +23,7 @@ struct Asteroid {
 };
 
 // 28 slots: one chain needs 15 (1+2+4+8); two overlapping chains fit with headroom
-struct Asteroid rocks[28];
+struct Asteroid rocks[60];
 
 struct Player {
     int x;
@@ -150,14 +150,14 @@ void destroyAsteroid(int i) {
     int pdy = rocks[i].dy;
     rocks[i].alive = 0;
     if (gen < 3) {
-        spawnAsteroid(px, py, gen + 1, pdx + 1 + random_range(0, 3), pdy - random_range(1, 4));
-        spawnAsteroid(px, py, gen + 1, pdx - 1 - random_range(0, 3), pdy + random_range(1, 4));
+        spawnAsteroid(px, py, gen + 1, pdx + 1 + random_range(0, 1), pdy - random_range(1, 2));
+        spawnAsteroid(px, py, gen + 1, pdx - 1 - random_range(0, 1), pdy + random_range(1, 2));
     }
 }
 
 // Spawn a wave of large rocks dropping in from the top edge
 void spawnWave() {
-    int n = random_range(1, 2);
+    int n = random_range(1, 4);
     for (int i = 0; i < n; i++) {
         spawnAsteroid(random_range(8, 247), 0, 0, random_range(-2, 2), random_range(1, 2));
     }
@@ -309,6 +309,20 @@ void sprblit(int id) {
     set_bank(0);
 }
 
+void loadShieldUp() {
+    int shield[64] = {
+        00,10,10,10,10,10,10,00,
+        00,10,08,08,08,08,10,00,
+        00,10,08,08,08,08,10,00,
+        00,10,08,08,08,08,10,00,
+        00,10,08,08,08,08,10,00,
+        00,00,10,08,08,10,00,00,
+        00,00,10,08,08,10,00,00,
+        00,00,00,10,10,00,00,00
+    };
+    memsprite(0x8080, shield);
+}
+
 void loadMissile() {
     int missile[64] = {
         00,00,00,10,10,00,00,00,
@@ -346,12 +360,20 @@ void loadPlayer() {
     Player.y = peek(0xf000 + 3);
 }
 
+void startScreen() {
+    set_pos(128 - (27*8) / 2, 128);
+    int ol = get_layer();
+    set_layer(8);
+    write_text("Survive the asteroid field!", 0x5F);
+    set_layer(ol);
+}
+
 void endScreen() {
     for (int i = 0; i <= 8; i++) {
         set_layer(i);
         screen_fill(0x00);
     }
-    set_pos(128 - (8*8), 128);
+    set_pos(128 - (8*8) / 2, 128);
     write_text("You died", 0x1F);
 }
 
@@ -360,7 +382,7 @@ void winScreen() {
         set_layer(i);
         screen_fill(0x00);
     }
-    set_pos(128 - (8*8), 128);
+    set_pos(128 - (8*8) / 2, 128);
     write_text("You WIN!", 0x3F);
 }
 
@@ -377,7 +399,7 @@ void HUD(){
         hcolor = 0x25;
     }
     set_pos(0,0);
-    set_layer(8);
+    set_layer(7);
     write_text("SHLD",0x2F);
     set_pos(0,8);
     write_text((string)Player.hit, hcolor);
@@ -388,6 +410,7 @@ void main() {
     int counter = 0;
     int resets = 0;
     int disttimes = 0;
+    int startscr = 1;
 
     // Layer 1: many dim stars
 	draw_stars(1, 32, 0x00, 0x04);
@@ -416,21 +439,30 @@ void main() {
                     Missile.fireMissile();
                     Missile.cooldown = 1;
             }
+            switch (key_read()) {
+                case 96:
+                    Player.hit = 99;
+            }
         }
         if ((counter % 5120) == 0) {
             drawAsteroids();
             sprblitall();
             parallax();
             HUD();
+            if (startscr == 1) {
+                startScreen();
+            }
         }
         if ((counter % 40820) == 0) {
             Missile.cooldown = 0;
             resets++;
             disttimes++;
-            if (disttimes >= 512) {
+            
+            if (disttimes >= 300) {
                 break;
             }
             if (resets == 20) {
+                startscr = 0;
                 spawnWave();
                 resets = 0;
             }
@@ -440,7 +472,7 @@ void main() {
     if (Player.hit <= 0) {
         endScreen();
     }
-    if (Player.hit > 0 && disttimes >= 100) {
+    if (Player.hit > 0 && disttimes >= 300) {
         winScreen();
     }
 }

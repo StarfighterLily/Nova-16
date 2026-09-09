@@ -52,7 +52,7 @@ def _is_string_value(expr: Any,
     if isinstance(expr, StringLiteral):
         return True
     if isinstance(expr, Cast):
-        return expr.target_type in ('string', 'binary')
+        return expr.target_type in ('string', 'stringh', 'binary')
     if isinstance(expr, BinaryOp):
         # A '+' with any string operand is itself a concat (string value);
         # other operators on strings (==, etc.) compare addresses, which

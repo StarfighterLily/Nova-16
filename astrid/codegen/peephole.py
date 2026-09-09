@@ -217,7 +217,13 @@ class PeepholeOptimizer:
         if source_reg and temp_reg and not self._same_register_family(source_reg, self._normalize_register_name(temp_reg)):
             return None
 
-        if self._is_register_used(temp_reg, index + 2, min(index + 5, len(self.instructions))):
+        # The temp register must be DEAD over the whole remainder of the
+        # instruction stream, not just a short lookahead.  A fixed window
+        # (e.g. min(index+5)) is unsound across loops: an unrolled loop
+        # body re-reads the temp register well after the window ends, so
+        # the elimination would drop a still-live value and silently
+        # corrupt the register (Astrid hex-conversion regression).
+        if not self._is_register_dead_after(temp_reg, index + 2):
             return None
 
         optimized = Instruction('MOV', [store.operands[0], load.operands[1]])
@@ -298,7 +304,11 @@ class PeepholeOptimizer:
         if source_reg and temp_family and not self._same_register_family(source_reg, temp_family):
             return None
 
-        if self._is_register_used(temp_reg, index + 2, min(index + 5, len(self.instructions))):
+        # Same liveness caveat as _pattern_load_store_same: the temp register
+        # must be dead over the WHOLE remainder of the stream.  A fixed
+        # short window is unsound across loops (the temp is re-read by a
+        # later loop iteration beyond the window).
+        if not self._is_register_dead_after(temp_reg, index + 2):
             return None
 
         optimized = Instruction('MOV', [dest, source])
@@ -366,6 +376,45 @@ class PeepholeOptimizer:
                     return True
 
         return False
+
+    def _is_register_dead_after(self, reg, start):
+        """True when `reg` is dead for the whole remainder of the stream.
+
+        Scans from ``start`` to the end of the instruction list.  The temp
+        register of a move chain is only eligible for copy propagation when
+        NO later instruction reads it before it is redefined.  A plain
+        ``MOV reg, X`` redefines the register (the chain's value is dead from
+        there), so the scan stops and reports the value dead.  Any other
+        appearance (ALU read-modify-write, memory/byte-selector forms, etc.)
+        keeps the value live and reports it live.  Labels and directives are
+        control-flow markers, never reads, so they do not terminate the scan:
+        a loop back-edge can legitimately keep the register live across a
+        label far beyond any short lookahead window.
+        """
+        reg = reg.strip().upper()
+        instrs = self.instructions
+        n = len(instrs)
+        for i in range(start, n):
+            instr = instrs[i]
+            if instr.is_label or instr.is_directive:
+                continue
+            operands = [op.strip().upper() for op in instr.operands]
+            if not operands:
+                continue
+            # Pure redefinition: MOV reg, X.  The old value is dead.
+            if instr.opcode == 'MOV' and operands[0] == reg:
+                return True
+            # A read in either operand position keeps the value live.
+            # (This also conservatively covers read-modify-write opcodes
+            # whose destination equals reg, and PUSH/byte/`[reg]` forms.)
+            for op in operands:
+                if op == reg:
+                    return False
+                if f'[{reg}]' in op or f'[{reg}+' in op or f'[{reg}-' in op:
+                    return False
+                if reg.startswith('P') and (f'{reg}:' in op or f':{reg}' in op):
+                    return False
+        return True
 
     def _is_unconditional_jump(self, opcode):
         return opcode in ['JMP', 'RET', 'RETN', 'HLT']
