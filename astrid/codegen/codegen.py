@@ -639,6 +639,33 @@ class CodeGenerator:
             'PUSH P3',
             'RET',
         ],
+        # --- Hardware state getters (read-only) ---
+        # These mirror the mouse_read()/read_bank() convention: no arguments,
+        # result written straight to P0 (the canonical 16-bit return register).
+        'builtin_get_layer': [
+            '; Returns the active graphics layer (VL register).',
+            'MOV P0, VL', 'RET',
+        ],
+        'builtin_get_color': [
+            '; Returns the current drawing color (VC register).',
+            'MOV P0, VC', 'RET',
+        ],
+        'builtin_get_rtc': [
+            '; RTC chunk readout: get_rtc(chunk) returns one 16-bit word of',
+            '; the 32-bit seconds-since-epoch counter. chunk 0 = HIGH word',
+            '; (C1), chunk 1 = LOW word (C0). C0/C1 are read-only, so the',
+            '; call never disturbs its own result (same POP-P3/POP-P1 axis',
+            '; pattern as builtin_mouse_pos).',
+            'POP P3',
+            'POP P1',
+            'MOV P0, C1',
+            'CMP P1, 0',
+            'JZ .get_rtc_done',
+            'MOV P0, C0',
+            '.get_rtc_done:',
+            'PUSH P3',
+            'RET',
+        ],
     }
 
     # Return types for builtin functions. Builtins are not registered in
@@ -666,6 +693,11 @@ class CodeGenerator:
         'set_mode': 'int', 'set_layer': 'int', 'set_pos': 'int',
         'write_screen': 'int', 'screen_fill': 'int', 'read_screen': 'int',
         'scroll_x': 'int', 'scroll_y': 'int',
+        # Hardware state getters (VL/VC reads return integral ints; the RTC
+        # chunks expose the RAW 16-bit words of a seconds counter, so they
+        # are UNSIGNED -- a signed 'int' would ITOS a low word like 0x6417
+        # (25623) as a negative number instead of its true magnitude).
+        'get_layer': 'int', 'get_color': 'int', 'get_rtc': 'unsigned_int',
         # --- Keyboard / Mouse ---
         'key_available': 'int', 'key_read': 'int', 'key_clear': 'int',
         'key_count': 'int', 'key_ctrl': 'int', 'mouse_ctrl': 'int',
@@ -823,6 +855,8 @@ class CodeGenerator:
             'set_mode': 'builtin_set_vmode', 'set_vmode': 'builtin_set_vmode',
             'set_layer': 'builtin_set_layer', 'set_pos': 'builtin_set_pos',
             'write_screen': 'builtin_write_screen', 'read_screen': 'builtin_read_screen',
+            'get_layer': 'builtin_get_layer', 'get_color': 'builtin_get_color',
+            'get_rtc': 'builtin_get_rtc',
             'screen_fill': 'builtin_screen_fill', 'sprite_blit': 'builtin_sprite_blit',
             'sprite_blitall': 'builtin_sprite_blitall',
             # scroll_x/scroll_y/roll_x/roll_y are dispatched to arity-specific
@@ -4287,10 +4321,10 @@ class CodeGenerator:
         The result is stored as a NUL-terminated ASCII string at 0xA000 and the
         buffer address is returned in dest_reg.
         """
-        tmp = self.get_register()
-        scratch = self.get_register()
-        quotient = self.get_register()
-        digit = self.get_register()
+        tmp = self.get_register(exclude={value_reg, dest_reg})
+        scratch = self.get_register(exclude={value_reg, dest_reg, tmp})
+        quotient = self.get_register(exclude={value_reg, dest_reg, tmp, scratch})
+        digit = self.get_register(exclude={value_reg, dest_reg, tmp, scratch, quotient})
         
         zero_label = self.generate_label("utoa_zero")
         loop_label = self.generate_label("utoa_loop")
@@ -4928,13 +4962,15 @@ class CodeGenerator:
         # User-defined functions return their 16-bit int result in P0
         # (see generate_return), and a subset of builtins also write P0
         # directly (RND P0, RNDR P0, KEYSTAT P0, KEYIN P0, SREAD P0,
-        # SERIN P0, SERSTAT P0, KEYCOUNT P0, and all math/string/memory/
-        # bit/BCD builtins that write their result to P0).
+        # SERIN P0, SERSTAT P0, KEYCOUNT P0, the VL/VC/rtc state getters,
+        # and all math/string/memory/bit/BCD builtins that write their
+        # result to P0).
         # Void builtins (set_vmode, etc.) leave both untouched; their
         # return value is discarded so the source register is irrelevant.
         p0_returning_builtins = {
             'random', 'random_range', 'key_available', 'key_read',
             'read_screen', 'key_count', 'ser_in', 'ser_stat', 'vread',
+            'get_layer', 'get_color', 'get_rtc',
             'abs', 'min', 'max', 'clz', 'ctz', 'popcnt',
             'sqrt', 'log', 'exp', 'sin', 'cos', 'tan',
             'atan', 'asin', 'acos', 'deg', 'rad',

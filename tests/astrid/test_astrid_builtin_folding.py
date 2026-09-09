@@ -245,6 +245,11 @@ NON_FOLDABLE_BUILTINS = [
     "mouse_read()",
     "mouse_pos(0)",
     "mouse_pos(1)",
+    # Hardware state getters (VL/VC/rtc reads depend on live hardware state)
+    "get_layer()",
+    "get_color()",
+    "get_rtc(0)",
+    "get_rtc(1)",
 ]
 
 

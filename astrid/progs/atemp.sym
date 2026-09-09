@@ -1,0 +1,26 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+func_main 0x100F
+func_dbg_print 0x104F
+cmp_true_3 0x1106
+cmp_end_4 0x110A
+if_end_1 0x114A
+cmp_true_7 0x116E
+cmp_end_8 0x1172
+if_end_5 0x11A8
+func_dbg_peer 0x11B0
+for_start_9 0x11BD
+cmp_true_12 0x11EC
+cmp_end_13 0x11F0
+for_continue_11 0x1223
+for_end_10 0x1250
+str_0 0x1258
+builtin_set_layer 0x1267
+builtin_set_pos 0x1275
+builtin_screen_fill 0x128A
+builtin_write_text 0x1297
+builtin_strlen 0x12AB
+builtin_peek 0x12BC
+builtin_get_layer 0x12CE
+gvar_dbg 0x8000

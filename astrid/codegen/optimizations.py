@@ -355,6 +355,8 @@ class ExpressionSimplifier:
             "bcdadd", "bcdsub", "bcda", "bcds", "bcdcmp",
             "mouse_ctrl",
             "mouse_read", "mouse_pos",
+            # Hardware state getters (VL/VC/rtc reads depend on live state)
+            "get_layer", "get_color", "get_rtc",
         }
         if name in side_effect_builtins:
             return None

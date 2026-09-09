@@ -7,14 +7,243 @@ CALL func_main
 HLT
 ; Function: main
 func_main:
-ENTER 2
-; var final = ...
-MOV P0, str_0
-MOV [0xC000], P0
-; Call to set_pos
-MOV P1, 0
-PUSH P1
+ENTER 8
+; var rtc = ...
+; Call to get_rtc
+MOV P0, 1
+PUSH P0
+CALL builtin_get_rtc
+; Args consumed by callee
+MOV P1, P0
+MOV [0xC000], P1
+; For loop
+; var x = ...
 MOV P2, 0
+MOV [0xC002], P2
+for_start_0:
+MOV P4, [0xC002]
+PUSH P4
+MOV P5, 65535
+POP P4
+CMP P4, P5
+JC cmp_true_3
+MOV P4, 0
+JMP cmp_end_4
+cmp_true_3:
+MOV P4, 1
+cmp_end_4:
+CMP P4, 0
+JZ for_end_1
+; For loop
+; var y = ...
+MOV P6, 0
+MOV [0xC004], P6
+for_start_5:
+MOV P7, [0xC004]
+PUSH P7
+MOV P0, 1
+POP P7
+CMP P7, P0
+JC cmp_true_8
+MOV P7, 0
+JMP cmp_end_9
+cmp_true_8:
+MOV P7, 1
+cmp_end_9:
+CMP P7, 0
+JZ for_end_6
+; Call to nop
+CALL builtin_nop
+MOV P1, R0
+for_continue_7:
+; Wrap-check: save y before update
+MOV P2, [0xC004]
+PUSH P2
+MOV P4, [0xC004]
+MOV P5, P4
+INC P4
+MOV [0xC004], P4
+; Wrap-check: compare y new vs old
+POP P6
+MOV P7, [0xC004]
+CMP P7, P6
+JC for_end_6
+JMP for_start_5
+for_end_6:
+for_continue_2:
+; Wrap-check: save x before update
+MOV P0, [0xC002]
+PUSH P0
+MOV P1, [0xC002]
+MOV P2, P1
+INC P1
+MOV [0xC002], P1
+; Wrap-check: compare x new vs old
+POP P4
+MOV P5, [0xC002]
+CMP P5, P4
+JC for_end_1
+JMP for_start_0
+for_end_1:
+; var rtc1 = ...
+; Call to get_rtc
+MOV P6, 1
+PUSH P6
+CALL builtin_get_rtc
+; Args consumed by callee
+MOV P7, P0
+MOV [0xC006], P7
+; If statement
+MOV P0, [0xC000]
+PUSH P0
+MOV P1, [0xC006]
+POP P0
+CMP P0, P1
+JNZ cmp_true_12
+MOV P0, 0
+JMP cmp_end_13
+cmp_true_12:
+MOV P0, 1
+cmp_end_13:
+CMP P0, 0
+JZ if_else_11
+; Method call dbg::print
+MOV P2, str_14
+PUSH P2
+MOV P4, 0x8000
+PUSH P4 ; Receiver := self
+CALL func_dbg_print
+ADD SP, 4 ; Caller cleans up args + receiver
+MOV P5, P0
+JMP if_end_10
+if_else_11:
+; Method call dbg::print
+MOV P6, str_15
+PUSH P6
+MOV P7, 0x8000
+PUSH P7 ; Receiver := self
+CALL func_dbg_print
+ADD SP, 4 ; Caller cleans up args + receiver
+if_end_10:
+; Method call dbg::print
+; Type cast: (string) expr
+MOV P1, [0xC000]
+CMP P1, 0
+JZ utoa_zero_16
+MOV P4, P1
+MOV P5, 0xA100
+utoa_loop_17:
+CMP P4, 0
+JZ utoa_done_18
+MOV P6, P4
+MOV P7, 10
+DIV P6, P7
+MOV P7, P3
+ADD P7, 48
+MOV R0, P7
+MOV [P5], R0
+MOV P4, P6
+INC P5
+JMP utoa_loop_17
+utoa_done_18:
+DEC P5
+MOV P4, 0xA000
+utoa_rev_19:
+CMP P5, 0xA100
+JC utoa_finish_20
+MOV R0, [P5]
+MOV [P4], R0
+INC P4
+DEC P5
+JMP utoa_rev_19
+utoa_finish_20:
+MOV [P4], 0
+MOV P2, 0xA000
+JMP utoa_finish_20_end
+utoa_zero_16:
+MOV [0xA000], 48
+MOV [0xA001], 0
+MOV P2, 0xA000
+utoa_finish_20_end:
+PUSH P2
+MOV P0, 0x8000
+PUSH P0 ; Receiver := self
+CALL func_dbg_print
+ADD SP, 4 ; Caller cleans up args + receiver
+MOV P1, P0
+; Method call dbg::print
+; Type cast: (string) expr
+MOV P2, [0xC006]
+CMP P2, 0
+JZ utoa_zero_21
+MOV P5, P2
+MOV P6, 0xA100
+utoa_loop_22:
+CMP P5, 0
+JZ utoa_done_23
+MOV P7, P5
+MOV P0, 10
+DIV P7, P0
+MOV P0, P3
+ADD P0, 48
+MOV R0, P0
+MOV [P6], R0
+MOV P5, P7
+INC P6
+JMP utoa_loop_22
+utoa_done_23:
+DEC P6
+MOV P5, 0xA000
+utoa_rev_24:
+CMP P6, 0xA100
+JC utoa_finish_25
+MOV R0, [P6]
+MOV [P5], R0
+INC P5
+DEC P6
+JMP utoa_rev_24
+utoa_finish_25:
+MOV [P5], 0
+MOV P4, 0xA000
+JMP utoa_finish_25_end
+utoa_zero_21:
+MOV [0xA000], 48
+MOV [0xA001], 0
+MOV P4, 0xA000
+utoa_finish_25_end:
+PUSH P4
+MOV P1, 0x8000
+PUSH P1 ; Receiver := self
+CALL func_dbg_print
+ADD SP, 4 ; Caller cleans up args + receiver
+MOV P2, P0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: print
+func_dbg_print:
+ENTER 2
+; var origlayer = ...
+; Call to get_layer
+CALL builtin_get_layer
+MOV P4, P0
+MOV [0xC080], P4
+; Call to set_layer
+MOV P5, 8
+PUSH P5
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P6, R0
+; Call to set_pos
+; Member read (y)
+MOV P7, [FP+4]
+ADD P7, 2
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, [FP+4]
+MOV P2, [P1]
 PUSH P2
 CALL builtin_set_pos
 ; Args consumed by callee
@@ -22,25 +251,157 @@ MOV P4, R0
 ; Call to write_text
 MOV P5, 31
 PUSH P5
-; String concatenation
-; String concatenation
-MOV P6, [0xC000]
+MOV P6, [FP+6]
 PUSH P6
-MOV P7, str_1
-POP P6
-MOV P0, 0xA200
-STRCPY P0, P6
-STRCAT P0, P7
-PUSH P0
-MOV P1, str_2
-POP P0
-MOV P2, 0xA300
-STRCPY P2, P0
-STRCAT P2, P1
-PUSH P2
 CALL builtin_write_text
 ; Args consumed by callee
+MOV P7, R0
+; Call to set_layer
+MOV P0, [0xC080]
+PUSH P0
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P1, R0
+; Member assignment to ...y
+MOV P2, [FP+4]
+ADD P2, 2
+MOV P4, [P2]
+PUSH P4
+PUSH P2
+MOV P5, 8
+POP P2
+POP P4
+ADD P4, P5
+MOV [P2], P4
+; If statement
+; Member read (y)
+MOV P6, [FP+4]
+ADD P6, 2
+MOV P7, [P6]
+PUSH P7
+MOV P0, 248
+POP P7
+CMP P7, P0
+JNC cmp_true_28
+MOV P7, 0
+JMP cmp_end_29
+cmp_true_28:
+MOV P7, 1
+cmp_end_29:
+CMP P7, 0
+JZ if_end_26
+; Member assignment to ...y
+MOV P1, [FP+4]
+ADD P1, 2
+PUSH P1
+MOV P2, 0
+POP P1
+MOV [P1], P2
+; Member assignment to ...x
+MOV P4, [FP+4]
+MOV P5, [P4]
+PUSH P5
+PUSH P4
+MOV P6, 32
+POP P4
+POP P5
+ADD P5, P6
+MOV [P4], P5
+if_end_26:
+; If statement
+; Member read (x)
+MOV P7, [FP+4]
+MOV P0, [P7]
+PUSH P0
+MOV P1, 248
+POP P0
+CMP P0, P1
+JNC cmp_true_32
+MOV P0, 0
+JMP cmp_end_33
+cmp_true_32:
+MOV P0, 1
+cmp_end_33:
+CMP P0, 0
+JZ if_end_30
+; Call to set_layer
+MOV P2, 8
+PUSH P2
+CALL builtin_set_layer
+; Args consumed by callee
 MOV P4, R0
+; Call to screen_fill
+MOV P5, 0
+PUSH P5
+CALL builtin_screen_fill
+; Args consumed by callee
+MOV P6, R0
+; Call to set_layer
+MOV P7, [0xC080]
+PUSH P7
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P0, R0
+if_end_30:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: peer
+func_dbg_peer:
+ENTER 2
+; For loop
+; var x = ...
+MOV P1, [FP+6]
+MOV [0xC100], P1
+for_start_34:
+MOV P2, [0xC100]
+PUSH P2
+MOV P4, [FP+6]
+PUSH P4
+MOV P5, [FP+8]
+POP P4
+ADD P4, P5
+POP P2
+CMP P2, P4
+JC cmp_true_37
+MOV P2, 0
+JMP cmp_end_38
+cmp_true_37:
+MOV P2, 1
+cmp_end_38:
+CMP P2, 0
+JZ for_end_35
+; Method call dbg::print
+; Type cast: (string) expr
+; Call to peek
+MOV P6, [0xC100]
+PUSH P6
+CALL builtin_peek
+; Args consumed by callee
+MOV P7, P0
+ITOS P0, P7
+PUSH P0
+MOV P1, [FP+4]
+PUSH P1 ; Receiver := self
+CALL func_dbg_print
+ADD SP, 4 ; Caller cleans up args + receiver
+MOV P2, P0
+for_continue_36:
+; Wrap-check: save x before update
+MOV P4, [0xC100]
+PUSH P4
+MOV P5, [0xC100]
+MOV P6, P5
+INC P5
+MOV [0xC100], P5
+; Wrap-check: compare x new vs old
+POP P7
+MOV P0, [0xC100]
+CMP P0, P7
+JC for_end_35
+JMP for_start_34
+for_end_35:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -48,16 +409,27 @@ RET
 ;
 ; Data Section
 ;
-str_0: DEFSTR "Hello"
-str_1: DEFSTR "\r\n"
-str_2: DEFSTR "World!"
+str_14: DEFSTR "no match"
+str_15: DEFSTR "match"
 ; Built-in Function Implementations
+builtin_set_layer:
+POP P0
+POP P1
+MOV VL, P1
+PUSH P0
+RET
 builtin_set_pos:
 POP P0
 POP P1
 POP P2
 MOV VX, P1
 MOV VY, P2
+PUSH P0
+RET
+builtin_screen_fill:
+POP P0
+POP P1
+SFILL P1
 PUSH P0
 RET
 builtin_write_text:
@@ -68,3 +440,41 @@ MOV VC, P2
 TEXT P1
 PUSH P0
 RET
+builtin_peek:
+; peek(addr) -> the byte stored at addr.
+; The data bus is word-granular and big-endian (the high byte of a
+; word lives at the LOWER address), so the byte AT addr is the HIGH
+; byte of the word loaded from addr. P-high-byte access (:P syntax
+; inverted: Px:) extracts it without any shift sequence.
+POP P3
+POP P1
+MOV P2, [P1]
+MOV P0, P2:
+PUSH P3
+RET
+builtin_nop:
+NOP
+RET
+builtin_get_layer:
+; Returns the active graphics layer (VL register).
+MOV P0, VL
+RET
+builtin_get_rtc:
+; RTC chunk readout: get_rtc(chunk) returns one 16-bit word of
+; the 32-bit seconds-since-epoch counter. chunk 0 = HIGH word
+; (C1), chunk 1 = LOW word (C0). C0/C1 are read-only, so the
+; call never disturbs its own result (same POP-P3/POP-P1 axis
+; pattern as builtin_mouse_pos).
+POP P3
+POP P1
+MOV P0, C1
+CMP P1, 0
+JZ .get_rtc_done
+MOV P0, C0
+.get_rtc_done:
+PUSH P3
+RET
+ORG 0x8000
+; Global Variables
+gvar_dbg:
+DW 0, 0
