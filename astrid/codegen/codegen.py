@@ -33,6 +33,12 @@ class CodeGenerator:
     # well above typical code segments (ORG 0x1000+) and far below the stack
     # (0xFF00) so global storage never collides with either.
     GLOBAL_REGION_START = 0x8000
+    # Persistent storage for `static` local variables.  Static locals keep
+    # their value across function calls (like a global) but have function-
+    # level visibility.  Placed just below the global region so they never
+    # collide with code (ORG 0x1000+), globals (0x8000+), or the stack.
+    STATIC_LOCAL_REGION_END = 0x8000
+    STATIC_LOCAL_REGION_START = 0x7F00  # 256 bytes for static locals
     # Dedicated RAM region for spilled locals (hot-variable migration).
     # Each compiled function gets a disjoint window here so spilled locals
     # never collide with code (ORG 0x1000+), globals (0x8000+), the ITOS /
@@ -774,6 +780,28 @@ class CodeGenerator:
         # detection (s1 = s2 copies all fields when both are the same tag).
         self.struct_tag_vars: Dict[str, str] = {}
         self.functions = {}
+        # Storage-qualifier semantics carried from the parser into codegen:
+        #   function_qualifiers[name] -> qualifier list on the FunctionDef
+        #   global_qualifiers[name]   -> qualifier list on the global VarDecl
+        #   volatile_vars             -> names that must stay memory-backed and
+        #                                must never be folded/cached/CSE'd
+        #   register_hint_vars        -> names that must not be spilled
+        #   static_locals             -> persistent function-local storage keyed
+        #                                by (function, name)
+        #   extern_symbols            -> names imported from another object
+        #                                (resolved by the linker/NOMF)
+        #   object_mode               -> True when extern linkage forces
+        #                                relocatable (.nobj) emission
+        self.function_qualifiers: Dict[str, List[str]] = {}
+        self.global_qualifiers: Dict[str, List[str]] = {}
+        self.explicit_static_fn: Set[str] = set()
+        self.explicit_extern_fn: Set[str] = set()
+        self.extern_symbols: Set[str] = set()
+        self.volatile_vars: Set[str] = set()
+        self.register_hint_vars: Set[str] = set()
+        self.static_locals: Dict[Tuple[str, str], Dict] = {}
+        self._static_local_next_addr: int = self.STATIC_LOCAL_REGION_START
+        self.object_mode: bool = False
         self.strings = {}
         self.string_counter = 0
         self.label_counter = 0
@@ -1007,6 +1035,10 @@ class CodeGenerator:
         # Adopt the parser's type alias table so typedef aliases resolve to
         # their base types during variable declaration code generation.
         self.type_aliases = dict(getattr(ast, 'type_aliases', None) or {})
+        # Storage-qualifier intake before any optimization rewrite.  Runs
+        # first so every later pass can consult the same linkage/memory
+        # policy tables (extern/statics/volatile/register/inline).
+        self._collect_storage_qualifiers(ast)
         # Run front-end expression simplifier (constant-folding, algebraic
         # simplifications, and CSE) to reduce register pressure and code size.
         if self.enable_optimizations and self.enable_expr_simplify:
@@ -1021,6 +1053,9 @@ class CodeGenerator:
                     debug=self.debug_optimizations,
                     string_vars=string_vars,
                     string_funcs=string_funcs,
+                    # Volatile variables must not be constant-folded or CSE'd:
+                    # each access must compile to a fresh memory load.
+                    volatile_vars=frozenset(self.volatile_vars),
                 )
                 for func in ast.functions:
                     self._simplify_function_expressions(func, simplifier)
@@ -1044,6 +1079,12 @@ class CodeGenerator:
                 # Analyze and inline; ast.functions is a list of FunctionDef
                 try:
                     inlineable = inliner.analyze(ast.functions)
+                    # Functions explicitly marked `inline` are force-inlined
+                    # regardless of the conservative heuristic.
+                    for func_def in ast.functions:
+                        quals = list(getattr(func_def, 'qualifiers', []) or [])
+                        if 'inline' in quals and func_def.name not in inlineable:
+                            inlineable.add(func_def.name)
                     if inlineable and self.debug_optimizations:
                         print(f"[CODEGEN] Functions eligible for inlining: {inlineable}")
                 except Exception:
@@ -1082,8 +1123,18 @@ class CodeGenerator:
 
         # Pre-register ALL user functions before generating any bodies so
         # forward references (calls to functions defined later in the source,
-        # or declared via C-style prototypes) resolve correctly.
+        # or declared via C-style prototypes) resolve correctly.  Qualifier
+        # tables are refreshed here as well (generate() may be called on an
+        # AST whose qualifiers were attached after intake, e.g. by tests).
         for func_def in ast.functions:
+            quals = list(getattr(func_def, 'qualifiers', []) or [])
+            if quals:
+                self.function_qualifiers.setdefault(func_def.name, quals)
+            if 'extern' in quals:
+                self.extern_symbols.add(func_def.name)
+                self.explicit_extern_fn.add(func_def.name)
+            if 'static' in quals:
+                self.explicit_static_fn.add(func_def.name)
             self.functions[func_def.name] = {
                 'label': f'func_{func_def.name}',
                 'params': len(func_def.params),
@@ -1121,24 +1172,10 @@ class CodeGenerator:
                 }
                 method.impl_tag = block.tag
 
-        # Main entry point MUST be first segment so emulator sets PC correctly
-        self.assembly.append("ORG 0x1000")
-        self.assembly.append("start:")
-        self.assembly.append("    MOV SP, 0xFFFF ; Set stack pointer to high memory")
-        self.assembly.append("    MOV FP, 0xFFFF ; Also init frame pointer")
-        self.assembly.append("    CALL func_main")
-        self.assembly.append("    HLT")
-        self.assembly.append("")
+        # Emit object prologue (GLOBAL / EXTERN directives + main entry stub).
+        self._emit_object_prologue(ast)
 
-        # Emit interrupt vector FIRST at 0x0100 (before functions)
-        if any(func.name == 'timer_interrupt' for func in ast.functions):
-            self.assembly.append("ORG 0x0100")
-            self.assembly.append("    DW func_timer_interrupt")
-            # Skip past the interrupt vector table (0x0100-0x011F, 8 vectors x 4 bytes)
-            self.assembly.append("ORG 0x0120")
-            self.assembly.append("")
-
-        # Generate all functions and data AFTER interrupt vector
+        # Generate all functions and data AFTER interrupt vector.
         for func_def in ast.functions:
             self.generate_function_with_diagnostics(func_def)
 
@@ -1155,31 +1192,205 @@ class CodeGenerator:
         assembly_lines = assembly_output.splitlines()
 
         if self.enable_optimizations and self.enable_live_range:
-            should_schedule, schedule_reason = self._should_run_live_range_scheduler(assembly_lines)
-            if should_schedule:
+            schedule_decision, schedule_reason = self._should_run_live_range_scheduler(
+                assembly_lines,
+            )
+            if schedule_decision:
                 try:
                     from astrid.codegen.live_range_scheduler import LiveRangeScheduler
+
                     scheduler = LiveRangeScheduler(debug=self.debug_optimizations)
-                    assembly_lines = scheduler.schedule(assembly_lines, self.live_ranges)
+                    assembly_lines = scheduler.schedule(
+                        assembly_lines, self.live_ranges,
+                    )
                     if self.debug_optimizations:
                         print("[CODEGEN] Live-range scheduling applied")
                 except Exception:
                     if self.debug_optimizations:
-                        import traceback; traceback.print_exc()
+                        import traceback
+
+                        traceback.print_exc()
             elif self.debug_optimizations:
                 print(f"[CODEGEN] Skipping live-range scheduling: {schedule_reason}")
 
         if self.enable_optimizations and self.enable_peephole:
             from astrid.codegen.peephole import PeepholeOptimizer
+
             peephole_opt = PeepholeOptimizer(debug=self.debug_optimizations)
             assembly_output = peephole_opt.optimize("\n".join(assembly_lines))
             assembly_lines = assembly_output.splitlines()
 
             if self.debug_optimizations:
                 print("[CODEGEN] Peephole optimization applied")
-                print(f"[CODEGEN] Original: {len(self.assembly)} lines, Optimized: {len(assembly_lines)} lines")
+                print(
+                    "[CODEGEN] Original: "
+                    f"{len(self.assembly)} lines, Optimized: {len(assembly_lines)} lines"
+                )
 
         return assembly_lines
+
+    def _assembly_symbol(self, kind: str, name: str) -> str:
+        """Map a source-level linkage name to its assembly label.
+
+        Functions emit as ``func_<name>``; globals emit as ``gvar_<name>``.
+        Extern references use the same label the defining unit exports, so
+        the linker can resolve the relocation.
+        """
+        if kind == 'function':
+            return f"func_{name}"
+        return f"gvar_{name}"
+
+    def _object_linkage_names(self, ast: Program) -> Dict[str, List[str]]:
+        """Compute GLOBAL exports / EXTERN imports for this unit.
+
+        Defined non-static functions and non-static, non-extern globals are
+        exported (GLOBAL); referenced-but-undefined symbols are declared
+        EXTERN.  Static functions/globals stay file-local (no export).  The
+        names use the emitted assembly labels (``func_*`` / ``gvar_*``) so
+        the new assembler's object mode converts symbol-relative operands
+        into NOMF relocation records the linker resolves.
+        """
+        if not self.object_mode:
+            return {"exports": [], "imports": []}
+
+        exported_funcs = sorted(
+            func_def.name for func_def in ast.functions
+            if 'static' not in list(getattr(func_def, 'qualifiers', []) or []))
+        exported_globals = sorted(
+            name for name in self.global_vars
+            if 'static' not in list(self.global_qualifiers.get(name, []))
+            and name not in self.extern_symbols)
+        imports = sorted(
+            name for name in self.extern_symbols
+            if name not in self.global_vars
+            and name not in {f.name for f in ast.functions})
+        exports = ([self._assembly_symbol('function', n) for n in exported_funcs]
+                   + [self._assembly_symbol('global', n) for n in exported_globals])
+        import_labels = [
+            self._assembly_symbol(
+                'function' if name in self.explicit_extern_fn else 'global', name)
+            for name in imports]
+        return {'exports': exports, 'imports': import_labels}
+
+    def _emit_object_prologue(self, ast: Program) -> None:
+        """Emit the object prologue: GLOBAL/EXTERN linkage directives and the
+        absolute start stub (ORG 0x1000 + start label + CALL main + HLT).
+
+        This is the ONLY place that writes the prologue.  The caller (generate)
+        is responsible for emitting functions, strings, builtins, and globals
+        AFTER this method returns.
+        """
+        # Emit GLOBAL / EXTERN directives for object mode.  In single-file
+        # mode (_object_linkage_names returns empty), nothing is emitted.
+        object_names = self._object_linkage_names(ast)
+        for name in object_names['exports']:
+            self.assembly.append(f"GLOBAL {name}")
+        for name in object_names['imports']:
+            self.assembly.append(f"EXTERN {name}")
+        if object_names['exports'] or object_names['imports']:
+            self.assembly.append("")
+
+        # Main entry point MUST be first segment so emulator sets PC correctly.
+        # Astrid stays a single-image compiler: every unit emits the legacy
+        # absolute program (start stub + ORG'd code/data) byte-for-byte.
+        self.assembly.append("ORG 0x1000")
+        self.assembly.append("start:")
+        self.assembly.append("    MOV SP, 0xFFFF ; Set stack pointer to high memory")
+        self.assembly.append("    MOV FP, 0xFFFF ; Also init frame pointer")
+        self.assembly.append("    CALL func_main")
+        self.assembly.append("    HLT")
+        self.assembly.append("")
+
+        # Emit interrupt vector FIRST at 0x0100 (before functions)
+        if any(func.name == 'timer_interrupt' for func in ast.functions):
+            if self.object_mode:
+                raise CodeGenError(
+                    "timer_interrupt cannot be linked as a relocatable object: "
+                    "interrupt vectors require fixed ORG 0x0100 placement",
+                    hint="drop 'extern' from this unit or compile it standalone")
+            self.assembly.append("ORG 0x0100")
+            self.assembly.append("    DW func_timer_interrupt")
+            # Skip past the interrupt vector table (0x0100-0x011F, 8 vectors x 4 bytes)
+            self.assembly.append("ORG 0x0120")
+            self.assembly.append("")
+
+    # ------------------------------------------------------------------
+    # Storage-qualifier intake and linkage policy
+    # ------------------------------------------------------------------
+    def _collect_storage_qualifiers(self, ast: Program) -> None:
+        """Derive linkage/memory policy from parser-retained qualifiers.
+
+        Nova-16 is single-image by default, so qualifiers must preserve the
+        legacy single-file runtime while exposing real linker/NOMF semantics
+        once an object boundary exists:
+
+          extern global/function -> imported symbol (EXTERN + relocation);
+                                    never allocated/emitted locally.
+          static global/function -> file-local linkage; block-local statics
+                                    become persistent global-backed storage.
+          inline function        -> force-inline hint to FunctionInliner.
+          register local/param   -> keep in registers; never spill.
+          volatile var           -> memory-backed; reads/writes always touch
+                                    memory and are never folded/cached.
+          const                  -> read-only intent; normal value otherwise.
+
+        The parser keeps every qualifier on VarDecl.qualifiers /
+        FunctionDef.qualifiers; this intake centralizes them into codegen
+        tables before optimization passes run.
+        """
+        self.function_qualifiers = {}
+        self.global_qualifiers = {}
+        self.explicit_static_fn = set()
+        self.explicit_extern_fn = set()
+        self.extern_symbols = set()
+        self.volatile_vars = set()
+        self.register_hint_vars = set()
+        self.static_locals = {}
+        self.object_mode = False
+
+        for decl in list(getattr(ast, 'globals', None) or []):
+            quals = list(getattr(decl, 'qualifiers', []) or [])
+            if not quals:
+                continue
+            self.global_qualifiers[decl.name] = quals
+            if 'volatile' in quals:
+                self.volatile_vars.add(decl.name)
+            if 'register' in quals:
+                self.register_hint_vars.add(decl.name)
+            if 'extern' in quals:
+                self.extern_symbols.add(decl.name)
+                # Single-file backward compatibility: do not force object mode
+                # for extern variables.  They are still recorded in
+                # extern_symbols for potential future linking, but a program
+                # whose only "extern" references are variable declarations still
+                # compiles and runs as a standalone image.
+                self.object_mode = False
+
+        for func_def in list(getattr(ast, 'functions', None) or []):
+            quals = list(getattr(func_def, 'qualifiers', []) or [])
+            if not quals:
+                continue
+            self.function_qualifiers[func_def.name] = quals
+            if 'static' in quals:
+                self.explicit_static_fn.add(func_def.name)
+            if 'extern' in quals:
+                self.explicit_extern_fn.add(func_def.name)
+                self.extern_symbols.add(func_def.name)
+                self.object_mode = True
+            for param in list(getattr(func_def, 'params', None) or []):
+                pquals = list(getattr(param, 'qualifiers', []) or [])
+                if 'volatile' in pquals:
+                    self.volatile_vars.add(param.name)
+                if 'register' in pquals:
+                    self.register_hint_vars.add(param.name)
+
+        for block in list(getattr(ast, 'impl_blocks', None) or []):
+            for method in list(getattr(block, 'methods', None) or []):
+                quals = list(getattr(method, 'qualifiers', []) or [])
+                if not quals:
+                    continue
+                key = f"{block.tag}::{method.name}"
+                self.function_qualifiers[key] = quals
 
     def _collect_string_idents(self, ast: Program) -> Tuple[Set[str], Set[str]]:
         """Pre-scan the AST for string/binary identifiers.
@@ -1385,6 +1596,11 @@ class CodeGenerator:
         var_size = self._var_size(name)
         # Record access for hot-variable optimization.
         self.variable_access_counts[name] += 1
+        # Static locals live at a fixed absolute address (not on the stack).
+        static_addr = self.local_vars.get(name, {}).get('static_addr')
+        if static_addr is not None:
+            self.emit(f"    MOV {reg}, [0x{static_addr:04X}]")
+            return
         # If this local was migrated to a spill allocation, load from that
         # absolute address instead of the frame pointer slot. Do NOT do this
         # for `timer_interrupt` (uses SP-relative locals).
@@ -1410,6 +1626,11 @@ class CodeGenerator:
         var_size = self._var_size(name)
         # Record access frequency for hot-variable optimization.
         self.variable_access_counts[name] += 1
+        # Static locals live at a fixed absolute address (not on the stack).
+        static_addr = self.local_vars.get(name, {}).get('static_addr')
+        if static_addr is not None:
+            self.emit(f"    MOV [0x{static_addr:04X}], {src_reg}")
+            return
         # If this local was migrated to a spill allocation, store to that
         # absolute address instead of the frame pointer slot. Do NOT do this
         # for `timer_interrupt` (uses SP-relative locals).
@@ -1892,9 +2113,21 @@ class CodeGenerator:
             return None
 
     def _allocate_globals(self, ast: Program):
-        """Assign fixed storage addresses to all global variables/scalars."""
+        """Assign fixed storage addresses to all global variables/scalals.
+
+        The default single-image path allocates every declared global --
+        including extern globals -- in the legacy absolute 0x8000 region so
+        single-file programs keep working with no linker present.  In object
+        mode, however, extern globals are NOT allocated locally: the linker
+        resolves them via EXTERN+relocation.  Static globals are allocated
+        normally (they are file-local but still need storage).
+        """
         next_addr = self.GLOBAL_REGION_START
         for decl in getattr(ast, 'globals', None) or []:
+            # In object mode, extern globals are imported from another unit:
+            # do not allocate local storage for them.
+            if self.object_mode and decl.name in self.extern_symbols:
+                continue
             struct_tag = getattr(decl, 'struct_tag', None)
             # Pointers always occupy 2 bytes regardless of pointee type.
             elem_size = 2 if decl.pointer_depth else self._elem_size(decl.var_type)
@@ -2444,6 +2677,28 @@ class CodeGenerator:
         local_offset = 0
         for decl in all_local_decls:
             decl_tag = getattr(decl, 'struct_tag', None)
+            # `static` locals get persistent storage in the static-local
+            # region (below the global region), NOT on the stack.  They keep
+            # their value across calls but have function-level visibility.
+            decl_quals = list(getattr(decl, 'qualifiers', []) or [])
+            if 'static' in decl_quals:
+                slot_size = 2 if decl.pointer_depth else (
+                    self._struct_size(decl_tag) if decl_tag else
+                    (2 if decl.var_type in ('int', 'signed_int', 'unsigned_int',
+                                            'string', 'binary', 'float') else 1))
+                static_addr = self._static_local_next_addr
+                self._static_local_next_addr += slot_size
+                info = {'address': static_addr, 'size': slot_size,
+                        'type': decl.var_type, 'is_static': True}
+                if decl_tag:
+                    info['struct_tag'] = decl_tag
+                self.static_locals[(self.current_function, decl.name)] = info
+                self.local_vars[decl.name] = {
+                    'offset': -local_offset,  # unused for static locals
+                    'static_addr': static_addr,
+                }
+                # Static locals are NOT counted in local_size (no stack slot).
+                continue
             if self._decl_is_true_array(decl):
                 count = self._resolve_array_count(decl)
                 stride = self._struct_size(decl_tag) if decl_tag \
@@ -2480,7 +2735,7 @@ class CodeGenerator:
                     'tag': decl_tag,
                 }
             else:
-                local_offset += 2 if (decl.var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary')
+                local_offset += 2 if (decl.var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary', 'float')
                                       or decl.pointer_depth) else 1
                 self.local_vars[decl.name] = {'offset': -local_offset}
 
@@ -2494,8 +2749,13 @@ class CodeGenerator:
         if self.local_vars:
             # Separate parameters from local variables
             param_names = {p.name for p in func_def.params}
+            # `register` variables must not be spilled: they stay in registers.
+            # Exclude them from the spill-candidate set so the allocator never
+            # migrates them to a spill slot.
+            register_names = self.register_hint_vars
             actual_local_names = [name for name in self.local_vars
-                                  if name not in param_names and name not in self.array_vars]
+                                  if name not in param_names and name not in self.array_vars
+                                  and name not in register_names]
             
             if actual_local_names:
                 candidate_graph: Dict[str, Set[str]] = {name: set() for name in actual_local_names}

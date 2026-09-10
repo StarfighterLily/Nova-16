@@ -28,12 +28,17 @@ struct Asteroid rocks[60];
 struct Player {
     int x;
     int y;
-    signed int hit;
-} Player = {0, 0, 10};
+    int hit;
+    int timer;
+} Player = {0, 0, 10, 100};
 
 impl Player {
     void movePlayer(self) {
         SCBwrite(0, 0x80, 0x00, mouse_pos(0), mouse_pos(1), 8, 8, 0b00000011, 0x00);
+    }
+
+    void decTimer(self) {
+        self.timer--;
     }
 }
 
@@ -309,7 +314,7 @@ void sprblit(int id) {
     set_bank(0);
 }
 
-void loadShieldUp() {
+void loadShield() {
     int shield[64] = {
         00,10,10,10,10,10,10,00,
         00,10,08,08,08,08,10,00,
@@ -388,6 +393,7 @@ void winScreen() {
 
 void HUD(){
     int hcolor = 0;
+    int tcolor = 0;
     if (Player.hit < 0) {
         Player.hit = 0;
     }
@@ -398,19 +404,33 @@ void HUD(){
     } else if (Player.hit < 5) {
         hcolor = 0x25;
     }
+    if (Player.timer >= 60) {
+        tcolor = 0x1F;
+    } else if (Player.timer < 60 && Player.timer >= 30) {
+        tcolor = 0x4F;
+    } else if (Player.timer < 30 && Player.timer >= 10) {
+        tcolor = 0x2F;
+    } else if (Player.timer < 10 && Player.timer >= 0) {
+        tcolor = 0x3F;
+    }
     set_pos(0,0);
     set_layer(7);
     write_text("SHLD",0x2F);
     set_pos(0,8);
     write_text((string)Player.hit, hcolor);
+    set_pos((255 - (4*8) / 2) - ((4*8) / 2), 0);
+    write_text("TIME", 0x2F);
+    set_pos((255 - (2*8) / 2) - ((2*8) / 2), 8);
+    write_text((string)Player.timer, tcolor);
     set_layer(0);
 }
 
 void main() {
     int counter = 0;
     int resets = 0;
-    int disttimes = 0;
     int startscr = 1;
+    unsigned int rtc = get_rtc(1);
+    unsigned int last = rtc;
 
     // Layer 1: many dim stars
 	draw_stars(1, 32, 0x00, 0x04);
@@ -429,6 +449,21 @@ void main() {
     while (Player.hit > 0) {
         counter++;
         if ((counter % 2560) == 0) {
+            rtc = get_rtc(1);
+            if ((rtc - last) >= 1) {
+                last = rtc;
+                Player.decTimer();
+                resets++;
+
+                if (!Player.timer) {
+                    break;
+                }
+                if (resets == 10) {
+                    startscr = 0;
+                    spawnWave();
+                    resets = 0;
+                }
+            }
             Missile.updateMissile();
             Player.movePlayer();
             updateAsteroids();
@@ -455,24 +490,13 @@ void main() {
         }
         if ((counter % 40820) == 0) {
             Missile.cooldown = 0;
-            resets++;
-            disttimes++;
-            
-            if (disttimes >= 300) {
-                break;
-            }
-            if (resets == 20) {
-                startscr = 0;
-                spawnWave();
-                resets = 0;
-            }
             counter = 0;
         }
     }
     if (Player.hit <= 0) {
         endScreen();
     }
-    if (Player.hit > 0 && disttimes >= 300) {
+    if (Player.hit > 0 && !Player.timer) {
         winScreen();
     }
 }

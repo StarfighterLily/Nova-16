@@ -18,12 +18,13 @@ impl dbg {
         self.y += 8;
         if (self.y >= 248) {
             self.y = 0;
-            self.x += (self.longest * 8) + 4;
+            self.x += (self.longest * 8) + 2;
         }
         if (self.x >= 248) {
             set_layer(8);
             screen_fill(0x00);
             set_layer(origlayer);
+            self.x = 0;
         }
     }
 

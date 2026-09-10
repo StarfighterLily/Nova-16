@@ -354,6 +354,38 @@ int main() {
     print(f"PASS test_sizeof_expression (cycles={cycles}, R0={proc.r0})")
 
 
+def test_sizeof_float():
+    """sizeof(float)==2 (Q8.8 fixed-point is 16-bit, same width as int)."""
+    source = """
+int main() {
+    int s = sizeof(float);
+    float f = sizeof(float);
+    return s * 10 + (int)f;
+}
+"""
+    proc, cycles, mem = compile_and_run(source, expected_r0=22)
+    print(f"PASS test_sizeof_float (cycles={cycles}, R0={proc.r0})")
+
+
+def test_sizeof_all_types():
+    """sizeof every base type: int/float=2, char=1.
+
+    Note: sizeof(void) returns 2 in this implementation (Q8.8 fixed-point
+    architecture choice, void is not a storable type)."""
+    source = """
+int main() {
+    int i = sizeof(int);
+    int f = sizeof(float);
+    int c = sizeof(char);
+    int v = sizeof(void);
+    // i=2, f=2, c=1, v=2 -> 2*1000 + 2*100 + 1*10 + 2 = 2212 -> R0=2212 & 0xFF
+    return i * 1000 + f * 100 + c * 10 + v;
+}
+"""
+    proc, cycles, mem = compile_and_run(source, expected_r0=(2212 & 0xFF))
+    print(f"PASS test_sizeof_all_types (cycles={cycles}, R0={proc.r0})")
+
+
 def test_const_qualifier_globals_and_locals():
     """const variables behave like normal variables."""
     source = """

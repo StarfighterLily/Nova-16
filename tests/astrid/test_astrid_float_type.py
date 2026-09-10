@@ -873,6 +873,27 @@ int main() {
     print(f"PASS test_float_for_loop_accumulator (cycles={cycles}, R0={proc.r0})")
 
 
+def test_float_local_stack_offset_no_overlap():
+    """A local float must get 2 bytes of stack space, not 1, so the next
+    local variable doesn't overlap it.  Regression test: the local_offset
+    calculation omitted 'float' from its width check while local_size
+    included it, so a float followed by an int would overlap on the
+    stack and the int would be corrupted."""
+    source = """
+int main() {
+    float f = 1.5;
+    int x = 42;
+    // Force both to be live and used so neither is optimized away
+    if (f > 0.0) {
+        x = x + 1;
+    }
+    return x;
+}
+"""
+    proc, cycles, mem = compile_and_run(source, expected_r0=43)
+    print(f"PASS test_float_local_stack_offset_no_overlap (cycles={cycles}, R0={proc.r0})")
+
+
 if __name__ == '__main__':
     # Lexer tests
     test_lexer_float_literal_positive()

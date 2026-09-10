@@ -77,6 +77,14 @@ class OperandType:
     REGISTER_INDIRECT = "reg_indirect"
     REGISTER_INDEXED = "reg_indexed"
     DIRECT = "direct"
+    # Symbol-relative absolute memory: ``[label]`` / ``[label+N]``.  In
+    # object mode the address field is a relocation (the linker patches it
+    # once the symbol's section is placed); in executable mode the symbol
+    # value (plus optional offset) encodes immediately, like a numeric
+    # DIRECT address.  This is what lets separately-compiled units address
+    # each other's globals through the linker.
+    SYMBOL_DIRECT = "symbol_direct"
+    SYMBOL_INDEXED = "symbol_indexed"
 
 
 def _symbol_ref(text: str) -> Tuple[Optional[str], Optional[str]]:
@@ -121,10 +129,12 @@ class ObjectEmitContext:
     def is_relocatable(self, name: str) -> bool:
         return name in self.relocatable
 
-    def emit(self, rtype: int, width: int, anchor: int, symbol: str) -> None:
+    def emit(self, rtype: int, width: int, anchor: int, symbol: str,
+             addend: int = 0) -> None:
         self.relocs.append(nomf.Reloc(
             section=self.section, offset=anchor, width=width,
-            rtype=rtype, symbol_index=self.symbol_index[symbol], addend=0))
+            rtype=rtype, symbol_index=self.symbol_index[symbol],
+            addend=addend))
 
     def advance(self, n: int) -> None:
         self.offset += n
@@ -183,6 +193,17 @@ def classify_operand(text: str, symbols: SymbolTable) -> str:
     if re.match(r"^\[[A-Za-z0-9]+\s*\+\s*[A-Za-z0-9]+\]$", text):
         return OperandType.REGISTER_INDEXED
 
+    # Symbol-relative absolute memory: ``[label]`` / ``[label+N]``.  This
+    # must run after the bracket REGISTER forms above (so ``[P0]`` still
+    # classifies as REGISTER_INDIRECT even if a label happened to share the
+    # name) and before the plain-symbol immediate16 fall-through.
+    symm = re.match(
+        r"^\[([A-Za-z_][A-Za-z0-9_]*)"
+        r"(?:\s*([+-])\s*(0x[0-9A-Fa-f]+|\d+))?\]$", text)
+    if symm and symm.group(1).upper() in symbols:
+        return (OperandType.SYMBOL_DIRECT if symm.group(2) is None
+                else OperandType.SYMBOL_INDEXED)
+
     # High/low byte symbol forms
     if text.endswith(":") and text[:-1] in symbols:
         return OperandType.IMMEDIATE8
@@ -239,6 +260,10 @@ def operand_size(inst: Instruction, symbols: SymbolTable) -> int:
         elif op_type == OperandType.REGISTER_INDEXED:
             size += 2
         elif op_type == OperandType.DIRECT:
+            size += 2
+        elif op_type == OperandType.SYMBOL_DIRECT:
+            size += 2
+        elif op_type == OperandType.SYMBOL_INDEXED:
             size += 2
     return size
 
@@ -394,7 +419,9 @@ def _calculate_mode_byte(operand_types: List[str]) -> int:
 
     if OperandType.REGISTER_INDEXED in operand_types:
         mode_byte |= (1 << 6)
-    if OperandType.DIRECT in operand_types:
+    if (OperandType.DIRECT in operand_types
+            or OperandType.SYMBOL_DIRECT in operand_types
+            or OperandType.SYMBOL_INDEXED in operand_types):
         mode_byte |= (1 << 7)
     return mode_byte
 
@@ -486,6 +513,24 @@ def _encode_operand(text: str, op_type: str, symbols: SymbolTable,
         m = re.match(r"^\[0x([0-9A-Fa-f]{1,4})\]$", text)
         addr = int(m.group(1), 16)
         return [(addr >> 8) & 0xFF, addr & 0xFF]
+
+    if op_type in (OperandType.SYMBOL_DIRECT, OperandType.SYMBOL_INDEXED):
+        m = re.match(
+            r"^\[([A-Za-z_][A-Za-z0-9_]*)"
+            r"(?:\s*([+-])\s*(0x[0-9A-Fa-f]+|\d+))?\]$", text)
+        name = m.group(1).upper()
+        offset = 0
+        if m.group(2) is not None:
+            offset = int(m.group(3), 0)
+            if m.group(2) == "-":
+                offset = -offset
+        if obj_ctx is not None and obj_ctx.is_relocatable(name):
+            # Linker patches the address; the addend rides along.
+            obj_ctx.emit(nomf.RELOC_ABS16, width=16, anchor=anchor,
+                         symbol=name, addend=offset)
+            return [0, 0]
+        val = (symbols.resolve(name) + offset) & 0xFFFF
+        return [(val >> 8) & 0xFF, val & 0xFF]
 
     raise CodeGenError(f"Unsupported operand type: {op_type}")
 

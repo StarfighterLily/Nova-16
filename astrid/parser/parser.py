@@ -8,9 +8,18 @@ from typing import List, Optional, Dict
 from astrid.errors import ParserError, did_you_mean
 from astrid.lexer.lexer import Lexer, Token, KEYWORDS
 
-# Storage qualifiers are accepted and ignored: the declared entity behaves
-# exactly like its unqualified counterpart (Astrid has no linker/optimizer
-# semantics attached to them).
+# C storage qualifiers.  Unlike the old "accepted and ignored" policy, these
+# are now *retained*: the parser records them on VarDecl / FunctionDef nodes
+# and the code generator derives real linker/NOMF semantics from them now that
+# Nova-16 has a relocatable object format and linker:
+#   extern  -> imported symbol (EXTERN directive, resolved by the linker)
+#   static  -> file-local visibility (not exported) / persistent storage
+#              for block-local statics
+#   inline  -> force-inline hint to the FunctionInliner
+#   register-> hint: keep the value in registers, avoid spilling
+#   volatile-> memory-backed: reads/writes always go through memory, never
+#              cached/folded across statements
+#   const   -> type qualifier (read-only intent; treated as a normal value)
 STORAGE_QUALIFIERS = {'const', 'register', 'volatile', 'extern', 'static', 'inline'}
 # Type modifiers normalize to their base type ('int' unless a base type
 # follows): Astrid's type system only distinguishes the base widths.
@@ -91,11 +100,20 @@ class Program(ASTNode):
         self.impl_blocks: List["ImplBlock"] = impl_blocks if impl_blocks is not None else []
 
 class FunctionDef(ASTNode):
-    def __init__(self, return_type: str, name: str, params: List["VarDecl"], body: List["ASTNode"]):
+    def __init__(self, return_type: str, name: str, params: List["VarDecl"],
+                 body: List["ASTNode"], qualifiers: Optional[List[str]] = None,
+                 prototype: bool = False):
         self.return_type = return_type
         self.name = name
         self.params = params
         self.body = body
+        # Retained C storage qualifiers on this function declaration:
+        # 'extern' -> imported (EXTERN), 'static' -> file-local,
+        # 'inline' -> force-inline hint.
+        self.qualifiers: List[str] = list(qualifiers) if qualifiers else []
+        # True for a prototype-with-no-body (e.g. `extern int f();`) retained
+        # for cross-unit imports.  Prototypes emit no function label.
+        self.prototype: bool = prototype
         # Set when the function is a method inside an `impl TypeName { }`
         # block. The code generator then namespaces the emitted label as
         # `func_TypeName_method` so two structs may share method names.
@@ -108,10 +126,15 @@ class VarDecl(ASTNode):
                  pointer_depth: int = 0,
                  is_array_param: bool = False,
                  struct_tag: Optional[str] = None,
-                 array_syntax: bool = False):
+                                  array_syntax: bool = False,
+                 qualifiers: Optional[List[str]] = None):
         self.var_type = var_type
         self.name = name
         self.value = value
+        # C storage qualifiers (register/volatile/extern/static/inline/const)
+        # attached to this declaration. Retained so the code generator can
+        # derive real linker/optimizer semantics instead of discarding them.
+        self.qualifiers: List[str] = list(qualifiers) if qualifiers else []
         # Array support: `int arr[10];` sets array_size to the constant size
         # expression. `int arr[] = {1, 2, 3};` leaves array_size None and
         # infers the count from init_list.
@@ -396,32 +419,90 @@ class Parser:
         self.impl_keys: set = set()
         # Subset of impl_keys that arrived via `include`; used at EOF so an
         # inherited ("more derived") method can shadow an included one while
-        # methods written directly in this file always win over both.
+                # methods written directly in this file always win over both.
         self.included_impl_keys: set = set()
+        # Storage qualifiers consumed at a declaration site but not yet
+        # attached to a produced node.  The top-level loop stashes qualifiers
+        # here before the declaration they prefix is parsed; the parser then
+        # drains them when building the VarDecl / FunctionDef.  Keeps
+        # qualifiers from bleeding into unrelated following declarations.
+        self._stashed_qualifiers: List[str] = []
         # Lazily-loaded source text for diagnostics: when an error is raised
         # we re-read the source file (if it exists on disk) so the rendered
-        # diagnostic can show the offending line with a caret. Sources that
+        # diagnostic can show the offending line with a caret.  Sources that
         # were tokenized from an in-memory string get line/column info but
         # no snippet.
         self._source_text: Optional[str] = None
         self._source_text_loaded = False
         # Candidate names for did-you-mean hints: every distinct identifier
-        # in the token stream plus all language keywords. Built once, lazily.
+        # in the token stream plus all language keywords.  Built once, lazily.
         self._suggestion_candidates: Optional[List[str]] = None
+
+    # ------------------------------------------------------------------
+    # Storage-qualifier handling
+    # ------------------------------------------------------------------
+    def _take_storage_qualifiers(self) -> List[str]:
+        """Consume any leading storage-qualifier keywords at the cursor and
+        return the list of qualifier names captured (e.g. 'extern', 'static').
+        Used at contexts where qualifiers may prefix a declaration: function
+        parameters, statement-level locals, for-init, and impl-block methods.
+        """
+        quals: List[str] = []
+        while (self.current.type == 'KEYWORD'
+               and self.current.value in STORAGE_QUALIFIERS):
+            quals.append(self.current.value)
+            self.advance()
+        return quals
+
+    def _drain_qualifiers(self) -> List[str]:
+        """Return stashed qualifiers (set by the top-level loop) plus any still
+        leading at the cursor, then clear the stash.  Centralized so every
+        declaration-producing site captures qualifiers uniformly."""
+        quals = list(self._stashed_qualifiers)
+        self._stashed_qualifiers = []
+        quals += self._take_storage_qualifiers()
+        return quals
+
+    def _attach_qualifiers(self, nodes) -> None:
+        """Attach the drained qualifier list to one or more declaration
+        nodes. Each produced node keeps the qualifiers of its declaration
+        site, so `extern static int a, b;` qualifies both declarators,
+        matching C semantics."""
+        quals = self._drain_qualifiers()
+        if isinstance(nodes, list):
+            for n in nodes:
+                if hasattr(n, 'qualifiers'):
+                    n.qualifiers = list(quals)
+        elif hasattr(nodes, 'qualifiers'):
+            nodes.qualifiers = list(quals)
+
+    @staticmethod
+    def _attach_decl_qualifiers(decls, quals) -> None:
+        """Attach an already-drained qualifier list to declarator nodes.
+
+        Unlike :meth:`_attach_qualifiers` (which drains the stash itself),
+        this is used when the caller had to drain *before* consuming the
+        type keyword (e.g. ``parse_var_decl``), so qualifiers are attached
+        after the fact.  Every declarator keeps the full site list, so
+        ``extern static int a, b;`` qualifies both, matching C semantics."""
+        for n in decls:
+            if hasattr(n, 'qualifiers'):
+                n.qualifiers = list(quals) if quals else []
 
     @staticmethod
     def _normalize_type_tokens(tokens: List[Token]) -> List[Token]:
-        """Collapse runs of storage qualifiers / type modifiers / base types
-        into a single base-type KEYWORD token.
+        """Collapse runs of type modifiers / base types into a single base-type
+        KEYWORD token.
 
-        C allows declarations like `static unsigned int x;` or functions
-        like `long helper(void)`. Astrid's type system only distinguishes
-        the base types, so any run of consecutive qualifier/modifier/
-        base-type keywords is merged into its base type (defaulting to
-        'int' when only modifiers appear). Single base-type keywords pass
-        through unchanged, so constructs like the `int(x)` conversion call
-        are unaffected."""
-        mergeable = STORAGE_QUALIFIERS | TYPE_MODIFIERS | BASE_TYPES | {'signed_int', 'unsigned_int'}
+        Storage qualifiers (register/volatile/extern/static/inline/const) are
+        deliberately left as standalone KEYWORD tokens in the stream: the
+        declaration rules consume and record them so storage-qualifier
+        semantics survive into code generation.  Type modifiers merge exactly
+        as before, so `static unsigned int x` becomes `static` + `unsigned_int`
+        and `int(x)` conversion calls are unaffected."""
+        # Type modifiers and base types merge together; storage qualifiers are
+        # preserved separately so the parser can capture them per declaration.
+        mergeable = TYPE_MODIFIERS | BASE_TYPES | {'signed_int', 'unsigned_int'}
         out: List[Token] = []
         i = 0
         while i < len(tokens):
@@ -658,8 +739,12 @@ class Parser:
             if self.current.type == 'KEYWORD' and self.current.value == 'impl':
                 self.parse_impl_block()
                 continue
-            # Top-level const qualifiers prefix either functions or globals.
-            if self.current.type == 'KEYWORD' and self.current.value == 'const':
+            # Storage qualifiers prefix either functions or globals
+            # (register/volatile/extern/static/inline/const). Stash them so
+            # the declaration they prefix can attach them to its AST nodes.
+            if (self.current.type == 'KEYWORD'
+                    and self.current.value in STORAGE_QUALIFIERS):
+                self._stashed_qualifiers.append(self.current.value)
                 self.advance()
                 continue
             # Top-level struct definitions and struct-typed global variables:
@@ -733,6 +818,7 @@ class Parser:
                 tag = self.current.value
                 self.expect('IDENTIFIER')
                 new_globals = self._parse_declarators('struct', struct_tag=tag)
+                self._attach_qualifiers(new_globals)
                 for g in new_globals:
                     if any(e.name == g.name for e in globals_):
                         raise self.error(
@@ -1298,6 +1384,7 @@ class Parser:
         return decls
 
     def parse_function(self) -> Optional["FunctionDef"]:
+        quals = self._drain_qualifiers()
         return_type = self.current.value
         self.expect('KEYWORD')
         # Pointer-returning functions: `int *get_ptr() { ... }`
@@ -1320,7 +1407,8 @@ class Parser:
         self.expect('DELIMITER', '{')
         body = self.parse_block()
         self.expect('DELIMITER', '}')
-        func = FunctionDef(return_type, name, params, body)
+        func = FunctionDef(return_type, name, params, body,
+                           qualifiers=quals if quals else None)
         # Attach the declaration position so codegen diagnostics can point
         # at the source line when generating the function fails.
         func.line = name_tok.line
@@ -1338,6 +1426,13 @@ class Parser:
                 self.advance()  # consume 'void'; caller consumes ')'
                 return params
         while True:
+            # Storage qualifiers (register/volatile/extern/static/inline/const)
+            # prefix a parameter type.  'const' historically skirted through
+            # _skip_const(); record it explicitly so it survives on the node.
+            param_quals = self._take_storage_qualifiers()
+            if (self.current.type == 'KEYWORD'
+                    and self.current.value == 'const'):
+                param_quals.append('const')
             self._skip_const()
             var_type = self.current.value
             struct_tag = None
@@ -1407,7 +1502,8 @@ class Parser:
             params.append(VarDecl(var_type, name, None,
                                   pointer_depth=pointer_depth,
                                   is_array_param=is_array_param,
-                                  struct_tag=struct_tag))
+                                  struct_tag=struct_tag,
+                                  qualifiers=param_quals if param_quals else None))
             if self.current.type == 'DELIMITER' and self.current.value == ',':
                 self.advance()
             else:
@@ -1475,11 +1571,17 @@ class Parser:
                     f"Expected a struct tag name after 'struct' "
                     f"(line {self.current.line})")
             return self.parse_var_decl(struct_tag=tag_tok.value)
-        # const-qualified declarations: `const int K = 5;` — consume the
-        # qualifier, then fall through to the declaration handling below.
-        if self.current.type == 'KEYWORD' and self.current.value == 'const':
-            self.advance()
-            self._skip_const()
+        # Storage-qualified local declarations: `const int K = 5;`,
+        # `static int calls = 0;`, `volatile int flag;`, ...  The qualifier
+        # keywords are stashed so parse_var_decl can attach them to the
+        # produced VarDecl nodes instead of silently discarding them.
+        if (self.current.type == 'KEYWORD'
+                and self.current.value in STORAGE_QUALIFIERS):
+            while (self.current.type == 'KEYWORD'
+                    and self.current.value in STORAGE_QUALIFIERS):
+                self._stashed_qualifiers.append(self.current.value)
+                self.advance()
+            # No double-consume: parse_var_decl drains the stash itself.
         # Union-typed local variables: union Tag u;
         if self.current.type == 'KEYWORD' and self.current.value == 'union':
             tag_tok = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
@@ -1644,7 +1746,8 @@ class Parser:
             decls.append(VarDecl(var_type, name, value, array_size, init_list,
                                  pointer_depth=pointer_depth,
                                  struct_tag=struct_tag,
-                                 array_syntax=array_syntax))
+                                 array_syntax=array_syntax,
+                                 qualifiers=[]))
             if self.current.value == ',':
                 self.advance()
             else:
@@ -1656,16 +1759,24 @@ class Parser:
 
         struct_tag, when given, continues a declaration whose `struct Tag`
         header was already consumed by the caller (top level or statement
-        start); the declared variables get var_type='struct'."""
+        start); the declared variables get var_type='struct'.
+
+        Leading storage qualifiers (register/volatile/extern/static/inline/
+        const) are drained from the stash/cursor and attached to every
+        declarator this site produces (so `extern int a, b;` qualifies both,
+        matching C semantics)."""
         if struct_tag is None:
+            quals = self._drain_qualifiers()
             var_type = self.current.value
             self.expect('KEYWORD')
         else:
+            quals = self._drain_qualifiers()
             var_type = 'struct'
             # Consume the `struct Tag` header the caller peeked at.
             self.expect('KEYWORD', 'struct')
             self.expect('IDENTIFIER')
         decls = self._parse_declarators(var_type, struct_tag=struct_tag)
+        self._attach_decl_qualifiers(decls, quals)
         if expect_semicolon:
             self.expect('DELIMITER', ';')
         return decls

@@ -2166,19 +2166,19 @@ MOV P0, R0
 MOV SP, FP
 POP FP
 RET
-; Function: loadMissile
-func_loadMissile:
+; Function: loadShield
+func_loadShield:
 ENTER 128
-; array missile[64]
+; array shield[64]
 MOV P1, 0
 MOV P2, FP
 SUB P2, 128
 MOV [P2], P1
-MOV P4, 0
+MOV P4, 10
 MOV P5, FP
 SUB P5, 126
 MOV [P5], P4
-MOV P6, 0
+MOV P6, 10
 MOV P7, FP
 SUB P7, 124
 MOV [P7], P6
@@ -2190,11 +2190,11 @@ MOV P2, 10
 MOV P4, FP
 SUB P4, 120
 MOV [P4], P2
-MOV P5, 0
+MOV P5, 10
 MOV P6, FP
 SUB P6, 118
 MOV [P6], P5
-MOV P7, 0
+MOV P7, 10
 MOV P0, FP
 SUB P0, 116
 MOV [P0], P7
@@ -2206,27 +2206,27 @@ MOV P4, 0
 MOV P5, FP
 SUB P5, 112
 MOV [P5], P4
-MOV P6, 0
+MOV P6, 10
 MOV P7, FP
 SUB P7, 110
 MOV [P7], P6
-MOV P0, 10
+MOV P0, 08
 MOV P1, FP
 SUB P1, 108
 MOV [P1], P0
-MOV P2, 15
+MOV P2, 08
 MOV P4, FP
 SUB P4, 106
 MOV [P4], P2
-MOV P5, 15
+MOV P5, 08
 MOV P6, FP
 SUB P6, 104
 MOV [P6], P5
-MOV P7, 10
+MOV P7, 08
 MOV P0, FP
 SUB P0, 102
 MOV [P0], P7
-MOV P1, 0
+MOV P1, 10
 MOV P2, FP
 SUB P2, 100
 MOV [P2], P1
@@ -2238,27 +2238,27 @@ MOV P6, 0
 MOV P7, FP
 SUB P7, 96
 MOV [P7], P6
-MOV P0, 0
+MOV P0, 10
 MOV P1, FP
 SUB P1, 94
 MOV [P1], P0
-MOV P2, 0
+MOV P2, 08
 MOV P4, FP
 SUB P4, 92
 MOV [P4], P2
-MOV P5, 15
+MOV P5, 08
 MOV P6, FP
 SUB P6, 90
 MOV [P6], P5
-MOV P7, 15
+MOV P7, 08
 MOV P0, FP
 SUB P0, 88
 MOV [P0], P7
-MOV P1, 0
+MOV P1, 08
 MOV P2, FP
 SUB P2, 86
 MOV [P2], P1
-MOV P4, 0
+MOV P4, 10
 MOV P5, FP
 SUB P5, 84
 MOV [P5], P4
@@ -2270,27 +2270,27 @@ MOV P0, 0
 MOV P1, FP
 SUB P1, 80
 MOV [P1], P0
-MOV P2, 0
+MOV P2, 10
 MOV P4, FP
 SUB P4, 78
 MOV [P4], P2
-MOV P5, 0
+MOV P5, 08
 MOV P6, FP
 SUB P6, 76
 MOV [P6], P5
-MOV P7, 15
+MOV P7, 08
 MOV P0, FP
 SUB P0, 74
 MOV [P0], P7
-MOV P1, 15
+MOV P1, 08
 MOV P2, FP
 SUB P2, 72
 MOV [P2], P1
-MOV P4, 0
+MOV P4, 08
 MOV P5, FP
 SUB P5, 70
 MOV [P5], P4
-MOV P6, 0
+MOV P6, 10
 MOV P7, FP
 SUB P7, 68
 MOV [P7], P6
@@ -2302,27 +2302,27 @@ MOV P2, 0
 MOV P4, FP
 SUB P4, 64
 MOV [P4], P2
-MOV P5, 0
+MOV P5, 10
 MOV P6, FP
 SUB P6, 62
 MOV [P6], P5
-MOV P7, 0
+MOV P7, 08
 MOV P0, FP
 SUB P0, 60
 MOV [P0], P7
-MOV P1, 15
+MOV P1, 08
 MOV P2, FP
 SUB P2, 58
 MOV [P2], P1
-MOV P4, 15
+MOV P4, 08
 MOV P5, FP
 SUB P5, 56
 MOV [P5], P4
-MOV P6, 0
+MOV P6, 08
 MOV P7, FP
 SUB P7, 54
 MOV [P7], P6
-MOV P0, 0
+MOV P0, 10
 MOV P1, FP
 SUB P1, 52
 MOV [P1], P0
@@ -2342,11 +2342,11 @@ MOV P1, 10
 MOV P2, FP
 SUB P2, 44
 MOV [P2], P1
-MOV P4, 15
+MOV P4, 08
 MOV P5, FP
 SUB P5, 42
 MOV [P5], P4
-MOV P6, 15
+MOV P6, 08
 MOV P7, FP
 SUB P7, 40
 MOV [P7], P6
@@ -2366,7 +2366,7 @@ MOV P7, 0
 MOV P0, FP
 SUB P0, 32
 MOV [P0], P7
-MOV P1, 10
+MOV P1, 0
 MOV P2, FP
 SUB P2, 30
 MOV [P2], P1
@@ -2374,11 +2374,11 @@ MOV P4, 10
 MOV P5, FP
 SUB P5, 28
 MOV [P5], P4
-MOV P6, 15
+MOV P6, 08
 MOV P7, FP
 SUB P7, 26
 MOV [P7], P6
-MOV P0, 15
+MOV P0, 08
 MOV P1, FP
 SUB P1, 24
 MOV [P1], P0
@@ -2386,7 +2386,7 @@ MOV P2, 10
 MOV P4, FP
 SUB P4, 22
 MOV [P4], P2
-MOV P5, 10
+MOV P5, 0
 MOV P6, FP
 SUB P6, 20
 MOV [P6], P5
@@ -2406,11 +2406,11 @@ MOV P6, 0
 MOV P7, FP
 SUB P7, 12
 MOV [P7], P6
-MOV P0, 127
+MOV P0, 10
 MOV P1, FP
 SUB P1, 10
 MOV [P1], P0
-MOV P2, 127
+MOV P2, 10
 MOV P4, FP
 SUB P4, 8
 MOV [P4], P2
@@ -2430,7 +2430,7 @@ MOV [P2], P1
 MOV P4, FP
 SUB P4, 128
 PUSH P4
-MOV P5, 32832
+MOV P5, 32896
 PUSH P5
 CALL func_memsprite
 ADD SP, 4 ; Caller cleans up args
@@ -2439,24 +2439,297 @@ MOV P6, P0
 MOV SP, FP
 POP FP
 RET
+; Function: loadMissile
+func_loadMissile:
+ENTER 128
+; array missile[64]
+MOV P7, 0
+MOV P0, FP
+SUB P0, 128
+MOV [P0], P7
+MOV P1, 0
+MOV P2, FP
+SUB P2, 126
+MOV [P2], P1
+MOV P4, 0
+MOV P5, FP
+SUB P5, 124
+MOV [P5], P4
+MOV P6, 10
+MOV P7, FP
+SUB P7, 122
+MOV [P7], P6
+MOV P0, 10
+MOV P1, FP
+SUB P1, 120
+MOV [P1], P0
+MOV P2, 0
+MOV P4, FP
+SUB P4, 118
+MOV [P4], P2
+MOV P5, 0
+MOV P6, FP
+SUB P6, 116
+MOV [P6], P5
+MOV P7, 0
+MOV P0, FP
+SUB P0, 114
+MOV [P0], P7
+MOV P1, 0
+MOV P2, FP
+SUB P2, 112
+MOV [P2], P1
+MOV P4, 0
+MOV P5, FP
+SUB P5, 110
+MOV [P5], P4
+MOV P6, 10
+MOV P7, FP
+SUB P7, 108
+MOV [P7], P6
+MOV P0, 15
+MOV P1, FP
+SUB P1, 106
+MOV [P1], P0
+MOV P2, 15
+MOV P4, FP
+SUB P4, 104
+MOV [P4], P2
+MOV P5, 10
+MOV P6, FP
+SUB P6, 102
+MOV [P6], P5
+MOV P7, 0
+MOV P0, FP
+SUB P0, 100
+MOV [P0], P7
+MOV P1, 0
+MOV P2, FP
+SUB P2, 98
+MOV [P2], P1
+MOV P4, 0
+MOV P5, FP
+SUB P5, 96
+MOV [P5], P4
+MOV P6, 0
+MOV P7, FP
+SUB P7, 94
+MOV [P7], P6
+MOV P0, 0
+MOV P1, FP
+SUB P1, 92
+MOV [P1], P0
+MOV P2, 15
+MOV P4, FP
+SUB P4, 90
+MOV [P4], P2
+MOV P5, 15
+MOV P6, FP
+SUB P6, 88
+MOV [P6], P5
+MOV P7, 0
+MOV P0, FP
+SUB P0, 86
+MOV [P0], P7
+MOV P1, 0
+MOV P2, FP
+SUB P2, 84
+MOV [P2], P1
+MOV P4, 0
+MOV P5, FP
+SUB P5, 82
+MOV [P5], P4
+MOV P6, 0
+MOV P7, FP
+SUB P7, 80
+MOV [P7], P6
+MOV P0, 0
+MOV P1, FP
+SUB P1, 78
+MOV [P1], P0
+MOV P2, 0
+MOV P4, FP
+SUB P4, 76
+MOV [P4], P2
+MOV P5, 15
+MOV P6, FP
+SUB P6, 74
+MOV [P6], P5
+MOV P7, 15
+MOV P0, FP
+SUB P0, 72
+MOV [P0], P7
+MOV P1, 0
+MOV P2, FP
+SUB P2, 70
+MOV [P2], P1
+MOV P4, 0
+MOV P5, FP
+SUB P5, 68
+MOV [P5], P4
+MOV P6, 0
+MOV P7, FP
+SUB P7, 66
+MOV [P7], P6
+MOV P0, 0
+MOV P1, FP
+SUB P1, 64
+MOV [P1], P0
+MOV P2, 0
+MOV P4, FP
+SUB P4, 62
+MOV [P4], P2
+MOV P5, 0
+MOV P6, FP
+SUB P6, 60
+MOV [P6], P5
+MOV P7, 15
+MOV P0, FP
+SUB P0, 58
+MOV [P0], P7
+MOV P1, 15
+MOV P2, FP
+SUB P2, 56
+MOV [P2], P1
+MOV P4, 0
+MOV P5, FP
+SUB P5, 54
+MOV [P5], P4
+MOV P6, 0
+MOV P7, FP
+SUB P7, 52
+MOV [P7], P6
+MOV P0, 0
+MOV P1, FP
+SUB P1, 50
+MOV [P1], P0
+MOV P2, 0
+MOV P4, FP
+SUB P4, 48
+MOV [P4], P2
+MOV P5, 0
+MOV P6, FP
+SUB P6, 46
+MOV [P6], P5
+MOV P7, 10
+MOV P0, FP
+SUB P0, 44
+MOV [P0], P7
+MOV P1, 15
+MOV P2, FP
+SUB P2, 42
+MOV [P2], P1
+MOV P4, 15
+MOV P5, FP
+SUB P5, 40
+MOV [P5], P4
+MOV P6, 10
+MOV P7, FP
+SUB P7, 38
+MOV [P7], P6
+MOV P0, 0
+MOV P1, FP
+SUB P1, 36
+MOV [P1], P0
+MOV P2, 0
+MOV P4, FP
+SUB P4, 34
+MOV [P4], P2
+MOV P5, 0
+MOV P6, FP
+SUB P6, 32
+MOV [P6], P5
+MOV P7, 10
+MOV P0, FP
+SUB P0, 30
+MOV [P0], P7
+MOV P1, 10
+MOV P2, FP
+SUB P2, 28
+MOV [P2], P1
+MOV P4, 15
+MOV P5, FP
+SUB P5, 26
+MOV [P5], P4
+MOV P6, 15
+MOV P7, FP
+SUB P7, 24
+MOV [P7], P6
+MOV P0, 10
+MOV P1, FP
+SUB P1, 22
+MOV [P1], P0
+MOV P2, 10
+MOV P4, FP
+SUB P4, 20
+MOV [P4], P2
+MOV P5, 0
+MOV P6, FP
+SUB P6, 18
+MOV [P6], P5
+MOV P7, 0
+MOV P0, FP
+SUB P0, 16
+MOV [P0], P7
+MOV P1, 0
+MOV P2, FP
+SUB P2, 14
+MOV [P2], P1
+MOV P4, 0
+MOV P5, FP
+SUB P5, 12
+MOV [P5], P4
+MOV P6, 127
+MOV P7, FP
+SUB P7, 10
+MOV [P7], P6
+MOV P0, 127
+MOV P1, FP
+SUB P1, 8
+MOV [P1], P0
+MOV P2, 0
+MOV P4, FP
+SUB P4, 6
+MOV [P4], P2
+MOV P5, 0
+MOV P6, FP
+SUB P6, 4
+MOV [P6], P5
+MOV P7, 0
+MOV P0, FP
+SUB P0, 2
+MOV [P0], P7
+; Call to memsprite
+MOV P1, FP
+SUB P1, 128
+PUSH P1
+MOV P2, 32832
+PUSH P2
+CALL func_memsprite
+ADD SP, 4 ; Caller cleans up args
+MOV P4, P0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
 ; Function: sprblitall
 func_sprblitall:
 ENTER 0
 ; Call to set_bank
-MOV P7, 1
-PUSH P7
+MOV P5, 1
+PUSH P5
 CALL builtin_set_bank
 ; Args consumed by callee
-MOV P0, R0
+MOV P6, R0
 ; Call to sprite_blitall
 CALL builtin_sprite_blitall
-MOV P1, R0
+MOV P7, R0
 ; Call to set_bank
-MOV P2, 0
-PUSH P2
+MOV P0, 0
+PUSH P0
 CALL builtin_set_bank
 ; Args consumed by callee
-MOV P4, R0
+MOV P1, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -2465,314 +2738,315 @@ RET
 func_loadPlayer:
 ENTER 128
 ; array sprite[64]
+MOV P2, 0
+MOV P4, FP
+SUB P4, 128
+MOV [P4], P2
 MOV P5, 0
 MOV P6, FP
-SUB P6, 128
+SUB P6, 126
 MOV [P6], P5
 MOV P7, 0
 MOV P0, FP
-SUB P0, 126
+SUB P0, 124
 MOV [P0], P7
-MOV P1, 0
+MOV P1, 10
 MOV P2, FP
-SUB P2, 124
+SUB P2, 122
 MOV [P2], P1
 MOV P4, 10
 MOV P5, FP
-SUB P5, 122
+SUB P5, 120
 MOV [P5], P4
-MOV P6, 10
+MOV P6, 0
 MOV P7, FP
-SUB P7, 120
+SUB P7, 118
 MOV [P7], P6
 MOV P0, 0
 MOV P1, FP
-SUB P1, 118
+SUB P1, 116
 MOV [P1], P0
 MOV P2, 0
 MOV P4, FP
-SUB P4, 116
+SUB P4, 114
 MOV [P4], P2
 MOV P5, 0
 MOV P6, FP
-SUB P6, 114
+SUB P6, 112
 MOV [P6], P5
 MOV P7, 0
 MOV P0, FP
-SUB P0, 112
+SUB P0, 110
+MOV [P0], P7
+MOV P1, 15
+MOV P2, FP
+SUB P2, 108
+MOV [P2], P1
+MOV P4, 10
+MOV P5, FP
+SUB P5, 106
+MOV [P5], P4
+MOV P6, 10
+MOV P7, FP
+SUB P7, 104
+MOV [P7], P6
+MOV P0, 15
+MOV P1, FP
+SUB P1, 102
+MOV [P1], P0
+MOV P2, 0
+MOV P4, FP
+SUB P4, 100
+MOV [P4], P2
+MOV P5, 0
+MOV P6, FP
+SUB P6, 98
+MOV [P6], P5
+MOV P7, 0
+MOV P0, FP
+SUB P0, 96
 MOV [P0], P7
 MOV P1, 0
 MOV P2, FP
-SUB P2, 110
+SUB P2, 94
+MOV [P2], P1
+MOV P4, 0
+MOV P5, FP
+SUB P5, 92
+MOV [P5], P4
+MOV P6, 10
+MOV P7, FP
+SUB P7, 90
+MOV [P7], P6
+MOV P0, 10
+MOV P1, FP
+SUB P1, 88
+MOV [P1], P0
+MOV P2, 0
+MOV P4, FP
+SUB P4, 86
+MOV [P4], P2
+MOV P5, 0
+MOV P6, FP
+SUB P6, 84
+MOV [P6], P5
+MOV P7, 0
+MOV P0, FP
+SUB P0, 82
+MOV [P0], P7
+MOV P1, 0
+MOV P2, FP
+SUB P2, 80
+MOV [P2], P1
+MOV P4, 0
+MOV P5, FP
+SUB P5, 78
+MOV [P5], P4
+MOV P6, 0
+MOV P7, FP
+SUB P7, 76
+MOV [P7], P6
+MOV P0, 15
+MOV P1, FP
+SUB P1, 74
+MOV [P1], P0
+MOV P2, 15
+MOV P4, FP
+SUB P4, 72
+MOV [P4], P2
+MOV P5, 0
+MOV P6, FP
+SUB P6, 70
+MOV [P6], P5
+MOV P7, 0
+MOV P0, FP
+SUB P0, 68
+MOV [P0], P7
+MOV P1, 0
+MOV P2, FP
+SUB P2, 66
 MOV [P2], P1
 MOV P4, 15
 MOV P5, FP
-SUB P5, 108
-MOV [P5], P4
-MOV P6, 10
-MOV P7, FP
-SUB P7, 106
-MOV [P7], P6
-MOV P0, 10
-MOV P1, FP
-SUB P1, 104
-MOV [P1], P0
-MOV P2, 15
-MOV P4, FP
-SUB P4, 102
-MOV [P4], P2
-MOV P5, 0
-MOV P6, FP
-SUB P6, 100
-MOV [P6], P5
-MOV P7, 0
-MOV P0, FP
-SUB P0, 98
-MOV [P0], P7
-MOV P1, 0
-MOV P2, FP
-SUB P2, 96
-MOV [P2], P1
-MOV P4, 0
-MOV P5, FP
-SUB P5, 94
+SUB P5, 64
 MOV [P5], P4
 MOV P6, 0
 MOV P7, FP
-SUB P7, 92
-MOV [P7], P6
-MOV P0, 10
-MOV P1, FP
-SUB P1, 90
-MOV [P1], P0
-MOV P2, 10
-MOV P4, FP
-SUB P4, 88
-MOV [P4], P2
-MOV P5, 0
-MOV P6, FP
-SUB P6, 86
-MOV [P6], P5
-MOV P7, 0
-MOV P0, FP
-SUB P0, 84
-MOV [P0], P7
-MOV P1, 0
-MOV P2, FP
-SUB P2, 82
-MOV [P2], P1
-MOV P4, 0
-MOV P5, FP
-SUB P5, 80
-MOV [P5], P4
-MOV P6, 0
-MOV P7, FP
-SUB P7, 78
-MOV [P7], P6
-MOV P0, 0
-MOV P1, FP
-SUB P1, 76
-MOV [P1], P0
-MOV P2, 15
-MOV P4, FP
-SUB P4, 74
-MOV [P4], P2
-MOV P5, 15
-MOV P6, FP
-SUB P6, 72
-MOV [P6], P5
-MOV P7, 0
-MOV P0, FP
-SUB P0, 70
-MOV [P0], P7
-MOV P1, 0
-MOV P2, FP
-SUB P2, 68
-MOV [P2], P1
-MOV P4, 0
-MOV P5, FP
-SUB P5, 66
-MOV [P5], P4
-MOV P6, 15
-MOV P7, FP
-SUB P7, 64
-MOV [P7], P6
-MOV P0, 0
-MOV P1, FP
-SUB P1, 62
-MOV [P1], P0
-MOV P2, 15
-MOV P4, FP
-SUB P4, 60
-MOV [P4], P2
-MOV P5, 15
-MOV P6, FP
-SUB P6, 58
-MOV [P6], P5
-MOV P7, 15
-MOV P0, FP
-SUB P0, 56
-MOV [P0], P7
-MOV P1, 15
-MOV P2, FP
-SUB P2, 54
-MOV [P2], P1
-MOV P4, 0
-MOV P5, FP
-SUB P5, 52
-MOV [P5], P4
-MOV P6, 15
-MOV P7, FP
-SUB P7, 50
+SUB P7, 62
 MOV [P7], P6
 MOV P0, 15
 MOV P1, FP
-SUB P1, 48
+SUB P1, 60
 MOV [P1], P0
 MOV P2, 15
 MOV P4, FP
-SUB P4, 46
+SUB P4, 58
 MOV [P4], P2
-MOV P5, 08
+MOV P5, 15
 MOV P6, FP
-SUB P6, 44
+SUB P6, 56
 MOV [P6], P5
 MOV P7, 15
 MOV P0, FP
-SUB P0, 42
-MOV [P0], P7
-MOV P1, 15
-MOV P2, FP
-SUB P2, 40
-MOV [P2], P1
-MOV P4, 08
-MOV P5, FP
-SUB P5, 38
-MOV [P5], P4
-MOV P6, 15
-MOV P7, FP
-SUB P7, 36
-MOV [P7], P6
-MOV P0, 15
-MOV P1, FP
-SUB P1, 34
-MOV [P1], P0
-MOV P2, 0
-MOV P4, FP
-SUB P4, 32
-MOV [P4], P2
-MOV P5, 0
-MOV P6, FP
-SUB P6, 30
-MOV [P6], P5
-MOV P7, 31
-MOV P0, FP
-SUB P0, 28
+SUB P0, 54
 MOV [P0], P7
 MOV P1, 0
 MOV P2, FP
-SUB P2, 26
+SUB P2, 52
 MOV [P2], P1
-MOV P4, 0
+MOV P4, 15
 MOV P5, FP
-SUB P5, 24
+SUB P5, 50
 MOV [P5], P4
-MOV P6, 31
+MOV P6, 15
 MOV P7, FP
-SUB P7, 22
+SUB P7, 48
+MOV [P7], P6
+MOV P0, 15
+MOV P1, FP
+SUB P1, 46
+MOV [P1], P0
+MOV P2, 08
+MOV P4, FP
+SUB P4, 44
+MOV [P4], P2
+MOV P5, 15
+MOV P6, FP
+SUB P6, 42
+MOV [P6], P5
+MOV P7, 15
+MOV P0, FP
+SUB P0, 40
+MOV [P0], P7
+MOV P1, 08
+MOV P2, FP
+SUB P2, 38
+MOV [P2], P1
+MOV P4, 15
+MOV P5, FP
+SUB P5, 36
+MOV [P5], P4
+MOV P6, 15
+MOV P7, FP
+SUB P7, 34
 MOV [P7], P6
 MOV P0, 0
 MOV P1, FP
-SUB P1, 20
+SUB P1, 32
 MOV [P1], P0
 MOV P2, 0
 MOV P4, FP
-SUB P4, 18
+SUB P4, 30
 MOV [P4], P2
-MOV P5, 0
+MOV P5, 31
 MOV P6, FP
-SUB P6, 16
+SUB P6, 28
 MOV [P6], P5
 MOV P7, 0
 MOV P0, FP
-SUB P0, 14
+SUB P0, 26
 MOV [P0], P7
-MOV P1, 127
+MOV P1, 0
 MOV P2, FP
-SUB P2, 12
+SUB P2, 24
 MOV [P2], P1
-MOV P4, 0
+MOV P4, 31
 MOV P5, FP
-SUB P5, 10
+SUB P5, 22
 MOV [P5], P4
 MOV P6, 0
 MOV P7, FP
-SUB P7, 8
+SUB P7, 20
 MOV [P7], P6
-MOV P0, 127
+MOV P0, 0
 MOV P1, FP
-SUB P1, 6
+SUB P1, 18
 MOV [P1], P0
 MOV P2, 0
 MOV P4, FP
-SUB P4, 4
+SUB P4, 16
 MOV [P4], P2
 MOV P5, 0
 MOV P6, FP
-SUB P6, 2
+SUB P6, 14
 MOV [P6], P5
+MOV P7, 127
+MOV P0, FP
+SUB P0, 12
+MOV [P0], P7
+MOV P1, 0
+MOV P2, FP
+SUB P2, 10
+MOV [P2], P1
+MOV P4, 0
+MOV P5, FP
+SUB P5, 8
+MOV [P5], P4
+MOV P6, 127
+MOV P7, FP
+SUB P7, 6
+MOV [P7], P6
+MOV P0, 0
+MOV P1, FP
+SUB P1, 4
+MOV [P1], P0
+MOV P2, 0
+MOV P4, FP
+SUB P4, 2
+MOV [P4], P2
 ; Call to memsprite
-MOV P7, FP
-SUB P7, 128
-PUSH P7
-MOV P0, 32768
-PUSH P0
+MOV P5, FP
+SUB P5, 128
+PUSH P5
+MOV P6, 32768
+PUSH P6
 CALL func_memsprite
 ADD SP, 4 ; Caller cleans up args
-MOV P1, P0
+MOV P7, P0
 ; Call to SCBwrite
-MOV P2, 0
+MOV P0, 0
+PUSH P0
+MOV P1, 3
+PUSH P1
+MOV P2, 8
 PUSH P2
-MOV P4, 3
+MOV P4, 8
 PUSH P4
-MOV P5, 8
+MOV P5, 128
 PUSH P5
-MOV P6, 8
+MOV P6, 128
 PUSH P6
-MOV P7, 128
+MOV P7, 0
 PUSH P7
 MOV P0, 128
 PUSH P0
 MOV P1, 0
 PUSH P1
-MOV P2, 128
-PUSH P2
-MOV P4, 0
-PUSH P4
 CALL func_SCBwrite
 ADD SP, 18 ; Caller cleans up args
-MOV P5, P0
+MOV P2, P0
 ; Member assignment to ...x
-MOV P6, 0x82E4
-PUSH P6
+MOV P4, 0x82E4
+PUSH P4
 ; Call to peek
-MOV P7, 61442
-PUSH P7
+MOV P5, 61442
+PUSH P5
 CALL builtin_peek
 ; Args consumed by callee
-POP P6
-MOV [P6], P0
+MOV P6, P0
+POP P4
+MOV [P4], P6
 ; Member assignment to ...y
-MOV P1, 0x82E6
-PUSH P1
+MOV P7, 0x82E6
+PUSH P7
 ; Call to peek
-MOV P2, 61443
-PUSH P2
+MOV P0, 61443
+PUSH P0
 CALL builtin_peek
 ; Args consumed by callee
-MOV P4, P0
-POP P1
-MOV [P1], P4
+MOV P1, P0
+POP P7
+MOV [P7], P1
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -2781,37 +3055,38 @@ RET
 func_startScreen:
 ENTER 2
 ; Call to set_pos
-MOV P5, 128
-PUSH P5
-MOV P6, 20
-PUSH P6
+MOV P2, 128
+PUSH P2
+MOV P4, 20
+PUSH P4
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P7, R0
+MOV P5, R0
 ; var ol = ...
 ; Call to get_layer
 CALL builtin_get_layer
-MOV [0xC880], P0
+MOV P6, P0
+MOV [0xC900], P6
 ; Call to set_layer
-MOV P1, 8
-PUSH P1
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P2, R0
-; Call to write_text
-MOV P4, 95
-PUSH P4
-MOV P5, str_189
-PUSH P5
-CALL builtin_write_text
-; Args consumed by callee
-MOV P6, R0
-; Call to set_layer
-MOV P7, [0xC880]
+MOV P7, 8
 PUSH P7
 CALL builtin_set_layer
 ; Args consumed by callee
 MOV P0, R0
+; Call to write_text
+MOV P1, 95
+PUSH P1
+MOV P2, str_189
+PUSH P2
+CALL builtin_write_text
+; Args consumed by callee
+MOV P4, R0
+; Call to set_layer
+MOV P5, [0xC900]
+PUSH P5
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P6, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -2821,65 +3096,65 @@ func_endScreen:
 ENTER 2
 ; For loop
 ; var i = ...
-MOV P1, 0
-MOV [0xC900], P1
+MOV P7, 0
+MOV [0xC980], P7
 for_start_190:
-MOV P2, [0xC900]
-PUSH P2
-MOV P4, 8
-POP P2
-CMP P4, P2
+MOV P0, [0xC980]
+PUSH P0
+MOV P1, 8
+POP P0
+CMP P1, P0
 JNC cmp_true_193
-MOV P2, 0
+MOV P0, 0
 JMP cmp_end_194
 cmp_true_193:
-MOV P2, 1
+MOV P0, 1
 cmp_end_194:
-CMP P2, 0
+CMP P0, 0
 JZ for_end_191
 ; Call to set_layer
-MOV P5, [0xC900]
-PUSH P5
+MOV P2, [0xC980]
+PUSH P2
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P6, R0
+MOV P4, R0
 ; Call to screen_fill
-MOV P7, 0
-PUSH P7
+MOV P5, 0
+PUSH P5
 CALL builtin_screen_fill
 ; Args consumed by callee
-MOV P0, R0
+MOV P6, R0
 for_continue_192:
 ; Wrap-check: save i before update
-MOV P1, [0xC900]
-PUSH P1
-MOV P2, [0xC900]
-MOV P4, P2
-INC P2
-MOV [0xC900], P2
+MOV P7, [0xC980]
+PUSH P7
+MOV P0, [0xC980]
+MOV P1, P0
+INC P0
+MOV [0xC980], P0
 ; Wrap-check: compare i new vs old
-POP P5
-MOV P6, [0xC900]
-CMP P6, P5
+POP P2
+MOV P4, [0xC980]
+CMP P4, P2
 JC for_end_191
 JMP for_start_190
 for_end_191:
 ; Call to set_pos
-MOV P7, 128
-PUSH P7
-MOV P0, 96
-PUSH P0
+MOV P5, 128
+PUSH P5
+MOV P6, 96
+PUSH P6
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P1, R0
+MOV P7, R0
 ; Call to write_text
-MOV P2, 31
-PUSH P2
-MOV P4, str_195
-PUSH P4
+MOV P0, 31
+PUSH P0
+MOV P1, str_195
+PUSH P1
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P5, R0
+MOV P2, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -2889,272 +3164,513 @@ func_winScreen:
 ENTER 2
 ; For loop
 ; var i = ...
-MOV P6, 0
-MOV [0xC980], P6
+MOV P4, 0
+MOV [0xCA00], P4
 for_start_196:
-MOV P7, [0xC980]
-PUSH P7
-MOV P0, 8
-POP P7
-CMP P0, P7
+MOV P5, [0xCA00]
+PUSH P5
+MOV P6, 8
+POP P5
+CMP P6, P5
 JNC cmp_true_199
-MOV P7, 0
+MOV P5, 0
 JMP cmp_end_200
 cmp_true_199:
-MOV P7, 1
+MOV P5, 1
 cmp_end_200:
-CMP P7, 0
+CMP P5, 0
 JZ for_end_197
 ; Call to set_layer
-MOV P1, [0xC980]
-PUSH P1
+MOV P7, [0xCA00]
+PUSH P7
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P2, R0
+MOV P0, R0
 ; Call to screen_fill
-MOV P4, 0
-PUSH P4
+MOV P1, 0
+PUSH P1
 CALL builtin_screen_fill
 ; Args consumed by callee
-MOV P5, R0
+MOV P2, R0
 for_continue_198:
 ; Wrap-check: save i before update
-MOV P6, [0xC980]
-PUSH P6
-MOV P7, [0xC980]
-MOV P0, P7
-INC P7
-MOV [0xC980], P7
+MOV P4, [0xCA00]
+PUSH P4
+MOV P5, [0xCA00]
+MOV P6, P5
+INC P5
+MOV [0xCA00], P5
 ; Wrap-check: compare i new vs old
-POP P1
-MOV P2, [0xC980]
-CMP P2, P1
+POP P7
+MOV P0, [0xCA00]
+CMP P0, P7
 JC for_end_197
 JMP for_start_196
 for_end_197:
 ; Call to set_pos
-MOV P4, 128
-PUSH P4
-MOV P5, 96
-PUSH P5
+MOV P1, 128
+PUSH P1
+MOV P2, 96
+PUSH P2
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P6, R0
+MOV P4, R0
 ; Call to write_text
-MOV P7, 63
-PUSH P7
-MOV P0, str_201
-PUSH P0
+MOV P5, 63
+PUSH P5
+MOV P6, str_201
+PUSH P6
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P1, R0
+MOV P7, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
 ; Function: HUD
 func_HUD:
-ENTER 2
+ENTER 4
 ; var hcolor = ...
-MOV P2, 0
-MOV [0xCA00], P2
+MOV P0, 0
+MOV [0xCA80], P0
+; var tcolor = ...
+MOV P1, 0
+MOV [0xCA82], P1
 ; If statement
 ; Member read (hit)
+MOV P2, 0x82E8
+MOV P4, [P2]
+PUSH P4
+MOV P5, 0
+POP P4
+; Signed comparison (two's complement)
+CMP P4, P5
+JLT cmp_true_204
+MOV P4, 0
+JMP cmp_end_205
+cmp_true_204:
+MOV P4, 1
+cmp_end_205:
+CMP P4, 0
+JZ if_end_202
+; Member assignment to ...hit
+MOV P6, 0x82E8
+PUSH P6
+MOV P7, 0
+POP P6
+MOV [P6], P7
+if_end_202:
+; If statement
+; Member read (hit)
+MOV P0, 0x82E8
+MOV P1, [P0]
+PUSH P1
+MOV P2, 10
+POP P1
+CMP P1, P2
+JNC cmp_true_208
+MOV P1, 0
+JMP cmp_end_209
+cmp_true_208:
+MOV P1, 1
+cmp_end_209:
+CMP P1, 0
+JZ if_else_207
+; Assignment to hcolor
+MOV P4, 47
+MOV [0xCA80], P4
+JMP if_end_206
+if_else_207:
+; If statement
+; Member read (hit)
+MOV P5, 0x82E8
+MOV P6, [P5]
+PUSH P6
+MOV P7, 10
+POP P6
+CMP P6, P7
+JC cmp_true_212
+MOV P6, 0
+JMP cmp_end_213
+cmp_true_212:
+MOV P6, 1
+cmp_end_213:
+PUSH P6
+; Member read (hit)
+MOV P0, 0x82E8
+MOV P1, [P0]
+PUSH P1
+MOV P2, 5
+POP P1
+CMP P2, P1
+JC cmp_true_214
+MOV P1, 0
+JMP cmp_end_215
+cmp_true_214:
+MOV P1, 1
+cmp_end_215:
+POP P6
+CMP P6, 0
+JZ sc_false_216
+; Member read (hit)
 MOV P4, 0x82E8
+MOV P5, [P4]
+PUSH P5
+MOV P6, 5
+POP P5
+CMP P6, P5
+JC cmp_true_218
+MOV P5, 0
+JMP cmp_end_219
+cmp_true_218:
+MOV P5, 1
+cmp_end_219:
+CMP P5, 0
+JZ sc_false_216
+MOV P6, 1
+JMP sc_end_217
+sc_false_216:
+MOV P6, 0
+sc_end_217:
+CMP P6, 0
+JZ if_else_211
+; Assignment to hcolor
+MOV P7, 42
+MOV [0xCA80], P7
+JMP if_end_210
+if_else_211:
+; If statement
+; Member read (hit)
+MOV P0, 0x82E8
+MOV P1, [P0]
+PUSH P1
+MOV P2, 5
+POP P1
+CMP P1, P2
+JC cmp_true_222
+MOV P1, 0
+JMP cmp_end_223
+cmp_true_222:
+MOV P1, 1
+cmp_end_223:
+CMP P1, 0
+JZ if_end_220
+; Assignment to hcolor
+MOV P4, 37
+MOV [0xCA80], P4
+if_end_220:
+if_end_210:
+if_end_206:
+; If statement
+; Member read (timer)
+MOV P5, 0x82EA
+MOV P6, [P5]
+PUSH P6
+MOV P7, 60
+POP P6
+CMP P6, P7
+JNC cmp_true_226
+MOV P6, 0
+JMP cmp_end_227
+cmp_true_226:
+MOV P6, 1
+cmp_end_227:
+CMP P6, 0
+JZ if_else_225
+; Assignment to tcolor
+MOV P0, 31
+MOV [0xCA82], P0
+JMP if_end_224
+if_else_225:
+; If statement
+; Member read (timer)
+MOV P1, 0x82EA
+MOV P2, [P1]
+PUSH P2
+MOV P4, 60
+POP P2
+CMP P2, P4
+JC cmp_true_230
+MOV P2, 0
+JMP cmp_end_231
+cmp_true_230:
+MOV P2, 1
+cmp_end_231:
+PUSH P2
+; Member read (timer)
+MOV P5, 0x82EA
+MOV P6, [P5]
+PUSH P6
+MOV P7, 30
+POP P6
+CMP P6, P7
+JNC cmp_true_232
+MOV P6, 0
+JMP cmp_end_233
+cmp_true_232:
+MOV P6, 1
+cmp_end_233:
+POP P2
+CMP P2, 0
+JZ sc_false_234
+; Member read (timer)
+MOV P0, 0x82EA
+MOV P1, [P0]
+PUSH P1
+MOV P2, 30
+POP P1
+CMP P1, P2
+JNC cmp_true_236
+MOV P1, 0
+JMP cmp_end_237
+cmp_true_236:
+MOV P1, 1
+cmp_end_237:
+CMP P1, 0
+JZ sc_false_234
+MOV P2, 1
+JMP sc_end_235
+sc_false_234:
+MOV P2, 0
+sc_end_235:
+CMP P2, 0
+JZ if_else_229
+; Assignment to tcolor
+MOV P4, 79
+MOV [0xCA82], P4
+JMP if_end_228
+if_else_229:
+; If statement
+; Member read (timer)
+MOV P5, 0x82EA
+MOV P6, [P5]
+PUSH P6
+MOV P7, 30
+POP P6
+CMP P6, P7
+JC cmp_true_240
+MOV P6, 0
+JMP cmp_end_241
+cmp_true_240:
+MOV P6, 1
+cmp_end_241:
+PUSH P6
+; Member read (timer)
+MOV P0, 0x82EA
+MOV P1, [P0]
+PUSH P1
+MOV P2, 10
+POP P1
+CMP P1, P2
+JNC cmp_true_242
+MOV P1, 0
+JMP cmp_end_243
+cmp_true_242:
+MOV P1, 1
+cmp_end_243:
+POP P6
+CMP P6, 0
+JZ sc_false_244
+; Member read (timer)
+MOV P4, 0x82EA
+MOV P5, [P4]
+PUSH P5
+MOV P6, 10
+POP P5
+CMP P5, P6
+JNC cmp_true_246
+MOV P5, 0
+JMP cmp_end_247
+cmp_true_246:
+MOV P5, 1
+cmp_end_247:
+CMP P5, 0
+JZ sc_false_244
+MOV P6, 1
+JMP sc_end_245
+sc_false_244:
+MOV P6, 0
+sc_end_245:
+CMP P6, 0
+JZ if_else_239
+; Assignment to tcolor
+MOV P7, 47
+MOV [0xCA82], P7
+JMP if_end_238
+if_else_239:
+; If statement
+; Member read (timer)
+MOV P0, 0x82EA
+MOV P1, [P0]
+PUSH P1
+MOV P2, 10
+POP P1
+CMP P1, P2
+JC cmp_true_250
+MOV P1, 0
+JMP cmp_end_251
+cmp_true_250:
+MOV P1, 1
+cmp_end_251:
+PUSH P1
+; Member read (timer)
+MOV P4, 0x82EA
 MOV P5, [P4]
 PUSH P5
 MOV P6, 0
 POP P5
 ; Signed comparison (two's complement)
 CMP P5, P6
-JLT cmp_true_204
+JGE cmp_true_252
 MOV P5, 0
-JMP cmp_end_205
-cmp_true_204:
+JMP cmp_end_253
+cmp_true_252:
 MOV P5, 1
-cmp_end_205:
-CMP P5, 0
-JZ if_end_202
-; Member assignment to ...hit
-MOV P7, 0x82E8
-PUSH P7
+cmp_end_253:
+POP P1
+CMP P1, 0
+JZ sc_false_254
+; Member read (timer)
+MOV P7, 0x82EA
+MOV P0, [P7]
+PUSH P0
+MOV P1, 0
+POP P0
+; Signed comparison (two's complement)
+CMP P0, P1
+JGE cmp_true_256
 MOV P0, 0
-POP P7
-MOV [P7], P0
-if_end_202:
-; If statement
-; Member read (hit)
-MOV P1, 0x82E8
-MOV P2, [P1]
-PUSH P2
-MOV P4, 10
-POP P2
-; Signed comparison (two's complement)
-CMP P2, P4
-JGE cmp_true_208
-MOV P2, 0
-JMP cmp_end_209
-cmp_true_208:
-MOV P2, 1
-cmp_end_209:
-CMP P2, 0
-JZ if_else_207
-; Assignment to hcolor
-MOV P5, 47
-MOV [0xCA00], P5
-JMP if_end_206
-if_else_207:
-; If statement
-; Member read (hit)
-MOV P6, 0x82E8
-MOV P7, [P6]
+JMP cmp_end_257
+cmp_true_256:
+MOV P0, 1
+cmp_end_257:
+CMP P0, 0
+JZ sc_false_254
+MOV P1, 1
+JMP sc_end_255
+sc_false_254:
+MOV P1, 0
+sc_end_255:
+CMP P1, 0
+JZ if_end_248
+; Assignment to tcolor
+MOV P2, 63
+MOV [0xCA82], P2
+if_end_248:
+if_end_238:
+if_end_228:
+if_end_224:
+; Call to set_pos
+MOV P4, 0
+PUSH P4
+MOV P5, 0
+PUSH P5
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P6, R0
+; Call to set_layer
+MOV P7, 7
 PUSH P7
-MOV P0, 10
-POP P7
-; Signed comparison (two's complement)
-CMP P7, P0
-JLT cmp_true_212
-MOV P7, 0
-JMP cmp_end_213
-cmp_true_212:
-MOV P7, 1
-cmp_end_213:
-PUSH P7
-; Member read (hit)
-MOV P1, 0x82E8
-MOV P2, [P1]
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P0, R0
+; Call to write_text
+MOV P1, 47
+PUSH P1
+MOV P2, str_258
 PUSH P2
-MOV P4, 5
-POP P2
-; Signed comparison (two's complement)
-CMP P2, P4
-JGT cmp_true_214
-MOV P2, 0
-JMP cmp_end_215
-cmp_true_214:
-MOV P2, 1
-cmp_end_215:
-POP P7
-CMP P7, 0
-JZ sc_false_216
-; Member read (hit)
-MOV P5, 0x82E8
-MOV P6, [P5]
-PUSH P6
-MOV P7, 5
-POP P6
-; Signed comparison (two's complement)
-CMP P6, P7
-JGT cmp_true_218
+CALL builtin_write_text
+; Args consumed by callee
+MOV P4, R0
+; Call to set_pos
+MOV P5, 8
+PUSH P5
 MOV P6, 0
-JMP cmp_end_219
-cmp_true_218:
-MOV P6, 1
-cmp_end_219:
-CMP P6, 0
-JZ sc_false_216
-MOV P7, 1
-JMP sc_end_217
-sc_false_216:
-MOV P7, 0
-sc_end_217:
-CMP P7, 0
-JZ if_else_211
-; Assignment to hcolor
-MOV P0, 42
-MOV [0xCA00], P0
-JMP if_end_210
-if_else_211:
-; If statement
+PUSH P6
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P7, R0
+; Call to write_text
+MOV P0, [0xCA80]
+PUSH P0
+; Type cast: (string) expr
 ; Member read (hit)
 MOV P1, 0x82E8
 MOV P2, [P1]
-PUSH P2
-MOV P4, 5
-POP P2
-; Signed comparison (two's complement)
-CMP P2, P4
-JLT cmp_true_222
-MOV P2, 0
-JMP cmp_end_223
-cmp_true_222:
-MOV P2, 1
-cmp_end_223:
-CMP P2, 0
-JZ if_end_220
-; Assignment to hcolor
-MOV P5, 37
-MOV [0xCA00], P5
-if_end_220:
-if_end_210:
-if_end_206:
+ITOS P4, P2
+PUSH P4
+CALL builtin_write_text
+; Args consumed by callee
+MOV P5, R0
 ; Call to set_pos
 MOV P6, 0
 PUSH P6
-MOV P7, 0
+MOV P7, 223
 PUSH P7
 CALL builtin_set_pos
 ; Args consumed by callee
 MOV P0, R0
-; Call to set_layer
-MOV P1, 7
-PUSH P1
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P2, R0
 ; Call to write_text
-MOV P4, 47
-PUSH P4
-MOV P5, str_224
-PUSH P5
+MOV P1, 47
+PUSH P1
+MOV P2, str_259
+PUSH P2
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P6, R0
+MOV P4, R0
 ; Call to set_pos
-MOV P7, 8
-PUSH P7
-MOV P0, 0
-PUSH P0
+MOV P5, 8
+PUSH P5
+MOV P6, 239
+PUSH P6
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P1, R0
+MOV P7, R0
 ; Call to write_text
-MOV P2, [0xCA00]
-PUSH P2
+MOV P0, [0xCA82]
+PUSH P0
 ; Type cast: (string) expr
-; Member read (hit)
-MOV P4, 0x82E8
-MOV P5, [P4]
-ITOS P6, P5
-PUSH P6
+; Member read (timer)
+MOV P1, 0x82EA
+MOV P2, [P1]
+ITOS P4, P2
+PUSH P4
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P7, R0
+MOV P5, R0
 ; Call to set_layer
-MOV P0, 0
-PUSH P0
+MOV P6, 0
+PUSH P6
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P1, R0
+MOV P7, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
 ; Function: main
 func_main:
-ENTER 8
+ENTER 10
 ; var counter = ...
-MOV P2, 0
-MOV [0xCA80], P2
+MOV P0, 0
+MOV [0xCB00], P0
 ; var resets = ...
-MOV P4, 0
-MOV [0xCA82], P4
-; var disttimes = ...
-MOV P5, 0
-MOV [0xCA84], P5
+MOV P1, 0
+MOV [0xCB02], P1
 ; var startscr = ...
-MOV P6, 1
-MOV [0xCA86], P6
+MOV P2, 1
+MOV [0xCB04], P2
+; var rtc = ...
+; Call to get_rtc
+MOV P4, 1
+PUSH P4
+CALL builtin_get_rtc
+; Args consumed by callee
+MOV P5, P0
+MOV [0xCB06], P5
+; var last = ...
+MOV P6, [0xCB06]
+MOV [0xCB08], P6
 ; Call to draw_stars
 MOV P7, 4
 PUSH P7
@@ -3203,7 +3719,7 @@ CALL builtin_mouse_ctrl
 ; Args consumed by callee
 MOV P4, P0
 ; While loop
-while_start_225:
+while_start_260:
 ; Member read (hit)
 MOV P5, 0x82E8
 MOV P6, [P5]
@@ -3212,20 +3728,20 @@ MOV P7, 0
 POP P6
 ; Signed comparison (two's complement)
 CMP P6, P7
-JGT cmp_true_227
+JGT cmp_true_262
 MOV P6, 0
-JMP cmp_end_228
-cmp_true_227:
+JMP cmp_end_263
+cmp_true_262:
 MOV P6, 1
-cmp_end_228:
+cmp_end_263:
 CMP P6, 0
-JZ while_end_226
-MOV P0, [0xCA80]
+JZ while_end_261
+MOV P0, [0xCB00]
 MOV P1, P0
 INC P0
-MOV [0xCA80], P0
+MOV [0xCB00], P0
 ; If statement
-MOV P2, [0xCA80]
+MOV P2, [0xCB00]
 PUSH P2
 MOV P4, 2560
 POP P2
@@ -3234,276 +3750,303 @@ PUSH P2
 MOV P5, 0
 POP P2
 CMP P2, P5
-JZ cmp_true_231
+JZ cmp_true_266
 MOV P2, 0
-JMP cmp_end_232
-cmp_true_231:
+JMP cmp_end_267
+cmp_true_266:
 MOV P2, 1
-cmp_end_232:
+cmp_end_267:
 CMP P2, 0
-JZ if_end_229
+JZ if_end_264
+; Assignment to rtc
+; Call to get_rtc
+MOV P6, 1
+PUSH P6
+CALL builtin_get_rtc
+; Args consumed by callee
+MOV P7, P0
+MOV [0xCB06], P7
+; If statement
+MOV P0, [0xCB06]
+PUSH P0
+MOV P1, [0xCB08]
+POP P0
+SUB P0, P1
+PUSH P0
+MOV P2, 1
+POP P0
+CMP P0, P2
+JNC cmp_true_270
+MOV P0, 0
+JMP cmp_end_271
+cmp_true_270:
+MOV P0, 1
+cmp_end_271:
+CMP P0, 0
+JZ if_end_268
+; Assignment to last
+MOV P4, [0xCB06]
+MOV [0xCB08], P4
+; Method call Player::decTimer
+MOV P5, 0x82E4
+PUSH P5 ; Receiver := self
+CALL func_Player_decTimer
+ADD SP, 2 ; Caller cleans up args + receiver
+MOV P6, P0
+MOV P7, [0xCB02]
+MOV P0, P7
+INC P7
+MOV [0xCB02], P7
+; If statement
+; Member read (timer)
+MOV P1, 0x82EA
+MOV P2, [P1]
+CMP P2, 0
+JZ not_true_274
+MOV P2, 0
+JMP not_end_275
+not_true_274:
+MOV P2, 1
+not_end_275:
+CMP P2, 0
+JZ if_end_272
+; break
+JMP while_end_261
+if_end_272:
+; If statement
+MOV P4, 10
+PUSH P4
+MOV P5, [0xCB02]
+POP P4
+CMP P4, P5
+JZ cmp_true_278
+MOV P4, 0
+JMP cmp_end_279
+cmp_true_278:
+MOV P4, 1
+cmp_end_279:
+CMP P4, 0
+JZ if_end_276
+; Assignment to startscr
+MOV P6, 0
+MOV [0xCB04], P6
+; Call to spawnWave
+CALL func_spawnWave
+MOV P7, P0
+; Assignment to resets
+MOV P0, 0
+MOV [0xCB02], P0
+if_end_276:
+if_end_268:
 ; Method call Missile::updateMissile
-MOV P6, 0x8000
-PUSH P6 ; Receiver := self
+MOV P1, 0x8000
+PUSH P1 ; Receiver := self
 CALL func_Missile_updateMissile
 ADD SP, 2 ; Caller cleans up args + receiver
-MOV P7, P0
+MOV P2, P0
 ; Method call Player::movePlayer
-MOV P0, 0x82E4
-PUSH P0 ; Receiver := self
+MOV P4, 0x82E4
+PUSH P4 ; Receiver := self
 CALL func_Player_movePlayer
 ADD SP, 2 ; Caller cleans up args + receiver
-MOV P1, P0
+MOV P5, P0
 ; Call to updateAsteroids
 CALL func_updateAsteroids
-MOV P2, P0
+MOV P6, P0
 ; Call to checkShipCollision
 CALL func_checkShipCollision
-MOV P4, P0
+MOV P7, P0
 ; Call to checkMissileHits
 CALL func_checkMissileHits
-MOV P5, P0
 ; Switch statement
 ; Call to mouse_read
 CALL builtin_mouse_read
-MOV P6, P0
-MOV P7, 1
-CMP P6, P7
-JZ case_234
-JMP switch_end_233
-case_234:
+MOV P1, P0
+MOV P2, 1
+CMP P1, P2
+JZ case_281
+JMP switch_end_280
+case_281:
 ; Method call Missile::fireMissile
-MOV P0, 0x8000
-PUSH P0 ; Receiver := self
+MOV P4, 0x8000
+PUSH P4 ; Receiver := self
 CALL func_Missile_fireMissile
 ADD SP, 2 ; Caller cleans up args + receiver
-MOV P1, P0
+MOV P5, P0
 ; Member assignment to ...cooldown
-MOV P2, 0x8012
-PUSH P2
-MOV P4, 1
-POP P2
-MOV [P2], P4
-switch_end_233:
+MOV P6, 0x8012
+PUSH P6
+MOV P7, 1
+POP P6
+MOV [P6], P7
+switch_end_280:
 ; Switch statement
 ; Call to key_read
 CALL builtin_key_read
-MOV P5, P0
-MOV P6, 96
-CMP P5, P6
-JZ case_236
-JMP switch_end_235
-case_236:
+MOV P1, 96
+CMP P0, P1
+JZ case_283
+JMP switch_end_282
+case_283:
 ; Member assignment to ...hit
-MOV P7, 0x82E8
-PUSH P7
-MOV P0, 99
-POP P7
-MOV [P7], P0
-switch_end_235:
-if_end_229:
+MOV P2, 0x82E8
+PUSH P2
+MOV P4, 99
+POP P2
+MOV [P2], P4
+switch_end_282:
+if_end_264:
 ; If statement
-MOV P1, [0xCA80]
-PUSH P1
-MOV P2, 5120
-POP P1
-MOD P1, P2
-PUSH P1
-MOV P4, 0
-POP P1
-CMP P1, P4
-JZ cmp_true_239
-MOV P1, 0
-JMP cmp_end_240
-cmp_true_239:
-MOV P1, 1
-cmp_end_240:
-CMP P1, 0
-JZ if_end_237
-; Call to drawAsteroids
-CALL func_drawAsteroids
-MOV P5, P0
-; Call to sprblitall
-CALL func_sprblitall
-MOV P6, P0
-; Call to parallax
-CALL func_parallax
-MOV P7, P0
-; Call to HUD
-CALL func_HUD
-; If statement
-MOV P1, 1
-PUSH P1
-MOV P2, [0xCA86]
-POP P1
-CMP P1, P2
-JZ cmp_true_243
-MOV P1, 0
-JMP cmp_end_244
-cmp_true_243:
-MOV P1, 1
-cmp_end_244:
-CMP P1, 0
-JZ if_end_241
-; Call to startScreen
-CALL func_startScreen
-MOV P4, P0
-if_end_241:
-if_end_237:
-; If statement
-MOV P5, [0xCA80]
+MOV P5, [0xCB00]
 PUSH P5
-MOV P6, 40820
+MOV P6, 5120
 POP P5
 MOD P5, P6
 PUSH P5
 MOV P7, 0
 POP P5
 CMP P5, P7
-JZ cmp_true_247
+JZ cmp_true_286
 MOV P5, 0
-JMP cmp_end_248
-cmp_true_247:
+JMP cmp_end_287
+cmp_true_286:
 MOV P5, 1
-cmp_end_248:
+cmp_end_287:
 CMP P5, 0
-JZ if_end_245
+JZ if_end_284
+; Call to drawAsteroids
+CALL func_drawAsteroids
+; Call to sprblitall
+CALL func_sprblitall
+MOV P1, P0
+; Call to parallax
+CALL func_parallax
+MOV P2, P0
+; Call to HUD
+CALL func_HUD
+MOV P4, P0
+; If statement
+MOV P5, 1
+PUSH P5
+MOV P6, [0xCB04]
+POP P5
+CMP P5, P6
+JZ cmp_true_290
+MOV P5, 0
+JMP cmp_end_291
+cmp_true_290:
+MOV P5, 1
+cmp_end_291:
+CMP P5, 0
+JZ if_end_288
+; Call to startScreen
+CALL func_startScreen
+MOV P7, P0
+if_end_288:
+if_end_284:
+; If statement
+MOV P0, [0xCB00]
+PUSH P0
+MOV P1, 40820
+POP P0
+MOD P0, P1
+PUSH P0
+MOV P2, 0
+POP P0
+CMP P0, P2
+JZ cmp_true_294
+MOV P0, 0
+JMP cmp_end_295
+cmp_true_294:
+MOV P0, 1
+cmp_end_295:
+CMP P0, 0
+JZ if_end_292
 ; Member assignment to ...cooldown
-MOV P0, 0x8012
+MOV P4, 0x8012
+PUSH P4
+MOV P5, 0
+POP P4
+MOV [P4], P5
+; Assignment to counter
+MOV P6, 0
+MOV [0xCB00], P6
+if_end_292:
+JMP while_start_260
+while_end_261:
+; If statement
+; Member read (hit)
+MOV P7, 0x82E8
+MOV P0, [P7]
 PUSH P0
 MOV P1, 0
 POP P0
-MOV [P0], P1
-MOV P2, [0xCA82]
-MOV P4, P2
-INC P2
-MOV [0xCA82], P2
-MOV P5, [0xCA84]
-MOV P6, P5
-INC P5
-MOV [0xCA84], P5
-; If statement
-MOV P7, [0xCA84]
-PUSH P7
-MOV P0, 300
-POP P7
-CMP P7, P0
-JNC cmp_true_251
-MOV P7, 0
-JMP cmp_end_252
-cmp_true_251:
-MOV P7, 1
-cmp_end_252:
-CMP P7, 0
-JZ if_end_249
-; break
-JMP while_end_226
-if_end_249:
-; If statement
-MOV P1, 20
-PUSH P1
-MOV P2, [0xCA82]
-POP P1
-CMP P1, P2
-JZ cmp_true_255
-MOV P1, 0
-JMP cmp_end_256
-cmp_true_255:
-MOV P1, 1
-cmp_end_256:
-CMP P1, 0
-JZ if_end_253
-; Assignment to startscr
-MOV P4, 0
-MOV [0xCA86], P4
-; Call to spawnWave
-CALL func_spawnWave
-MOV P5, P0
-; Assignment to resets
-MOV P6, 0
-MOV [0xCA82], P6
-if_end_253:
-; Assignment to counter
-MOV P7, 0
-MOV [0xCA80], P7
-if_end_245:
-JMP while_start_225
-while_end_226:
-; If statement
-; Member read (hit)
-MOV P0, 0x82E8
-MOV P1, [P0]
-PUSH P1
-MOV P2, 0
-POP P1
 ; Signed comparison (two's complement)
-CMP P1, P2
-JLE cmp_true_259
-MOV P1, 0
-JMP cmp_end_260
-cmp_true_259:
-MOV P1, 1
-cmp_end_260:
-CMP P1, 0
-JZ if_end_257
+CMP P0, P1
+JLE cmp_true_298
+MOV P0, 0
+JMP cmp_end_299
+cmp_true_298:
+MOV P0, 1
+cmp_end_299:
+CMP P0, 0
+JZ if_end_296
 ; Call to endScreen
 CALL func_endScreen
-MOV P4, P0
-if_end_257:
+MOV P2, P0
+if_end_296:
 ; If statement
 ; Member read (hit)
-MOV P5, 0x82E8
-MOV P6, [P5]
-PUSH P6
-MOV P7, 0
-POP P6
+MOV P4, 0x82E8
+MOV P5, [P4]
+PUSH P5
+MOV P6, 0
+POP P5
 ; Signed comparison (two's complement)
-CMP P6, P7
-JGT cmp_true_263
-MOV P6, 0
-JMP cmp_end_264
-cmp_true_263:
-MOV P6, 1
-cmp_end_264:
-PUSH P6
-MOV P0, [0xCA84]
-PUSH P0
-MOV P1, 300
-POP P0
-CMP P0, P1
-JNC cmp_true_265
+CMP P5, P6
+JGT cmp_true_302
+MOV P5, 0
+JMP cmp_end_303
+cmp_true_302:
+MOV P5, 1
+cmp_end_303:
+PUSH P5
+; Member read (timer)
+MOV P7, 0x82EA
+MOV P0, [P7]
+CMP P0, 0
+JZ not_true_304
 MOV P0, 0
-JMP cmp_end_266
-cmp_true_265:
+JMP not_end_305
+not_true_304:
 MOV P0, 1
-cmp_end_266:
-POP P6
-CMP P6, 0
-JZ sc_false_267
-MOV P2, [0xCA84]
-PUSH P2
-MOV P4, 300
-POP P2
-CMP P2, P4
-JNC cmp_true_269
-MOV P2, 0
-JMP cmp_end_270
-cmp_true_269:
-MOV P2, 1
-cmp_end_270:
+not_end_305:
+POP P5
+CMP P5, 0
+JZ sc_false_306
+; Member read (timer)
+MOV P1, 0x82EA
+MOV P2, [P1]
 CMP P2, 0
-JZ sc_false_267
-MOV P6, 1
-JMP sc_end_268
-sc_false_267:
-MOV P6, 0
-sc_end_268:
-CMP P6, 0
-JZ if_end_261
+JZ not_true_308
+MOV P2, 0
+JMP not_end_309
+not_true_308:
+MOV P2, 1
+not_end_309:
+CMP P2, 0
+JZ sc_false_306
+MOV P5, 1
+JMP sc_end_307
+sc_false_306:
+MOV P5, 0
+sc_end_307:
+CMP P5, 0
+JZ if_end_300
 ; Call to winScreen
 CALL func_winScreen
-MOV P5, P0
-if_end_261:
+MOV P4, P0
+if_end_300:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -3512,37 +4055,51 @@ RET
 func_Player_movePlayer:
 ENTER 0
 ; Call to SCBwrite
-MOV P6, 0
+MOV P5, 0
+PUSH P5
+MOV P6, 3
 PUSH P6
-MOV P7, 3
+MOV P7, 8
 PUSH P7
 MOV P0, 8
 PUSH P0
-MOV P1, 8
-PUSH P1
 ; Call to mouse_pos
-MOV P2, 1
+MOV P1, 1
+PUSH P1
+CALL builtin_mouse_pos
+; Args consumed by callee
+MOV P2, P0
 PUSH P2
-CALL builtin_mouse_pos
-; Args consumed by callee
-MOV P4, P0
-PUSH P4
 ; Call to mouse_pos
-MOV P5, 0
-PUSH P5
+MOV P4, 0
+PUSH P4
 CALL builtin_mouse_pos
 ; Args consumed by callee
-MOV P6, P0
+MOV P5, P0
+PUSH P5
+MOV P6, 0
 PUSH P6
-MOV P7, 0
+MOV P7, 128
 PUSH P7
-MOV P0, 128
+MOV P0, 0
 PUSH P0
-MOV P1, 0
-PUSH P1
 CALL func_SCBwrite
 ADD SP, 18 ; Caller cleans up args
-MOV P2, P0
+MOV P1, P0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: decTimer
+func_Player_decTimer:
+ENTER 0
+; Postfix -- on member (timer)
+MOV P2, [FP+4]
+ADD P2, 6
+MOV P4, [P2]
+MOV P5, P4
+DEC P4
+MOV [P2], P4
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -3552,529 +4109,197 @@ func_Missile_fireMissile:
 ENTER 0
 ; If statement
 ; Member read (pmissile1)
-MOV P4, [FP+4]
-MOV P5, [P4]
-PUSH P5
-MOV P6, 0
-POP P5
-CMP P5, P6
-JZ cmp_true_273
-MOV P5, 0
-JMP cmp_end_274
-cmp_true_273:
-MOV P5, 1
-cmp_end_274:
-PUSH P5
-; Member read (cooldown)
-MOV P7, [FP+4]
-ADD P7, 18
-MOV P0, [P7]
-CMP P0, 0
-JZ not_true_275
+MOV P6, [FP+4]
+MOV P7, [P6]
+PUSH P7
 MOV P0, 0
-JMP not_end_276
-not_true_275:
-MOV P0, 1
-not_end_276:
-POP P5
-CMP P5, 0
-JZ sc_false_277
+POP P7
+CMP P7, P0
+JZ cmp_true_312
+MOV P7, 0
+JMP cmp_end_313
+cmp_true_312:
+MOV P7, 1
+cmp_end_313:
+PUSH P7
 ; Member read (cooldown)
 MOV P1, [FP+4]
 ADD P1, 18
 MOV P2, [P1]
 CMP P2, 0
-JZ not_true_279
+JZ not_true_314
 MOV P2, 0
-JMP not_end_280
-not_true_279:
+JMP not_end_315
+not_true_314:
 MOV P2, 1
-not_end_280:
-CMP P2, 0
-JZ sc_false_277
-MOV P5, 1
-JMP sc_end_278
-sc_false_277:
-MOV P5, 0
-sc_end_278:
-CMP P5, 0
-JZ if_else_272
-; Member assignment to ...mx1
-MOV P4, [FP+4]
-ADD P4, 2
-PUSH P4
-; Call to peek
-; Constant folded: 61440 + 2 = 61442
-MOV P5, 61442
-PUSH P5
-CALL builtin_peek
-; Args consumed by callee
-MOV P6, P0
-POP P4
-MOV [P4], P6
-; Member assignment to ...my1
-MOV P7, [FP+4]
-ADD P7, 4
-PUSH P7
-; Call to peek
-; Constant folded: 61440 + 3 = 61443
-MOV P0, 61443
-PUSH P0
-CALL builtin_peek
-; Args consumed by callee
-MOV P1, P0
+not_end_315:
 POP P7
-MOV [P7], P1
-; Member assignment to ...pmissile1
-MOV P2, [FP+4]
-PUSH P2
-MOV P4, 1
-POP P2
-MOV [P2], P4
-; Call to SCBwrite
-MOV P5, 0
-PUSH P5
-MOV P6, 3
-PUSH P6
-MOV P7, 8
-PUSH P7
-MOV P0, 8
-PUSH P0
-; Member read (my1)
-MOV P1, [FP+4]
-ADD P1, 4
-MOV P2, [P1]
-PUSH P2
-; Member read (mx1)
-MOV P4, [FP+4]
-ADD P4, 2
-MOV P5, [P4]
-PUSH P5
-MOV P6, 64
-PUSH P6
-MOV P7, 128
-PUSH P7
-MOV P0, 1
-PUSH P0
-CALL func_SCBwrite
-ADD SP, 18 ; Caller cleans up args
-MOV P1, P0
-JMP if_end_271
-if_else_272:
-; If statement
-; Member read (pmissile2)
-MOV P2, [FP+4]
-ADD P2, 6
-MOV P4, [P2]
-PUSH P4
-MOV P5, 0
-POP P4
-CMP P4, P5
-JZ cmp_true_283
-MOV P4, 0
-JMP cmp_end_284
-cmp_true_283:
-MOV P4, 1
-cmp_end_284:
-PUSH P4
-; Member read (cooldown)
-MOV P6, [FP+4]
-ADD P6, 18
-MOV P7, [P6]
 CMP P7, 0
-JZ not_true_285
-MOV P7, 0
-JMP not_end_286
-not_true_285:
-MOV P7, 1
-not_end_286:
-POP P4
-CMP P4, 0
-JZ sc_false_287
+JZ sc_false_316
 ; Member read (cooldown)
-MOV P0, [FP+4]
-ADD P0, 18
-MOV P1, [P0]
-CMP P1, 0
-JZ not_true_289
-MOV P1, 0
-JMP not_end_290
-not_true_289:
-MOV P1, 1
-not_end_290:
-CMP P1, 0
-JZ sc_false_287
-MOV P4, 1
-JMP sc_end_288
-sc_false_287:
-MOV P4, 0
-sc_end_288:
-CMP P4, 0
-JZ if_else_282
-; Member assignment to ...mx2
-MOV P2, [FP+4]
-ADD P2, 8
-PUSH P2
+MOV P4, [FP+4]
+ADD P4, 18
+MOV P5, [P4]
+CMP P5, 0
+JZ not_true_318
+MOV P5, 0
+JMP not_end_319
+not_true_318:
+MOV P5, 1
+not_end_319:
+CMP P5, 0
+JZ sc_false_316
+MOV P7, 1
+JMP sc_end_317
+sc_false_316:
+MOV P7, 0
+sc_end_317:
+CMP P7, 0
+JZ if_else_311
+; Member assignment to ...mx1
+MOV P6, [FP+4]
+ADD P6, 2
+PUSH P6
 ; Call to peek
 ; Constant folded: 61440 + 2 = 61442
-MOV P4, 61442
-PUSH P4
-CALL builtin_peek
-; Args consumed by callee
-MOV P5, P0
-POP P2
-MOV [P2], P5
-; Member assignment to ...my2
-MOV P6, [FP+4]
-ADD P6, 10
-PUSH P6
-; Call to peek
-; Constant folded: 61440 + 3 = 61443
-MOV P7, 61443
+MOV P7, 61442
 PUSH P7
 CALL builtin_peek
 ; Args consumed by callee
 POP P6
 MOV [P6], P0
-; Member assignment to ...pmissile2
+; Member assignment to ...my1
 MOV P1, [FP+4]
-ADD P1, 6
-PUSH P1
-MOV P2, 1
-POP P1
-MOV [P1], P2
-; Call to SCBwrite
-MOV P4, 0
-PUSH P4
-MOV P5, 3
-PUSH P5
-MOV P6, 8
-PUSH P6
-MOV P7, 8
-PUSH P7
-; Member read (my2)
-MOV P0, [FP+4]
-ADD P0, 10
-MOV P1, [P0]
-PUSH P1
-; Member read (mx2)
-MOV P2, [FP+4]
-ADD P2, 8
-MOV P4, [P2]
-PUSH P4
-MOV P5, 64
-PUSH P5
-MOV P6, 128
-PUSH P6
-MOV P7, 2
-PUSH P7
-CALL func_SCBwrite
-ADD SP, 18 ; Caller cleans up args
-JMP if_end_281
-if_else_282:
-; If statement
-; Member read (pmissile3)
-MOV P1, [FP+4]
-ADD P1, 12
-MOV P2, [P1]
-PUSH P2
-MOV P4, 0
-POP P2
-CMP P2, P4
-JZ cmp_true_293
-MOV P2, 0
-JMP cmp_end_294
-cmp_true_293:
-MOV P2, 1
-cmp_end_294:
-PUSH P2
-; Member read (cooldown)
-MOV P5, [FP+4]
-ADD P5, 18
-MOV P6, [P5]
-CMP P6, 0
-JZ not_true_295
-MOV P6, 0
-JMP not_end_296
-not_true_295:
-MOV P6, 1
-not_end_296:
-POP P2
-CMP P2, 0
-JZ sc_false_297
-; Member read (cooldown)
-MOV P7, [FP+4]
-ADD P7, 18
-MOV P0, [P7]
-CMP P0, 0
-JZ not_true_299
-MOV P0, 0
-JMP not_end_300
-not_true_299:
-MOV P0, 1
-not_end_300:
-CMP P0, 0
-JZ sc_false_297
-MOV P2, 1
-JMP sc_end_298
-sc_false_297:
-MOV P2, 0
-sc_end_298:
-CMP P2, 0
-JZ if_end_291
-; Member assignment to ...mx3
-MOV P1, [FP+4]
-ADD P1, 14
+ADD P1, 4
 PUSH P1
 ; Call to peek
-; Constant folded: 61440 + 2 = 61442
-MOV P2, 61442
+; Constant folded: 61440 + 3 = 61443
+MOV P2, 61443
 PUSH P2
 CALL builtin_peek
 ; Args consumed by callee
 MOV P4, P0
 POP P1
 MOV [P1], P4
-; Member assignment to ...my3
+; Member assignment to ...pmissile1
 MOV P5, [FP+4]
-ADD P5, 16
+PUSH P5
+MOV P6, 1
+POP P5
+MOV [P5], P6
+; Call to SCBwrite
+MOV P7, 0
+PUSH P7
+MOV P0, 3
+PUSH P0
+MOV P1, 8
+PUSH P1
+MOV P2, 8
+PUSH P2
+; Member read (my1)
+MOV P4, [FP+4]
+ADD P4, 4
+MOV P5, [P4]
+PUSH P5
+; Member read (mx1)
+MOV P6, [FP+4]
+ADD P6, 2
+MOV P7, [P6]
+PUSH P7
+MOV P0, 64
+PUSH P0
+MOV P1, 128
+PUSH P1
+MOV P2, 1
+PUSH P2
+CALL func_SCBwrite
+ADD SP, 18 ; Caller cleans up args
+MOV P4, P0
+JMP if_end_310
+if_else_311:
+; If statement
+; Member read (pmissile2)
+MOV P5, [FP+4]
+ADD P5, 6
+MOV P6, [P5]
+PUSH P6
+MOV P7, 0
+POP P6
+CMP P6, P7
+JZ cmp_true_322
+MOV P6, 0
+JMP cmp_end_323
+cmp_true_322:
+MOV P6, 1
+cmp_end_323:
+PUSH P6
+; Member read (cooldown)
+MOV P0, [FP+4]
+ADD P0, 18
+MOV P1, [P0]
+CMP P1, 0
+JZ not_true_324
+MOV P1, 0
+JMP not_end_325
+not_true_324:
+MOV P1, 1
+not_end_325:
+POP P6
+CMP P6, 0
+JZ sc_false_326
+; Member read (cooldown)
+MOV P2, [FP+4]
+ADD P2, 18
+MOV P4, [P2]
+CMP P4, 0
+JZ not_true_328
+MOV P4, 0
+JMP not_end_329
+not_true_328:
+MOV P4, 1
+not_end_329:
+CMP P4, 0
+JZ sc_false_326
+MOV P6, 1
+JMP sc_end_327
+sc_false_326:
+MOV P6, 0
+sc_end_327:
+CMP P6, 0
+JZ if_else_321
+; Member assignment to ...mx2
+MOV P5, [FP+4]
+ADD P5, 8
 PUSH P5
 ; Call to peek
-; Constant folded: 61440 + 3 = 61443
-MOV P6, 61443
+; Constant folded: 61440 + 2 = 61442
+MOV P6, 61442
 PUSH P6
 CALL builtin_peek
 ; Args consumed by callee
 MOV P7, P0
 POP P5
 MOV [P5], P7
-; Member assignment to ...pmissile3
-MOV P0, [FP+4]
-ADD P0, 12
-PUSH P0
-MOV P1, 1
-POP P0
-MOV [P0], P1
-; Call to SCBwrite
-MOV P2, 0
-PUSH P2
-MOV P4, 3
-PUSH P4
-MOV P5, 8
-PUSH P5
-MOV P6, 8
-PUSH P6
-; Member read (my3)
-MOV P7, [FP+4]
-ADD P7, 16
-MOV P0, [P7]
-PUSH P0
-; Member read (mx3)
-MOV P1, [FP+4]
-ADD P1, 14
-MOV P2, [P1]
-PUSH P2
-MOV P4, 64
-PUSH P4
-MOV P5, 128
-PUSH P5
-MOV P6, 3
-PUSH P6
-CALL func_SCBwrite
-ADD SP, 18 ; Caller cleans up args
-MOV P7, P0
-if_end_291:
-if_end_281:
-if_end_271:
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: updateMissile
-func_Missile_updateMissile:
-ENTER 0
-; If statement
-; Member read (pmissile1)
-MOV P0, [FP+4]
-MOV P1, [P0]
-PUSH P1
-MOV P2, 1
-POP P1
-CMP P1, P2
-JZ cmp_true_303
-MOV P1, 0
-JMP cmp_end_304
-cmp_true_303:
-MOV P1, 1
-cmp_end_304:
-CMP P1, 0
-JZ if_end_301
-; Member assignment to ...my1
-MOV P4, [FP+4]
-ADD P4, 4
-MOV P5, [P4]
-PUSH P5
-PUSH P4
-MOV P6, 6
-POP P4
-POP P5
-SUB P5, P6
-MOV [P4], P5
-; If statement
-; Member read (my1)
-MOV P7, [FP+4]
-ADD P7, 4
-MOV P0, [P7]
-PUSH P0
-MOV P1, 0
-POP P0
-; Signed comparison (two's complement)
-CMP P0, P1
-JLT cmp_true_307
-MOV P0, 0
-JMP cmp_end_308
-cmp_true_307:
-MOV P0, 1
-cmp_end_308:
-CMP P0, 0
-JZ if_else_306
-; Member assignment to ...pmissile1
-MOV P2, [FP+4]
-PUSH P2
-MOV P4, 0
-POP P2
-MOV [P2], P4
-; Call to SCBwrite
-MOV P5, 0
-PUSH P5
-MOV P6, 0
-PUSH P6
-MOV P7, 8
-PUSH P7
-MOV P0, 8
-PUSH P0
-MOV P1, 0
-PUSH P1
-MOV P2, 0
-PUSH P2
-MOV P4, 64
-PUSH P4
-MOV P5, 128
-PUSH P5
-MOV P6, 1
-PUSH P6
-CALL func_SCBwrite
-ADD SP, 18 ; Caller cleans up args
-MOV P7, P0
-JMP if_end_305
-if_else_306:
-; Call to SCBwrite
-MOV P0, 0
-PUSH P0
-MOV P1, 3
-PUSH P1
-MOV P2, 8
-PUSH P2
-MOV P4, 8
-PUSH P4
-; Member read (my1)
-MOV P5, [FP+4]
-ADD P5, 4
-MOV P6, [P5]
-PUSH P6
-; Member read (mx1)
-MOV P7, [FP+4]
-ADD P7, 2
-MOV P0, [P7]
-PUSH P0
-MOV P1, 64
-PUSH P1
-MOV P2, 128
-PUSH P2
-MOV P4, 1
-PUSH P4
-CALL func_SCBwrite
-ADD SP, 18 ; Caller cleans up args
-MOV P5, P0
-if_end_305:
-if_end_301:
-; If statement
-; Member read (pmissile2)
-MOV P6, [FP+4]
-ADD P6, 6
-MOV P7, [P6]
-PUSH P7
-MOV P0, 1
-POP P7
-CMP P7, P0
-JZ cmp_true_311
-MOV P7, 0
-JMP cmp_end_312
-cmp_true_311:
-MOV P7, 1
-cmp_end_312:
-CMP P7, 0
-JZ if_end_309
 ; Member assignment to ...my2
-MOV P1, [FP+4]
-ADD P1, 10
-MOV P2, [P1]
-PUSH P2
-PUSH P1
-MOV P4, 6
-POP P1
-POP P2
-SUB P2, P4
-MOV [P1], P2
-; If statement
-; Member read (my2)
-MOV P5, [FP+4]
-ADD P5, 10
-MOV P6, [P5]
-PUSH P6
-MOV P7, 0
-POP P6
-; Signed comparison (two's complement)
-CMP P6, P7
-JLT cmp_true_315
-MOV P6, 0
-JMP cmp_end_316
-cmp_true_315:
-MOV P6, 1
-cmp_end_316:
-CMP P6, 0
-JZ if_else_314
-; Member assignment to ...pmissile2
 MOV P0, [FP+4]
-ADD P0, 6
+ADD P0, 10
 PUSH P0
-MOV P1, 0
-POP P0
-MOV [P0], P1
-; Call to SCBwrite
-MOV P2, 0
-PUSH P2
-MOV P4, 0
-PUSH P4
-MOV P5, 8
-PUSH P5
-MOV P6, 8
-PUSH P6
-MOV P7, 0
-PUSH P7
-MOV P0, 0
-PUSH P0
-MOV P1, 64
+; Call to peek
+; Constant folded: 61440 + 3 = 61443
+MOV P1, 61443
 PUSH P1
-MOV P2, 128
-PUSH P2
-MOV P4, 2
+CALL builtin_peek
+; Args consumed by callee
+MOV P2, P0
+POP P0
+MOV [P0], P2
+; Member assignment to ...pmissile2
+MOV P4, [FP+4]
+ADD P4, 6
 PUSH P4
-CALL func_SCBwrite
-ADD SP, 18 ; Caller cleans up args
-MOV P5, P0
-JMP if_end_313
-if_else_314:
+MOV P5, 1
+POP P4
+MOV [P4], P5
 ; Call to SCBwrite
 MOV P6, 0
 PUSH P6
@@ -4103,73 +4328,436 @@ PUSH P1
 CALL func_SCBwrite
 ADD SP, 18 ; Caller cleans up args
 MOV P2, P0
-if_end_313:
-if_end_309:
+JMP if_end_320
+if_else_321:
 ; If statement
 ; Member read (pmissile3)
 MOV P4, [FP+4]
 ADD P4, 12
 MOV P5, [P4]
 PUSH P5
-MOV P6, 1
+MOV P6, 0
 POP P5
 CMP P5, P6
-JZ cmp_true_319
+JZ cmp_true_332
 MOV P5, 0
-JMP cmp_end_320
-cmp_true_319:
+JMP cmp_end_333
+cmp_true_332:
 MOV P5, 1
-cmp_end_320:
+cmp_end_333:
+PUSH P5
+; Member read (cooldown)
+MOV P7, [FP+4]
+ADD P7, 18
+MOV P0, [P7]
+CMP P0, 0
+JZ not_true_334
+MOV P0, 0
+JMP not_end_335
+not_true_334:
+MOV P0, 1
+not_end_335:
+POP P5
 CMP P5, 0
-JZ if_end_317
+JZ sc_false_336
+; Member read (cooldown)
+MOV P1, [FP+4]
+ADD P1, 18
+MOV P2, [P1]
+CMP P2, 0
+JZ not_true_338
+MOV P2, 0
+JMP not_end_339
+not_true_338:
+MOV P2, 1
+not_end_339:
+CMP P2, 0
+JZ sc_false_336
+MOV P5, 1
+JMP sc_end_337
+sc_false_336:
+MOV P5, 0
+sc_end_337:
+CMP P5, 0
+JZ if_end_330
+; Member assignment to ...mx3
+MOV P4, [FP+4]
+ADD P4, 14
+PUSH P4
+; Call to peek
+; Constant folded: 61440 + 2 = 61442
+MOV P5, 61442
+PUSH P5
+CALL builtin_peek
+; Args consumed by callee
+MOV P6, P0
+POP P4
+MOV [P4], P6
 ; Member assignment to ...my3
 MOV P7, [FP+4]
 ADD P7, 16
-MOV P0, [P7]
-PUSH P0
 PUSH P7
-MOV P1, 6
+; Call to peek
+; Constant folded: 61440 + 3 = 61443
+MOV P0, 61443
+PUSH P0
+CALL builtin_peek
+; Args consumed by callee
+MOV P1, P0
 POP P7
-POP P0
-SUB P0, P1
-MOV [P7], P0
-; If statement
-; Member read (my3)
+MOV [P7], P1
+; Member assignment to ...pmissile3
 MOV P2, [FP+4]
-ADD P2, 16
+ADD P2, 12
+PUSH P2
+MOV P4, 1
+POP P2
+MOV [P2], P4
+; Call to SCBwrite
+MOV P5, 0
+PUSH P5
+MOV P6, 3
+PUSH P6
+MOV P7, 8
+PUSH P7
+MOV P0, 8
+PUSH P0
+; Member read (my3)
+MOV P1, [FP+4]
+ADD P1, 16
+MOV P2, [P1]
+PUSH P2
+; Member read (mx3)
+MOV P4, [FP+4]
+ADD P4, 14
+MOV P5, [P4]
+PUSH P5
+MOV P6, 64
+PUSH P6
+MOV P7, 128
+PUSH P7
+MOV P0, 3
+PUSH P0
+CALL func_SCBwrite
+ADD SP, 18 ; Caller cleans up args
+MOV P1, P0
+if_end_330:
+if_end_320:
+if_end_310:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: updateMissile
+func_Missile_updateMissile:
+ENTER 0
+; If statement
+; Member read (pmissile1)
+MOV P2, [FP+4]
 MOV P4, [P2]
 PUSH P4
-MOV P5, 0
+MOV P5, 1
 POP P4
-; Signed comparison (two's complement)
 CMP P4, P5
-JLT cmp_true_323
+JZ cmp_true_342
 MOV P4, 0
-JMP cmp_end_324
-cmp_true_323:
+JMP cmp_end_343
+cmp_true_342:
 MOV P4, 1
-cmp_end_324:
+cmp_end_343:
 CMP P4, 0
-JZ if_else_322
-; Member assignment to ...pmissile3
+JZ if_end_340
+; Member assignment to ...my1
 MOV P6, [FP+4]
-ADD P6, 12
+ADD P6, 4
+MOV P7, [P6]
+PUSH P7
 PUSH P6
-MOV P7, 0
+MOV P0, 6
 POP P6
+POP P7
+SUB P7, P0
 MOV [P6], P7
+; If statement
+; Member read (my1)
+MOV P1, [FP+4]
+ADD P1, 4
+MOV P2, [P1]
+PUSH P2
+MOV P4, 0
+POP P2
+; Signed comparison (two's complement)
+CMP P2, P4
+JLT cmp_true_346
+MOV P2, 0
+JMP cmp_end_347
+cmp_true_346:
+MOV P2, 1
+cmp_end_347:
+CMP P2, 0
+JZ if_else_345
+; Member assignment to ...pmissile1
+MOV P5, [FP+4]
+PUSH P5
+MOV P6, 0
+POP P5
+MOV [P5], P6
+; Call to SCBwrite
+MOV P7, 0
+PUSH P7
+MOV P0, 0
+PUSH P0
+MOV P1, 8
+PUSH P1
+MOV P2, 8
+PUSH P2
+MOV P4, 0
+PUSH P4
+MOV P5, 0
+PUSH P5
+MOV P6, 64
+PUSH P6
+MOV P7, 128
+PUSH P7
+MOV P0, 1
+PUSH P0
+CALL func_SCBwrite
+ADD SP, 18 ; Caller cleans up args
+MOV P1, P0
+JMP if_end_344
+if_else_345:
+; Call to SCBwrite
+MOV P2, 0
+PUSH P2
+MOV P4, 3
+PUSH P4
+MOV P5, 8
+PUSH P5
+MOV P6, 8
+PUSH P6
+; Member read (my1)
+MOV P7, [FP+4]
+ADD P7, 4
+MOV P0, [P7]
+PUSH P0
+; Member read (mx1)
+MOV P1, [FP+4]
+ADD P1, 2
+MOV P2, [P1]
+PUSH P2
+MOV P4, 64
+PUSH P4
+MOV P5, 128
+PUSH P5
+MOV P6, 1
+PUSH P6
+CALL func_SCBwrite
+ADD SP, 18 ; Caller cleans up args
+MOV P7, P0
+if_end_344:
+if_end_340:
+; If statement
+; Member read (pmissile2)
+MOV P0, [FP+4]
+ADD P0, 6
+MOV P1, [P0]
+PUSH P1
+MOV P2, 1
+POP P1
+CMP P1, P2
+JZ cmp_true_350
+MOV P1, 0
+JMP cmp_end_351
+cmp_true_350:
+MOV P1, 1
+cmp_end_351:
+CMP P1, 0
+JZ if_end_348
+; Member assignment to ...my2
+MOV P4, [FP+4]
+ADD P4, 10
+MOV P5, [P4]
+PUSH P5
+PUSH P4
+MOV P6, 6
+POP P4
+POP P5
+SUB P5, P6
+MOV [P4], P5
+; If statement
+; Member read (my2)
+MOV P7, [FP+4]
+ADD P7, 10
+MOV P0, [P7]
+PUSH P0
+MOV P1, 0
+POP P0
+; Signed comparison (two's complement)
+CMP P0, P1
+JLT cmp_true_354
+MOV P0, 0
+JMP cmp_end_355
+cmp_true_354:
+MOV P0, 1
+cmp_end_355:
+CMP P0, 0
+JZ if_else_353
+; Member assignment to ...pmissile2
+MOV P2, [FP+4]
+ADD P2, 6
+PUSH P2
+MOV P4, 0
+POP P2
+MOV [P2], P4
+; Call to SCBwrite
+MOV P5, 0
+PUSH P5
+MOV P6, 0
+PUSH P6
+MOV P7, 8
+PUSH P7
+MOV P0, 8
+PUSH P0
+MOV P1, 0
+PUSH P1
+MOV P2, 0
+PUSH P2
+MOV P4, 64
+PUSH P4
+MOV P5, 128
+PUSH P5
+MOV P6, 2
+PUSH P6
+CALL func_SCBwrite
+ADD SP, 18 ; Caller cleans up args
+MOV P7, P0
+JMP if_end_352
+if_else_353:
 ; Call to SCBwrite
 MOV P0, 0
 PUSH P0
-MOV P1, 0
+MOV P1, 3
 PUSH P1
 MOV P2, 8
 PUSH P2
 MOV P4, 8
 PUSH P4
-MOV P5, 0
-PUSH P5
+; Member read (my2)
+MOV P5, [FP+4]
+ADD P5, 10
+MOV P6, [P5]
+PUSH P6
+; Member read (mx2)
+MOV P7, [FP+4]
+ADD P7, 8
+MOV P0, [P7]
+PUSH P0
+MOV P1, 64
+PUSH P1
+MOV P2, 128
+PUSH P2
+MOV P4, 2
+PUSH P4
+CALL func_SCBwrite
+ADD SP, 18 ; Caller cleans up args
+MOV P5, P0
+if_end_352:
+if_end_348:
+; If statement
+; Member read (pmissile3)
+MOV P6, [FP+4]
+ADD P6, 12
+MOV P7, [P6]
+PUSH P7
+MOV P0, 1
+POP P7
+CMP P7, P0
+JZ cmp_true_358
+MOV P7, 0
+JMP cmp_end_359
+cmp_true_358:
+MOV P7, 1
+cmp_end_359:
+CMP P7, 0
+JZ if_end_356
+; Member assignment to ...my3
+MOV P1, [FP+4]
+ADD P1, 16
+MOV P2, [P1]
+PUSH P2
+PUSH P1
+MOV P4, 6
+POP P1
+POP P2
+SUB P2, P4
+MOV [P1], P2
+; If statement
+; Member read (my3)
+MOV P5, [FP+4]
+ADD P5, 16
+MOV P6, [P5]
+PUSH P6
+MOV P7, 0
+POP P6
+; Signed comparison (two's complement)
+CMP P6, P7
+JLT cmp_true_362
 MOV P6, 0
+JMP cmp_end_363
+cmp_true_362:
+MOV P6, 1
+cmp_end_363:
+CMP P6, 0
+JZ if_else_361
+; Member assignment to ...pmissile3
+MOV P0, [FP+4]
+ADD P0, 12
+PUSH P0
+MOV P1, 0
+POP P0
+MOV [P0], P1
+; Call to SCBwrite
+MOV P2, 0
+PUSH P2
+MOV P4, 0
+PUSH P4
+MOV P5, 8
+PUSH P5
+MOV P6, 8
+PUSH P6
+MOV P7, 0
+PUSH P7
+MOV P0, 0
+PUSH P0
+MOV P1, 64
+PUSH P1
+MOV P2, 128
+PUSH P2
+MOV P4, 3
+PUSH P4
+CALL func_SCBwrite
+ADD SP, 18 ; Caller cleans up args
+MOV P5, P0
+JMP if_end_360
+if_else_361:
+; Call to SCBwrite
+MOV P6, 0
+PUSH P6
+MOV P7, 3
+PUSH P7
+MOV P0, 8
+PUSH P0
+MOV P1, 8
+PUSH P1
+; Member read (my3)
+MOV P2, [FP+4]
+ADD P2, 16
+MOV P4, [P2]
+PUSH P4
+; Member read (mx3)
+MOV P5, [FP+4]
+ADD P5, 14
+MOV P6, [P5]
 PUSH P6
 MOV P7, 64
 PUSH P7
@@ -4180,37 +4768,8 @@ PUSH P1
 CALL func_SCBwrite
 ADD SP, 18 ; Caller cleans up args
 MOV P2, P0
-JMP if_end_321
-if_else_322:
-; Call to SCBwrite
-MOV P4, 0
-PUSH P4
-MOV P5, 3
-PUSH P5
-MOV P6, 8
-PUSH P6
-MOV P7, 8
-PUSH P7
-; Member read (my3)
-MOV P0, [FP+4]
-ADD P0, 16
-MOV P1, [P0]
-PUSH P1
-; Member read (mx3)
-MOV P2, [FP+4]
-ADD P2, 14
-MOV P4, [P2]
-PUSH P4
-MOV P5, 64
-PUSH P5
-MOV P6, 128
-PUSH P6
-MOV P7, 3
-PUSH P7
-CALL func_SCBwrite
-ADD SP, 18 ; Caller cleans up args
-if_end_321:
-if_end_317:
+if_end_360:
+if_end_356:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -4221,7 +4780,8 @@ RET
 str_189: DEFSTR "Survive the asteroid field!"
 str_195: DEFSTR "You died"
 str_201: DEFSTR "You WIN!"
-str_224: DEFSTR "SHLD"
+str_258: DEFSTR "SHLD"
+str_259: DEFSTR "TIME"
 ; Built-in Function Implementations
 builtin_set_layer:
 POP P0
@@ -4400,6 +4960,21 @@ builtin_get_layer:
 ; Returns the active graphics layer (VL register).
 MOV P0, VL
 RET
+builtin_get_rtc:
+; RTC chunk readout: get_rtc(chunk) returns one 16-bit word of
+; the 32-bit seconds-since-epoch counter. chunk 0 = HIGH word
+; (C1), chunk 1 = LOW word (C0). C0/C1 are read-only, so the
+; call never disturbs its own result (same POP-P3/POP-P1 axis
+; pattern as builtin_mouse_pos).
+POP P3
+POP P1
+MOV P0, C1
+CMP P1, 0
+JZ .get_rtc_done
+MOV P0, C0
+.get_rtc_done:
+PUSH P3
+RET
 ORG 0x8000
 ; Global Variables
 gvar_Missile:
@@ -4407,4 +4982,4 @@ DW 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 gvar_rocks:
 DS 720
 gvar_Player:
-DW 0, 0, 10
+DW 0, 0, 10, 100

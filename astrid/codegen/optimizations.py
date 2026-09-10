@@ -71,23 +71,36 @@ def _is_string_value(expr: Any,
 
 def _expression_key(expr: Any,
                     string_vars: FrozenSet[str] = frozenset(),
-                    string_funcs: FrozenSet[str] = frozenset()) -> str:
+                    string_funcs: FrozenSet[str] = frozenset(),
+                    volatile_vars: FrozenSet[str] = frozenset(),
+                    _counter: Optional[Any] = None) -> str:
+    """Compute a CSE key for `expr`.
+
+    Volatile variables get a unique key per occurrence (via an internal
+    counter object that is fresh per simplify() call) so they never share
+    a cache entry -- every volatile read must compile to a fresh memory
+    load.
+    """
     if isinstance(expr, Number):
         # Floats have no int form (_num_value -> None); use the raw literal
         # so distinct float literals don't collide in the CSE cache.
         iv = _num_value(expr)
         return f"num:{iv}" if iv is not None else f"numF:{expr.value}"
     if isinstance(expr, Identifier):
+        if expr.name in volatile_vars:
+            # Each volatile access is unique: never CSE'd.
+            _counter[0] += 1
+            return f"volatile:{expr.name}:{_counter[0]}"
         return f"var:{expr.name}"
     if isinstance(expr, StringLiteral):
         return f"str:{expr.value}"
     if isinstance(expr, CharLiteral):
         return f"char:{expr.char_value}"
     if isinstance(expr, UnaryOp):
-        return f"un:{expr.op}:{_expression_key(expr.right, string_vars, string_funcs)}"
+        return f"un:{expr.op}:{_expression_key(expr.right, string_vars, string_funcs, volatile_vars, _counter)}"
     if isinstance(expr, BinaryOp):
-        left_key = _expression_key(expr.left, string_vars, string_funcs)
-        right_key = _expression_key(expr.right, string_vars, string_funcs)
+        left_key = _expression_key(expr.left, string_vars, string_funcs, volatile_vars, _counter)
+        right_key = _expression_key(expr.right, string_vars, string_funcs, volatile_vars, _counter)
         # Order-normalize commutative operands so `a + b` and `b + a` share
         # a CSE key -- EXCEPT for '+' when either side is a string value:
         # that is concatenation, and `s + "a"` must NOT be CSE-equivalent
@@ -101,13 +114,13 @@ def _expression_key(expr: Any,
             left_key, right_key = right_key, left_key
         return f"bin:{expr.op}:{left_key}:{right_key}"
     if isinstance(expr, PostfixOp):
-        return f"post:{expr.op}:{_expression_key(expr.left, string_vars, string_funcs)}"
+        return f"post:{expr.op}:{_expression_key(expr.left, string_vars, string_funcs, volatile_vars, _counter)}"
     if isinstance(expr, FuncCall):
-        args = ",".join(_expression_key(arg, string_vars, string_funcs)
+        args = ",".join(_expression_key(arg, string_vars, string_funcs, volatile_vars, _counter)
                         for arg in expr.args)
         return f"call:{expr.name}({args})"
     if isinstance(expr, Cast):
-        return f"cast:{expr.target_type}:{_expression_key(expr.expr, string_vars, string_funcs)}"
+        return f"cast:{expr.target_type}:{_expression_key(expr.expr, string_vars, string_funcs, volatile_vars, _counter)}"
     return repr(expr)
 
 
@@ -120,12 +133,21 @@ class ExpressionSimplifier:
     # their operands are never canonicalized (concat is not commutative).
     string_vars: FrozenSet[str] = frozenset()
     string_funcs: FrozenSet[str] = frozenset()
+    # Names of volatile-qualified variables.  A volatile variable may be
+    # changed asynchronously (e.g. by an ISR or memory-mapped hardware), so
+    # every read must go through memory and must NEVER be CSE'd: each use
+    # must produce a fresh load.  We achieve this by giving each volatile
+    # Identifier a unique CSE key that never matches any other expression.
+    volatile_vars: FrozenSet[str] = frozenset()
 
     def __post_init__(self):
         self._cse_cache: Dict[str, Any] = {}
 
     def simplify(self, expr: Any) -> Any:
         self._cse_cache = {}
+        # Per-simplify-call counter for volatile-variable CSE keys.
+        # Each volatile access gets a unique key so it never matches.
+        self._volatile_counter = [0]
         result = self._simplify_node(expr)
         if self.debug and result is not expr:
             print(f"[EXPR_SIMP] {type(expr).__name__} -> {type(result).__name__}")
@@ -142,6 +164,10 @@ class ExpressionSimplifier:
             return expr
         if isinstance(expr, UnaryOp):
             operand = self._simplify_node(expr.right)
+            # Volatile operand: don't fold, force fresh load.
+            if (self.volatile_vars and isinstance(expr.right, Identifier)
+                    and expr.right.name in self.volatile_vars):
+                return UnaryOp(expr.op, operand)
             folded = self._fold_unary(expr.op, operand)
             if folded is not None:
                 return folded
@@ -151,6 +177,14 @@ class ExpressionSimplifier:
         if isinstance(expr, BinaryOp):
             left = self._simplify_node(expr.left)
             right = self._simplify_node(expr.right)
+            # Volatile operand: don't fold, force fresh loads on both sides.
+            if self.volatile_vars and (
+                    (isinstance(expr.left, Identifier)
+                     and expr.left.name in self.volatile_vars)
+                    or (isinstance(expr.right, Identifier)
+                        and expr.right.name in self.volatile_vars)):
+                left, right = self._canonicalize_operands(expr.op, left, right)
+                return BinaryOp(left, expr.op, right)
             folded = self._fold_binary(expr.op, left, right)
             if folded is not None:
                 return folded
@@ -160,7 +194,8 @@ class ExpressionSimplifier:
             left, right = self._canonicalize_operands(expr.op, left, right)
             simplified = BinaryOp(left, expr.op, right)
             key = _expression_key(simplified, self.string_vars,
-                                  self.string_funcs)
+                                  self.string_funcs, self.volatile_vars,
+                                  self._volatile_counter)
             if key in self._cse_cache:
                 return self._cse_cache[key]
             self._cse_cache[key] = simplified

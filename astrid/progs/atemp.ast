@@ -1,6 +1,19 @@
 include "includes\debug.ast"
 
+unsigned int last = 0;
+
 void main() {
-    int var = 5;
-    dbg.scope(var);
+    unsigned int rtc = get_rtc(1);
+    unsigned int last = rtc;
+    unsigned int counter = 0;
+    while (1) {
+        counter++;
+        if ((counter % 5120) == 0) {
+            rtc = get_rtc(1);
+            if ((rtc - last) >= 1) {
+                last = rtc;
+                dbg.print("Hi");
+            }
+        }
+    }
 }
