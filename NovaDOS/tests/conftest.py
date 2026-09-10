@@ -1,6 +1,8 @@
-"""
-NovaDOS Test Harness
+"""NovaDOS Test Harness
 Boots the kernel, seeds keyboard input, and steps the CPU.
+
+REPL_MAIN is resolved from build/kernel.sym so the tests track kernel
+layout changes without edits.
 """
 import pytest
 import sys
@@ -18,8 +20,34 @@ import nova_keyboard as keyboard
 import nova_uart as uart
 from nova_cpu import CPU
 
-KERNEL = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                       "NovaDOS", "build", "kernel.bin")
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BUILD = os.path.join(_ROOT, "NovaDOS", "build")
+KERNEL = os.path.join(BUILD, "kernel.bin")
+SYMBOLS = os.path.join(BUILD, "kernel.sym")
+
+# NDF directory offset within the bank window (matches ndefs.asm)
+NDF_DIR_OFFSET = 0x0010
+
+
+def _load_symbols():
+    """Parse the assembler's .sym file into a dict of name -> int address."""
+    syms = {}
+    with open(SYMBOLS, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                try:
+                    syms[parts[0]] = int(parts[1], 16)
+                except ValueError:
+                    pass
+    return syms
+
+
+SYMTAB = _load_symbols()
+REPL_MAIN = SYMTAB.get("REPL_MAIN", 0x0C88)
 
 
 def boot_novados(keys=(), cycles_budget=200000):
@@ -69,6 +97,11 @@ def run_until(proc, predicate, max_cycles=200000):
     return False
 
 
+def in_repl(proc, window=0x40):
+    """True when PC sits inside the REPL main loop frame."""
+    return REPL_MAIN <= proc.pc <= REPL_MAIN + window
+
+
 def seed_bank(mem, bank, file_name, payload, entry_addr, file_type=0):
     """Seed an NDF volume into bank `bank` (window 0x8000-0xBFFF).
 
@@ -91,7 +124,7 @@ def seed_bank(mem, bank, file_name, payload, entry_addr, file_type=0):
     length = len(payload)
     entry = [
         *name,
-        0,                                            # type: program
+        file_type,                                    # 0=program 1=data 2=batch
         0,                                            # flags
         (start >> 8) & 0xFF, start & 0xFF,            # start word
         (length >> 8) & 0xFF, length & 0xFF,          # length word
@@ -101,7 +134,3 @@ def seed_bank(mem, bank, file_name, payload, entry_addr, file_type=0):
     # File data
     mem.write_bytes_direct(base + start, payload)
     mem.set_bank(0)
-
-
-# NDF directory offset within the bank window (matches ndefs.asm)
-NDF_DIR_OFFSET = 0x0010

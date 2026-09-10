@@ -252,7 +252,7 @@ MOV P5, 05
 MOV P6, FP
 SUB P6, 226
 MOV [P6], P5
-MOV P7, 0
+MOV P7, 05
 MOV P0, FP
 SUB P0, 224
 MOV [P0], P7
@@ -718,9 +718,9 @@ MOV P5, 16
 PUSH P5
 MOV P6, 8
 PUSH P6
-MOV P7, 127
+MOV P7, 128
 PUSH P7
-MOV P0, 127
+MOV P0, 128
 PUSH P0
 MOV P1, 0
 PUSH P1
@@ -735,226 +735,848 @@ MOV P5, P0
 MOV SP, FP
 POP FP
 RET
-; Function: blitPlayer
-func_blitPlayer:
+; Function: processInput
+func_processInput:
+ENTER 4
+; var key = ...
+; Call to key_read
+CALL builtin_key_read
+MOV P6, P0
+MOV [0xC180], P6
+; var moving = ...
+MOV P7, 0
+MOV [0xC182], P7
+; If statement
+MOV P0, 97
+PUSH P0
+MOV P1, [0xC180]
+POP P0
+CMP P0, P1
+JZ cmp_true_7
+MOV P0, 0
+JMP cmp_end_8
+cmp_true_7:
+MOV P0, 1
+cmp_end_8:
+CMP P0, 0
+JZ if_end_5
+; Member assignment to ...vx
+MOV P2, 0x8010
+MOV P4, [P2]
+PUSH P4
+PUSH P2
+; Member read (runspeed)
+MOV P5, 0x8014
+MOV P6, [P5]
+POP P2
+POP P4
+SUB P4, P6
+MOV [P2], P4
+; If statement
+; Member read (vx)
+MOV P7, 0x8010
+MOV P0, [P7]
+PUSH P0
+; Member read (maxspeed)
+MOV P1, 0x8016
+MOV P2, [P1]
+NEG P2
+POP P0
+CMP P0, P2
+JC cmp_true_11
+MOV P0, 0
+JMP cmp_end_12
+cmp_true_11:
+MOV P0, 1
+cmp_end_12:
+CMP P0, 0
+JZ if_end_9
+; Member assignment to ...vx
+MOV P4, 0x8010
+PUSH P4
+; Member read (maxspeed)
+MOV P5, 0x8016
+MOV P6, [P5]
+NEG P6
+POP P4
+MOV [P4], P6
+if_end_9:
+; Assignment to moving
+MOV P7, 1
+MOV [0xC182], P7
+if_end_5:
+; If statement
+MOV P0, 100
+PUSH P0
+MOV P1, [0xC180]
+POP P0
+CMP P0, P1
+JZ cmp_true_15
+MOV P0, 0
+JMP cmp_end_16
+cmp_true_15:
+MOV P0, 1
+cmp_end_16:
+CMP P0, 0
+JZ if_end_13
+; Member assignment to ...vx
+MOV P2, 0x8010
+PUSH P2
+; Member read (runspeed)
+MOV P4, 0x8014
+MOV P5, [P4]
+PUSH P5
+; Member read (vx)
+MOV P6, 0x8010
+MOV P7, [P6]
+POP P5
+ADD P5, P7
+POP P2
+MOV [P2], P5
+; If statement
+; Member read (vx)
+MOV P0, 0x8010
+MOV P1, [P0]
+PUSH P1
+; Member read (maxspeed)
+MOV P2, 0x8016
+MOV P4, [P2]
+POP P1
+CMP P4, P1
+JC cmp_true_19
+MOV P1, 0
+JMP cmp_end_20
+cmp_true_19:
+MOV P1, 1
+cmp_end_20:
+CMP P1, 0
+JZ if_end_17
+; Member assignment to ...vx
+MOV P5, 0x8010
+PUSH P5
+; Member read (maxspeed)
+MOV P6, 0x8016
+MOV P7, [P6]
+POP P5
+MOV [P5], P7
+if_end_17:
+; Assignment to moving
+MOV P0, 1
+MOV [0xC182], P0
+if_end_13:
+; If statement
+MOV P1, 119
+PUSH P1
+MOV P2, [0xC180]
+POP P1
+CMP P1, P2
+JZ cmp_true_23
+MOV P1, 0
+JMP cmp_end_24
+cmp_true_23:
+MOV P1, 1
+cmp_end_24:
+CMP P1, 0
+JZ if_end_21
+; Method call Player::jump
+MOV P4, 0x800C
+PUSH P4 ; Receiver := self
+CALL func_Player_jump
+ADD SP, 2 ; Caller cleans up args + receiver
+MOV P5, P0
+if_end_21:
+; If statement
+MOV P6, 0
+PUSH P6
+MOV P7, [0xC182]
+POP P6
+CMP P6, P7
+JZ cmp_true_27
+MOV P6, 0
+JMP cmp_end_28
+cmp_true_27:
+MOV P6, 1
+cmp_end_28:
+CMP P6, 0
+JZ if_end_25
+; If statement
+; Member read (vx)
+MOV P0, 0x8010
+MOV P1, [P0]
+PUSH P1
+MOV P2, 0
+POP P1
+; Signed comparison (two's complement)
+CMP P1, P2
+JGT cmp_true_31
+MOV P1, 0
+JMP cmp_end_32
+cmp_true_31:
+MOV P1, 1
+cmp_end_32:
+CMP P1, 0
+JZ if_else_30
+; Member assignment to ...vx
+MOV P4, 0x8010
+MOV P5, [P4]
+PUSH P5
+PUSH P4
+; Member read (friction)
+MOV P6, 0x8008
+MOV P7, [P6]
+POP P4
+POP P5
+SUB P5, P7
+MOV [P4], P5
+JMP if_end_29
+if_else_30:
+; If statement
+; Member read (vx)
+MOV P0, 0x8010
+MOV P1, [P0]
+PUSH P1
+MOV P2, 0
+POP P1
+; Signed comparison (two's complement)
+CMP P1, P2
+JLT cmp_true_35
+MOV P1, 0
+JMP cmp_end_36
+cmp_true_35:
+MOV P1, 1
+cmp_end_36:
+CMP P1, 0
+JZ if_end_33
+; Member assignment to ...vx
+MOV P4, 0x8010
+PUSH P4
+; Member read (friction)
+MOV P5, 0x8008
+MOV P6, [P5]
+PUSH P6
+; Member read (vx)
+MOV P7, 0x8010
+MOV P0, [P7]
+POP P6
+ADD P6, P0
+POP P4
+MOV [P4], P6
+if_end_33:
+if_end_29:
+if_end_25:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: wallSecUpdate
+func_wallSecUpdate:
 ENTER 0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: midSpdUpdate
+func_midSpdUpdate:
+ENTER 0
+; Call to processInput
+CALL func_processInput
+MOV P1, P0
+; Method call Player::blitPlayer
+MOV P2, 0x800C
+PUSH P2 ; Receiver := self
+CALL func_Player_blitPlayer
+ADD SP, 2 ; Caller cleans up args + receiver
+MOV P4, P0
+; Method call Player::updatePhysics
+MOV P5, 0x800C
+PUSH P5 ; Receiver := self
+CALL func_Player_updatePhysics
+ADD SP, 2 ; Caller cleans up args + receiver
+MOV P6, P0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: main
+func_main:
+ENTER 6
+; var counter = ...
+MOV P7, 0
+MOV [0xC300], P7
+; var rtc = ...
+; Call to get_rtc
+MOV P0, 1
+PUSH P0
+CALL builtin_get_rtc
+; Args consumed by callee
+MOV P1, P0
+MOV [0xC302], P1
+; var last = ...
+MOV P2, [0xC302]
+MOV [0xC304], P2
+; Call to loadPlayer
+CALL func_loadPlayer
+MOV P4, P0
+; While loop
+while_start_37:
+MOV P5, 1
+CMP P5, 0
+JZ while_end_38
+MOV P6, [0xC300]
+MOV P7, P6
+INC P6
+MOV [0xC300], P6
+; If statement
+MOV P0, [0xC300]
+PUSH P0
+MOV P1, 7680
+POP P0
+MOD P0, P1
+PUSH P0
+MOV P2, 0
+POP P0
+CMP P0, P2
+JZ cmp_true_41
+MOV P0, 0
+JMP cmp_end_42
+cmp_true_41:
+MOV P0, 1
+cmp_end_42:
+CMP P0, 0
+JZ if_end_39
+; Assignment to rtc
+; Call to get_rtc
+MOV P4, 1
+PUSH P4
+CALL builtin_get_rtc
+; Args consumed by callee
+MOV P5, P0
+MOV [0xC302], P5
+; If statement
+MOV P6, [0xC302]
+PUSH P6
+MOV P7, [0xC304]
+POP P6
+SUB P6, P7
+PUSH P6
+MOV P0, 1
+POP P6
+CMP P6, P0
+JNC cmp_true_45
+MOV P6, 0
+JMP cmp_end_46
+cmp_true_45:
+MOV P6, 1
+cmp_end_46:
+CMP P6, 0
+JZ if_end_43
+; Assignment to last
+MOV P1, [0xC302]
+MOV [0xC304], P1
+; Call to wallSecUpdate
+CALL func_wallSecUpdate
+MOV P2, P0
+if_end_43:
+; Call to midSpdUpdate
+CALL func_midSpdUpdate
+MOV P4, P0
+; Assignment to counter
+MOV P5, 0
+MOV [0xC300], P5
+if_end_39:
+JMP while_start_37
+while_end_38:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: print
+func_dbg_print:
+ENTER 4
+; var origlayer = ...
+; Call to get_layer
+CALL builtin_get_layer
+MOV P6, P0
+MOV [0xC380], P6
+; var curlen = ...
+; Call to strlen
+MOV P7, [FP+6]
+PUSH P7
+CALL builtin_strlen
+; Args consumed by callee
+MOV [0xC382], P0
+; If statement
+MOV P1, [0xC382]
+PUSH P1
+; Member read (longest)
+MOV P2, [FP+4]
+ADD P2, 4
+MOV P4, [P2]
+POP P1
+CMP P4, P1
+JC cmp_true_49
+MOV P1, 0
+JMP cmp_end_50
+cmp_true_49:
+MOV P1, 1
+cmp_end_50:
+CMP P1, 0
+JZ if_end_47
+; Member assignment to ...longest
+MOV P5, [FP+4]
+ADD P5, 4
+PUSH P5
+MOV P6, [0xC382]
+POP P5
+MOV [P5], P6
+if_end_47:
+; Call to set_layer
+MOV P7, 8
+PUSH P7
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P0, R0
+; Call to set_pos
+; Member read (y)
+MOV P1, [FP+4]
+ADD P1, 2
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, [FP+4]
+MOV P5, [P4]
+PUSH P5
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P6, R0
+; Call to write_text
+MOV P7, 31
+PUSH P7
+MOV P0, [FP+6]
+PUSH P0
+CALL builtin_write_text
+; Args consumed by callee
+MOV P1, R0
+; Call to set_layer
+MOV P2, [0xC380]
+PUSH P2
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P4, R0
+; Member assignment to ...y
+MOV P5, [FP+4]
+ADD P5, 2
+MOV P6, [P5]
+PUSH P6
+PUSH P5
+MOV P7, 8
+POP P5
+POP P6
+ADD P6, P7
+MOV [P5], P6
+; If statement
+; Member read (y)
+MOV P0, [FP+4]
+ADD P0, 2
+MOV P1, [P0]
+PUSH P1
+MOV P2, 248
+POP P1
+CMP P1, P2
+JNC cmp_true_53
+MOV P1, 0
+JMP cmp_end_54
+cmp_true_53:
+MOV P1, 1
+cmp_end_54:
+CMP P1, 0
+JZ if_end_51
+; Member assignment to ...y
+MOV P4, [FP+4]
+ADD P4, 2
+PUSH P4
+MOV P5, 0
+POP P4
+MOV [P4], P5
+; Member assignment to ...x
+MOV P6, [FP+4]
+MOV P7, [P6]
+PUSH P7
+PUSH P6
+; Member read (longest)
+MOV P0, [FP+4]
+ADD P0, 4
+MOV P1, [P0]
+PUSH P1
+MOV P2, 8
+POP P1
+MUL P1, P2
+PUSH P1
+MOV P4, 2
+POP P1
+ADD P1, P4
+POP P6
+POP P7
+ADD P7, P1
+MOV [P6], P7
+if_end_51:
+; If statement
+; Member read (x)
+MOV P5, [FP+4]
+MOV P6, [P5]
+PUSH P6
+MOV P7, 248
+POP P6
+CMP P6, P7
+JNC cmp_true_57
+MOV P6, 0
+JMP cmp_end_58
+cmp_true_57:
+MOV P6, 1
+cmp_end_58:
+CMP P6, 0
+JZ if_end_55
+; Call to set_layer
+MOV P0, 8
+PUSH P0
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P1, R0
+; Call to screen_fill
+MOV P2, 0
+PUSH P2
+CALL builtin_screen_fill
+; Args consumed by callee
+MOV P4, R0
+; Call to set_layer
+MOV P5, [0xC380]
+PUSH P5
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P6, R0
+; Member assignment to ...x
+MOV P7, [FP+4]
+PUSH P7
+MOV P0, 0
+POP P7
+MOV [P7], P0
+if_end_55:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: peer
+func_dbg_peer:
+ENTER 2
+; For loop
+; var x = ...
+MOV P1, [FP+6]
+MOV [0xC400], P1
+for_start_59:
+MOV P2, [0xC400]
+PUSH P2
+MOV P4, [FP+6]
+PUSH P4
+MOV P5, [FP+8]
+POP P4
+ADD P4, P5
+POP P2
+CMP P2, P4
+JC cmp_true_62
+MOV P2, 0
+JMP cmp_end_63
+cmp_true_62:
+MOV P2, 1
+cmp_end_63:
+CMP P2, 0
+JZ for_end_60
+; Method call dbg::print
+; Type cast: (stringh) expr
+; Call to peek
+MOV P6, [0xC400]
+PUSH P6
+CALL builtin_peek
+; Args consumed by callee
+MOV P7, P0
+; Hex string conversion
+MOV P2, 0xA000
+MOV P1, P7
+MOV P4, P1
+SHR P4, 12
+AND P4, 0x0F
+CMP P4, 10
+JS .hex_digit_12
+ADD P4, 55
+JMP .hex_done_12
+.hex_digit_12:
+ADD P4, 48
+.hex_done_12:
+MOV R0, P4
+MOV [P2], R0
+INC P2
+MOV P4, P1
+SHR P4, 8
+AND P4, 0x0F
+CMP P4, 10
+JS .hex_digit_8
+ADD P4, 55
+JMP .hex_done_8
+.hex_digit_8:
+ADD P4, 48
+.hex_done_8:
+MOV R0, P4
+MOV [P2], R0
+INC P2
+MOV P4, P1
+SHR P4, 4
+AND P4, 0x0F
+CMP P4, 10
+JS .hex_digit_4
+ADD P4, 55
+JMP .hex_done_4
+.hex_digit_4:
+ADD P4, 48
+.hex_done_4:
+MOV R0, P4
+MOV [P2], R0
+INC P2
+MOV P4, P1
+AND P4, 0x0F
+CMP P4, 10
+JS .hex_digit_0
+ADD P4, 55
+JMP .hex_done_0
+.hex_digit_0:
+ADD P4, 48
+.hex_done_0:
+MOV R0, P4
+MOV [P2], R0
+INC P2
+MOV [P2], 0
+MOV P0, 0xA000
+PUSH P0
+MOV P5, [FP+4]
+PUSH P5 ; Receiver := self
+CALL func_dbg_print
+ADD SP, 4 ; Caller cleans up args + receiver
+MOV P6, P0
+for_continue_61:
+; Wrap-check: save x before update
+MOV P7, [0xC400]
+PUSH P7
+MOV P0, [0xC400]
+MOV P1, P0
+INC P0
+MOV [0xC400], P0
+; Wrap-check: compare x new vs old
+POP P2
+MOV P4, [0xC400]
+CMP P4, P2
+JC for_end_60
+JMP for_start_59
+for_end_60:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: scope
+func_dbg_scope:
+ENTER 0
+; Method call dbg::peer
+MOV P5, 2
+PUSH P5
+MOV P6, FP
+ADD P6, 6
+PUSH P6
+MOV P7, [FP+4]
+PUSH P7 ; Receiver := self
+CALL func_dbg_peer
+ADD SP, 6 ; Caller cleans up args + receiver
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: dump
+func_dbg_dump:
+ENTER 0
+; Method call dbg::peer
+MOV P1, 216
+PUSH P1
+MOV P2, [FP+6]
+PUSH P2
+MOV P4, [FP+4]
+PUSH P4 ; Receiver := self
+CALL func_dbg_peer
+ADD SP, 6 ; Caller cleans up args + receiver
+MOV P5, P0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: blitPlayer
+func_Player_blitPlayer:
+ENTER 2
 ; Call to set_bank
 MOV P6, 1
 PUSH P6
 CALL builtin_set_bank
 ; Args consumed by callee
 MOV P7, R0
-; Call to sprite_blitall
-CALL builtin_sprite_blitall
-MOV P0, R0
-; Call to set_bank
-MOV P1, 0
+; var last = ...
+; Call to get_layer
+CALL builtin_get_layer
+MOV [0xC580], P0
+; Call to set_layer
+MOV P1, 5
 PUSH P1
-CALL builtin_set_bank
+CALL builtin_set_layer
 ; Args consumed by callee
 MOV P2, R0
+; Call to screen_fill
+MOV P4, 0
+PUSH P4
+CALL builtin_screen_fill
+; Args consumed by callee
+MOV P5, R0
+; Call to sprite_blit
+MOV P6, 0
+PUSH P6
+CALL builtin_sprite_blit
+; Args consumed by callee
+MOV P7, R0
+; Call to set_layer
+MOV P0, [0xC580]
+PUSH P0
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P1, R0
+; Call to set_bank
+MOV P2, 0
+PUSH P2
+CALL builtin_set_bank
+; Args consumed by callee
+MOV P4, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-; Function: getPlayerPos
-func_getPlayerPos:
-ENTER 4
-; If statement
-MOV P4, [FP+4]
-CMP P4, 0
-JZ not_true_7
-MOV P4, 0
-JMP not_end_8
-not_true_7:
-MOV P4, 1
-not_end_8:
-CMP P4, 0
-JZ if_else_6
-; var x = ...
-; Call to peek
-MOV P5, 61442
+; Function: updatePhysics
+func_Player_updatePhysics:
+ENTER 2
+; Member assignment to ...vy
+MOV P5, [FP+4]
+ADD P5, 6
+MOV P6, [P5]
+PUSH P6
 PUSH P5
-CALL builtin_peek
-; Args consumed by callee
-MOV P6, P0
-MOV [0xC200], P6
-; Function return
-MOV P7, [0xC200]
-MOV P0, P7
-MOV R0, P7
-MOV SP, FP
-POP FP
-RET
-if_else_6:
-; var y = ...
-; Call to peek
-MOV P0, 61443
-PUSH P0
-CALL builtin_peek
-; Args consumed by callee
-MOV P1, P0
-MOV [0xC202], P1
-; Function return
-MOV P2, [0xC202]
-MOV P0, P2
-MOV R0, P2
-MOV SP, FP
-POP FP
-RET
-; Function: movePlayer
-func_movePlayer:
-ENTER 4
-; var x = ...
-; Call to getPlayerPos
-MOV P4, 0
-PUSH P4
-CALL func_getPlayerPos
-ADD SP, 2 ; Caller cleans up args
-MOV P5, P0
-MOV [0xC280], P5
-; var y = ...
-; Call to getPlayerPos
-MOV P6, 1
-PUSH P6
-CALL func_getPlayerPos
-ADD SP, 2 ; Caller cleans up args
-MOV P7, P0
-MOV [0xC282], P7
-; Switch statement
-MOV P0, [FP+4]
-MOV P1, 0
-CMP P0, P1
-JZ case_10
-MOV P2, 1
-CMP P0, P2
-JZ case_11
-MOV P4, 2
-CMP P0, P4
-JZ case_12
-MOV P5, 3
-CMP P0, P5
-JZ case_13
-JMP switch_end_9
-case_10:
-MOV P6, [0xC280]
-MOV P7, P6
-DEC P6
-MOV [0xC280], P6
-; break
-JMP switch_end_9
-case_11:
-MOV P0, [0xC280]
-MOV P1, P0
-INC P0
-MOV [0xC280], P0
-; break
-JMP switch_end_9
-case_12:
-MOV P2, [0xC282]
-MOV P4, P2
-DEC P2
-MOV [0xC282], P2
-; break
-JMP switch_end_9
-case_13:
-MOV P5, [0xC282]
-MOV P6, P5
-INC P5
-MOV [0xC282], P5
-; break
-JMP switch_end_9
-switch_end_9:
-; If statement
-MOV P7, [0xC280]
-PUSH P7
-MOV P0, 0
-POP P7
-; Signed comparison (two's complement)
-CMP P7, P0
-JLE cmp_true_16
-MOV P7, 0
-JMP cmp_end_17
-cmp_true_16:
-MOV P7, 1
-cmp_end_17:
-CMP P7, 0
-JZ if_else_15
-; Assignment to x
-MOV P1, 0
-MOV [0xC280], P1
-JMP if_end_14
-if_else_15:
-; If statement
-MOV P2, [0xC280]
-PUSH P2
-MOV P4, 255
-POP P2
-CMP P2, P4
-JNC cmp_true_20
-MOV P2, 0
-JMP cmp_end_21
-cmp_true_20:
-MOV P2, 1
-cmp_end_21:
-CMP P2, 0
-JZ if_end_18
-; Assignment to x
-MOV P5, 255
-MOV [0xC280], P5
-if_end_18:
-if_end_14:
-; If statement
-MOV P6, [0xC282]
-PUSH P6
-MOV P7, 0
+; Member read (gravity)
+MOV P7, 0x8006
+MOV P0, [P7]
+POP P5
 POP P6
-; Signed comparison (two's complement)
-CMP P6, P7
-JLE cmp_true_24
-MOV P6, 0
-JMP cmp_end_25
-cmp_true_24:
-MOV P6, 1
-cmp_end_25:
-CMP P6, 0
-JZ if_else_23
-; Assignment to y
-MOV P0, 0
-MOV [0xC282], P0
-JMP if_end_22
-if_else_23:
-; If statement
-MOV P1, [0xC282]
+ADD P6, P0
+MOV [P5], P6
+; Member assignment to ...x
+MOV P1, [FP+4]
+MOV P2, [P1]
+PUSH P2
 PUSH P1
-MOV P2, 255
+; Member read (vx)
+MOV P4, [FP+4]
+ADD P4, 4
+MOV P5, [P4]
 POP P1
-CMP P1, P2
-JNC cmp_true_28
-MOV P1, 0
-JMP cmp_end_29
-cmp_true_28:
-MOV P1, 1
-cmp_end_29:
-CMP P1, 0
-JZ if_end_26
-; Assignment to y
-MOV P4, 255
-MOV [0xC282], P4
-if_end_26:
-if_end_22:
-; Call to SCBwrite
-MOV P5, 0
-PUSH P5
-MOV P6, 3
-PUSH P6
-MOV P7, 16
+POP P2
+ADD P2, P5
+MOV [P1], P2
+; Member assignment to ...y
+MOV P6, [FP+4]
+ADD P6, 2
+MOV P7, [P6]
 PUSH P7
-MOV P0, 8
-PUSH P0
-MOV P1, [0xC282]
+PUSH P6
+; Member read (vy)
+MOV P0, [FP+4]
+ADD P0, 6
+MOV P1, [P0]
+POP P6
+POP P7
+ADD P7, P1
+MOV [P6], P7
+; var floor_y = ...
+; Member read (groundh)
+MOV P2, 0x800A
+MOV P4, [P2]
+PUSH P4
+MOV P5, 16
+POP P4
+SUB P4, P5
+MOV [0xC600], P4
+; If statement
+; Member read (y)
+MOV P6, [FP+4]
+ADD P6, 2
+MOV P7, [P6]
+PUSH P7
+MOV P0, [0xC600]
+POP P7
+CMP P7, P0
+JNC cmp_true_66
+MOV P7, 0
+JMP cmp_end_67
+cmp_true_66:
+MOV P7, 1
+cmp_end_67:
+CMP P7, 0
+JZ if_else_65
+; Member assignment to ...y
+MOV P1, [FP+4]
+ADD P1, 2
 PUSH P1
-MOV P2, [0xC280]
+MOV P2, [0xC600]
+POP P1
+MOV [P1], P2
+; Member assignment to ...vy
+MOV P4, [FP+4]
+ADD P4, 6
+PUSH P4
+MOV P5, 0
+POP P4
+MOV [P4], P5
+; Member assignment to ...isGrounded
+MOV P6, [FP+4]
+ADD P6, 14
+PUSH P6
+MOV P7, 1
+POP P6
+MOV [P6], P7
+JMP if_end_64
+if_else_65:
+; Member assignment to ...isGrounded
+MOV P0, [FP+4]
+ADD P0, 14
+PUSH P0
+MOV P1, 0
+POP P0
+MOV [P0], P1
+if_end_64:
+; Call to SCBwrite
+MOV P2, 0
+PUSH P2
+MOV P4, 3
+PUSH P4
+MOV P5, 16
+PUSH P5
+MOV P6, 8
+PUSH P6
+; Member read (y)
+MOV P7, [FP+4]
+ADD P7, 2
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, [FP+4]
+MOV P2, [P1]
 PUSH P2
 MOV P4, 0
 PUSH P4
@@ -969,135 +1591,98 @@ MOV P7, P0
 MOV SP, FP
 POP FP
 RET
-; Function: gravity
-func_gravity:
-ENTER 0
-; Call to movePlayer
-MOV P0, 1
-PUSH P0
-MOV P1, 3
-PUSH P1
-CALL func_movePlayer
-ADD SP, 4 ; Caller cleans up args
-MOV P2, P0
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
 ; Function: jump
-func_jump:
+func_Player_jump:
 ENTER 0
 ; If statement
-MOV P4, [0x8000]
-CMP P4, 0
-JZ if_else_31
-; Call to movePlayer
-MOV P5, 3
-PUSH P5
-MOV P6, 2
-PUSH P6
-CALL func_movePlayer
-ADD SP, 4 ; Caller cleans up args
-MOV P7, P0
-JMP if_end_30
-if_else_31:
-; Assignment to jumping
-MOV P0, 0
-MOV [0x8002], P0
-if_end_30:
-MOV P1, [0x8000]
-MOV P2, P1
-DEC P1
-MOV [0x8000], P1
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: main
-func_main:
-ENTER 2
-; var counter = ...
-MOV P4, 0
-MOV [0xC400], P4
-; Call to loadPlayer
-CALL func_loadPlayer
-MOV P5, P0
-; While loop
-while_start_32:
-MOV P6, 1
-CMP P6, 0
-JZ while_end_33
-MOV P7, [0xC400]
-MOV P0, P7
-INC P7
-MOV [0xC400], P7
-; If statement
-MOV P1, [0xC400]
+; Member read (isGrounded)
+MOV P0, [FP+4]
+ADD P0, 14
+MOV P1, [P0]
 PUSH P1
-MOV P2, 5120
+MOV P2, 1
 POP P1
-MOD P1, P2
-PUSH P1
-MOV P4, 0
-POP P1
-CMP P1, P4
-JZ cmp_true_36
+CMP P1, P2
+JZ cmp_true_70
 MOV P1, 0
-JMP cmp_end_37
-cmp_true_36:
+JMP cmp_end_71
+cmp_true_70:
 MOV P1, 1
-cmp_end_37:
+cmp_end_71:
 CMP P1, 0
-JZ if_end_34
-; Call to gravity
-CALL func_gravity
-MOV P5, P0
-; Call to jump
-CALL func_jump
-MOV P6, P0
-; If statement
-; Call to key_read
-CALL builtin_key_read
-MOV P7, P0
+JZ if_end_68
+; Member assignment to ...vy
+MOV P4, [FP+4]
+ADD P4, 6
+PUSH P4
+; Member read (jumpspeed)
+MOV P5, [FP+4]
+ADD P5, 12
+MOV P6, [P5]
+NEG P6
+POP P4
+MOV [P4], P6
+; Member assignment to ...isGrounded
+MOV P7, [FP+4]
+ADD P7, 14
 PUSH P7
-MOV P0, 32
+MOV P0, 0
 POP P7
-CMP P7, P0
-JZ cmp_true_40
-MOV P7, 0
-JMP cmp_end_41
-cmp_true_40:
-MOV P7, 1
-cmp_end_41:
-CMP P7, 0
-JZ if_end_38
-; Assignment to jumping
-MOV P1, 1
-MOV [0x8002], P1
-if_end_38:
-; Call to blitPlayer
-CALL func_blitPlayer
-MOV P2, P0
-; Assignment to counter
-MOV P4, 0
-MOV [0xC400], P4
-if_end_34:
-JMP while_start_32
-while_end_33:
+MOV [P7], P0
+if_end_68:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
 ; Built-in Function Implementations
-builtin_sprite_blitall:
-; sprite_blitall(): blit all active sprites (0-15) from their SCBs.
-; Clears sprite layers 5-8 first, then renders every active sprite.
+builtin_set_layer:
 POP P0
-SPBLITALL
+POP P1
+MOV VL, P1
+PUSH P0
+RET
+builtin_set_pos:
+POP P0
+POP P1
+POP P2
+MOV VX, P1
+MOV VY, P2
+PUSH P0
+RET
+builtin_screen_fill:
+POP P0
+POP P1
+SFILL P1
+PUSH P0
+RET
+builtin_sprite_blit:
+; sprite_blit(sprite_id): blit the sprite with the given ID (0-15).
+; The SCB (16 bytes per sprite at 0xF000 + id*16) must already be
+; programmed: data address (big-endian word = two poke() calls),
+; x, y, width, height, flags, transparency color.
+POP P0
+POP P1
+SPBLIT P1
+PUSH P0
+RET
+builtin_write_text:
+POP P0
+POP P1
+POP P2
+MOV VC, P2
+TEXT P1
 PUSH P0
 RET
 builtin_key_read:
 KEYIN P0
+RET
+builtin_strlen:
+; STRLEN writes result to R0
+POP P3
+POP P1
+STRLEN P1
+MOV P0, R0
+PUSH P3
 RET
 builtin_peek:
 ; peek(addr) -> the byte stored at addr.
@@ -1147,9 +1732,30 @@ POP P1
 MOV BANK, P1
 PUSH P0
 RET
+builtin_get_layer:
+; Returns the active graphics layer (VL register).
+MOV P0, VL
+RET
+builtin_get_rtc:
+; RTC chunk readout: get_rtc(chunk) returns one 16-bit word of
+; the 32-bit seconds-since-epoch counter. chunk 0 = HIGH word
+; (C1), chunk 1 = LOW word (C0). C0/C1 are read-only, so the
+; call never disturbs its own result (same POP-P3/POP-P1 axis
+; pattern as builtin_mouse_pos).
+POP P3
+POP P1
+MOV P0, C1
+CMP P1, 0
+JZ .get_rtc_done
+MOV P0, C0
+.get_rtc_done:
+PUSH P3
+RET
 ORG 0x8000
 ; Global Variables
-gvar_jumptime:
-DW 5
-gvar_jumping:
-DW 0
+gvar_dbg:
+DW 0, 0, 0
+gvar_World:
+DW 1, 1, 248
+gvar_Player:
+DW 128, 128, 0, 0, 3, 5, 8, 0

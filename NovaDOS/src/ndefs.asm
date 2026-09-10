@@ -43,9 +43,16 @@ ZP_MOUSE_FL EQU 0x0033     ; mouse flag (byte)
 ; ---- IVT ----
 IVT_BASE    EQU 0x0100
 
-; ---- Keyboard scan codes ----
-K_ENTER     EQU 0x93
-K_BACKSP    EQU 0x92
+; ---- Keyboard codes ----
+; Ground truth verified in nova_keyboard.py::_create_key_mapping and
+; nova_gui.py::map_event_to_nova_key: the GUI path ('enter'/'backspace'
+; key names) produces plain ASCII control codes. The design docs' 0x93/0x92
+; scan codes are NOT produced by the emulator's keyboard path; GETLINE
+; accepts both so raw-injected and GUI-driven input behave identically.
+K_ENTER     EQU 0x0A      ; GUI 'enter' (pygame K_RETURN -> key_mapping)
+K_BACKSP    EQU 0x08      ; GUI 'backspace'
+K_ENTER_ALT EQU 0x93      ; design-doc scan code (headless injections)
+K_BACKSP_ALT EQU 0x92     ; design-doc scan code
 
 ; ---- Colors ----
 C_BLACK     EQU 0x00

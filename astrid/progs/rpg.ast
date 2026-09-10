@@ -1,19 +1,21 @@
-include "includes\debug.ash";
+include "includes\debug.ast";
 
 struct World {
-    int gravity;
-    int friction;
-    int groundh;
-} World = {2, 1, 248};
+    int gravity;    // Gravity acceleration step
+    int friction;   // Ground deceleration step
+    int groundh;    // Ground boundary y-coordinate
+} World = {1, 1, 248};
 
 struct Player {
     int x;
     int y;
     int vx;
     int vy;
-    int runspeed;
-    int jumpspeed;
-} Player = {128, 128, 0, 0, 1, 8};
+    int runspeed;   // Horizontal acceleration rate
+    int maxspeed;   // Max horizontal speed limit
+    int jumpspeed;  // Initial upward burst speed
+    int isGrounded; // Ground state flag
+} Player = {128, 128, 0, 0, 3, 5, 8, 0};
 
 void memsprite(int addr, int sprite[128]) {
     set_bank(1);
@@ -37,92 +39,129 @@ void SCBwrite(int id, int addrhi, int addrlo, int x, int y, int w, int h, int fl
 }
 
 impl Player {
-    void loadPlayer(self) {
-        int player[128] = {
-            00,00,05,05,05,05,05,05,
-            00,05,05,05,05,05,05,05,
-            05,05,05,05,02,15,02,15,
-            05,05,05,15,02,15,02,15,
-            05,05,05,15,15,15,15,15,
-            05,05,05,15,15,15,15,00,
-            05,05,05,95,95,95,95,00,
-            05,05,05,95,95,95,95,95,  //8
-            05,05,05,95,95,95,95,95,  //1
-            05,05,95,15,95,95,95,00,
-            05,05,95,15,95,95,95,00,
-            00,95,95,15,95,95,95,00,
-            00,95,95,95,95,95,95,00,
-            95,95,95,95,95,95,95,95,
-            02,02,02,02,02,02,02,02,
-            02,02,02,02,02,02,02,02
-        };
-        memsprite(0x8000, self.player);
-        SCBwrite(0, 0x80, 0x00, 127, 127, 8, 16, 0b00000011, 0x00);
-    }
-
     void blitPlayer(self) {
         set_bank(1);
-        sprite_blitall();
+        int last = get_layer();
+        set_layer(5);
+        screen_fill(0x00);
+        sprite_blit(0);
+        set_layer(last);
         set_bank(0);
     }
 
-    int getPlayerPos(self, int axis) {
-        if (!axis) {
-            int self.x = peek(0xF000 + 2);
-            return self.x;
+    void updatePhysics(self) {
+        // 1. Apply Gravity
+        self.vy += World.gravity;
+
+        // 3. Integrate Velocity into Position
+        self.x += self.vx;
+        self.y += self.vy;
+
+        // 4. Ground Collision Detection & Response
+        int floor_y = World.groundh - 16;
+        if (self.y >= floor_y) {
+            self.y = floor_y;
+            self.vy = 0;
+            self.isGrounded = 1;
         } else {
-            int self.y = peek(0xF000 + 3);
-            return self.y;
+            self.isGrounded = 0;
         }
+
+        // 5. Update Hardware/Sprite Attribute Register
+        SCBwrite(0, 0x80, 0x00, self.x, self.y, 8, 16, 0b00000011, 0x00);
     }
 
-    void movePlayer(int dir, int amt) {
-        int x = getPlayerPos(0);
-        int y = getPlayerPos(1);
-        switch (dir) {
-            case 0:
-                x--;
-                break;
-            case 1:
-                x++;
-                break;
-            case 2:
-                y--;
-                break;
-            case 3:
-                y++;
-                break;
+    void jump(self) {
+        if (self.isGrounded == 1) {
+            self.vy = -self.jumpspeed;
+            self.isGrounded = 0;
         }
-        if (x <= 0){
-            x = 0;
-        } else if (x >= 255) {
-            x = 255;
-        }
-        if (y <= 0) {
-            y = 0;
-        } else if (y >= 255) {
-            y = 255;
-        }
-        SCBwrite(0, 0x80, 0x00, x, y, 8, 16, 0b00000011, 0x00);
     }
 }
 
-void gravity() {
-    Player.movePlayer(3,1);
+void loadPlayer() {
+    int player[128] = {
+        00,00,05,05,05,05,05,05,
+        00,05,05,05,05,05,05,05,
+        05,05,05,05,02,15,02,15,
+        05,05,05,15,02,15,02,15,
+        05,05,05,15,15,15,15,15,
+        05,05,05,15,15,15,15,00,
+        05,05,05,95,95,95,95,00,
+        05,05,05,95,95,95,95,95,
+        05,05,05,95,95,95,95,95,
+        05,05,95,15,95,95,95,00,
+        05,05,95,15,95,95,95,00,
+        00,95,95,15,95,95,95,00,
+        00,95,95,95,95,95,95,00,
+        95,95,95,95,95,95,95,95,
+        02,02,02,02,02,02,02,02,
+        02,02,02,02,02,02,02,02
+    };
+    memsprite(0x8000, player);
+    SCBwrite(0, 0x80, 0x00, 128, 128, 8, 16, 0b00000011, 0x00);
+}
+
+void processInput() {
+    int key = key_read();
+    int moving = 0;
+
+    // 'a' key: Accelerate Left
+    if (key == 97) {
+        Player.vx -= Player.runspeed;
+        if (Player.vx < -Player.maxspeed) {
+            Player.vx = -Player.maxspeed; // Clamp to -maxspeed
+        }
+        moving = 1;
+    }
+    
+    // 'd' key: Accelerate Right
+    if (key == 100) {
+        Player.vx += Player.runspeed;
+        if (Player.vx > Player.maxspeed) {
+            Player.vx = Player.maxspeed;  // Clamp to +maxspeed
+        }
+        moving = 1;
+    }
+
+    // 'w' key: Jump
+    if (key == 119) {
+        Player.jump();
+    }
+
+    // Apply friction ONLY if no horizontal input is active
+    if (moving == 0) {
+        if (Player.vx > 0) {
+            Player.vx -= World.friction;
+        } else if (Player.vx < 0) {
+            Player.vx += World.friction;
+        }
+    }
+}
+
+void wallSecUpdate() {
+}
+
+void midSpdUpdate() {
+    processInput();
+    Player.blitPlayer();
+    Player.updatePhysics();
 }
 
 void main() {
     int counter = 0;
+    unsigned int rtc = get_rtc(1);
+    unsigned int last = rtc;
     loadPlayer();
     while (1) {
         counter++;
-        if ((counter % 5120) == 0){
-            gravity();
-            jump();
-            if (key_read() == 32) {
-                jumping = 1;
+        if ((counter % 7680) == 0) {
+            rtc = get_rtc(1);
+            if (rtc - last >= 1) {
+                last = rtc;
+                wallSecUpdate();
             }
-            blitPlayer();
+            midSpdUpdate();
             counter = 0;
         }
     }

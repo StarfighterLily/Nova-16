@@ -420,7 +420,11 @@ void HUD(){
     write_text((string)Player.hit, hcolor);
     set_pos((255 - (4*8) / 2) - ((4*8) / 2), 0);
     write_text("TIME", 0x2F);
-    set_pos((255 - (2*8) / 2) - ((2*8) / 2), 8);
+    if (Player.timer == 100){
+        set_pos((255 - (3*8) / 2) - ((3*8) / 2), 8);
+    } else {
+        set_pos((255 - (2*8) / 2) - ((2*8) / 2), 8);
+    }
     write_text((string)Player.timer, tcolor);
     set_layer(0);
 }

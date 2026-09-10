@@ -7,9 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from conftest import boot_novados, type_cmd, run_until, seed_bank
-
-REPL_MAIN = 0x0C03
+from conftest import boot_novados, type_cmd, run_until, seed_bank, in_repl
 
 # Built from NovaDOS/src/sample.asm (ORG 0x1000)
 SAMPLE_BIN = Path(__file__).resolve().parent.parent / "build" / "sample.bin"
@@ -32,14 +30,10 @@ def test_load_runs_sample_returns_to_repl(sample_payload):
     # The sample sets marker bytes at 0x00E0/0x00E1 and RETs to the REPL.
     ok = run_until(
         proc,
-        lambda p: (mem.read_byte(0x00E0) == 0x42
-                   and REPL_MAIN <= p.pc <= REPL_MAIN + 0x30),
+        lambda p: mem.read_byte(0x00E0) == 0x42 and in_repl(p),
         max_cycles=60000)
     assert ok, f"sample marker byte never set (mem[0x00E0]=0x{mem.read_byte(0x00E0):02X})"
     assert mem.read_byte(0x00E1) == 0x2A
-    # And we returned to the REPL loop
-    assert REPL_MAIN <= proc.pc <= REPL_MAIN + 0x30, \
-        f"did not return to REPL: PC=0x{proc.pc:04X}"
 
 
 @pytest.mark.unit
@@ -67,6 +61,6 @@ def test_dir_lists_volume(sample_payload):
     ok = run_until(
         proc,
         lambda p: (int((gfx._compositor.layers[0] != 0).sum()) > baseline
-                   and REPL_MAIN <= p.pc <= REPL_MAIN + 0x30),
+                   and in_repl(p)),
         max_cycles=60000)
     assert ok, f"DIR printed no file name (pixels {baseline} -> {int((gfx._compositor.layers[0] != 0).sum())})"
