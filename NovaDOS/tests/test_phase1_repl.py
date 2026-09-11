@@ -11,8 +11,8 @@ from conftest import boot_novados, type_cmd, run_until, in_repl
 VARS_BASE = 0xD000
 
 
-def layer_pixels(gfx):
-    return int((gfx._compositor.layers[0] != 0).sum())
+def layer_pixels(gfx, layer=1):
+    return int((gfx._compositor.layers[layer] != 0).sum())
 
 
 @pytest.mark.unit
@@ -47,8 +47,10 @@ def test_assign_and_print():
                    and in_repl(p)),
         max_cycles=60000)
     assert ok, f"A = 5 never landed in the variable heap (0x{mem.read_byte(VARS_BASE):02X} {mem.read_byte(VARS_BASE+1):02X})"
-    # '5' rendered on screen (a '5' glyph is 8x8; look for new pixels past row 2)
-    rest = gfx._compositor.layers[0][16:, :]
+    # '5' rendered on screen (a '5' glyph is 8x8; look for new pixels on the
+    # console layer (layer 1) below the banner (layer 2).  Row 3+ is the
+    # scroll region: CONS_TOP_ROW = 3.
+    rest = gfx._compositor.layers[1][24:, :]
     assert int((rest != 0).sum()) > 0, "PRINT A did not render a digit"
 
 
@@ -76,12 +78,13 @@ def test_peek_signature_prints_hex():
                    and mem.read_byte(0x0025) >= 4),
         max_cycles=60000)
     assert ok, f"PEEK produced no output (pixels {baseline} -> {layer_pixels(gfx)}, PC=0x{proc.pc:04X})"
-    # Layout after "PEEK 0x0000<Enter>": row 2 holds the echoed command,
-    # row 3 holds the hex output "4E 44" (the OS signature bytes).
-    row2 = int((gfx._compositor.layers[0][16:24, :] != 0).sum())
-    row3 = int((gfx._compositor.layers[0][24:32, :] != 0).sum())
-    assert row2 > 0, "echoed command not rendered on row 2"
-    assert row3 > 0, "hex output '4E 44' not rendered on row 3"
+    # Layout after "PEEK 0x0000<Enter>": 
+    #   layer 1 row 3 (y=24..32) holds the echoed command "PEEK 0x0000",
+    #   layer 1 row 4 (y=32..40) holds the hex output "4E 44" (OS signature).
+    row_echo = int((gfx._compositor.layers[1][24:32, :] != 0).sum())
+    row_hex  = int((gfx._compositor.layers[1][32:40, :] != 0).sum())
+    assert row_echo > 0, "echoed command not rendered on console layer row 3"
+    assert row_hex > 0, "hex output '4E 44' not rendered on console layer row 4"
     # Signature bytes really are the ND signature in memory
     assert mem.read_bytes_direct(0x0000, 2) == [0x4E, 0x44]
 

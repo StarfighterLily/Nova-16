@@ -25,15 +25,15 @@ def test_boot_reaches_repl():
 
 @pytest.mark.unit
 @pytest.mark.graphics
-def test_boot_banner_pixels_on_layer0():
+def test_boot_banner_pixels_on_layer2():
     proc, mem, gfx, kbd = boot_novados()
     run_until(proc, in_repl, max_cycles=20000)
-    # Banner glyphs ("NOVADOS" / "READY.") drawn on layer 0 buffer
-    non_zero = int((gfx._compositor.layers[0] != 0).sum())
-    assert non_zero > 0, "banner produced no pixels on layer 0"
+    # Banner glyphs ("NOVADOS" / "READY.") drawn on STATIC layer 2
+    non_zero = int((gfx._compositor.layers[2] != 0).sum())
+    assert non_zero > 0, "banner produced no pixels on layer 2"
 
     # The glyphs live near the top rows (row 0 and row 1)
-    top_rows = gfx._compositor.layers[0][0:16, :]
+    top_rows = gfx._compositor.layers[2][0:16, :]
     assert int((top_rows != 0).sum()) > 0, "no banner glyphs in top rows"
 
 

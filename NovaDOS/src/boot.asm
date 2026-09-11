@@ -32,14 +32,16 @@ BOOT:
     MOV SP, 0xFFFF      ; reset hardware stack
     MOV FP, 0xFFFF      ; reset frame pointer
     MOV VM, 0           ; coordinate mode
-    MOV VL, 0           ; console text on layer 0
+    MOV VL, 1           ; console text on the volatile layer (CONS_LAYER)
     MOV VC, C_WHITE     ; white pen
-    CALL CLRSCREEN      ; clear layer 0
+    CALL CLRSCREEN      ; clear layers 0/1/2
     MOV R0, 0
     MOV [0x0024], R0    ; ZP_VID_CUR: cursor X = 0
-    MOV [0x0025], R0    ; ZP_VID_CUR2: cursor Y = 0
+    MOV R0, 3           ; CONS_TOP_ROW: below the banner (rows 0-2)
+    MOV [0x0025], R0    ; ZP_VID_CUR2: cursor Y = 3
     MOV VX, 0
-    MOV VY, 0
+    MOV VY, 24          ; row 3 * 8px: first console row
+    MOV VL, 1
     MOV BANK, 0
     ; Write OS signature "ND\x01\x00"
     MOV R0, 0x4E        ; 'N'
@@ -113,10 +115,16 @@ V7_HANDLER:
     IRET
 
 ; ---------------------------------------------------------------------------
-; PRINT_BANNER — display the NovaDOS boot banner on layer 0.
-; Row 0 "NOVADOS", row 1 "READY."; leaves the cursor at row 2 col 0.
+; PRINT_BANNER — display the NovaDOS boot banner on the STATIC layer 2.
+; Row 0 "NOVADOS", row 1 "READY."; console cursor starts at row 3 col 0.
+; Layer discipline: banner saves VL in P2, draws on BANNER_LAYER, leaves
+; VL on CONS_LAYER so the REPL never has to reselect it. Preserves the
+; caller's VC (re-whitens after drawing). Clobbers R0, P2.
 ; ---------------------------------------------------------------------------
 PRINT_BANNER:
+    PUSH P2
+    MOV P2, VL
+    MOV VL, 2           ; BANNER_LAYER: static chrome above scrolling text
     MOV VY, 0
     MOV VX, 0
     MOV R0, 0x4E        ; 'N'
@@ -158,10 +166,13 @@ PRINT_BANNER:
     MOV VX, 40
     MOV R0, 0x2E        ; '.'
     CHAR R0
+    MOV VC, C_WHITE     ; restore pen (CHAR leaves VC untouched, be explicit)
+    MOV VL, 1           ; hand the REPL the volatile console layer
+    POP P2
     MOV R0, 0
     MOV [0x0024], R0    ; ZP_VID_CUR: cursor X = 0
-    MOV R0, 2
-    MOV [0x0025], R0    ; ZP_VID_CUR2: cursor Y = 2
+    MOV R0, 3           ; CONS_TOP_ROW
+    MOV [0x0025], R0    ; ZP_VID_CUR2: cursor Y = 3
     MOV VX, 0
-    MOV VY, 16
+    MOV VY, 24          ; row 3 * 8px
     RET

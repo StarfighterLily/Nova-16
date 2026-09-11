@@ -54,13 +54,13 @@ def test_bank_command_switches_bank(sample_payload):
 @pytest.mark.integration
 def test_dir_lists_volume(sample_payload):
     proc, mem, gfx, kbd = boot_novados()
-    baseline = int((gfx._compositor.layers[0] != 0).sum())
+    baseline = int((gfx._compositor.layers[1] != 0).sum())
     seed_bank(mem, 3, b"SAMPLE", sample_payload, entry_addr=0x1000)
     type_cmd(proc, gfx, kbd, "BANK 3")
     type_cmd(proc, gfx, kbd, "DIR")
     ok = run_until(
         proc,
-        lambda p: (int((gfx._compositor.layers[0] != 0).sum()) > baseline
+        lambda p: (int((gfx._compositor.layers[1] != 0).sum()) > baseline
                    and in_repl(p)),
         max_cycles=60000)
-    assert ok, f"DIR printed no file name (pixels {baseline} -> {int((gfx._compositor.layers[0] != 0).sum())})"
+    assert ok, f"DIR printed no file name (pixels {baseline} -> {int((gfx._compositor.layers[1] != 0).sum())})"

@@ -1,141 +1,88 @@
 ; NovaDOS — Command Implementations
-; DO_HELP, DO_PEEK, DO_BANK, DO_LOAD, DO_PRINT — the actions behind the
-; REPL dispatcher. Each parses its arguments from the line buffer at
+; DO_HELP, DO_PEEK, DO_BANK, DO_LOAD, DO_PRINT, DO_CLS — the actions behind
+; the REPL dispatcher. Each parses its arguments from the line buffer at
 ; 0xE800 (K_LINEBUF), offset past the command word.
+;
+; All console output flows through PUTCHAR (layer 1, scrolling), so HELP
+; and friends never fight the cursor: they emit newlines and let PUTCHAR
+; scroll. The old DO_HELP poked VX directly between PUTCHARs, which
+; desynced the cursor from the glyphs on screen.
 
 ; ---------------------------------------------------------------------------
 ; DO_HELP — print the command list (one command per screen row).
-; Uses direct VX placement + PUTCHAR; PUTCHAR manages the cursor wrap.
+; Newline-delimited strings via PRINT; PUTCHAR owns cursor + scrolling.
 ; ---------------------------------------------------------------------------
 DO_HELP:
     MOV R0, 0x0A
     CALL PUTCHAR
-    ; HELP
-    MOV VX, 0
-    MOV R0, 'H'
-    CALL PUTCHAR
-    MOV VX, 8
-    MOV R0, 'E'
-    CALL PUTCHAR
-    MOV VX, 16
-    MOV R0, 'L'
-    CALL PUTCHAR
-    MOV VX, 24
-    MOV R0, 'P'
-    CALL PUTCHAR
+    MOV P0, HELP_L0
+    CALL PRINT
     MOV R0, 0x0A
     CALL PUTCHAR
-    ; PEEK
-    MOV VX, 0
-    MOV R0, 'P'
-    CALL PUTCHAR
-    MOV VX, 8
-    MOV R0, 'E'
-    CALL PUTCHAR
-    MOV VX, 16
-    MOV R0, 'E'
-    CALL PUTCHAR
-    MOV VX, 24
-    MOV R0, 'K'
-    CALL PUTCHAR
+    MOV P0, HELP_L1
+    CALL PRINT
     MOV R0, 0x0A
     CALL PUTCHAR
-    ; BANK
-    MOV VX, 0
-    MOV R0, 'B'
-    CALL PUTCHAR
-    MOV VX, 8
-    MOV R0, 'A'
-    CALL PUTCHAR
-    MOV VX, 16
-    MOV R0, 'N'
-    CALL PUTCHAR
-    MOV VX, 24
-    MOV R0, 'K'
-    CALL PUTCHAR
+    MOV P0, HELP_L2
+    CALL PRINT
     MOV R0, 0x0A
     CALL PUTCHAR
-    ; DIR
-    MOV VX, 0
-    MOV R0, 'D'
-    CALL PUTCHAR
-    MOV VX, 8
-    MOV R0, 'I'
-    CALL PUTCHAR
-    MOV VX, 16
-    MOV R0, 'R'
-    CALL PUTCHAR
+    MOV P0, HELP_L3
+    CALL PRINT
     MOV R0, 0x0A
     CALL PUTCHAR
-    ; LOAD
-    MOV VX, 0
-    MOV R0, 'L'
-    CALL PUTCHAR
-    MOV VX, 8
-    MOV R0, 'O'
-    CALL PUTCHAR
-    MOV VX, 16
-    MOV R0, 'A'
-    CALL PUTCHAR
-    MOV VX, 24
-    MOV R0, 'D'
-    CALL PUTCHAR
+    MOV P0, HELP_L4
+    CALL PRINT
     MOV R0, 0x0A
     CALL PUTCHAR
-    ; RUN
-    MOV VX, 0
-    MOV R0, 'R'
-    CALL PUTCHAR
-    MOV VX, 8
-    MOV R0, 'U'
-    CALL PUTCHAR
-    MOV VX, 16
-    MOV R0, 'N'
-    CALL PUTCHAR
+    MOV P0, HELP_L5
+    CALL PRINT
     MOV R0, 0x0A
     CALL PUTCHAR
-    ; NEW
-    MOV VX, 0
-    MOV R0, 'N'
-    CALL PUTCHAR
-    MOV VX, 8
-    MOV R0, 'E'
-    CALL PUTCHAR
-    MOV VX, 16
-    MOV R0, 'W'
-    CALL PUTCHAR
+    MOV P0, HELP_L6
+    CALL PRINT
     MOV R0, 0x0A
     CALL PUTCHAR
-    ; PRINT
-    MOV VX, 0
-    MOV R0, 'P'
-    CALL PUTCHAR
-    MOV VX, 8
-    MOV R0, 'R'
-    CALL PUTCHAR
-    MOV VX, 16
-    MOV R0, 'I'
-    CALL PUTCHAR
-    MOV VX, 24
-    MOV R0, 'N'
-    CALL PUTCHAR
-    MOV VX, 32
-    MOV R0, 'T'
-    CALL PUTCHAR
+    MOV P0, HELP_L7
+    CALL PRINT
     MOV R0, 0x0A
     CALL PUTCHAR
-    ; BYE
-    MOV VX, 0
-    MOV R0, 'B'
-    CALL PUTCHAR
-    MOV VX, 8
-    MOV R0, 'Y'
-    CALL PUTCHAR
-    MOV VX, 16
-    MOV R0, 'E'
-    CALL PUTCHAR
+    MOV P0, HELP_L8
+    CALL PRINT
     MOV R0, 0x0A
     CALL PUTCHAR
+    MOV P0, HELP_L9
+    CALL PRINT
+    MOV R0, 0x0A
+    CALL PUTCHAR
+    RET
+
+HELP_L0:
+    DB "HELP", 0
+HELP_L1:
+    DB "PEEK", 0
+HELP_L2:
+    DB "BANK", 0
+HELP_L3:
+    DB "DIR", 0
+HELP_L4:
+    DB "LOAD", 0
+HELP_L5:
+    DB "RUN", 0
+HELP_L6:
+    DB "NEW", 0
+HELP_L7:
+    DB "PRINT", 0
+HELP_L8:
+    DB "CLS", 0
+HELP_L9:
+    DB "BYE", 0
+
+; ---------------------------------------------------------------------------
+; DO_CLS — clear the volatile console layer only (banner survives).
+; ---------------------------------------------------------------------------
+DO_CLS:
+    CALL CONS_CLEAR
     RET
 
 ; ---------------------------------------------------------------------------

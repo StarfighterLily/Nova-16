@@ -62,5 +62,12 @@ C_WHITE     EQU 0x0F
 CONS_COLS   EQU 32        ; 256 / 8 font width
 CONS_ROWS   EQU 32        ; 256 / 8 font height
 
+; ---- Console layers (layer discipline: volatile vs static) ----
+; Layer 1 = console text (volatile: scrolled, erased, rewritten).
+; Layer 2 = GUI/banner chrome (static: banner survives scroll + CLS).
+CONS_LAYER  EQU 1         ; scrolling console text layer
+BANNER_LAYER EQU 2        ; static title / status layer above console
+CONS_TOP_ROW EQU 3        ; first writable console row (banner owns 0-2)
+
 ; ---- NDF format ----
 NDF_DIR_OFF EQU 0x0010    ; directory offset within bank window

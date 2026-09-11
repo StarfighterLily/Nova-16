@@ -100,10 +100,17 @@ EXEC_NO_EQ:
     JZ CMD_NEW
     CMP R0, 0x6E        ; 'n'
     JZ CMD_NEW
+    CMP R0, 0x43        ; 'C' -> CLS
+    JZ CMD_CLS
+    CMP R0, 0x63        ; 'c'
+    JZ CMD_CLS
     JMP EXEC_ERR_CMD
 
 CMD_HELP:
     CALL DO_HELP
+    JMP EXEC_DONE
+CMD_CLS:
+    CALL DO_CLS
     JMP EXEC_DONE
 ; P-prefixed: PEEK / PRINT
 CMD_PCHK:

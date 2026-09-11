@@ -1,9 +1,9 @@
 include "includes\debug.ast";
 
 struct World {
-    int gravity;    // Gravity acceleration step
-    int friction;   // Ground deceleration step
-    int groundh;    // Ground boundary y-coordinate
+    int gravity;
+    int friction;
+    int groundh;
 } World = {1, 1, 248};
 
 struct Player {
@@ -11,10 +11,10 @@ struct Player {
     int y;
     int vx;
     int vy;
-    int runspeed;   // Horizontal acceleration rate
-    int maxspeed;   // Max horizontal speed limit
-    int jumpspeed;  // Initial upward burst speed
-    int isGrounded; // Ground state flag
+    int runspeed;
+    int maxspeed;
+    int jumpspeed;
+    int isGrounded;
 } Player = {128, 128, 0, 0, 3, 5, 8, 0};
 
 void memsprite(int addr, int sprite[128]) {
@@ -50,14 +50,10 @@ impl Player {
     }
 
     void updatePhysics(self) {
-        // 1. Apply Gravity
         self.vy += World.gravity;
-
-        // 3. Integrate Velocity into Position
         self.x += self.vx;
         self.y += self.vy;
 
-        // 4. Ground Collision Detection & Response
         int floor_y = World.groundh - 16;
         if (self.y >= floor_y) {
             self.y = floor_y;
@@ -67,7 +63,6 @@ impl Player {
             self.isGrounded = 0;
         }
 
-        // 5. Update Hardware/Sprite Attribute Register
         SCBwrite(0, 0x80, 0x00, self.x, self.y, 8, 16, 0b00000011, 0x00);
     }
 
@@ -110,7 +105,7 @@ void processInput() {
     if (key == 97) {
         Player.vx -= Player.runspeed;
         if (Player.vx < -Player.maxspeed) {
-            Player.vx = -Player.maxspeed; // Clamp to -maxspeed
+            Player.vx = -Player.maxspeed;
         }
         moving = 1;
     }
@@ -119,7 +114,7 @@ void processInput() {
     if (key == 100) {
         Player.vx += Player.runspeed;
         if (Player.vx > Player.maxspeed) {
-            Player.vx = Player.maxspeed;  // Clamp to +maxspeed
+            Player.vx = Player.maxspeed;
         }
         moving = 1;
     }
@@ -129,7 +124,6 @@ void processInput() {
         Player.jump();
     }
 
-    // Apply friction ONLY if no horizontal input is active
     if (moving == 0) {
         if (Player.vx > 0) {
             Player.vx -= World.friction;
@@ -155,7 +149,7 @@ void main() {
     loadPlayer();
     while (1) {
         counter++;
-        if ((counter % 7680) == 0) {
+        if ((counter % 6400) == 0) {
             rtc = get_rtc(1);
             if (rtc - last >= 1) {
                 last = rtc;
