@@ -1,26 +1,9 @@
 include "includes\debug.ast"
 
-static int kbdflag = 0;
-static int key = 0;
-
-void khandler() {
-    key = key_read();
-    if (key || key > 0) {
-        kbdflag = 1;
-    } else if (!key || key == 0){
-        kbdflag = 0;
-    }
-}
-
 void main() {
-    poke(0x0108, &khandler);
-    sti();
-    while (1) {
-        if (kbdflag == 1) {
-            dbg.print("Flag");
-            kbdflag = 0;
-        } else if (!kbdflag || kbdflag == 0) {
-            nop();
-        }
-    }
+    int var = 5;
+    set_bank(1);
+    poke2(0x8000, 0xBEEF);
+    dbg.print_labeled_hex("var:", var);
+    set_bank(0);
 }

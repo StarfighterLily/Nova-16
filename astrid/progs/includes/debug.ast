@@ -1,15 +1,53 @@
+//=============================================================================
+// Debug Helper Library for Astrid
+//=============================================================================
+// Provides formatted output to layer 8 (GUI overlay) for inspecting variables,
+// memory addresses, and program state during development.
+//
+// Usage:
+//   include "includes\debug.ast";
+//
+//   void main() {
+//       int myVar = 42;
+//       dbg.print("Hello World");
+//       dbg.print_int(myVar);
+//       dbg.print_hex(myVar);
+//       dbg.print_labeled_hex("myVar = ", myVar);
+//       dbg.scope(&myVar, sizeof(myVar));
+//       dbg.dump(&myVar, sizeof(myVar));
+//       dbg.clear();
+//   }
+//=============================================================================
+
 struct dbg {
-    int x;
-    int y;
-    int longest;
-} dbg = {0,0,0};
+    int x;       // Current X cursor position (pixels)
+    int y;       // Current Y cursor position (pixels)
+    int longest; // Longest line length in chars (for column wrapping)
+} dbg = {0, 0, 0};
 
 impl dbg {
+    //-------------------------------------------------------------------------
+    // Core Output
+    //-------------------------------------------------------------------------
+
+    // Print a string to the debug overlay (layer 8)
+    // Automatically wraps to the next column when Y exceeds 248
+    // Clears the overlay and resets to top-left when X exceeds 248
     void print(self, string text) {
         int origlayer = get_layer();
         int curlen = strlen(text);
         if (curlen > self.longest) {
             self.longest = curlen;
+        }
+        // Defensive guard: if user code ever clobbers the cursor fields
+        // (e.g. a stray poke into the struct's memory), reset to a valid
+        // position so debug output stays visible instead of drawing
+        // off-screen and tripping the wrap/clear logic below.
+        if (self.x >= 256) {
+            self.x = 0;
+        }
+        if (self.y >= 256) {
+            self.y = 0;
         }
         set_layer(8);
         set_pos(self.x, self.y);
@@ -28,17 +66,111 @@ impl dbg {
         }
     }
 
-    void peer(self, unsigned int addr, unsigned int length) {
-        for (unsigned int x = addr; x < (addr+length); x++) {
-            self.print((stringh)peek(x));
+    //-------------------------------------------------------------------------
+    // Formatted Printing
+    //-------------------------------------------------------------------------
+
+    // Print an integer as a decimal string
+    void print_int(self, int value) {
+        self.print((string)value);
+    }
+
+    // Print an integer as a 4-character uppercase hex string (e.g., "00FF")
+    void print_hex(self, int value) {
+        self.print((stringh)value);
+    }
+
+    // Print a label followed by a decimal value (two lines)
+    void print_labeled_int(self, string label, int value) {
+        self.print(label);
+        self.print_int(value);
+    }
+
+    // Print a label followed by a hex value (two lines)
+    void print_labeled_hex(self, string label, int value) {
+        self.print(label);
+        self.print_hex(value);
+    }
+
+    // Print a label followed by a string value (two lines)
+    void print_labeled(self, string label, string value) {
+        self.print(label);
+        self.print(value);
+    }
+
+    // Print a boolean value as "true" or "false"
+    void print_bool(self, int value) {
+        if (value) {
+            self.print("true");
+        } else {
+            self.print("false");
         }
     }
 
-    void scope(self, void var) {
-        self.peer(&var, sizeof(var));
+    // Print a separator line
+    void separator(self) {
+        self.print("----------------");
     }
 
-    void dump(self, unsigned int addr) {
-        self.peer(addr, 216);
+    //-------------------------------------------------------------------------
+    // Overlay Management
+    //-------------------------------------------------------------------------
+
+    // Clear the debug overlay and reset cursor to top-left
+    void clear(self) {
+        int origlayer = get_layer();
+        set_layer(8);
+        screen_fill(0x00);
+        set_layer(origlayer);
+        self.x = 0;
+        self.y = 0;
+        self.longest = 0;
+    }
+
+    // Reset cursor position without clearing the overlay
+    void reset(self) {
+        self.x = 0;
+        self.y = 0;
+        self.longest = 0;
+    }
+
+    //-------------------------------------------------------------------------
+    // Memory Inspection
+    //-------------------------------------------------------------------------
+
+    // Peer at memory - print raw bytes as hex strings (one per line)
+    void peer(self, unsigned int addr, unsigned int length) {
+        for (unsigned int x = addr; x < (addr + length); x++) {
+            self.print_hex(peek(x));
+        }
+    }
+
+    // Inspect a variable at a given address with a given size
+    // Usage: dbg.scope(&myVar, sizeof(myVar));
+    void scope(self, int addr, int length) {
+        self.peer(addr, length);
+    }
+
+    // Dump memory with address and length parameters
+    void dump(self, int addr, int length) {
+        self.print_labeled_hex("DUMP ", addr);
+        self.print_labeled_hex("LEN  ", length);
+        self.separator();
+        self.peer(addr, length);
+    }
+
+    // Quick dump with default 216 bytes
+    void dump_default(self, int addr) {
+        self.dump(addr, 216);
+    }
+
+    // Print a byte from memory as hex
+    void print_byte(self, int addr) {
+        self.print_hex(peek(addr));
+    }
+
+    // Print a 16-bit word from memory as hex
+    void print_word(self, int addr) {
+        self.print_hex(peek2(addr));
     }
 }
