@@ -2018,8 +2018,10 @@ class Parser:
                 return self.parse_unary()
             if op == '&':
                 operand = self.parse_unary()
+                # Allow & on identifiers (variables, functions), array elements, and struct members.
+                # The code generator will resolve whether the identifier is a variable or function.
                 if not isinstance(operand, (Identifier, ArrayAccess, MemberAccess)):
-                    raise self.error("'&' requires a variable or array element operand")
+                    raise self.error("'&' requires a variable, function, or array element operand")
                 return AddressOf(operand)
             if op == '*':
                 return Deref(self.parse_unary())

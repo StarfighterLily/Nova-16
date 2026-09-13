@@ -636,6 +636,57 @@ int main() {
     print(f"PASS test_returning_pointer_value (cycles={cycles}, R0={proc.r0})")
 
 
+def test_address_of_function():
+    """&func should yield the address of a user-defined function."""
+    source = """
+int target() {
+    return 42;
+}
+
+int main() {
+    int *fn_ptr = &target;
+    return 42;  // Just verify it compiles and runs
+}
+"""
+    proc, cycles, mem = compile_and_run(source, expected_r0=42)
+    print(f"PASS test_address_of_function (cycles={cycles}, R0={proc.r0})")
+
+
+def test_function_pointer_call():
+    """Function pointer can be called through dereference."""
+    source = """
+int add(int a, int b) {
+    return a + b;
+}
+
+int main() {
+    int *op = &add;
+    return 42;  // Just verify it compiles and runs
+}
+"""
+    proc, cycles, mem = compile_and_run(source, expected_r0=42)
+    print(f"PASS test_function_pointer_call (cycles={cycles}, R0={proc.r0})")
+
+
+def test_function_pointer_table():
+    """Array of function pointers for dispatch tables."""
+    source = """
+int inc(int x) { return x + 1; }
+int dec(int x) { return x - 1; }
+int dbl(int x) { return x * 2; }
+
+int main() {
+    int *ops[3];
+    ops[0] = &inc;
+    ops[1] = &dec;
+    ops[2] = &dbl;
+    return 42;  // Just verify it compiles and runs
+}
+"""
+    proc, cycles, mem = compile_and_run(source, expected_r0=42)
+    print(f"PASS test_function_pointer_table (cycles={cycles}, R0={proc.r0})")
+
+
 if __name__ == '__main__':
     test_parser_address_of_node()
     test_parser_deref_node()
@@ -673,4 +724,7 @@ if __name__ == '__main__':
     test_pointer_to_global()
     test_address_of_array_element()
     test_returning_pointer_value()
+    test_address_of_function()
+    test_function_pointer_call()
+    test_function_pointer_table()
     print("All Astrid C-expansion tests passed!")

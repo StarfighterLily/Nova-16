@@ -3400,14 +3400,15 @@ class CodeGenerator:
         return store_reg
 
     def generate_address_of(self, expr: AddressOf) -> str:
-        """&var / &arr[i]: compute an address into a register.
+        """&var / &arr[i] / &func: compute an address into a register.
 
         Pointers are plain 16-bit addresses on Nova-16, so & simply yields
-        the variable's storage location as an integer value."""
+        the variable's storage location or function entry point as an integer value."""
         operand = expr.operand
         if isinstance(operand, Identifier):
             name = operand.name
             reg = self.get_register()
+            # Check if it's a local variable first (locals shadow globals and functions)
             if name in self.local_vars:
                 # Params/locals shadow globals (C scoping) -- &x on a param
                 # whose name collides with a global must yield the frame slot.
@@ -3428,11 +3429,22 @@ class CodeGenerator:
                     else:
                         self.emit(f"    SUB {reg}, {-offset}")
                 return reg
+            # Check if it's a global variable
             g = self.global_vars.get(name)
             if g:
                 self.emit(f"    MOV {reg}, 0x{g['address']:04X}")
                 return reg
-            raise NameError(f"Cannot take address of undefined variable '{name}'")
+            # Check if it's a function name (user-defined or builtin)
+            if name in self.functions:
+                func_label = self.functions[name]['label']
+                self.emit(f"    MOV {reg}, {func_label}")
+                return reg
+            # Check if it's a builtin function
+            if name in self.builtin_functions:
+                builtin_label = self.builtin_functions[name]
+                self.emit(f"    MOV {reg}, {builtin_label}")
+                return reg
+            raise NameError(f"Cannot take address of undefined variable or function '{name}'")
         if isinstance(operand, ArrayAccess):
             info = self._get_array_info(operand.name)
             idx_reg = self.generate_expression(operand.index)
@@ -3447,7 +3459,7 @@ class CodeGenerator:
             addr_reg = self.get_register(exclude={idx_reg} if idx_reg else None)
             self._emit_member_addr(operand, addr_reg, idx_reg=idx_reg)
             return addr_reg
-        raise SyntaxError("'&' operand must be a variable or array element")
+        raise SyntaxError("'&' operand must be a variable, function, or array element")
 
     def generate_deref_assignment(self, stmt: DerefAssignment) -> str:
         """*ptr = value (simple or compound). Returns register holding value."""
