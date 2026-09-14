@@ -14,6 +14,7 @@ from astrid.parser.parser import (
     MemberAccess, MemberAssignment,
     CommaOp, Goto, Label, TypedefDecl,
     ImplBlock, MethodCall,
+    AsmBlock,
 )
 from astrid.errors import CodeGenError
 from astrid.codegen.optimizations import (
@@ -595,6 +596,343 @@ class CodeGenerator:
             'MOV P0, R0',
             'RET',
         ],
+        # --- CPU/system registers and stack access (systems tier) ---
+        # Calling convention shared with all builtins: args sit at [ret, a1,
+        # a2, ...] on entry (top first), P1/P2/P3/R0 are scratch, and the
+        # 16-bit result lands in P0. P0-P7 are compiler expression scratch
+        # (round-robin, P3 excluded), so set_reg/get_reg pairs only read back
+        # reliably on P3 and on values nothing else touched in between. The
+        # intended uses are hardware hand-off moments: ISR/asm register
+        # interop, DIV-remainder inspection, and context switching.
+        'builtin_get_reg': [
+            '; get_reg(n) -> P[n] (16-bit). n 0-9 selects P0-P9; out of',
+            '; range returns 0. The read happens BEFORE the return address',
+            '; is consumed: P3 is never popped here, because the caller',
+            '; planted value (or DIV remainder) in P3 must survive the',
+            '; observation. RET consumes the return address instead.',
+            'MOV P1, [SP+2]',
+            'CMP P1, 0', 'JZ .p0',
+            'CMP P1, 1', 'JZ .p1',
+            'CMP P1, 2', 'JZ .p2',
+            'CMP P1, 3', 'JZ .p3',
+            'CMP P1, 4', 'JZ .p4',
+            'CMP P1, 5', 'JZ .p5',
+            'CMP P1, 6', 'JZ .p6',
+            'CMP P1, 7', 'JZ .p7',
+            'CMP P1, 8', 'JZ .p8',
+            'CMP P1, 9', 'JZ .p9',
+            'MOV P0, 0', 'JMP .gdone',
+            '.p0:', 'MOV P0, P0', 'JMP .gdone',
+            '.p1:', 'MOV P0, P1', 'JMP .gdone',
+            '.p2:', 'MOV P0, P2', 'JMP .gdone',
+            '.p3:', 'MOV P0, P3', 'JMP .gdone',
+            '.p4:', 'MOV P0, P4', 'JMP .gdone',
+            '.p5:', 'MOV P0, P5', 'JMP .gdone',
+            '.p6:', 'MOV P0, P6', 'JMP .gdone',
+            '.p7:', 'MOV P0, P7', 'JMP .gdone',
+            '.p8:', 'MOV P0, P8', 'JMP .gdone',
+            '.p9:', 'MOV P0, P9',
+            '.gdone:', 'RET',
+        ],
+        'builtin_set_reg': [
+            '; set_reg(n, v): writes v to P[n]. n 0-9; out of range is a',
+            '; no-op that just returns the live P[n]. Reads n and v through',
+            '; stack-relative windows so the return address is never popped',
+            '; into P3 -- set_reg(3, x) must be able to plant a value in P3',
+            '; without the stub first clobbering it. Returns the previously-',
+            '; held P[n] value in P0 (the value observed at dispatch time).',
+            'MOV P1, [SP+2]',
+            'MOV P2, [SP+4]',
+            'CMP P1, 0', 'JZ .s0',
+            'CMP P1, 1', 'JZ .s1',
+            'CMP P1, 2', 'JZ .s2',
+            'CMP P1, 3', 'JZ .s3',
+            'CMP P1, 4', 'JZ .s4',
+            'CMP P1, 5', 'JZ .s5',
+            'CMP P1, 6', 'JZ .s6',
+            'CMP P1, 7', 'JZ .s7',
+            'CMP P1, 8', 'JZ .s8',
+            'CMP P1, 9', 'JZ .s9',
+            'MOV P0, 0', 'JMP .sdone',
+            '.s0:', 'MOV P0, P0', 'MOV P0, P2', 'JMP .sdone',
+            '.s1:', 'MOV P0, P1', 'MOV P1, P2', 'JMP .sdone',
+            '.s2:', 'MOV P0, P2', 'JMP .sdone',
+            '.s3:', 'MOV P0, P3', 'MOV P3, P2', 'JMP .sdone',
+            '.s4:', 'MOV P0, P4', 'MOV P4, P2', 'JMP .sdone',
+            '.s5:', 'MOV P0, P5', 'MOV P5, P2', 'JMP .sdone',
+            '.s6:', 'MOV P0, P6', 'MOV P6, P2', 'JMP .sdone',
+            '.s7:', 'MOV P0, P7', 'MOV P7, P2', 'JMP .sdone',
+            '.s8:', 'MOV P0, P8', 'MOV P8, P2', 'JMP .sdone',
+            '.s9:', 'MOV P0, P9', 'MOV P9, P2',
+            '.sdone:', 'RET',
+        ],
+        'builtin_get_rreg': [
+            '; get_rreg(n) -> R[n] zero-extended to 16 bits (0-255).',
+            '; n 0-9 selects R0-R9; out of range returns 0.',
+            'POP P3', 'POP P1',
+            'CMP P1, 0', 'JZ .r0',
+            'CMP P1, 1', 'JZ .r1',
+            'CMP P1, 2', 'JZ .r2',
+            'CMP P1, 3', 'JZ .r3',
+            'CMP P1, 4', 'JZ .r4',
+            'CMP P1, 5', 'JZ .r5',
+            'CMP P1, 6', 'JZ .r6',
+            'CMP P1, 7', 'JZ .r7',
+            'CMP P1, 8', 'JZ .r8',
+            'CMP P1, 9', 'JZ .r9',
+            'MOV P0, 0', 'JMP .rdone',
+            '.r0:', 'MOV P0, 0', 'MOV P0, R0', 'JMP .rdone',
+            '.r1:', 'MOV P0, 0', 'MOV P0, R1', 'JMP .rdone',
+            '.r2:', 'MOV P0, 0', 'MOV P0, R2', 'JMP .rdone',
+            '.r3:', 'MOV P0, 0', 'MOV P0, R3', 'JMP .rdone',
+            '.r4:', 'MOV P0, 0', 'MOV P0, R4', 'JMP .rdone',
+            '.r5:', 'MOV P0, 0', 'MOV P0, R5', 'JMP .rdone',
+            '.r6:', 'MOV P0, 0', 'MOV P0, R6', 'JMP .rdone',
+            '.r7:', 'MOV P0, 0', 'MOV P0, R7', 'JMP .rdone',
+            '.r8:', 'MOV P0, 0', 'MOV P0, R8', 'JMP .rdone',
+            '.r9:', 'MOV P0, 0', 'MOV P0, R9',
+            '.rdone:', 'PUSH P3', 'RET',
+        ],
+        'builtin_set_rreg': [
+            '; set_rreg(n, v): R[n] = low byte of v (16-bit arg truncates).',
+            '; n 0-9; out of range is a no-op. The return address stays in',
+            '; P3 because the dispatch targets are R registers only.',
+            '; Returns the previously-held R[n] value in P0 (zero-extended).',
+            'POP P3', 'POP P1', 'POP P2',
+            'CMP P1, 0', 'JZ .t0',
+            'CMP P1, 1', 'JZ .t1',
+            'CMP P1, 2', 'JZ .t2',
+            'CMP P1, 3', 'JZ .t3',
+            'CMP P1, 4', 'JZ .t4',
+            'CMP P1, 5', 'JZ .t5',
+            'CMP P1, 6', 'JZ .t6',
+            'CMP P1, 7', 'JZ .t7',
+            'CMP P1, 8', 'JZ .t8',
+            'CMP P1, 9', 'JZ .t9',
+            'MOV P0, 0', 'JMP .tdone',
+            '.t0:', 'MOV P0, 0', 'MOV P0, R0', 'MOV R0, P2', 'JMP .tdone',
+            '.t1:', 'MOV P0, 0', 'MOV P0, R1', 'MOV R1, P2', 'JMP .tdone',
+            '.t2:', 'MOV P0, 0', 'MOV P0, R2', 'MOV R2, P2', 'JMP .tdone',
+            '.t3:', 'MOV P0, 0', 'MOV P0, R3', 'MOV R3, P2', 'JMP .tdone',
+            '.t4:', 'MOV P0, 0', 'MOV P0, R4', 'MOV R4, P2', 'JMP .tdone',
+            '.t5:', 'MOV P0, 0', 'MOV P0, R5', 'MOV R5, P2', 'JMP .tdone',
+            '.t6:', 'MOV P0, 0', 'MOV P0, R6', 'MOV R6, P2', 'JMP .tdone',
+            '.t7:', 'MOV P0, 0', 'MOV P0, R7', 'MOV R7, P2', 'JMP .tdone',
+            '.t8:', 'MOV P0, 0', 'MOV P0, R8', 'MOV R8, P2', 'JMP .tdone',
+            '.t9:', 'MOV P0, 0', 'MOV P0, R9', 'MOV R9, P2',
+            '.tdone:', 'PUSH P3', 'RET',
+        ],
+        'builtin_get_sp': [
+            '; get_sp() -> live stack pointer. Balanced POP/PUSH keeps the',
+            '; observation non-destructive.',
+            'POP P3',
+            'MOV P0, SP',
+            'PUSH P3', 'RET',
+        ],
+        'builtin_set_sp': [
+            '; set_sp(v): switch the stack pointer to v and return with',
+            '; SP exactly equal to v. The return address is consumed via a',
+            '; register-indirect JMP instead of RET, because a RET would',
+            '; pop from the NEW stack. This is the primitive behind',
+            '; task/coroutine stack switching.',
+            'POP P3',
+            'POP P1',
+            'MOV SP, P1',
+            'JMP P3',
+        ],
+        'builtin_get_fp': [
+            '; get_fp() -> live frame pointer.',
+            'POP P3',
+            'MOV P0, FP',
+            'PUSH P3', 'RET',
+        ],
+        'builtin_set_fp': [
+            '; set_fp(v): point the frame pointer at v and return. For',
+            '; context switching only -- the CURRENT function must not',
+            '; return through normal frames while FP is redirected (its',
+            '; epilogue does MOV SP, FP / POP FP). Restore FP first.',
+            'POP P3',
+            'POP P1',
+            'MOV FP, P1',
+            'PUSH P3', 'RET',
+        ],
+        'builtin_get_flags': [
+            '; get_flags() -> the 12-bit flag word (T,S,O,B,D,I,C,Z,P,H,A,E',
+            '; in bits 0-11). PUSHF/POPF move the live word, so this observes',
+            '; exactly what the CPU would see -- no recomputation.',
+            'POP P3',
+            'PUSHF',
+            'POP P0',
+            'PUSH P3', 'RET',
+        ],
+        'builtin_set_flags': [
+            '; set_flags(f): wholesale-replace the flag word with the low 12',
+            '; bits of f. Bit 11 (E, hacker flag) is never touched by the',
+            '; CPU itself, making it a free user/system ownership tag.',
+            'POP P3',
+            'POP P1',
+            'PUSH P1',
+            'POPF',
+            'PUSH P3', 'RET',
+        ],
+        # --- Stack manipulation and cooperative tasks (systems tier 2) ---
+        'builtin_push': [
+            '; push(v): deposit v as the new top-of-stack word (raw stack',
+            '; access). Void: consumes its argument; on return [SP] == v.',
+            'POP P3', 'POP P1',
+            'PUSH P1',
+            'PUSH P3', 'RET',
+        ],
+        'builtin_pop': [
+            '; pop() -> removes and returns the top-of-stack word.',
+            'POP P3',
+            'POP P0',
+            'PUSH P3', 'RET',
+        ],
+        'builtin_alloca': [
+            '; alloca(bytes) -> address of `bytes` bytes of stack scratch.',
+            '; The block lives until the CURRENT function returns: the',
+            '; epilogue (MOV SP, FP / POP FP) reclaims it for free. Do not',
+            '; call alloca inside an unbounded loop -- each call eats more',
+            '; stack until the frame unwinds.',
+            'POP P3', 'POP P1',
+            'MOV P0, SP',
+            'SUB SP, P1',
+            'PUSH P3', 'RET',
+        ],
+        'builtin_stack_free': [
+            '; stack_free() -> bytes of headroom between SP and the 0x8000',
+            '; global region (the low bound of the stack arena).',
+            'POP P3',
+            'MOV P0, SP',
+            'SUB P0, 0x8000',
+            'PUSH P3', 'RET',
+        ],
+        # Context layout (22 ints / 44 bytes, word index -> byte offset):
+        #   0:  flags          +0     4-13:  R0-R9      +8..+26
+        #   1:  FP             +2     14-21: P0-P7      +28..+44
+        #   2:  SP-resume      +4
+        #   3:  (unused)       +6
+        # SP-resume points at a stack word holding the task's resume PC;
+        # task_switch restores SP and RETs, which pops the PC. This keeps
+        # the PC out of the register permutation entirely.
+        'builtin_task_spawn': [
+            '; task_spawn(ctx, stack_base, stack_words, entry): fabricate an',
+            '; initial context for a fresh task. The resume PC (entry) is',
+            '; parked at the top of the task stack region; R/P registers',
+            '; start zeroed; FP starts at stack_base; flags are inherited',
+            '; from the spawning task.',
+            '; entry stack: [ret][ctx][stack_base][stack_words][entry]',
+            'MOV P1, [SP+2]',
+            'MOV P2, [SP+4]',
+            'MOV P7, P3',
+            'MOV P3, [SP+6]',
+            'MOV P4, [SP+8]',
+            'MOV P5, P3',
+            'ADD P5, P3',
+            'ADD P5, P2',
+            'SUB P5, 2',
+            'MOV [P5+0], P4',
+            'MOV [P1+4], P5',
+            'MOV P6, 0',
+            'MOV [P1+6], P6',
+            'MOV P6, P2',
+            'MOV [P1+2], P6',
+            'PUSHF',
+            'POP P6',
+            'MOV [P1+0], P6',
+            'MOV P3, 0', 'MOV [P1+34], P3',
+            'MOV P6, 0',
+            'MOV [P1+28], P6', 'MOV [P1+30], P6', 'MOV [P1+32], P6',
+            'MOV [P1+36], P6', 'MOV [P1+38], P6', 'MOV [P1+40], P6', 'MOV [P1+42], P6',
+            'MOV R0, 0', 'MOV [P1+8], P6',
+            'MOV R1, 0', 'MOV [P1+10], P6',
+            'MOV R2, 0', 'MOV [P1+12], P6',
+            'MOV R3, 0', 'MOV [P1+14], P6',
+            'MOV R4, 0', 'MOV [P1+16], P6',
+            'MOV R5, 0', 'MOV [P1+18], P6',
+            'MOV R6, 0', 'MOV [P1+20], P6',
+            'MOV R7, 0', 'MOV [P1+22], P6',
+            'MOV R8, 0', 'MOV [P1+24], P6',
+            'MOV R9, 0', 'MOV [P1+26], P6',
+            'MOV P3, P7',
+            'MOV P5, [SP+0]',
+            'MOV [SP+8], P5',
+            'ADD SP, 8',
+            'RET',
+        ],
+        'builtin_task_switch': [
+            '; task_switch(save_ctx, restore_ctx): symmetric coroutine',
+            '; switch. Saves the CURRENT task into save_ctx (flags, FP, a',
+            '; resume SP with the resume PC parked on its own stack, all R',
+            '; and P0-P7 registers) and enters the task described by',
+            '; restore_ctx via RET. On the next resume, execution continues',
+            '; right after this call, exactly as if task_switch had just',
+            '; returned. P0/P1 entering the stub hold the arg-eval scratch,',
+            '; so the save records those slots as-seen (P0-P7 are compiler',
+            '; scratch anyway; P3 -- the DIV remainder -- IS preserved).',
+            '; entry stack: [ret][save_ctx][restore_ctx]',
+            'MOV P1, [SP+2]',
+            'MOV [P1+32], P2',
+            'MOV [P1+34], P3',
+            'MOV [P1+36], P4',
+            'MOV [P1+38], P5',
+            'MOV [P1+40], P6',
+            'MOV [P1+42], P7',
+            'MOV [P1+30], P1',
+            'MOV [P1+28], P0',
+            'MOV P2, [SP+4]',
+            '; --- save phase: stage live registers through P5 ---',
+            'MOV P5, R0',   'MOV [P1+8], P5',
+            'MOV P5, R1',   'MOV [P1+10], P5',
+            'MOV P5, R2',   'MOV [P1+12], P5',
+            'MOV P5, R3',   'MOV [P1+14], P5',
+            'MOV P5, R4',   'MOV [P1+16], P5',
+            'MOV P5, R5',   'MOV [P1+18], P5',
+            'MOV P5, R6',   'MOV [P1+20], P5',
+            'MOV P5, R7',   'MOV [P1+22], P5',
+            'MOV P5, R8',   'MOV [P1+24], P5',
+            'MOV P5, R9',   'MOV [P1+26], P5',
+            'MOV P5, FP',   'MOV [P1+2], P5',
+            'PUSHF',
+            'POP P5',
+            'MOV [P1+0], P5',
+            '; park the resume PC on THIS task stack and record the SP that',
+            '; makes a plain RET land on it after the 2 args and the return',
+            '; address are consumed (SP+6).',
+            'MOV P5, [SP+0]',
+            'MOV [SP+4], P5',
+            'MOV P5, SP',
+            'ADD P5, 4',
+            'MOV [P1+4], P5',
+            '; --- restore phase: P2 stays the base pointer throughout; P6',
+            '; is the only scratch and is re-loaded from memory near the end',
+            '; (memory->R loads are byte loads, so R values stage via P6).',
+            'MOV P6, [P2+0]',
+            'PUSH P6',
+            'POPF',
+            'MOV P6, [P2+8]',   'MOV R0, P6',
+            'MOV P6, [P2+10]',  'MOV R1, P6',
+            'MOV P6, [P2+12]',  'MOV R2, P6',
+            'MOV P6, [P2+14]',  'MOV R3, P6',
+            'MOV P6, [P2+16]',  'MOV R4, P6',
+            'MOV P6, [P2+18]',  'MOV R5, P6',
+            'MOV P6, [P2+20]',  'MOV R6, P6',
+            'MOV P6, [P2+22]',  'MOV R7, P6',
+            'MOV P6, [P2+24]',  'MOV R8, P6',
+            'MOV P6, [P2+26]',  'MOV R9, P6',
+            'MOV P0, [P2+28]',
+            'MOV P1, [P2+30]',
+            'MOV P3, [P2+34]',
+            'MOV P4, [P2+36]',
+            'MOV P6, [P2+38]', 'MOV P5, P6',
+            'MOV P6, [P2+42]', 'MOV P7, P6',
+            'MOV P6, [P2+40]',
+            'MOV FP, [P2+2]',
+            'MOV SP, [P2+4]',
+            'MOV P2, [P2+32]',
+            'RET',
+        ],
         # --- Bit manipulation ---
         'builtin_btst': [
             'POP P3', 'POP P1', 'POP P2', 'BTST P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
@@ -991,6 +1329,26 @@ class CodeGenerator:
             'peek2': 'builtin_peek2', 'poke2': 'builtin_poke2',
             'byte': 'builtin_byte',
             'set_bank': 'builtin_set_bank', 'read_bank': 'builtin_read_bank',
+            # CPU/system register and stack access (systems tier 1). These are
+            # volatile hardware views: the folding pass never touches them
+            # (_fold_builtin_call is allowlist-based and they are not in it)
+            # and FuncCall nodes are never entered into the CSE cache, so
+            # every call re-reads live CPU state.
+            'get_reg': 'builtin_get_reg', 'set_reg': 'builtin_set_reg',
+            'get_rreg': 'builtin_get_rreg', 'set_rreg': 'builtin_set_rreg',
+            'get_sp': 'builtin_get_sp', 'set_sp': 'builtin_set_sp',
+            'get_fp': 'builtin_get_fp', 'set_fp': 'builtin_set_fp',
+            'get_flags': 'builtin_get_flags', 'set_flags': 'builtin_set_flags',
+            # Stack manipulation and cooperative task switching (systems
+            # tier 2). push/pop are raw stack words; alloca grants frame-
+            # lifetime scratch; task_spawn/task_switch implement symmetric
+            # coroutines: a context is 22 ints (44 bytes) holding flags, FP,
+            # a resume stack pointer, a resume PC parked on the task's own
+            # stack, and all ten R plus eight P registers.
+            'push': 'builtin_push', 'pop': 'builtin_pop',
+            'alloca': 'builtin_alloca', 'stack_free': 'builtin_stack_free',
+            'task_spawn': 'builtin_task_spawn',
+            'task_switch': 'builtin_task_switch',
             # Bit manipulation
             'btst': 'builtin_btst', 'bset': 'builtin_bset',
             'bclr': 'builtin_bclr', 'bflip': 'builtin_bflip',
@@ -1336,15 +1694,49 @@ class CodeGenerator:
         self.assembly.append("    HLT")
         self.assembly.append("")
 
-        # Emit interrupt vector FIRST at 0x0100 (before functions)
-        if any(func.name == 'timer_interrupt' for func in ast.functions):
+        # Emit interrupt vectors at 0x0100 (before functions).
+        # Collect all interrupt handlers: those declared with interrupt(N)
+        # and the deprecated timer_interrupt name (vector 0).
+        _vector_table = {}  # vector_number -> func_name
+        for _func in ast.functions:
+            _vec = getattr(_func, 'interrupt_vector', None)
+            if _vec is not None:
+                if _vec in _vector_table:
+                    raise CodeGenError(
+                        f"interrupt vector {_vec} assigned to both "
+                        f"'{_vector_table[_vec]}' and '{_func.name}'")
+                _vector_table[_vec] = _func.name
+            elif _func.name == 'timer_interrupt' and not getattr(
+                    _func, 'impl_tag', None):
+                if 0 in _vector_table:
+                    raise CodeGenError(
+                        "interrupt vector 0 assigned to both "
+                        f"'{_vector_table[0]}' and 'timer_interrupt'")
+                _vector_table[0] = 'timer_interrupt'
+        if _vector_table:
             if self.object_mode:
+                _names = ', '.join(f"'{n}' (vector {v})"
+                                   for v, n in sorted(_vector_table.items()))
                 raise CodeGenError(
-                    "timer_interrupt cannot be linked as a relocatable object: "
-                    "interrupt vectors require fixed ORG 0x0100 placement",
+                    "interrupt handlers cannot be linked as a relocatable "
+                    f"object: {_names}. Interrupt vectors require fixed ORG "
+                    "0x0100 placement",
                     hint="drop 'extern' from this unit or compile it standalone")
             self.assembly.append("ORG 0x0100")
-            self.assembly.append("    DW func_timer_interrupt")
+            # The interrupt vector table occupies 0x0100-0x011F: 8 slots of
+            # 4 bytes each, so vector N's slot starts at address 0x0100 + 4*N.
+            # Each DW below is 2 bytes, so pad with DS so every handler lands
+            # in the correct slot (vector 0 at 0x0100, vector 2 at 0x0108,
+            # etc.). Without this padding all entries pile up at 0x0100 and
+            # only vector 0 ever dispatches correctly.
+            _last_offset = 0
+            for _vec_num, _func_name in sorted(_vector_table.items()):
+                _target = 4 * _vec_num
+                if _target > _last_offset:
+                    self.assembly.append(f"    DS {_target - _last_offset}")
+                _label = f"func_{_func_name}"
+                self.assembly.append(f"    DW {_label}  ; vector {_vec_num}")
+                _last_offset = _target + 2
             # Skip past the interrupt vector table (0x0100-0x011F, 8 vectors x 4 bytes)
             self.assembly.append("ORG 0x0120")
             self.assembly.append("")
@@ -1639,11 +2031,11 @@ class CodeGenerator:
         # If this local was migrated to a spill allocation, load from that
         # absolute address instead of the frame pointer slot. Do NOT do this
         # for `timer_interrupt` (uses SP-relative locals).
-        if name in self.spill_allocations and self.current_function != 'timer_interrupt':
+        if name in self.spill_allocations and not self._is_interrupt_handler:
             addr = self.spill_allocations[name]
             self.emit(f"    MOV {reg}, [0x{addr:04X}]")
             return
-        if self.current_function == 'timer_interrupt':
+        if self._is_interrupt_handler:
             # Interrupt handler uses SP-relative locals (no ENTER/FP).
             # After "SUB SP, N", the first local (offset=-size) is at SP+0,
             # the second (offset=-2*size) is at SP+size, etc.
@@ -1669,11 +2061,11 @@ class CodeGenerator:
         # If this local was migrated to a spill allocation, store to that
         # absolute address instead of the frame pointer slot. Do NOT do this
         # for `timer_interrupt` (uses SP-relative locals).
-        if name in self.spill_allocations and self.current_function != 'timer_interrupt':
+        if name in self.spill_allocations and not self._is_interrupt_handler:
             addr = self.spill_allocations[name]
             self.emit(f"    MOV [0x{addr:04X}], {src_reg}")
             return
-        if self.current_function == 'timer_interrupt':
+        if self._is_interrupt_handler:
             # Interrupt handler uses SP-relative locals (no ENTER/FP) — see
             # _emit_local_load for the offset formula.
             sp_offset = -offset - var_size
@@ -2408,7 +2800,7 @@ class CodeGenerator:
         elif info.get('is_global'):
             self.emit(f"    MOV {addr_reg}, 0x{info['base_addr']:04X}")
             self.emit(f"    ADD {addr_reg}, {idx_reg}")
-        elif self.current_function == 'timer_interrupt':
+        elif self._is_interrupt_handler:
             # Interrupt handler locals are SP-relative: the array's lowest
             # byte sits at SP + (-(offset) - total_size).
             base_sp = -info['offset'] - info['count'] * self._array_stride(info)
@@ -2443,7 +2835,7 @@ class CodeGenerator:
             self.emit(f"    ADD {addr_reg}, {byte_off}")
         elif info.get('is_global'):
             self.emit(f"    MOV {addr_reg}, 0x{info['base_addr'] + byte_off:04X}")
-        elif self.current_function == 'timer_interrupt':
+        elif self._is_interrupt_handler:
             base_sp = (-info['offset'] - info['count'] * self._array_stride(info)
                        + byte_off)
             self.emit(f"    MOV {addr_reg}, SP")
@@ -2466,7 +2858,7 @@ class CodeGenerator:
             # parameter slot CONTAINS the caller's array base address, so
             # load through the slot (C decay semantics).
             offset = self.local_vars[name]['offset']
-            if self.current_function == 'timer_interrupt':
+            if self._is_interrupt_handler:
                 sp_offset = -offset - 2
                 self.emit(f"    MOV {reg}, [SP+{sp_offset}]")
             else:
@@ -2474,7 +2866,7 @@ class CodeGenerator:
             return
         if name in self.array_vars:
             info = self.array_vars[name]
-            if self.current_function == 'timer_interrupt':
+            if self._is_interrupt_handler:
                 # SP-relative decay: use the array stride (struct arrays
                 # step by the whole struct size, not elem_size) so the
                 # decayed base matches _emit_array_addr's layout.
@@ -2589,9 +2981,21 @@ class CodeGenerator:
         # Only a top-level function named timer_interrupt is an ISR. A method
         # inside an `impl` block is never an interrupt handler, even if it
         # happens to be called timer_interrupt.
-        is_interrupt_handler = (
-            func_def.name == 'timer_interrupt'
-            and not getattr(func_def, 'impl_tag', None))
+        # Determine if this function is an interrupt handler via the
+        # interrupt(N) attribute (preferred) or the deprecated
+        # timer_interrupt name convention (vector 0, for backward compat).
+        _explicit_vector = getattr(func_def, 'interrupt_vector', None)
+        _is_timer_name = (func_def.name == 'timer_interrupt'
+                          and not getattr(func_def, 'impl_tag', None))
+        is_interrupt_handler = (_explicit_vector is not None) or _is_timer_name
+        # The vector this handler occupies (0-7). None if not an ISR.
+        interrupt_vector = (_explicit_vector if _explicit_vector is not None
+                            else (0 if _is_timer_name else None))
+        # Naked functions skip the register save/restore prologue/epilogue.
+        is_naked = ('naked' in (getattr(func_def, 'qualifiers', None) or []))
+        # Store for use in generate_asm_block operand resolution.
+        self._is_interrupt_handler = is_interrupt_handler
+        self._is_naked = is_naked
 
         # Clear spill allocations for this function (per-function scope)
         self.spill_allocations = {}
@@ -2686,11 +3090,14 @@ class CodeGenerator:
             # registers are NOT preserved. Interrupted code keeps live
             # values in P/R registers across the interrupt (e.g. a while(1)
             # loop condition re-reads its register after the handler
-            # returns), so the handler must save/restore them itself.
+            # returns), so the handler must save/restore them itself --
+            # UNLESS it is declared 'naked', in which case the programmer
+            # takes full responsibility for register preservation.
             # Registers are pushed BEFORE allocating locals so that
             # SP-relative ([SP+n]) local addressing stays valid in the
             # handler body; _emit_isr_register_restore mirrors this order.
-            self._emit_isr_register_save()
+            if not is_naked:
+                self._emit_isr_register_save()
             if local_size > 0:
                 self.assembly.append(f"    SUB SP, {local_size} ; Allocate locals")
         else:
@@ -2848,7 +3255,8 @@ class CodeGenerator:
                 if self._timer_interrupt_locals_size > 0:
                     self.assembly.append(
                         f"    ADD SP, {self._timer_interrupt_locals_size} ; Deallocate locals before IRET")
-                self._emit_isr_register_restore()
+                if not is_naked:
+                    self._emit_isr_register_restore()
                 self.assembly.append("    IRET")
             else:
                 self.assembly.append("; Implicit return for void function")
@@ -2920,14 +3328,20 @@ class CodeGenerator:
                 self.generate_goto(statement)
             elif isinstance(statement, Label):
                 self.generate_user_label(statement)
+            elif isinstance(statement, AsmBlock):
+                self.generate_asm_block(statement)
             elif isinstance(statement, FuncCall):
-                if statement.name == 'iret' and self.current_function == 'timer_interrupt':
-                    # Special handling for iret: don't emit normal epilogue
-                    if hasattr(self, '_timer_interrupt_locals_size') and self._timer_interrupt_locals_size > 0:
+                if statement.name == 'iret' and getattr(self, '_is_interrupt_handler', False):
+                    # Special handling for iret: don't emit normal epilogue.
+                    # Works for any interrupt handler (interrupt(N) attribute
+                    # or deprecated timer_interrupt name).
+                    if getattr(self, '_timer_interrupt_locals_size', 0) > 0:
                         self.emit(f"    ADD SP, {self._timer_interrupt_locals_size} ; Deallocate locals before IRET")
                     # Restore the general registers saved by the ISR prologue
                     # (interrupt entry only preserves PC + flags).
-                    self._emit_isr_register_restore()
+                    # Naked functions skip this (no save was done).
+                    if not getattr(self, '_is_naked', False):
+                        self._emit_isr_register_restore()
                     self.emit("    IRET")
                     self._emitted_return = True
                     return  # Exit function after IRET
@@ -3012,7 +3426,7 @@ class CodeGenerator:
                     self._emit_shift(var_reg, int(value.right.value, 0),
                                      op == '>>', prefix="shift")
                 else:
-                    can_push = self.current_function != 'timer_interrupt'
+                    can_push = not self._is_interrupt_handler
                     if can_push:
                         self.emit(f"    PUSH {var_reg}")
                         count_reg = self.generate_expression(value.right)
@@ -3167,7 +3581,7 @@ class CodeGenerator:
             compound_op = stmt.value.op
             rhs = stmt.value.right
 
-        can_push = self.current_function != 'timer_interrupt'
+        can_push = not self._is_interrupt_handler
         self.emit_comment(f"Member assignment to ...{target.field}")
 
         # Phase 1: compute the member's byte address.
@@ -3292,7 +3706,7 @@ class CodeGenerator:
                 self._emit_mem_store(base_reg, val_reg, 1)
             return val_reg if not compound_op else None
         info = self._get_array_info(target.name)
-        can_push = self.current_function != 'timer_interrupt'
+        can_push = not self._is_interrupt_handler
 
         # Detect compound assignment: the parser decomposes arr[i] += v into
         # ArrayAssignment(arr[i], BinaryOp(arr[i], '+', v)) sharing the same
@@ -3449,11 +3863,11 @@ class CodeGenerator:
                 # whose name collides with a global must yield the frame slot.
                 # Respect spill allocations so &x matches where loads/stores
                 # of x actually live (zero-page migration).
-                if name in self.spill_allocations and self.current_function != 'timer_interrupt':
+                if name in self.spill_allocations and not self._is_interrupt_handler:
                     self.emit(f"    MOV {reg}, 0x{self.spill_allocations[name]:04X}")
                     return reg
                 offset = self._get_local_offset(name)
-                if self.current_function == 'timer_interrupt':
+                if self._is_interrupt_handler:
                     sp_offset = -offset - self._var_size(name)
                     self.emit(f"    MOV {reg}, SP")
                     self.emit(f"    ADD {reg}, {sp_offset}")
@@ -3499,7 +3913,7 @@ class CodeGenerator:
     def generate_deref_assignment(self, stmt: DerefAssignment) -> str:
         """*ptr = value (simple or compound). Returns register holding value."""
         target = stmt.target
-        can_push = self.current_function != 'timer_interrupt'
+        can_push = not self._is_interrupt_handler
 
         # Detect compound assignment: *p += v decomposes to
         # DerefAssignment(*p, BinaryOp(*p, '+', v)) sharing the same operand.
@@ -3946,7 +4360,7 @@ class CodeGenerator:
         loop_var = self._detect_wrap_prone_var(for_stmt)
         need_wrap_check = (
             loop_var is not None
-            and self.current_function != 'timer_interrupt'
+            and not self._is_interrupt_handler
         )
 
         if need_wrap_check:
@@ -4110,6 +4524,95 @@ class CodeGenerator:
             stmts = stmt.stmt if isinstance(stmt.stmt, list) else [stmt.stmt]
             self.generate_block(stmts)
 
+    def _resolve_asm_operand(self, name: str) -> str:
+        """Resolve an Astrid variable name to its codegen identity for use
+        as an inline-asm operand.
+
+        Returns a register name (e.g. 'P2') when the variable currently
+        lives in a compiler-allocated register, or a memory reference
+        like '[0x8020]' / '[FP-4]' / '[SP+2]' when it is spilled or
+        global.  Falls back to the bare name (let the assembler try to
+        resolve it as a label) when the name is unknown -- this keeps
+        hand-written asm that references raw labels working.
+
+        Reuses the exact same address-mode logic as _emit_local_load so
+        the asm operand always matches where the variable actually lives.
+        """
+        # --- locals (including params) --------------------------------
+        if name in self.local_vars:
+            info = self.local_vars[name]
+            offset = info['offset']
+            var_size = self._var_size(name)
+            # Static locals: fixed absolute address.
+            static_addr = info.get('static_addr')
+            if static_addr is not None:
+                return f"[0x{static_addr:04X}]"
+            # Spilled locals: absolute spill address (not FP-relative).
+            if name in self.spill_allocations:
+                return f"[0x{self.spill_allocations[name]:04X}]"
+            # ISR (SP-relative) locals.
+            if self._is_interrupt_handler:
+                sp_offset = -offset - var_size
+                return f"[SP+{sp_offset}]"
+            # Normal FP-relative local.
+            return f"[FP{offset:+d}]"
+        # --- globals --------------------------------------------------
+        g = self.global_vars.get(name)
+        if g:
+            return f"[0x{g['address']:04X}]"
+        # --- register-allocated variable (var_reg) --------------------
+        # var_reg maps name -> register for variables the allocator has
+        # placed in a hardware register.
+        reg = self.var_reg.get(name)
+        if reg:
+            return reg
+        # --- unknown: pass through as bare token ----------------------
+        return name
+
+    def _substitute_asm_operands(self, line: str) -> str:
+        """Replace {varname} tokens in an inline-asm instruction with the
+        variable's codegen identity (register or memory reference).
+
+        Handles nested braces and unknown names gracefully: unknown
+        {name} tokens are left intact so the assembler can try label
+        resolution.
+        """
+        import re
+        def repl(m):
+            name = m.group(1)
+            return self._resolve_asm_operand(name)
+        return re.sub(r'\{([A-Za-z_][A-Za-z0-9_]*)\}', repl, line)
+
+    def generate_asm_block(self, stmt: AsmBlock):
+        """Emit an inline assembly block verbatim.
+
+        Each element of stmt.lines is one raw assembly instruction. We
+        emit each line indented by four spaces (matching the rest of
+        the function body) with no further analysis, transformation,
+        or register allocation. The programmer is fully responsible
+        for correctness -- including the calling convention, flag
+        state, and any registers the asm touches.
+
+        Because the optimizer cannot reason about the effects of raw
+        asm, asm blocks act as compiler barriers: they are never
+        constant-folded, never CSE'd, and the live-range scheduler
+        treats them as clobbering all registers conservatively. This
+        is documented in the language reference.
+
+        Astrid variables may be referenced inline using ``{varname}``
+        syntax; each occurrence is replaced with the variable's codegen
+        identity (a register like ``P2`` or a memory reference like
+        ``[0x8020]`` / ``[FP-4]``) so the asm can see the exact location
+        the compiler is using for that variable."""
+        self.emit_comment("asm {")
+        for line in stmt.lines:
+            line = self._substitute_asm_operands(line)
+            # Emit each raw instruction indented, verbatim.
+            # We do NOT analyze operands, allocate registers, or
+            # validate the instruction -- that is the programmer's job.
+            self.emit(f"    {line}")
+        self.emit_comment("}")
+
     def _user_label_codegen_name(self, name: str) -> str:
         """Return the assembly-safe label name for a user label.
 
@@ -4120,6 +4623,12 @@ class CodeGenerator:
         return f"label_{func_prefix}_{name}"
 
     def generate_expression(self, expr: Expression) -> str:
+        if isinstance(expr, AsmBlock):
+            # Inline asm used as an expression: emit the block and return
+            # P0 as the result register (the asm is expected to leave its
+            # result in P0 per the Astrid ABI).
+            self.generate_asm_block(expr)
+            return "P0"
         if isinstance(expr, Number):
             reg = self.get_register()
             if '.' in expr.value:
@@ -4290,7 +4799,7 @@ class CodeGenerator:
                     return result_reg
             
             if expr.op == '>>' or expr.op == '<<':
-                can_push = self.current_function != 'timer_interrupt'
+                can_push = not self._is_interrupt_handler
                 is_right = (expr.op == '>>')
                 if isinstance(expr.right, Number):
                     left_reg = self.generate_expression(expr.left)
@@ -4323,7 +4832,7 @@ class CodeGenerator:
             # expression temporaries are round-robin reused, and a deep RHS
             # (each array element read alone consumes two temporaries) would
             # otherwise clobber left_reg before the operation is emitted.
-            can_push_left = self.current_function != 'timer_interrupt'
+            can_push_left = not self._is_interrupt_handler
             if can_push_left:
                 self.emit(f"    PUSH {left_reg}")
             right_reg = self.generate_expression(expr.right)
@@ -4594,7 +5103,7 @@ class CodeGenerator:
                 # arr[i]++ / arr[i]-- : returns the OLD value (C semantics).
                 target = expr.left
                 info = self._get_array_info(target.name)
-                can_push = self.current_function != 'timer_interrupt'
+                can_push = not self._is_interrupt_handler
                 idx_reg = self.generate_expression(target.index)
                 if can_push:
                     self.emit(f"    PUSH {idx_reg}")
@@ -5352,6 +5861,18 @@ class CodeGenerator:
             'memcpy', 'memset', 'memmove', 'memcmp', 'memtest', 'memswap',
             'peek', 'peek2', 'read_bank',
             'byte',
+            # Systems tier (get_reg/set_reg/get_rreg/set_rreg/get_sp/
+            # set_sp/get_fp/set_fp/get_flags/set_flags) return in P0 like
+            # their peek/peek2/read_bank siblings -- the stubs write P0
+            # directly (see BUILTIN_IMPLEMENTATIONS).
+            'get_reg', 'set_reg', 'get_rreg', 'set_rreg',
+            'get_sp', 'set_sp', 'get_fp', 'set_fp',
+            'get_flags', 'set_flags',
+            # Stack/tasks tier: pop/alloca/stack_free/task_switch return in
+            # P0 (task_switch's "value" is undefined -- it RETs into another
+            # task; the resume path just re-reads P0 harmlessly). push and
+            # task_spawn are void and stay in the R0-reading default set.
+            'pop', 'alloca', 'stack_free', 'task_switch',
             'btst', 'bset', 'bclr', 'bflip',
             'swap', 'xchng',
             'bcd2bin', 'bin2bcd', 'bcdadd', 'bcdsub',

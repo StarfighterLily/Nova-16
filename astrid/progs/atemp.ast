@@ -1,9 +1,20 @@
 include "includes\debug.ast"
 
+int fired;
+
+interrupt(2) void kbd_int() {
+    fired = fired + 1;
+    int key = key_read();
+    if (key) {
+        dbg.print((string)key);
+    }
+    iret();
+}
+
 void main() {
-    int var = 5;
-    set_bank(1);
-    poke2(0x8000, 0xBEEF);
-    dbg.print_labeled_hex("var:", var);
-    set_bank(0);
+    sti();
+    key_ctrl(1);
+    while (1) {
+        
+    }
 }

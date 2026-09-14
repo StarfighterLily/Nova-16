@@ -45,6 +45,13 @@ KEYWORDS = {
 
     # Rust-style implementation blocks:
     'impl',      # impl TypeName { int method(self, ...) { ... } }
+
+    # Inline assembly blocks and string-form asm:
+    'asm',       # asm { MOV R0, 5; }  or  asm("MOV R0, 5")
+
+    # Function attributes for interrupt handlers and naked functions:
+    'interrupt', # interrupt(2) void uart_isr() { ... }  -- vector at 0x0100 + 4*n
+    'naked',     # naked void boot_stub() { asm("JMP main"); }  -- no prologue/epilogue
 }
 
 # Operators and delimiters

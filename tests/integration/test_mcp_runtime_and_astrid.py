@@ -95,7 +95,7 @@ def test_timer_heartbeat_dispatches_in_mcp_session(mcp_emulator):
     with open(sym_path, encoding='utf-8') as f:
         for line in f:
             parts = line.split()
-            if len(parts) == 2 and parts[0] == 'gvar_ticks':
+            if len(parts) == 2 and parts[0].upper() == 'GVAR_TICKS':
                 ticks_addr = int(parts[1], 16)
     assert ticks_addr is not None
     ticks = mem.read_word_fast(ticks_addr)

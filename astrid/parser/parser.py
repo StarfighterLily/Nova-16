@@ -20,7 +20,7 @@ from astrid.lexer.lexer import Lexer, Token, KEYWORDS
 #   volatile-> memory-backed: reads/writes always go through memory, never
 #              cached/folded across statements
 #   const   -> type qualifier (read-only intent; treated as a normal value)
-STORAGE_QUALIFIERS = {'const', 'register', 'volatile', 'extern', 'static', 'inline'}
+STORAGE_QUALIFIERS = {'const', 'register', 'volatile', 'extern', 'static', 'inline', 'naked'}
 # Type modifiers normalize to their base type ('int' unless a base type
 # follows): Astrid's type system only distinguishes the base widths.
 TYPE_MODIFIERS = {'signed', 'unsigned', 'long', 'short'}
@@ -360,6 +360,21 @@ class Label(ASTNode):
     def __init__(self, name: str, stmt: Optional["ASTNode"] = None):
         self.name = name
         self.stmt = stmt
+
+class AsmBlock(ASTNode):
+    """Inline assembly block: asm { MOV R0, 5; JMP label; }
+
+    Each element of `lines` is one raw assembly instruction (a string).
+    The block is emitted verbatim by the code generator, with no
+    analysis, transformation, or register allocation -- the programmer
+    is fully responsible for correctness, including the calling
+    convention and flag state.
+
+    The string-form asm("...") parses to the same node type; the
+    codegen layer splits on newlines/semicolons and emits each
+    resulting line verbatim."""
+    def __init__(self, lines: List[str]):
+        self.lines = lines
 
 class TypedefDecl(ASTNode):
     """typedef int myint; -- declare a type alias."""
@@ -1384,6 +1399,21 @@ class Parser:
         return decls
 
     def parse_function(self) -> Optional["FunctionDef"]:
+        # Handle interrupt(vector) attribute before any other parsing.
+        # Syntax: interrupt(2) void uart_isr() { ... }
+        # This must be checked before _drain_qualifiers() because
+        # 'interrupt' is not in STORAGE_QUALIFIERS.
+        interrupt_vector = None
+        if self.current.type == 'KEYWORD' and self.current.value == 'interrupt':
+            self.advance()  # consume 'interrupt'
+            self.expect('DELIMITER', '(')
+            if self.current.type != 'NUMBER':
+                self.error("interrupt() requires a vector number (0-7)")
+            interrupt_vector = int(self.current.value)
+            if not (0 <= interrupt_vector <= 7):
+                self.error(f"interrupt vector must be 0-7, got {interrupt_vector}")
+            self.advance()  # consume number
+            self.expect('DELIMITER', ')')
         quals = self._drain_qualifiers()
         return_type = self.current.value
         self.expect('KEYWORD')
@@ -1413,6 +1443,8 @@ class Parser:
         # at the source line when generating the function fails.
         func.line = name_tok.line
         func.column = name_tok.column
+        # Attach interrupt vector (None for non-interrupt functions).
+        func.interrupt_vector = interrupt_vector
         return func
 
     def parse_params(self) -> List["VarDecl"]:
@@ -1656,6 +1688,10 @@ class Parser:
             self.expect('IDENTIFIER')
             self.expect('DELIMITER', ';')
             return [Goto(label_name)]
+        # Inline assembly block: asm { instruction; instruction; ... }
+        # Also handles the string-form asm("instruction; instruction; ...").
+        if self.current.type == 'KEYWORD' and self.current.value == 'asm':
+            return [self.parse_asm_block()]
         elif self.current.value == '{':
              self.advance()
              block = self.parse_block()
@@ -1897,6 +1933,89 @@ class Parser:
 
         self.expect('DELIMITER', '}')
         return Switch(expr, cases, default_body)
+
+    def parse_asm_block(self) -> AsmBlock:
+        """Parse an inline assembly construct.
+
+        Two forms are accepted:
+
+            asm {
+                MOV R0, 5
+                ADD P0, R0
+            }
+
+            asm("MOV R0, 5\\nADD P0, R0")
+
+        In the block form, each non-empty, non-comment line between the
+        braces becomes one element of the returned AsmBlock.lines list.
+        Lines starting with ';' are treated as comments and dropped.
+        Blank lines are skipped.
+
+        In the string form, the string literal is split on newlines and
+        semicolons; each resulting non-empty, non-comment fragment becomes
+        one element of lines.
+
+        The returned AsmBlock is emitted verbatim by the code generator."""
+        self.expect('KEYWORD', 'asm')
+        lines: List[str] = []
+        if self.current.type == 'DELIMITER' and self.current.value == '{':
+            # Block form: asm { ... }
+            self.expect('DELIMITER', '{')
+            while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
+                if self.current.type == 'COMMENT':
+                    self.advance()
+                    continue
+                if self.current.type == 'EOF':
+                    raise self.error("unterminated asm block (expected '}')")
+                # Collect the raw text of this line. asm blocks accept any
+                # token sequence until the closing brace; we reconstruct
+                # the line from the raw source between the previous and
+                # current token positions.
+                line_parts = []
+                while (self.current.type not in ('DELIMITER', 'EOF') or
+                       self.current.value not in (';', '}', '\n')):
+                    if self.current.type == 'COMMENT':
+                        break
+                    line_parts.append(self.current.value)
+                    self.advance()
+                    if self.current.type == 'DELIMITER' and self.current.value == ';':
+                        self.advance()
+                        break
+                line = ' '.join(line_parts).strip()
+                if line and not line.startswith(';'):
+                    lines.append(line)
+                # Skip any trailing semicolons / whitespace
+                while (self.current.type == 'DELIMITER' and
+                       self.current.value == ';'):
+                    self.advance()
+            self.expect('DELIMITER', '}')
+        elif self.current.type == 'STRING':
+            # String form: asm "..." (bare string)
+            raw = self.current.value.strip('"')
+            self.advance()
+        elif self.current.type == 'DELIMITER' and self.current.value == '(':
+            # Parenthesized string form: asm("...")
+            self.advance()  # consume '('
+            if self.current.type != 'STRING':
+                raise self.error(
+                    "expected string literal inside asm(...) "
+                    f"(got {self.current.type} {self.current.value!r}, "
+                    f"line {self.current.line})")
+            raw = self.current.value.strip('"')
+            self.advance()
+            self.expect('DELIMITER', ')')
+            # Split on newlines and semicolons
+            import re
+            for frag in re.split(r'[;\n]', raw):
+                frag = frag.strip()
+                if frag and not frag.startswith(';'):
+                    lines.append(frag)
+        else:
+            raise self.error(
+                "expected '{' or string literal after 'asm' "
+                f"(got {self.current.type} {self.current.value!r}, "
+                f"line {self.current.line})")
+        return AsmBlock(lines)
 
     def parse_expression(self):
         # Parse the first assignment-expression (precedence 1 covers all
@@ -2182,6 +2301,71 @@ class Parser:
                 self.expect('DELIMITER', ')')
                 return FuncCall(func_name, args)
             raise self.error(f"Unexpected token in expression: {self._describe_token(self.current)}")
+        elif token.type == 'KEYWORD' and token.value == 'asm':
+            # Inline assembly in expression context: asm("MOV P0, 5")
+            # Returns an AsmBlock whose value (in P0) is the expression result.
+            self.advance()  # consume 'asm'
+            if self.current.type == 'STRING':
+                raw = self.current.value.strip('"')
+                self.advance()
+                import re
+                lines = []
+                for frag in re.split(r'[;\n]', raw):
+                    frag = frag.strip()
+                    if frag and not frag.startswith(';'):
+                        lines.append(frag)
+                return AsmBlock(lines)
+            elif self.current.type == 'DELIMITER' and self.current.value == '(':
+                # Parenthesized string form: asm("...")
+                self.advance()  # consume '('
+                if self.current.type != 'STRING':
+                    raise self.error(
+                        "expected string literal inside asm(...) in expression "
+                        f"(got {self.current.type} {self.current.value!r}, "
+                        f"line {self.current.line})")
+                raw = self.current.value.strip('"')
+                self.advance()
+                self.expect('DELIMITER', ')')
+                import re
+                lines = []
+                for frag in re.split(r'[;\n]', raw):
+                    frag = frag.strip()
+                    if frag and not frag.startswith(';'):
+                        lines.append(frag)
+                return AsmBlock(lines)
+            elif self.current.type == 'DELIMITER' and self.current.value == '{':
+                # Block form in expression context: asm { MOV P0, 5; }
+                self.advance()  # consume '{'
+                lines = []
+                while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
+                    if self.current.type == 'COMMENT':
+                        self.advance()
+                        continue
+                    if self.current.type == 'EOF':
+                        raise self.error("unterminated asm block (expected '}')")
+                    line_parts = []
+                    while (self.current.type not in ('DELIMITER', 'EOF') or
+                           self.current.value not in (';', '}', '\n')):
+                        if self.current.type == 'COMMENT':
+                            break
+                        line_parts.append(self.current.value)
+                        self.advance()
+                        if self.current.type == 'DELIMITER' and self.current.value == ';':
+                            self.advance()
+                            break
+                    line = ' '.join(line_parts).strip()
+                    if line and not line.startswith(';'):
+                        lines.append(line)
+                    while (self.current.type == 'DELIMITER' and
+                           self.current.value == ';'):
+                        self.advance()
+                self.expect('DELIMITER', '}')
+                return AsmBlock(lines)
+            else:
+                raise self.error(
+                    "expected string literal or '{' after 'asm' in expression "
+                    f"(got {self.current.type} {self.current.value!r}, "
+                    f"line {self.current.line})")
         elif token.type == 'DELIMITER' and token.value == '(':
             self.advance()
             # Check for type cast: (int)expr, (char)expr, (string)expr, (binary)expr, (stringh)expr
