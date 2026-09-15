@@ -120,7 +120,7 @@ def _expression_key(expr: Any,
                         for arg in expr.args)
         return f"call:{expr.name}({args})"
     if isinstance(expr, Cast):
-        return f"cast:{expr.target_type}:{_expression_key(expr.expr, string_vars, string_funcs, volatile_vars, _counter)}"
+        return f"cast:{expr.target_type}:{getattr(expr, 'pointer_depth', 0)}:{_expression_key(expr.expr, string_vars, string_funcs, volatile_vars, _counter)}"
     return repr(expr)
 
 
@@ -210,6 +210,12 @@ class ExpressionSimplifier:
             return FuncCall(expr.name, simplified_args)
         if isinstance(expr, Cast):
             simplified_inner = self._simplify_node(expr.expr)
+            # Address casts ((int *)0xF000, (char *)addr) are identity
+            # conversions; never fold them -- a (char *) must keep the full
+            # address, not be masked to the low byte.
+            if getattr(expr, 'pointer_depth', 0) > 0:
+                return Cast(expr.target_type, simplified_inner,
+                            pointer_depth=expr.pointer_depth)
             # Compile-time fold: (char)CONST, (int)CONST are constant folds.
             num_val = _num_value(simplified_inner)
             if num_val is not None:
@@ -923,7 +929,8 @@ class StrengthReducer:
             return FuncCall(expr.name, [self._reduce_node(arg) for arg in expr.args])
 
         elif isinstance(expr, Cast):
-            return Cast(expr.target_type, self._reduce_node(expr.expr))
+            return Cast(expr.target_type, self._reduce_node(expr.expr),
+                        pointer_depth=getattr(expr, 'pointer_depth', 0))
 
         elif isinstance(expr, list):
             return [self._reduce_node(item) for item in expr]

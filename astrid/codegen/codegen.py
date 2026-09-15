@@ -1819,6 +1819,46 @@ class CodeGenerator:
                 key = f"{block.tag}::{method.name}"
                 self.function_qualifiers[key] = quals
 
+        # Volatile LOCALS: scan function bodies (including impl methods) for
+        # VarDecl nodes carrying 'volatile'. Locals declared inside function
+        # bodies are not part of ast.globals and never reach the param scan
+        # above, so without this they would silently miss the volatile
+        # contract and get register- or spill-allocated.
+        for func_def in list(getattr(ast, 'functions', None) or []):
+            self._collect_volatile_locals(func_def)
+        for block in list(getattr(ast, 'impl_blocks', None) or []):
+            for method in list(getattr(block, 'methods', None) or []):
+                self._collect_volatile_locals(method)
+
+    def _collect_volatile_locals(self, func_def) -> None:
+        """Recursively register 'volatile' local VarDecls in a function body."""
+        def walk(stmts):
+            for node in stmts or []:
+                if isinstance(node, list):
+                    walk(node)
+                elif isinstance(node, VarDecl):
+                    if 'volatile' in list(getattr(node, 'qualifiers', []) or []):
+                        self.volatile_vars.add(node.name)
+                elif isinstance(node, If):
+                    walk(node.then_body)
+                    if node.else_body is not None:
+                        walk(node.else_body)
+                elif isinstance(node, (While, DoWhile)):
+                    walk(node.body)
+                elif isinstance(node, For):
+                    if isinstance(node.init, list):
+                        walk(node.init)
+                    walk(node.body)
+                elif isinstance(node, Switch):
+                    for case in node.cases:
+                        walk(case.body)
+                    if node.default_body is not None:
+                        walk(node.default_body)
+                elif isinstance(node, Label):
+                    if node.stmt is not None:
+                        walk([node.stmt])
+        walk(getattr(func_def, 'body', None))
+
     def _collect_string_idents(self, ast: Program) -> Tuple[Set[str], Set[str]]:
         """Pre-scan the AST for string/binary identifiers.
 
@@ -2535,6 +2575,20 @@ class CodeGenerator:
                 if op == '^': return left ^ right
                 if op == '<<': return (left << right) & 0xFFFF
                 if op == '>>': return (left >> right) & 0xFFFF
+            if isinstance(expr, Cast):
+                # A cast of a constant is a compile-time constant. Pointer
+                # casts and int casts keep the full 16-bit value (an address
+                # is a plain number); char masks to the low byte.
+                inner = self._const_eval(expr.expr)
+                if inner is None:
+                    return None
+                if getattr(expr, 'pointer_depth', 0) > 0:
+                    return inner & 0xFFFF
+                target = {'signed_int': 'int', 'unsigned_int': 'int'}.get(
+                    expr.target_type, expr.target_type)
+                if target == 'char':
+                    return inner & 0xFF
+                return inner & 0xFFFF
             return None
         except (ValueError, ArithmeticError):
             return None
@@ -2555,6 +2609,22 @@ class CodeGenerator:
             # do not allocate local storage for them.
             if self.object_mode and decl.name in self.extern_symbols:
                 continue
+            # Absolute placement (`int scb[16] @ 0xF000;`): evaluate the
+            # constant address. A placed global is pinned there and does NOT
+            # consume a slot in the sequential 0x8000 region; it is emitted in
+            # its own ORG segment by _emit_globals_data.
+            placement = getattr(decl, 'placement_addr', None)
+            placement_value = None
+            if placement is not None:
+                placement_value = self._const_eval(placement)
+                if placement_value is None:
+                    raise TypeError(
+                        f"Global '{decl.name}' placement address must be a "
+                        f"compile-time constant")
+                if not (0 <= placement_value <= 0xFFFF):
+                    raise TypeError(
+                        f"Global '{decl.name}' placement address "
+                        f"0x{placement_value:X} is out of the 16-bit range")
             struct_tag = getattr(decl, 'struct_tag', None)
             # Pointers always occupy 2 bytes regardless of pointee type.
             elem_size = 2 if decl.pointer_depth else self._elem_size(decl.var_type)
@@ -2637,8 +2707,10 @@ class CodeGenerator:
                                     f"compile-time constants")
                             init_values.append(v)
                 total_size = count * (stride or elem_size)
+                _arr_addr = (placement_value if placement_value is not None
+                             else next_addr)
                 self.global_vars[decl.name] = {
-                    'address': next_addr, 'type': decl.var_type,
+                    'address': _arr_addr, 'type': decl.var_type,
                     'size': total_size, 'is_array': True,
                     'elem_size': elem_size,
                     'count': count, 'init_values': init_values,
@@ -2647,8 +2719,10 @@ class CodeGenerator:
                     'init_elem_bytes': 2 if struct_tag else elem_size,
                     **({'stride': stride} if stride else {}),
                     **({'tag': struct_tag} if struct_tag else {}),
+                    **({'placement': True} if placement_value is not None else {}),
                 }
-                next_addr += total_size
+                if placement_value is None:
+                    next_addr += total_size
             else:
                 init_value = None
                 if decl.value is not None:
@@ -2669,7 +2743,9 @@ class CodeGenerator:
                             f"Global variable '{decl.name}' initializer must be "
                             f"a compile-time constant")
                 self.global_vars[decl.name] = {
-                    'address': next_addr, 'type': decl.var_type,
+                    'address': (placement_value if placement_value is not None
+                                else next_addr),
+                    'type': decl.var_type,
                     'size': elem_size, 'is_array': False,
                     'elem_size': elem_size,
                     # Global pointers hold addresses (16-bit values).
@@ -2679,40 +2755,59 @@ class CodeGenerator:
                     # Struct pointers remember their layout so pp->field
                     # resolves member offsets through the pointee type.
                     **({'tag': struct_tag} if struct_tag else {}),
+                    **({'placement': True} if placement_value is not None else {}),
                 }
                 # Track scalar struct/union variables for struct assignment
                 if struct_tag and not self.global_vars[decl.name].get('is_array'):
                     self.struct_tag_vars[decl.name] = struct_tag
-                next_addr += elem_size
+                if placement_value is None:
+                    next_addr += elem_size
 
     def _emit_globals_data(self):
         """Emit the global-variable data segment at GLOBAL_REGION_START."""
         if not self.global_vars:
             return
-        self.assembly.append("")
-        self.assembly.append(f"ORG 0x{self.GLOBAL_REGION_START:04X}")
-        self.assembly.append("; Global Variables")
-        for name, info in self.global_vars.items():
-            self.assembly.append(f"gvar_{name}:")
-            elem_size = info.get('elem_size', self._elem_size(info['type']))
-            directive = "DW" if elem_size == 2 else "DB"
-            init = info.get('init_values') or []
-            if info['is_array']:
-                if init:
-                    self.assembly.append(f"    {directive} {', '.join(str(v) for v in init)}")
-                # Bytes consumed by the initialized prefix. Struct entries
-                # hold word values even when the element stride is larger
-                # (arrays of structs fill words sequentially).
-                init_bytes = len(init) * info.get('init_elem_bytes', elem_size)
-                remaining = info['size'] - init_bytes
-                if remaining > 0:
-                    self.assembly.append(f"    DS {remaining}")
+        # Placed globals (`@ 0xF000`) are emitted in their own ORG segments;
+        # unplaced globals stay contiguous in the 0x8000 region.
+        placed = [(name, info) for name, info in self.global_vars.items()
+                  if info.get('placement')]
+        unplaced = [(name, info) for name, info in self.global_vars.items()
+                    if not info.get('placement')]
+        if unplaced:
+            self.assembly.append("")
+            self.assembly.append(f"ORG 0x{self.GLOBAL_REGION_START:04X}")
+            self.assembly.append("; Global Variables")
+            for name, info in unplaced:
+                self._emit_global_entry(name, info)
+            self.assembly.append("")
+        for name, info in placed:
+            self.assembly.append("")
+            self.assembly.append(f"ORG 0x{info['address']:04X}")
+            self.assembly.append(f"; Placed global '{name}'")
+            self._emit_global_entry(name, info)
+            self.assembly.append("")
+
+    def _emit_global_entry(self, name: str, info: Dict) -> None:
+        """Emit one global's label + data (used by _emit_globals_data)."""
+        self.assembly.append(f"gvar_{name}:")
+        elem_size = info.get('elem_size', self._elem_size(info['type']))
+        directive = "DW" if elem_size == 2 else "DB"
+        init = info.get('init_values') or []
+        if info['is_array']:
+            if init:
+                self.assembly.append(f"    {directive} {', '.join(str(v) for v in init)}")
+            # Bytes consumed by the initialized prefix. Struct entries
+            # hold word values even when the element stride is larger
+            # (arrays of structs fill words sequentially).
+            init_bytes = len(init) * info.get('init_elem_bytes', elem_size)
+            remaining = info['size'] - init_bytes
+            if remaining > 0:
+                self.assembly.append(f"    DS {remaining}")
+        else:
+            if init:
+                self.assembly.append(f"    {directive} {init[0]}")
             else:
-                if init:
-                    self.assembly.append(f"    {directive} {init[0]}")
-                else:
-                    self.assembly.append(f"    DS {info['size']}")
-        self.assembly.append("")
+                self.assembly.append(f"    DS {info['size']}")
 
     def _get_array_info(self, name: str) -> Dict:
         """Return layout info for an array (local or global).
@@ -3192,12 +3287,16 @@ class CodeGenerator:
             # Separate parameters from local variables
             param_names = {p.name for p in func_def.params}
             # `register` variables must not be spilled: they stay in registers.
-            # Exclude them from the spill-candidate set so the allocator never
-            # migrates them to a spill slot.
+            # `volatile` variables must NOT be register-allocated either: every
+            # access is a fresh memory touch, so they are excluded from both the
+            # register-coloring candidate set and the spill-candidate set (they
+            # stay FP-relative -- the built-in fallback when no allocation is
+            # made). This is what makes `volatile` finally mean something.
             register_names = self.register_hint_vars
             actual_local_names = [name for name in self.local_vars
                                   if name not in param_names and name not in self.array_vars
-                                  and name not in register_names]
+                                  and name not in register_names
+                                  and name not in self.volatile_vars]
             
             if actual_local_names:
                 candidate_graph: Dict[str, Set[str]] = {name: set() for name in actual_local_names}
@@ -3353,6 +3452,10 @@ class CodeGenerator:
                 raise RuntimeError(f"Unknown statement type: {type(statement)}")
 
     def generate_var_decl(self, var_decl: VarDecl):
+        if getattr(var_decl, 'placement_addr', None) is not None:
+            raise CodeGenError(
+                f"absolute placement '@' is only valid on global variables "
+                f"('{var_decl.name}' is local)")
         if var_decl.is_array:
             # Local arrays: emit runtime stores for initializer-list elements.
             # (Global array initializers are emitted as DW/DB data instead.)
@@ -5277,6 +5380,13 @@ class CodeGenerator:
         # register layout.
         if target in ('signed_int', 'unsigned_int'):
             target = 'int'
+        # Address cast: (int *)0xF000, (char *)addr. A pointer is a plain
+        # 16-bit address, so the cast is an identity conversion -- the value
+        # is the FULL address (never masked to the pointee width). This is
+        # what makes `*(int *)0xF000` load a word from 0xF000, matching the
+        # peek2/poke2 behaviour without a new codegen path.
+        if getattr(cast, 'pointer_depth', 0) > 0:
+            return self.generate_expression(cast.expr)
         inner = cast.expr
 
         # Identity cast optimization: casting to the type the expression
@@ -5604,6 +5714,10 @@ class CodeGenerator:
                 return g['type']
             return None
         if isinstance(expr, Cast):
+            # An address cast yields an address (int-like), not a typed
+            # scalar: (char *)x must NOT be treated as a char value.
+            if getattr(expr, 'pointer_depth', 0) > 0:
+                return None
             # (stringh)x yields a string value (hex representation)
             if expr.target_type == 'stringh':
                 return 'string'

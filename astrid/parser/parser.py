@@ -229,10 +229,18 @@ class FuncCall(ASTNode):
         self.args = args
 
 class Cast(Expression):
-    """Type cast expression node: (int)expr, (char)expr, (string)expr, (binary)expr."""
-    def __init__(self, target_type: str, expr: "Expression"):
+    """Type cast expression node: (int)expr, (char)expr, (string)expr, (binary)expr.
+
+    pointer_depth > 0 marks an address cast: (int *)addr, (char *)0xF000.
+    Addresses are plain 16-bit values, so a pointer cast is an identity
+    conversion -- its value is the full address, NOT masked to the pointee
+    width. `*(int *)0xF000` therefore loads a word from memory address
+    0xF000 (desugaring to the same thing peek2/poke2 do)."""
+    def __init__(self, target_type: str, expr: "Expression",
+                 pointer_depth: int = 0):
         self.target_type = target_type
         self.expr = expr
+        self.pointer_depth = pointer_depth
 
 class ArrayAccess(Expression):
     """Array element access: arr[index]."""
@@ -1779,11 +1787,21 @@ class Parser:
                         if array_size is None:
                             array_size = Number(str(len(init_list)))
                         value = None
-            decls.append(VarDecl(var_type, name, value, array_size, init_list,
-                                 pointer_depth=pointer_depth,
-                                 struct_tag=struct_tag,
-                                 array_syntax=array_syntax,
-                                 qualifiers=[]))
+            # Absolute-placement attribute: `int scb[16] @ 0xF000;`
+            # Pins a global at a fixed address (codegen emits it in its own
+            # ORG segment). Only valid on globals; codegen rejects it on
+            # locals. The address is a compile-time constant expression.
+            placement_addr = None
+            if self.current.type == 'OPERATOR' and self.current.value == '@':
+                self.advance()
+                placement_addr = self.parse_binary_op(1)
+            decl = VarDecl(var_type, name, value, array_size, init_list,
+                           pointer_depth=pointer_depth,
+                           struct_tag=struct_tag,
+                           array_syntax=array_syntax,
+                           qualifiers=[])
+            decl.placement_addr = placement_addr
+            decls.append(decl)
             if self.current.value == ',':
                 self.advance()
             else:
@@ -2368,13 +2386,20 @@ class Parser:
                     f"line {self.current.line})")
         elif token.type == 'DELIMITER' and token.value == '(':
             self.advance()
-            # Check for type cast: (int)expr, (char)expr, (string)expr, (binary)expr, (stringh)expr
+            # Check for type cast: (int)expr, (char)expr, (string)expr,
+            # (binary)expr, (stringh)expr. A trailing '*' marks an address
+            # cast: (int *)0xF000, (char *)addr -- pointers are 16-bit
+            # address values, so these are identity conversions (see Cast).
             if self.current.type == 'KEYWORD' and self.current.value in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'stringh', 'binary', 'float'}:
                 target_type = self.current.value
                 self.advance()
+                pointer_depth = 0
+                while self.current.type == 'OPERATOR' and self.current.value == '*':
+                    pointer_depth += 1
+                    self.advance()
                 self.expect('DELIMITER', ')')
                 cast_expr = self.parse_unary()
-                return Cast(target_type, cast_expr)
+                return Cast(target_type, cast_expr, pointer_depth=pointer_depth)
             expr = self.parse_expression()
             self.expect('DELIMITER', ')')
             return expr

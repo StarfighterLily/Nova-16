@@ -1,6 +1,26 @@
 A C language for the Nova-16, built from the ground up.
 
-## Multi-file compilation units
+## Table of Contents
+
+1. [Multi-file compilation units](#multi-file-compilation-units)
+2. [Implementation blocks](#implementation-blocks)
+3. [Systems builtins: registers, stack, and flags](#systems-builtins-registers-stack-and-flags)
+4. [Stack manipulation and cooperative tasks](#stack-manipulation-and-cooperative-tasks)
+5. [Inline assembly](#inline-assembly)
+6. [Interrupt handlers and naked functions](#interrupt-handlers-and-naked-functions)
+7. [Absolute placement, address casts, and volatile](#absolute-placement-address-casts-and-volatile)
+8. [Getting started](#getting-started)
+9. [Basic syntax](#basic-syntax)
+10. [Types](#types)
+11. [Memory model](#memory-model)
+12. [Function calling conventions](#function-calling-conventions)
+13. [Structs and unions](#structs-and-unions)
+14. [Standard builtins](#standard-builtins)
+15. [Common patterns](#common-patterns)
+
+---
+
+## Getting started
 
 Astrid programs can be split across files with two top-level directives:
 
@@ -503,4 +523,94 @@ interrupt(0) void timer_isr() {
     ticks++;
     iret();   // restores registers + IRET
 }
+```
+
+## Absolute placement, address casts, and volatile
+
+Three C-parity features that round out systems programming in Astrid.
+
+### Absolute placement with `@ addr`
+
+A global variable can be pinned at a fixed address with the `@` attribute,
+which emits the variable in its own `ORG` segment:
+
+```c
+int scb[16] @ 0xF000;   // sprite SCB block: 16 words at 0xF000-0xF01F
+int flags  @ 0xC5;      // byte-sized MMIO view (mouse control register)
+int count  @ 0xC000 + 0x40;   // any compile-time constant expression
+```
+
+Placement rules:
+
+* The address must be a compile-time constant expression (numeric literals,
+  enum constants, and constant arithmetic all fold).
+* Only globals may be placed; `@` on a local is a compile error.
+* A placed global does **not** consume a slot in the sequential 0x8000
+  global region -- unplaced globals keep their contiguous layout, and the
+  placed variable appears in its own `ORG <addr>` segment in the output.
+* Once placed, the variable is addressed exactly like any other global:
+  `scb[3] = 77` writes to `0xF006`, and `&scb` yields `0xF000`.
+
+```c
+int scb[16] @ 0xF000;
+int ordinary;      // still at 0x8000; placement did not shift it
+
+int main() {
+    scb[0] = 0x1234;    // writes 0xF000
+    scb[2] = 0xBEEF;    // writes 0xF004
+    return 0;
+}
+```
+
+### Address casts: `(T *)addr` and `*(T *)addr`
+
+Casting an integer to a pointer type is an identity conversion -- a pointer is
+a plain 16-bit address. Dereferencing such a cast loads or stores through that
+address, desugaring to exactly what `peek2`/`poke2` (or `peek`/`poke` for byte
+pointees) do, but with C's natural syntax:
+
+```c
+int *scbp = (int *)0xF000;   // scbp == 0xF000, the full address
+*scbp = 0x1234;              // word store at 0xF000
+int x = *(int *)0xF004;      // word load from 0xF004
+*(char *)0xC5 = 7;           // byte store at 0xC5
+
+int *p = (int *)0xF000;
+p[3] = 77;                   // word store at 0xF006 (index scales by 2)
+int v = *(p + 3);            // same address through pointer arithmetic
+```
+
+Because addresses are full 16-bit values, a `(char *)addr` cast keeps the
+whole address -- it is never folded to the low byte. The optimizer treats
+address casts as identity conversions and never constant-folds them.
+
+### volatile finally means something
+
+`volatile` on a variable now enforces the hardware-observation contract. A
+volatile variable is:
+
+* **Never register-allocated** -- it is excluded from the register-coloring
+  candidate set, so every access touches memory.
+* **Never spill-allocated** -- volatile locals stay FP-relative (or, for
+  globals, at their absolute address); the spill window is never used.
+* **Never folded or CSE'd** -- each read compiles to a fresh memory load, so
+  hardware state changed by an interrupt or peripheral is always observed.
+
+```c
+volatile int v;
+volatile int hw_flag = 0;
+
+int main() {
+    v = 42;
+    int x = v + v;   // TWO memory loads: any change between them is seen
+    while (!hw_flag) { }   // re-reads hw_flag every iteration
+    return x;
+}
+```
+
+Applies to globals, locals, and parameters alike:
+
+```c
+void poll(volatile int *status) { ... }   // volatile parameter
+volatile int lv = 5;                      // volatile local (FP-relative)
 ```
