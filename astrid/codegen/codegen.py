@@ -1737,8 +1737,17 @@ class CodeGenerator:
                 _label = f"func_{_func_name}"
                 self.assembly.append(f"    DW {_label}  ; vector {_vec_num}")
                 _last_offset = _target + 2
-            # Skip past the interrupt vector table (0x0100-0x011F, 8 vectors x 4 bytes)
-            self.assembly.append("ORG 0x0120")
+            # Skip past the interrupt vector table (0x0100-0x011F, 8 vectors x 4 bytes).
+            # WHY: code must resume ABOVE the 0x1000 start stub (15 bytes:
+            # MOV SP / MOV FP / CALL main / HLT). The old ORG 0x0120 restarted
+            # code below the stub, so any ISR program longer than ~3.8KB
+            # overwrote the stub at 0x1000 and the emulator crashed at
+            # PC 0x1001 with `Unknown opcode: F8` (NovaDOS kernel = 5033B).
+            # 0x1100 leaves a 241-byte gap after the stub, keeps handlers in
+            # low RAM, and stays far below globals (0x8000) and spills
+            # (0xC000+). Non-ISR programs are unaffected (functions follow
+            # the stub sequentially without an explicit ORG).
+            self.assembly.append("ORG 0x1100")
             self.assembly.append("")
 
     # ------------------------------------------------------------------

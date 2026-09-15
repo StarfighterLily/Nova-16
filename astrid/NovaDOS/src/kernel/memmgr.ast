@@ -1,0 +1,189 @@
+// =============================================================================
+// NovaDOS - Nova-16 Operating System Kernel Core
+// A TI-OS / DOS / Plan-9 Hybrid written in Astrid
+// WHAT: minimal cooperative scheduler on flat parallel task globals.
+// WHY: task_spawn/task_switch need raw context/stack arrays; separate globals
+//      keep every declaration parser-legal (no array/struct-pointer fields).
+// =============================================================================
+
+// Include scalar kernel types (and, transitively, kdos.ast enums).
+include "types.ast";
+
+// =============================================================================
+// Scheduler State (flat parallel globals)
+// =============================================================================
+
+// 16 slots; slot i owns ctx_words[i*22..i*22+21] and
+// task_stacks[i*256..i*256+255].
+int ctx_words[352];
+int task_stacks[4096];
+int task_pid[16];
+int task_tid[16];
+int task_prio[16];
+int task_state[16];
+int task_wake[16];
+int task_events[16];
+int task_sigmask[16];
+int task_sysarg[16];
+int task_sysret[16];
+int task_syserr[16];
+int task_count = 0;
+int current_task = -1;
+
+// Processes: metadata plus scheduler-slot index (no struct pointers).
+struct ProcEntry proc_table[8];
+int proc_count = 0;
+int next_pid = 1;
+
+// Memory manager state: bump allocator from 0x3000 upward; totals only.
+int mem_heap_start = 0x3000;
+int mem_heap_next = 0x3000;
+int mem_heap_end = 0x8000;
+int mem_heap_used = 0;
+int mem_initialized = 0;
+
+void mem_init() {
+    mem_heap_next = mem_heap_start;
+    mem_heap_used = 0;
+    mem_initialized = 1;
+}
+
+int kmalloc(int size) {
+    int aligned;
+    int addr;
+    if (mem_initialized == 0) {
+        mem_init();
+    }
+    aligned = size;
+    if (aligned & 1) {
+        aligned = aligned + 1;
+    }
+    if (mem_heap_next + aligned > mem_heap_end) {
+        return 0;
+    }
+    addr = mem_heap_next;
+    mem_heap_next = mem_heap_next + aligned;
+    mem_heap_used = mem_heap_used + aligned;
+    return addr;
+}
+
+void kfree(int ptr) {
+    if (ptr == 0) {
+        return;
+    }
+    // WHY: bump allocator has no per-block headers; free is a no-op so the
+    // kernel never corrupts live data by pretending to reclaim it.
+}
+
+int kmalloc_free() {
+    if (mem_initialized == 0) {
+        return mem_heap_end - mem_heap_start;
+    }
+    return mem_heap_end - mem_heap_next;
+}
+
+// =============================================================================
+// Task Scheduler
+// =============================================================================
+
+int find_free_task_slot() {
+    int i;
+    for (i = 0; i < 16; i = i + 1) {
+        if (task_pid[i] == -1) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int task_create(int stack_base, int stack_words, int entry, int priority) {
+    int slot;
+    int ctx[22];
+    int i;
+    slot = find_free_task_slot();
+    if (slot < 0) {
+        return -1;
+    }
+    task_spawn(ctx, stack_base, stack_words, entry);
+    // WHY: copy the fabricated context word-by-word into this slot's window;
+    // the task_switch builtin restores from the same window later.
+    for (i = 0; i < 22; i = i + 1) {
+        ctx_words[slot * 22 + i] = ctx[i];
+    }
+    task_pid[slot] = -1;
+    task_tid[slot] = slot;
+    task_prio[slot] = priority;
+    task_state[slot] = 0;
+    task_wake[slot] = 0;
+    task_events[slot] = 0;
+    task_sigmask[slot] = 0;
+    task_sysarg[slot] = 0;
+    task_sysret[slot] = 0;
+    task_syserr[slot] = 0;
+    task_count = task_count + 1;
+    return slot;
+}
+
+void task_yield() {
+    int old_task;
+    int new_task;
+    int best_prio;
+    int i;
+    int save_ctx[22];
+    int restore_ctx[22];
+    if (task_count <= 1) {
+        return;
+    }
+    old_task = current_task;
+    if (old_task < 0) {
+        return;
+    }
+    best_prio = -1;
+    new_task = -1;
+    for (i = 0; i < 16; i = i + 1) {
+        if (task_state[i] == 0 && task_pid[i] != -1) {
+            if (task_prio[i] > best_prio) {
+                best_prio = task_prio[i];
+                new_task = i;
+            }
+        }
+    }
+    if (new_task < 0) {
+        return;
+    }
+    if (new_task == old_task) {
+        return;
+    }
+    for (i = 0; i < 22; i = i + 1) {
+        save_ctx[i] = ctx_words[old_task * 22 + i];
+        restore_ctx[i] = ctx_words[new_task * 22 + i];
+    }
+    task_switch(save_ctx, restore_ctx);
+    for (i = 0; i < 22; i = i + 1) {
+        ctx_words[old_task * 22 + i] = save_ctx[i];
+    }
+    current_task = new_task;
+}
+
+void task_sleep(int ticks) {
+    int ct;
+    ct = current_task;
+    if (ct < 0) {
+        return;
+    }
+    task_state[ct] = 3;
+    task_wake[ct] = ticks;
+    task_yield();
+}
+
+void wake_sleepers(int current_time) {
+    int i;
+    for (i = 0; i < 16; i = i + 1) {
+        if (task_state[i] == 3) {
+            if (task_wake[i] <= current_time) {
+                task_state[i] = 0;
+            }
+        }
+    }
+}
+

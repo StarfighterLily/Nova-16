@@ -1,7 +1,7 @@
 # Nova-16
 
 A custom 16-bit CPU emulator with integrated graphics, sound, and I/O capabilities, written in Python.
-Now mostly complete and mostly used for development/testing to run on the 8MHz compiled version.
+Now mostly complete and mostly used for development/testing to run on the 16MHz [compiled version](nova16.exe) now included for Windows.
 
 ## Overview
 
@@ -37,11 +37,11 @@ Nova-16 is a complete 16-bit computer system emulator featuring a custom instruc
 
 ### Input/Output
 - Keyboard input with interrupt support
-- 16-key circular buffer for keyboard events
-- Memory-mapped keyboard control registers
+- Mouse input (2-button)
 - Timer/counter system with programmable interrupts
 
 ### Development Tools
+These may not work fully.
 - **Assembler** (`nova_assembler.py`): Converts assembly code to machine code
 - **Disassembler** (`nova_disassembler.py`): Converts machine code back to assembly
 - **Debugger** (`nova_debugger.py`): Step-through debugging with register inspection
@@ -78,86 +78,11 @@ together), no silent misloads (CRC + explicit entry chunk), code/data section
 typing, and the section/symbol/relocation model needed for building objects
 and linking programs.
 
-## NoBASIC Programming Language
+## High Level Programming Languages
 
 NoBASIC is a high-level programming language inspired by TI-BASIC, designed specifically for the Nova-16 emulator. It provides a simple, calculator-like syntax that compiles to Nova-16 assembly code, making it easier to develop programs without directly writing assembly.
 
-### Key Features
-
-- **Simple Syntax**: Case-insensitive, line-based statements with implicit variable declaration.
-- **Data Types**: Support for numbers, lists, strings, matrices, and user-defined structs.
-- **Control Structures**: Loops (For, While), conditionals (If-Then-Else), and subroutines.
-- **Hardware Integration**: Built-in commands for graphics drawing, sprite manipulation, sound playback, and keyboard input.
-- **Rapid Prototyping**: Ideal for games, demos, and educational programs.
-
-### Compiling and Running NoBASIC Programs
-
-1. Write your program in a `.nobasic` file.
-2. Compile to assembly:
-   ```bash
-   python NoBASIC/nobasic_compiler.py <program.nobasic> --output <program.asm>
-   ```
-3. Assemble and run as with any assembly program:
-   ```bash
-   python nova_assembler.py <program.asm>
-   python nova.py <program.bin>
-   ```
-
-### Example NoBASIC Program
-
-```nobasic
-// Simple starfield effect
-ClrDraw
-SetLayer(1)
-For x = 0 to 25
-    For y = 0 to 20
-        PxlOn(rnd()+x, rnd()-y, rndr(0x01, 0x05))
-    Next
-Next
-```
-
-### Tools
-
-- **Compiler** (`NoBASIC/nobasic_compiler.py`): Converts NoBASIC source to assembly.
-- **Debugger** (`NoBASIC/nobasic_debugger.py`): Debug NoBASIC programs.
-- **Profiler** (`NoBASIC/nobasic_profiler.py`): Performance analysis for NoBASIC code.
-
-For detailed documentation, see [NoBASIC Design](NoBASIC/NoBASIC%20Design.md).
-
-## Project Structure
-
-```
-Nova-16/
-├── nova.py                      # Main entry point
-├── nova_cpu.py                  # CPU emulator core
-├── nova_memory.py               # Memory management
-├── nova_gfx.py                  # Graphics subsystem
-├── nova_sound.py                # Sound generation
-├── nova_keyboard.py             # Keyboard input handling
-├── nova_assembler.py            # Assembly language compiler
-├── nova_disassembler.py         # Machine code to assembly converter
-├── nova_debugger.py             # Interactive debugger
-├── nova_gui.py                  # Graphical user interface
-├── nova_profiler.py             # CPU profiling tools
-├── nova_gpu_profiler.py         # Graphics profiling tools
-├── nova_memory_profiler.py      # Memory usage analysis
-├── instructions.py              # Instruction set implementation
-├── opcodes.py                   # Opcode definitions
-├── font.py                      # Font rendering system
-├── asm/                         # Example assembly programs
-│   ├── gfxtest.asm             # Graphics demonstration
-│   ├── soundtest.asm           # Sound system test
-│   ├── kbd_sprite.asm          # Keyboard-controlled sprite
-│   ├── wordproc.asm            # Simple word processor
-│   └── ...
-├── docs/                        # Documentation
-│   ├── CPU Specification.md     # Complete CPU architecture docs
-│   ├── VRAM Specification.md    # Graphics memory layout
-│   ├── SOUND_SYSTEM.md         # Audio system documentation
-│   └── ...
-└── tests/                       # Unit tests
-
-```
+Astrid is a C-like language designed for allowing access to the underlying system and likewise compiles.
 
 ## Installation
 
@@ -179,12 +104,12 @@ pip install numpy pygame pyaudio
 
 **Graphical Mode:**
 ```bash
-python nova.py <program.asm>
+python nova_main.py <program.asm>
 ```
 
 **Headless Mode (for testing):**
 ```bash
-python nova.py <program.asm> --headless --max-cycles 10000
+python nova_main.py <program.asm> --headless --max-cycles 10000
 ```
 
 ### Assembling Programs
@@ -206,49 +131,7 @@ python nova_debugger.py <program.bin>
 ```
 
 ## Example Programs
-
-### Hello World (Text Display)
-```assembly
-ORG 0x1000
-
-START:
-    MOV VC, 0x1F    ; Set color to bright red
-    MOV VX, 0       ; X coordinate
-    MOV VY, 0       ; Y coordinate
-    MOV VM, 0       ; Coordinate mode
-    TEXT STR        ; Display string
-    HLT
-
-STR:
-    DEFSTR "Hello, Nova-16!"
-```
-
-### Graphics Animation
-```assembly
-ORG 0x1000
-
-SETUP:
-    MOV VM, 1        ; Memory mode
-    MOV VL, 1        ; Use layer 1
-    MOV VC, 0        ; Starting color
-
-LOOP:
-    SWRITE VC        ; Write pixel
-    INC VC           ; Change color
-    JMP LOOP         ; Repeat
-```
-
-### Sound Test
-```assembly
-ORG 0x1000
-
-MAIN:
-    MOV SF, 128      ; Set frequency
-    MOV SV, 128      ; Set volume
-    MOV SW, 0x82     ; Sine wave + enabled
-    SPLAY            ; Play sound
-    HLT
-```
+Check asm/progs, astrid/progs, and nobasic/progs for hand-written code examples
 
 ## Instruction Set Highlights
 
@@ -292,6 +175,7 @@ pytest tests/
 ## Documentation
 
 Detailed documentation is available in the `docs/` directory:
+Documentation may be stale due to design drift over the course of development.
 
 - [CPU Specification](docs/CPU%20Specification.md) - Complete ISA documentation
 - [VRAM Specification](docs/VRAM%20Specification.md) - Graphics memory layout
@@ -299,31 +183,31 @@ Detailed documentation is available in the `docs/` directory:
 - [Keyboard Implementation](docs/Keyboard%20Implementation.md) - Input handling
 - [Sprite System](docs/SPRITE_SYSTEM.md) - Sprite rendering system
 - [Stack Addressing Syntax](docs/STACK_ADDRESSING_SYNTAX.md) - Stack operations
-- [Instruction Reference](docs/nova16_instruction_reference.md) - Complete instruction list
+- [Instruction Reference](docs/nova16_instruction_reference.md) - Complete(-ish?) instruction list
 
 ## Development
 
 ### Project Status
 The Nova-16 is an active project with ongoing development. See `docs/TODO` for planned features and improvements.
+It is currently nearing the end of expansion.
 
 ### Contributing
-This is a personal project, but feedback and suggestions are welcome through GitHub issues.
-
-## Technical Details
-
-- **Byte Ordering**: Big-endian throughout
-- **Memory Model**: Princeton architecture with unified 64KB address space
-- **Interrupt Vectors**: Located at 0x0100-0x011F
-- **Stack**: Grows downward from 0xFFFF
-- **Keyboard Buffer**: 16-key circular buffer at memory-mapped location
+This is a personal project, but feedback and suggestions are welcome. Fork it, hack it, develop for it, spread it.
 
 ## License
 
-This project does not currently have a license specified. Please contact the author for usage permissions.
+This project is free to install, use, share, break, fix, hack, remove, or otherwise engage with in any legal manner.
+This project CANNOT be sold with my permission. This is for fun and education.
 
 ## Author
 
 Created by StarfighterLily
+
+## AI Disclaimer
+
+As I am but a humble hedge-wizard with far too little time or social skills, I have used AI
+for implementation, testing, bug hunting, and fixing this project and the languages (ESPECIALLY the languages).
+Please, get some human eyes and hands on this.
 
 ---
 

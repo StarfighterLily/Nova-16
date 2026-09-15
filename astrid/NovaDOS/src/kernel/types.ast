@@ -1,0 +1,44 @@
+// =============================================================================
+// NovaDOS Kernel - Type Definitions
+// WHAT: minimal scalar-only structs the Astrid parser accepts.
+// WHY: struct fields must be scalar base types; arrays and struct pointers are
+//      variables, not fields. Task contexts/stacks live in scheduler.ast.
+// =============================================================================
+
+// Include enum constants.
+include "../kdos.ast";
+
+// =============================================================================
+// Kernel Data Structures (all fields are scalar; max 10 fields per struct)
+// =============================================================================
+
+// File Descriptor Entry: 5 scalar fields.
+struct FDEntry {
+    int ftype;
+    int flags;
+    int offset;
+    int handle;
+    int pid;
+};
+
+// Directory Entry: string name + 4 scalar fields (no char arrays in structs).
+struct DirEntry {
+    string name;
+    int ftype;
+    int fsize;
+    int cluster;
+    int attrs;
+};
+
+// Process Entry: stores task TABLE INDEX, not a TCB pointer.
+struct ProcEntry {
+    int pid;
+    int parent;
+    int argc;
+    int arg0;
+    int arg1;
+    int exitcode;
+    int state;
+    int taskidx;
+};
+

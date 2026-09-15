@@ -1,0 +1,20 @@
+include "types.ast";
+
+// =============================================================================
+// Process Management and Interrupt Handlers (small, verified chunk)
+// =============================================================================
+
+volatile int kernel_running = 1;
+volatile int system_ticks = 0;
+volatile int pending_timer = 0;
+int shell_stack[512];
+int shell_tid = -1;
+struct DirEntry root_dir[16];
+int dir_count = 0;
+int fd_count = 0;
+
+interrupt(0) void timer_isr() {
+    system_ticks = system_ticks + 1;
+    pending_timer = 1;
+    iret();
+}

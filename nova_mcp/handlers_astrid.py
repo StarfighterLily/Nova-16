@@ -5,7 +5,7 @@ assembly and (optionally) binary in-process, with optional auto-load of
 the resulting binary into the emulator.
 
 NOMF compliance: the Astrid codegen always emits ``ORG 0x1000`` (and
-``ORG 0x0100``/``ORG 0x0120`` when a ``timer_interrupt`` handler exists),
+``ORG 0x0100``/``ORG 0x1100`` when a ``timer_interrupt`` handler exists),
 so the assembler produces a NOMF ``.nex`` executable as the primary
 artifact.  The handler surfaces that artifact in the response and prefers
 it for auto-load, falling back to the legacy ``.bin`` only when NOMF

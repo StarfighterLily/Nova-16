@@ -1,0 +1,114 @@
+// =============================================================================
+// NovaDOS Kernel - Boot Shell (bot-up slice)
+// WHAT: minimal text console + cooperative scheduler smoke test using Astrid
+//       builtins only (set_layer/set_pos/write_text/key_available/key_read).
+// WHY: proves kernel pieces execute on the emulator before adding FS/drivers.
+// =============================================================================
+
+include "memmgr.ast";
+include "interrupts.ast";
+
+// Console cursor: DOS-style prompt block; no graphics imports yet.
+int shell_row = 12;
+int shell_col = 2;
+
+void shell_newline() {
+    shell_col = 2;
+    shell_row = shell_row + 1;
+    if (shell_row > 60) {
+        shell_row = 12;
+        set_layer(0);
+        screen_fill(0x00);
+    }
+}
+
+void shell_putc(int c) {
+    if (c == 13) {
+        shell_newline();
+        return;
+    }
+    if (c == 10) {
+        shell_newline();
+        return;
+    }
+    if (c == 8) {
+        if (shell_col > 2) {
+            shell_col = shell_col - 1;
+            set_pos(shell_col, shell_row);
+            write_text(" ", 0x0F);
+            set_pos(shell_col, shell_row);
+        }
+        return;
+    }
+    set_pos(shell_col, shell_row);
+    write_text((string)c, 0x0F);
+    shell_col = shell_col + 1;
+    if (shell_col > 60) {
+        shell_newline();
+    }
+}
+
+void shell_prompt() {
+    shell_col = 2;
+    set_pos(shell_col, shell_row);
+    write_text("> ", 0x0F);
+    shell_col = 4;
+}
+
+void banner() {
+    set_mode(1);
+    set_layer(0);
+    screen_fill(0x00);
+    set_pos(2, 10);
+    write_text("NovaDOS v0.1", 0x0F);
+    set_pos(2, 11);
+    write_text("boot slice: scheduler + timer", 0x0A);
+    shell_row = 13;
+    shell_col = 2;
+}
+
+// Demo worker: wakes through sleep/yield pings so the scheduler path runs.
+int demo_ctx[22];
+int demo_stack[64];
+int demo_ctx_main[22];
+int demo_hits = 0;
+
+void demo_task() {
+    demo_hits = demo_hits + 1;
+    task_switch(demo_ctx, demo_ctx_main);
+    demo_hits = demo_hits + 10;
+    task_switch(demo_ctx, demo_ctx_main);
+    demo_hits = demo_hits + 100;
+}
+
+void main() {
+    int i;
+    int had_sleep;
+    mem_init();
+    for (i = 0; i < 16; i = i + 1) {
+        task_pid[i] = -1;
+        task_state[i] = 1;
+    }
+    banner();
+    shell_prompt();
+    task_spawn(demo_ctx, demo_stack, 64, &demo_task);
+    task_switch(demo_ctx_main, demo_ctx);
+    wake_sleepers(system_ticks);
+    shell_putc(72);
+    shell_putc(105);
+    task_switch(demo_ctx_main, demo_ctx);
+    shell_newline();
+    shell_prompt();
+    // WHY: keyboard polling must be conditional or headless runs stall forever.
+    for (i = 0; i < 200; i = i + 1) {
+        wake_sleepers(system_ticks);
+        if (key_available()) {
+            shell_putc(key_read());
+        }
+    }
+    task_switch(demo_ctx_main, demo_ctx);
+    had_sleep = demo_hits;
+    set_pos(2, 60);
+    write_text((string)had_sleep, 0x0A);
+    shell_newline();
+}

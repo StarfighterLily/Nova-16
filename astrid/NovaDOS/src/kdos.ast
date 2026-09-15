@@ -1,0 +1,145 @@
+// =============================================================================
+// NovaDOS - Nova-16 Operating System Kernel
+// A TI-OS / DOS / Plan-9 Hybrid
+// Written in Astrid
+// =============================================================================
+
+// No includes: pure enum constants (stdlib arrives later).
+
+// =============================================================================
+// System Constants (using Astrid enums)
+// =============================================================================
+
+enum SysCall {
+    SYS_NULL      = 0,
+    SYS_THREAD_CREATE = 1,
+    SYS_THREAD_EXIT   = 2,
+    SYS_THREAD_YIELD  = 3,
+    SYS_MALLOC        = 4,
+    SYS_FREE          = 5,
+    SYS_OPEN          = 6,
+    SYS_CLOSE         = 7,
+    SYS_READ          = 8,
+    SYS_WRITE         = 9,
+    SYS_SEEK          = 10,
+    SYS_GETC          = 11,
+    SYS_PUTC          = 12,
+    SYS_FOPEN         = 13,
+    SYS_FCLOSE        = 14,
+    SYS_FREAD         = 15,
+    SYS_FWRITE        = 16,
+    SYS_FSEEK         = 17,
+    SYS_MKFS          = 18,
+    SYS_MKDIR         = 19,
+    SYS_RMDIR         = 20,
+    SYS_REMOVE        = 21,
+    SYS_RENAME        = 22,
+    SYS_DIR           = 23,
+    SYS_TIME          = 24,
+    SYS_SLEEP         = 25,
+    SYS_BEEP          = 26,
+    SYS_GETSCR        = 27,
+    SYS_PUTSCR        = 28,
+    SYS_GETPIX        = 29,
+    SYS_SWAPBUF       = 30,
+    SYS_DEVIOCTL      = 31,
+    SYS_FORK          = 32,
+    SYS_EXEC          = 33,
+    SYS_WAIT          = 34
+};
+
+enum Memory {
+    VIDEO_BASE    = 0x0000,
+    FREE_RAM      = 0x1000,
+    KERNEL_START  = 0x1000,
+    KERNEL_END    = 0x2FFF,
+    USER_START    = 0x3000,
+    STACK_BASE    = 0x8000,
+    GLOBALS_BASE  = 0x8000,
+    SCB_BASE      = 0xF000,
+    SCB_END       = 0xF0FF
+};
+
+enum Priority {
+    PRIO_REALTIME  = 100,
+    PRIO_KERNEL    = 50,
+    PRIO_NORMAL    = 10,
+    PRIO_IDLE      = 1
+};
+
+enum TaskState {
+    TASK_READY     = 0,
+    TASK_RUNNING   = 1,
+    TASK_WAITING   = 2,
+    TASK_SLEEPING  = 3,
+    TASK_ZOMBIE    = 4,
+    TASK_STOPPED   = 5
+};
+
+enum FType {
+    FT_REGULAR     = 0,
+    FT_DIRECTORY   = 1,
+    FT_DEVICE      = 2,
+    FT_PIPE        = 3,
+    FT_SYMLINK     = 4
+};
+
+enum FMode {
+    FM_READ        = 0x01,
+    FM_WRITE       = 0x02,
+    FM_RDWR        = 0x03,
+    FM_APPEND      = 0x04,
+    FM_CREATE      = 0x10,
+    FM_EXCL        = 0x20
+};
+
+enum FD {
+    FD_STDIN       = 0,
+    FD_STDOUT      = 1,
+    FD_STDERR      = 2
+};
+
+enum DrvType {
+    DRV_CHAR       = 0,
+    DRV_BLOCK      = 1,
+    DRV_NET        = 2,
+    DRV_VIRTUAL    = 3
+};
+
+enum DisplayConfig {
+    DISP_WIDTH    = 256,
+    DISP_HEIGHT   = 256,
+    MAX_LAYERS    = 8,
+    LAYER_BG      = 0,
+    LAYER_TEXT    = 1,
+    LAYER_SPRITES = 2
+};
+
+enum Color {
+    COLOR_BLACK       = 0x00,
+    COLOR_WHITE       = 0x0F,
+    COLOR_RED         = 0x02,
+    COLOR_GREEN       = 0x05,
+    COLOR_BLUE        = 0x06,
+    COLOR_CYAN        = 0x03,
+    COLOR_YELLOW      = 0x07,
+    COLOR_MAGENTA     = 0x04,
+    COLOR_LIGHT_GRAY  = 0x0E,
+    COLOR_DARK_GRAY   = 0x0D
+};
+
+enum TextConfig {
+    TEXT_COLS      = 64,
+    TEXT_ROWS      = 64,
+    CHAR_WIDTH     = 4,
+    CHAR_HEIGHT    = 8
+};
+
+enum MaxResources {
+    MAX_TASKS      = 16,
+    MAX_PROCESSES = 8,
+    MAX_FILES     = 32,
+    MAX_DIRS      = 16,
+    BLOCK_SIZE    = 256,
+    NAME_LEN      = 16
+};
