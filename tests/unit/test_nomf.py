@@ -268,7 +268,10 @@ class TestNomfAssemblerEmission:
         doc = nomf.read(str(asm_path.with_suffix(".nex")))
         assert doc.kind == nomf.KIND_EXECUTABLE
         assert doc.entry is not None and doc.entry.addr == 0x2000
-        assert doc.symbol_table()["start"] == "0x2000"
+        # The assembler's symbol writers uppercase names -- the legacy .sym
+        # sidecar for this same source reads "START 0x2000" -- so the label is
+        # looked up in upper case (same rule the .sym readers follow).
+        assert doc.symbol_table()["START"] == "0x2000"
 
     @pytest.mark.unit
     @pytest.mark.assembler

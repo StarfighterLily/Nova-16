@@ -47,7 +47,10 @@ def _assemble_program():
             if line and not line.startswith("#"):
                 parts = line.split()
                 if len(parts) == 2 and parts[1].startswith("0x"):
-                    sym[parts[0]] = int(parts[1], 16)
+                    # The assembler's .sym writer uppercases every name
+                    # (START, LOOP), so normalize to lower case here and let
+                    # call sites use the source-level label spelling.
+                    sym[parts[0].lower()] = int(parts[1], 16)
     return bin_path, sym, tmpdir
 
 

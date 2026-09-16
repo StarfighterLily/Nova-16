@@ -1,0 +1,25 @@
+// Probe 3: function CALL inside an arithmetic expression assigned to a global.
+// WHY: probe_constructs.ast left probe_flag at 0 after three such statements;
+// probe_cond.ast proved the condition operators themselves are fine.
+int s1 = 0;
+int s2 = 0;
+int s3 = 0;
+int s4 = 0;
+
+int f(int x) {
+    if (x > 0) {
+        return 7;
+    }
+    return 3;
+}
+
+void main() {
+    int t;
+    t = f(5);
+    s1 = t;
+    s2 = s2 + f(5);
+    t = f(0);
+    s2 = s2 + t;
+    s3 = f(5) + f(0);
+    s4 = s1 + 1;
+}

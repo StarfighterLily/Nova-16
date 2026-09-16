@@ -1,0 +1,30 @@
+// Probe 2: isolate the classify() anomaly from probe_constructs.ast.
+// WHY: probe_flag ended up 0 where 1+2+0 == 3 was expected, so test the
+// compound-condition operators and the return-value plumbing separately.
+int r_and = 0;
+int r_or = 0;
+int r_a = 0;
+int r_nl = 0;
+int r_high = 0;
+
+int cls_and(int c) {
+    if (c >= 32 && c < 127) {
+        return 1;
+    }
+    return 0;
+}
+
+int cls_or(int c) {
+    if (c == 10 || c == 13) {
+        return 2;
+    }
+    return 0;
+}
+
+void main() {
+    r_a = cls_and('A');
+    r_high = cls_and(200);
+    r_nl = cls_or(10);
+    r_and = r_a + r_high;
+    r_or = r_nl;
+}

@@ -1,0 +1,29 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+func_cls_and 0x100F
+cmp_true_2 0x1031
+cmp_end_3 0x1035
+cmp_true_4 0x1057
+cmp_end_5 0x105B
+cmp_true_8 0x1085
+cmp_end_9 0x1089
+sc_false_6 0x1099
+sc_end_7 0x109D
+if_end_0 0x10B9
+func_cls_or 0x10C9
+cmp_true_12 0x10EB
+cmp_end_13 0x10EF
+cmp_true_14 0x1111
+cmp_end_15 0x1115
+cmp_true_18 0x113F
+cmp_end_19 0x1143
+sc_true_16 0x1153
+sc_end_17 0x1157
+if_end_10 0x116F
+func_main 0x1183
+gvar_r_and 0x8000
+gvar_r_or 0x8002
+gvar_r_a 0x8004
+gvar_r_nl 0x8006
+gvar_r_high 0x8008

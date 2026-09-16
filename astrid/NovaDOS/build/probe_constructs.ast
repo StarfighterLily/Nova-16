@@ -1,0 +1,67 @@
+// Probe: validates the Astrid language constructs the NovaDOS console/shell
+// slice depends on, before they are used in the kernel proper.
+enum ProbeCmd {
+    CMD_NONE = 0,
+    CMD_HELP = 1
+};
+
+int probe_col = 0;
+int probe_buf[8];
+int probe_flag = 0;
+int probe_addr = 0;
+int probe_val = 0;
+
+string probe_hex(int v) {
+    return (stringh)v;
+}
+
+void probe_puts(string s) {
+    int n;
+    n = strlen(s);
+    write_text(s, 0x0F);
+    probe_col = probe_col + n;
+}
+
+int probe_classify(int c) {
+    if (c >= 32 && c < 127) {
+        return 1;
+    }
+    if (c == 10 || c == 13) {
+        return 2;
+    }
+    return 0;
+}
+
+int probe_hexval(int c) {
+    if (c >= 48 && c <= 57) {
+        return c - 48;
+    }
+    if (c >= 65 && c <= 70) {
+        return c - 55;
+    }
+    return -1;
+}
+
+void main() {
+    int i;
+    probe_col = 0;
+    for (i = 0; i < 8; i = i + 1) {
+        probe_buf[i] = i + 1;
+    }
+    set_layer(0);
+    screen_fill(0x00);
+    set_pos(0, 0);
+    probe_puts("HELP");
+    set_pos(0, 8);
+    write_text(probe_hex(0x4E44), 0x0F);
+    probe_flag = probe_classify('A');
+    probe_flag = probe_flag + probe_classify(10);
+    probe_flag = probe_flag + probe_classify(200);
+    probe_addr = probe_hexval('F');
+    poke(0x0000, 'N');
+    poke(0x0001, 'D');
+    probe_val = peek(0x0000);
+    probe_buf[0] = probe_val;
+    set_pos(0, 16);
+    write_text((string)probe_addr, 0x0A);
+}

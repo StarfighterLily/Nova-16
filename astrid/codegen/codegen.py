@@ -3555,7 +3555,26 @@ class CodeGenerator:
                                      prefix="shift")
                     self.free_register()
             else:
+                can_push = not self._is_interrupt_handler
+                if can_push:
+                    # Preserve the accumulator across RHS evaluation.
+                    # Expression temporaries are round-robin reused, and a
+                    # user-function call result can overwrite var_reg before
+                    # the compound operation is emitted.
+                    self.emit(f"    PUSH {var_reg}")
                 rhs_reg = self.generate_expression(value.right)
+                if can_push:
+                    rhs_reg = self._pop_preserving(var_reg, rhs_reg)
+                else:
+                    # ISR: reuse the target's current value after RHS
+                    # evaluation.  This avoids holding the accumulator live
+                    # in round-robin temporaries.  As with no-push paths
+                    # elsewhere, RHS expressions in ISRs must not modify the
+                    # assignment target itself.
+                    rhs_home = self.get_register(exclude={rhs_reg, var_reg})
+                    self.emit(f"    MOV {rhs_home}, {rhs_reg}")
+                    rhs_reg = rhs_home
+                    self._emit_var_load(var_reg, assignment.name)
                 # Float compound assignment (f += x, f *= x, ...): the target
                 # already holds Q8.8; promote the RHS if needed and use
                 # FMUL/FDIV for * and / (add/sub are ordinary fixed-point).

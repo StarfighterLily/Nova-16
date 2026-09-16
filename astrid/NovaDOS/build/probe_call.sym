@@ -1,0 +1,12 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+func_f 0x100F
+cmp_true_2 0x1031
+cmp_end_3 0x1035
+if_end_0 0x1051
+func_main 0x1065
+gvar_s1 0x8000
+gvar_s2 0x8002
+gvar_s3 0x8004
+gvar_s4 0x8006

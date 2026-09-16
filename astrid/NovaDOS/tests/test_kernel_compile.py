@@ -131,5 +131,167 @@ def test_kernel_runs_without_opcode_crash(kernel_binary):
         f"Kernel exited too early after {cycles} cycles (PC=0x{proc.pc:04X})")
 
 
+def test_boot_slice_completes_cleanly(kernel_binary):
+    """End-to-end: the cooperative scheduler demo must finish and RET to the
+    stub's HLT with the original SP/FP, having run all three task resumptions.
+
+    WHY: this proves the whole boot slice works -- entry stub -> main ->
+    task_spawn/task_switch ping-pong -> main completes -> RET into HLT. A task
+    that falls off the end of its entry function would pop garbage off the
+    fabricated task stack and jump to junk (previously halt at 0x0181).
+    demo_hits == 1 + 10 + 100 == 111 is the scheduler's fingerprint.
+    """
+    proc, mem, gfx, kbd, snd = initialize_system(enable_sound=False)
+    entry = mem.load(kernel_binary)
+    proc.pc = entry
+    syms = _load_syms(kernel_binary)
+    hits_addr = syms.get("gvar_demo_hits")
+    assert hits_addr is not None, "gvar_demo_hits missing from symbol table"
+
+    cycles = 0
+    while cycles < 200000 and not proc.halted:
+        cycles += 1
+        proc.step()
+
+    assert proc.halted, f"kernel never halted (PC=0x{proc.pc:04X})"
+    # The stub's HLT lives at 0x100E; PC is one past it once halted.
+    assert proc.pc in (0x100E, 0x100F), (
+        f"kernel halted at 0x{proc.pc:04X}, expected the entry stub HLT "
+        f"at 0x100E (stale .bin, or a task returned off its own stack?)")
+    # main's frame must be fully unwound back to the stub's SP/FP.
+    assert proc.sp == 0xFFFF, f"SP not unwound: 0x{proc.sp:04X}"
+    assert proc.fp == 0xFFFF, f"FP not unwound: 0x{proc.fp:04X}"
+    # Scheduler fingerprint: demo_task resumed three times.
+    hits = mem.read_word(hits_addr)
+    assert hits == 111, f"demo_hits = {hits}, expected 111 (1 + 10 + 100)"
+
+
+# ---------------------------------------------------------------------------
+# Phase-1 shell slice: line editor + command dispatch (HELP/CLS/PEEK/BYE).
+# Keys are seeded exactly the way the GUI produces them: printable ASCII and
+# Enter=0x0A, Backspace=0x08 (see NovaDOS/docs/notes/start.md GUI-path note).
+# ---------------------------------------------------------------------------
+
+ENTER = 0x0A
+BACKSPACE = 0x08
+ESC = 0x1B
+
+
+def boot_with_keys(kernel_binary, keys, max_cycles=300000):
+    """Load the kernel, pre-seed key scan codes, and run to halt.
+
+    WHY pre-seed: the shell drains a bounded poll loop, so keys injected
+    before stepping sit in the FIFO and are consumed one per iteration --
+    the same contract the assembly-phase tests rely on.
+    """
+    proc, mem, gfx, kbd, snd = initialize_system(enable_sound=False)
+    entry = mem.load(kernel_binary)
+    proc.pc = entry
+    for k in keys:
+        kbd.add_key(k)
+    cycles = 0
+    while cycles < max_cycles and not proc.halted:
+        proc.step()
+        cycles += 1
+    return proc, mem, gfx, kbd, cycles
+
+
+def _assert_clean_halt(proc):
+    assert proc.halted, f"kernel never halted (PC=0x{proc.pc:04X})"
+    assert proc.pc in (0x100E, 0x100F), (
+        f"kernel halted at 0x{proc.pc:04X}, expected the entry stub HLT")
+    assert proc.sp == 0xFFFF and proc.fp == 0xFFFF, (
+        f"frames not unwound: SP=0x{proc.sp:04X} FP=0x{proc.fp:04X}")
+
+
+def test_shell_boot_signature_written(kernel_binary):
+    """Boot writes the OS signature "ND\\x01\\x00" at 0x0000 (memory-map.md §2),
+    so PEEK 0x0000 has something real to print."""
+    proc, mem, gfx, kbd, cycles = boot_with_keys(kernel_binary, ())
+    _assert_clean_halt(proc)
+    assert bytes(mem._mem[0x0000:0x0004]) == bytes([0x4E, 0x44, 0x01, 0x00])
+
+
+def test_shell_help_and_peek_commands(kernel_binary):
+    """"H"+Enter prints the command list, "P"+Enter prints the signature as
+    hex glyphs; both record their command id for the test to observe."""
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        kernel_binary, (ord('H'), ENTER, ord('P'), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(kernel_binary)
+    assert mem.read_word(syms["gvar_cmd_count"]) == 2
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 3  # last dispatched = PEEK
+    assert mem.read_word(syms["gvar_line_len"]) == 0   # line buffer reset
+    layer0 = gfx._compositor.layers[0]
+    # Row trace (8x8-glyph cells, 32 cols x 32 rows per memory-map.md §4):
+    #   banner title  -> cell row 1, y=8..15
+    #   banner subtitle -> cell row 2, y=16..23
+    #   initial prompt  -> cell row 3, y=24..31
+    #   prompt after demo+newline -> cell row 4, y=32..39
+    #   HELP output     -> cell row 5, y=40..47 (18 glyphs, ~236 px)
+    #   prompt after HELP -> cell row 6, y=48..55
+    #   PEEK output     -> cell row 7, y=56..63 (5 glyphs, ~81 px)
+    #   prompt after PEEK -> cell row 8, y=64..71
+    # Both HELP and PEEK bands must hold glyph pixels.
+    help_band = int((layer0[40:48, :] != 0).sum())
+    peek_band = int((layer0[56:64, :] != 0).sum())
+    assert help_band > 0, "HELP output produced no visible glyphs"
+    assert peek_band > 0, "PEEK output produced no visible glyphs"
+
+
+def test_shell_backspace_edits_line(kernel_binary):
+    """Backspace removes the previous character from the line buffer, so
+    "X",BS,"H",Enter dispatches HELP (not the unknown command "XH")."""
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        kernel_binary, (ord('X'), BACKSPACE, ord('H'), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(kernel_binary)
+    # The Enter handler resets line_len, so the buffer state is proven by the
+    # DISPATCH OUTCOME: without the backspace, "XH" would be an unknown
+    # command (shell_cmd stays 0); with it, "H" dispatches HELP.
+    assert mem.read_word(syms["gvar_line_len"]) == 0
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 1  # HELP ran
+    assert mem.read_word(syms["gvar_cmd_count"]) == 1
+
+
+def test_shell_unknown_command_is_swallowed(kernel_binary):
+    """An unknown first character must not crash the shell: the line is
+    counted, no command id is set, and the kernel still halts cleanly."""
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        kernel_binary, (ord('Q'), ENTER, ESC))
+    _assert_clean_halt(proc)
+    syms = _load_syms(kernel_binary)
+    assert mem.read_word(syms["gvar_cmd_count"]) == 1
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 0
+
+
+def test_shell_cls_command(kernel_binary):
+    """"C"+Enter clears the console layer and repaints the prompt."""
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        kernel_binary, (ord('C'), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(kernel_binary)
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 2
+    assert mem.read_word(syms["gvar_cmd_count"]) == 1
+    # CLS wiped everything except the fresh prompt (banner included), so the
+    # layer must hold some pixels ("> " glyphs) but far fewer than a full run.
+    pixels = int((gfx._compositor.layers[0] != 0).sum())
+    assert 0 < pixels < 2000, f"expected prompt-only layer, got {pixels} px"
+
+
+def test_shell_bye_exits_early(kernel_binary):
+    """"B"+Enter sets the exit flag: the poll loop is abandoned immediately
+    (visible in a much lower cycle count) and the kernel halts cleanly."""
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        kernel_binary, (ord('B'), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(kernel_binary)
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 4
+    assert mem.read_word(syms["gvar_shell_exit"]) == 1
+    # The keyless boot slice runs ~99.7k cycles; BYE skips most of the poll
+    # loop, so a fresh build must land well below that.
+    assert cycles < 80000, f"BYE did not exit early ({cycles} cycles)"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

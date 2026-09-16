@@ -9,14 +9,30 @@ include "memmgr.ast";
 include "interrupts.ast";
 
 // Console cursor: DOS-style prompt block; no graphics imports yet.
+// Geometry: set_pos takes PIXELS, so every draw goes through shell_goto which
+// scales cell -> pixel (8x8 glyphs, 32x32 cells per memory-map.md §4).
 int shell_row = 12;
 int shell_col = 2;
+
+// Shell state (globals so tests can read them through the .sym table).
+int line_buf[24];       // chars typed on the current command line
+int line_len = 0;       // 0..24
+int shell_cmd = 0;      // last dispatched command: 0 none, 1 HELP, 2 CLS, 3 PEEK, 4 BYE
+int cmd_count = 0;      // total dispatched command lines
+int shell_exit = 0;     // set by BYE/ESC: main leaves the poll loop and halts
+
+// Position the text cursor at a CHARACTER CELL (col/row), scaling to the
+// 8x8-glyph pixel grid. WHY: set_pos consumes raw pixels; passing cell values
+// directly crammed every line into the top ~60 pixels of the screen.
+void shell_goto(int col, int row) {
+    set_pos(col * 8, row * 8);
+}
 
 void shell_newline() {
     shell_col = 2;
     shell_row = shell_row + 1;
-    if (shell_row > 60) {
-        shell_row = 12;
+    if (shell_row > 31) {
+        shell_row = 3;      // banner owns cells 0-2; scroll region is 3..31
         set_layer(0);
         screen_fill(0x00);
     }
@@ -34,36 +50,153 @@ void shell_putc(int c) {
     if (c == 8) {
         if (shell_col > 2) {
             shell_col = shell_col - 1;
-            set_pos(shell_col, shell_row);
+            shell_goto(shell_col, shell_row);
             write_text(" ", 0x0F);
-            set_pos(shell_col, shell_row);
+            shell_goto(shell_col, shell_row);
         }
         return;
     }
-    set_pos(shell_col, shell_row);
-    write_text((string)c, 0x0F);
+    shell_goto(shell_col, shell_row);
+    // WHY: (char) routes through the single-glyph path (one byte stored at the
+    // ITOS scratch cell); a plain (string) cast would ITOS the key code and
+    // print decimal digits instead of the typed character.
+    write_text((char)c, 0x0F);
     shell_col = shell_col + 1;
-    if (shell_col > 60) {
+    if (shell_col > 31) {
         shell_newline();
     }
 }
 
 void shell_prompt() {
     shell_col = 2;
-    set_pos(shell_col, shell_row);
+    shell_goto(shell_col, shell_row);
     write_text("> ", 0x0F);
     shell_col = 4;
+}
+
+// Print a literal at the current cursor cell, then advance to the next row.
+// WHY: write_text leaves VX/VY where the glyphs ended; routing every line
+// through here keeps the cursor and the glyphs in sync (the assembly kernel
+// hit the same desync bug before PUTCHAR owned the cursor).
+void shell_puts(string s) {
+    shell_goto(shell_col, shell_row);
+    write_text(s, 0x0F);
+    shell_newline();
+}
+
+// Print the byte in v as two uppercase hex glyphs ("4E" for 0x4E).
+// WHY: no nibble-extracting builtin exists; shifting + the digit boundary at
+// ASCII '9' (57) reproduces the assembly PRINTHEX behaviour exactly.
+void shell_puthex(int v) {
+    int hi;
+    int lo;
+    int d;
+    hi = (v >> 4) & 0x0F;
+    lo = v & 0x0F;
+    d = hi + 48;
+    if (d > 57) {
+        d = d + 7;      // 'A'-'F' start at 65: 58..63 map onto 65..70
+    }
+    shell_putc(d);
+    d = lo + 48;
+    if (d > 57) {
+        d = d + 7;
+    }
+    shell_putc(d);
+}
+
+// PEEK: dump the OS signature at 0x0000 as "4E 44" (Phase-1 checklist item).
+void shell_peek() {
+    int v;
+    v = peek(0x0000);
+    shell_puthex(v);
+    shell_putc(32);     // space between the two signature bytes
+    v = peek(0x0001);
+    shell_puthex(v);
+    shell_newline();
+}
+
+// HELP: one-line command list.
+void shell_help() {
+    shell_puts("HELP PEEK CLS BYE");
+}
+
+// Dispatch one completed command line by its FIRST character (the same
+// first-char + second-char strategy the assembly REPL uses; word comparison
+// is not needed for four single-letter commands).
+void shell_dispatch() {
+    int c;
+    cmd_count = cmd_count + 1;
+    if (line_len == 0) {
+        return;
+    }
+    c = line_buf[0];
+    if (c == 72 || c == 104) {          // 'H' / 'h'
+        shell_cmd = 1;
+        shell_help();
+    } else if (c == 67 || c == 99) {    // 'C' / 'c'
+        shell_cmd = 2;
+        set_layer(0);
+        screen_fill(0x00);
+        shell_row = 12;
+        shell_col = 2;
+        shell_prompt();
+    } else if (c == 80 || c == 112) {   // 'P' / 'p'
+        shell_cmd = 3;
+        shell_peek();
+    } else if (c == 66 || c == 98) {    // 'B' / 'b'
+        shell_cmd = 4;
+        shell_exit = 1;                 // graceful shutdown: main halts after the loop
+    }
+    // Unknown first character: fall through silently (the '?' error of the
+    // assembly REPL is skipped so the headless run stays quiet).
+}
+
+// Line editor: consume one key scan code. Enter (0x0A, or CR 0x0D and the
+// design-doc 0x93) terminates the line, Backspace (0x08 / 0x92) erases,
+// ESC (0x1B) requests shutdown, and everything outside printable ASCII is
+// swallowed exactly like the assembly GETLINE does.
+void shell_key(int k) {
+    if (k == 10 || k == 13 || k == 147) {   // Enter: GUI code, CR, and 0x93
+        shell_newline();
+        shell_dispatch();
+        line_len = 0;
+        if (shell_exit == 0) {
+            shell_prompt();
+        }
+        return;
+    }
+    if (k == 8 || k == 146) {               // Backspace: GUI code and 0x92
+        if (line_len > 0) {
+            line_len = line_len - 1;
+            shell_putc(8);
+        }
+        return;
+    }
+    if (k == 27) {                          // ESC: orderly power-down
+        shell_exit = 1;
+        return;
+    }
+    if (k < 32 || k > 126) {
+        return;                             // arrows/F-keys/Tab: swallowed
+    }
+    if (line_len < 24) {
+        line_buf[line_len] = k;
+        line_len = line_len + 1;
+        shell_putc(k);
+    }
 }
 
 void banner() {
     set_mode(1);
     set_layer(0);
     screen_fill(0x00);
-    set_pos(2, 10);
+    // Cell geometry: title on cell rows 1-2, scroll region starts at row 3.
+    set_pos(16, 8);
     write_text("NovaDOS v0.1", 0x0F);
-    set_pos(2, 11);
-    write_text("boot slice: scheduler + timer", 0x0A);
-    shell_row = 13;
+    set_pos(16, 16);
+    write_text("boot slice: shell + scheduler + timer", 0x0A);
+    shell_row = 3;
     shell_col = 2;
 }
 
@@ -79,6 +212,15 @@ void demo_task() {
     demo_hits = demo_hits + 10;
     task_switch(demo_ctx, demo_ctx_main);
     demo_hits = demo_hits + 100;
+    // WHY: a spawned task must never fall off the end of its entry function.
+    // task_spawn (builtin_task_spawn) parks ONLY the resume PC on the fresh
+    // task stack, so a function-return RET would pop uninitialized words and
+    // jump to junk (observed: halt at an incidental HLT byte at 0x0181).
+    // Park here forever instead: the final switch hands control back to main,
+    // which then completes its own frame and RETs to the stub's HLT at 0x100E.
+    while (1) {
+        task_switch(demo_ctx, demo_ctx_main);
+    }
 }
 
 void main() {
@@ -89,6 +231,12 @@ void main() {
         task_pid[i] = -1;
         task_state[i] = 1;
     }
+    // OS signature "ND\x01\x00" at 0x0000 (memory-map.md §2): PEEK 0x0000 must
+    // print "4E 44", and tests assert the bytes directly.
+    poke(0x0000, 0x4E);
+    poke(0x0001, 0x44);
+    poke(0x0002, 1);
+    poke(0x0003, 0);
     banner();
     shell_prompt();
     task_spawn(demo_ctx, demo_stack, 64, &demo_task);
@@ -99,12 +247,18 @@ void main() {
     task_switch(demo_ctx_main, demo_ctx);
     shell_newline();
     shell_prompt();
-    // WHY: keyboard polling must be conditional or headless runs stall forever.
-    for (i = 0; i < 200; i = i + 1) {
+    // WHY: keyboard polling must be bounded or headless runs stall forever;
+    // shell_key owns the line editor and dispatch, and ESC/BYE set shell_exit
+    // so an interactive user can leave early while a keyless headless run
+    // still drains the full 200 iterations and halts deterministically.
+    shell_exit = 0;
+    i = 0;
+    while (i < 200 && shell_exit == 0) {
         wake_sleepers(system_ticks);
         if (key_available()) {
-            shell_putc(key_read());
+            shell_key(key_read());
         }
+        i = i + 1;
     }
     task_switch(demo_ctx_main, demo_ctx);
     had_sleep = demo_hits;
