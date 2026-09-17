@@ -30,6 +30,7 @@ def compile_astrid(source_file: str, output_file: str = None,
                    enable_peephole: bool = True,
                    enable_live_range_scheduling: bool = True,
                    emit_all_builtins: bool = False,
+                   memory_layout: str = 'default',
                    log=print,
                    assemble_callback=None) -> bool:
     """Compile an Astrid source file to Nova-16 assembly (and optionally binary).
@@ -43,6 +44,9 @@ def compile_astrid(source_file: str, output_file: str = None,
         enable_peephole: Peephole optimizer toggle
         enable_live_range_scheduling: Live-range scheduler toggle
         emit_all_builtins: Emit every builtin stub regardless of usage
+        memory_layout: Named runtime memory layout ('default' | 'bank-safe').
+            'bank-safe' moves globals/string scratch out of the 0x8000-0xBFFF
+            bank window so programs can switch banks (NovaDOS NDF disks).
         log: Optional callback for compiler messages; defaults to print
         assemble_callback: Optional callback invoked as
             ``assemble_callback(assembly_path: Path, verbose: bool, emit)``
@@ -95,6 +99,7 @@ def compile_astrid(source_file: str, output_file: str = None,
         enable_peephole=enable_peephole,
         enable_live_range_scheduling=enable_live_range_scheduling,
         emit_all_builtins=emit_all_builtins,
+        memory_layout=memory_layout,
     )
     assembly = codegen.generate(ast)
 

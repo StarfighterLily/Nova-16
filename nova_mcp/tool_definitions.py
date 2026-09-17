@@ -570,6 +570,16 @@ def build_tools() -> list[Tool]:
                         "type": "boolean",
                         "description": "Automatically load compiled binary (default: false)",
                     },
+                    "memory_layout": {
+                        "type": "string",
+                        "enum": ["default", "bank-safe"],
+                        "description": (
+                            "Runtime memory layout (default: 'default'). "
+                            "'bank-safe' moves globals/string scratch out of the "
+                            "0x8000-0xBFFF bank window so programs can switch "
+                            "banks (NovaDOS NDF disks); code must stay < 0x4000."
+                        ),
+                    },
                 },
                 "required": ["source_path"],
             },

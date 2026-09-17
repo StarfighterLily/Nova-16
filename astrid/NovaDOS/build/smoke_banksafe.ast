@@ -1,0 +1,29 @@
+// NovaDOS layout smoke test (not a kernel source; build artifact).
+// WHY: proves the bank-safe layout keeps globals out of the 0x8000-0xBFFF
+// bank window, so set_bank() + window peek/poke cannot corrupt the runtime.
+int counter = 7;
+int buffer[4];
+string msg = "NDF";
+int first_char;
+int neg_first;
+
+void main() {
+    int i;
+    string s;
+    string s2;
+    counter = counter + 1;
+    buffer[0] = 0x1234;
+    s = (string)4660;
+    first_char = s[0];
+    s2 = (string)(-60);
+    neg_first = s2[0];
+    set_bank(5);
+    poke(0x8000, 0xAB);
+    poke(0x8001, 0xCD);
+    buffer[1] = peek(0x8000);
+    buffer[2] = peek(0x8001);
+    set_bank(0);
+    poke(0x8000, 0x11);
+    buffer[3] = peek(0x8000);
+    counter = counter + 100;
+}

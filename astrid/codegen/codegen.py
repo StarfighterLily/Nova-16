@@ -67,6 +67,60 @@ class CodeGenerator:
                                   0xA600, 0xA700)
     STRING_CONCAT_BUF_SIZE = 256
 
+    # Named memory layouts. A layout pins every runtime storage region so data
+    # placement is a deliberate choice rather than an accident of whichever
+    # feature a program happens to use.
+    #
+    #   default   - the legacy single-image layout. Globals, the ITOS/ITOB
+    #               string scratch cells and the concat buffers all live at
+    #               0x8000-0xBFFF, which is ALSO the hardware bank window.
+    #               That makes `set_bank(n)` unsafe: switching banks swaps the
+    #               program's own globals out for the disk page and corrupts
+    #               the runtime. It stays the default so every existing
+    #               program and test is byte-for-byte unchanged.
+    #   bank-safe - runtime storage moves OUT of 0x8000-0xBFFF, leaving the
+    #               whole bank window free for OS use (NovaDOS NDF disks).
+    #               Layout: code 0x1100-0x3FFF, globals 0x4000-0x7EFF, static
+    #               locals 0x7F00-0x7FFF, string scratch 0xC000-0xC7FF, spills
+    #               0xC800-0xEFFF, SCB 0xF000, stack 0xF100+ growing down.
+    #               The code/globals split at 0x5000 is the tuning knob: the
+    #               kernel's code grows faster than its globals, so code gets
+    #               the larger half. Move the split and rebuild if either side
+    #               runs out (a collision shows up as code overwriting globals).
+    #               Because globals no longer live in the window, BANK can be
+    #               switched at will and plain peek/poke window access is safe.
+    MEMORY_LAYOUTS: Dict[str, Dict[str, object]] = {
+        'default': {
+            'code_org': 0x1100,
+            'globals_start': 0x8000,
+            'static_locals_start': 0x7F00,
+            'static_locals_end': 0x8000,
+            'itos_buffer': 0xA000,
+            'itob_buffer': 0xA100,
+            'concat_buffers': (0xA200, 0xA300, 0xA400,
+                               0xA500, 0xA600, 0xA700),
+            'spill_start': 0xC000,
+            'spill_end': 0xF000,
+            'stack_floor': 0x8000,
+        },
+        'bank-safe': {
+            'code_org': 0x1100,
+            'code_limit': 0x4200,
+            'globals_start': 0x4200,
+            'static_locals_start': 0x7F00,
+            'static_locals_end': 0x8000,
+            'itos_buffer': 0xC000,
+            'itob_buffer': 0xC100,
+            'concat_buffers': (0xC200, 0xC300, 0xC400,
+                               0xC500, 0xC600, 0xC700),
+            'spill_start': 0xC800,
+            'spill_end': 0xF000,
+            'stack_floor': 0xF000,
+            # The bank window is free: no runtime object may be placed here.
+            'free_bank_window': (0x8000, 0xC000),
+        },
+    }
+
     # Static implementations for every builtin, keyed by assembly label.
     # Builtins are LAZILY LINKED: generate_builtins() only emits entries whose
     # label was recorded in self.used_builtins during code generation, so
@@ -801,11 +855,14 @@ class CodeGenerator:
             'PUSH P3', 'RET',
         ],
         'builtin_stack_free': [
-            '; stack_free() -> bytes of headroom between SP and the 0x8000',
-            '; global region (the low bound of the stack arena).',
+            '; stack_free() -> bytes of headroom between SP and the',
+            '; low bound of the stack arena ({stack_floor}). Under the default',
+            '; layout that bound is the 0x8000 global region; under bank-safe it',
+            '; is the top of the scratch/spill region so a deep stack cannot',
+            '; silently corrupt fixed runtime storage.',
             'POP P3',
             'MOV P0, SP',
-            'SUB P0, 0x8000',
+            'SUB P0, {stack_floor}',
             'PUSH P3', 'RET',
         ],
         # Context layout (22 ints / 44 bytes, word index -> byte offset):
@@ -962,12 +1019,12 @@ class CodeGenerator:
             '; the ones this stub would normally use to keep its own return',
             '; address alive -- and it consumes the return address the CALL',
             '; pushed, along with anything else above it. Park the return',
-            '; address in the documented ITOS scratch cell (0xA000) for the',
+            '; address in the documented ITOS scratch cell ({itos}) for the',
             '; duration of the call; no ITOS activity can occur in between.',
             'POP P3',
-            'MOV [0xA000], P3',
+            'MOV [{itos}], P3',
             'POPA',
-            'MOV P3, [0xA000]',
+            'MOV P3, [{itos}]',
             'PUSH P3',
             'RET',
         ],
@@ -1109,10 +1166,38 @@ class CodeGenerator:
                  enable_expr_simplify: bool = True, enable_live_range: bool = True,
                  enable_optimizations: bool = True,
                  enable_live_range_scheduling: Optional[bool] = None,
-                 emit_all_builtins: bool = False):
+                 emit_all_builtins: bool = False,
+                 memory_layout: str = 'default'):
         self.debug_optimizations = debug_optimizations
         self.opt_config = get_optimization_config()
         self.opt_config['debug_optimizations'] = debug_optimizations
+
+        # Resolve the memory layout FIRST: every region constant below is read
+        # from it, so a bad name must fail before anything is allocated.
+        # 'default' reproduces the legacy addresses exactly; 'bank-safe' moves
+        # runtime storage out of the 0x8000-0xBFFF bank window so programs can
+        # switch banks (NovaDOS NDF disks). See MEMORY_LAYOUTS.
+        self.memory_layout_name = memory_layout
+        if memory_layout not in self.MEMORY_LAYOUTS:
+            raise ValueError(
+                f"Unknown memory layout '{memory_layout}'; expected one of "
+                f"{sorted(self.MEMORY_LAYOUTS)}")
+        layout = self.MEMORY_LAYOUTS[memory_layout]
+        self.memory_layout = layout
+        # Instance mirrors of the class constants: the constants stay as the
+        # documented legacy defaults (tests introspect them), while generated
+        # code reads these so the layout is actually selectable.
+        self.code_org = int(layout['code_org'])
+        self.global_region_start = int(layout['globals_start'])
+        self.static_local_region_start = int(layout['static_locals_start'])
+        self.static_local_region_end = int(layout['static_locals_end'])
+        self.itos_buffer = int(layout['itos_buffer'])
+        self.itob_buffer = int(layout['itob_buffer'])
+        self.string_concat_buffers = tuple(layout['concat_buffers'])
+        self.string_concat_buf_size = self.STRING_CONCAT_BUF_SIZE
+        self.spill_region_start = int(layout['spill_start'])
+        self.spill_region_end = int(layout['spill_end'])
+        self.stack_floor = int(layout['stack_floor'])
 
         if enable_live_range_scheduling is not None:
             enable_live_range = enable_live_range_scheduling
@@ -1171,7 +1256,7 @@ class CodeGenerator:
         self.volatile_vars: Set[str] = set()
         self.register_hint_vars: Set[str] = set()
         self.static_locals: Dict[Tuple[str, str], Dict] = {}
-        self._static_local_next_addr: int = self.STATIC_LOCAL_REGION_START
+        self._static_local_next_addr: int = self.static_local_region_start
         self.object_mode: bool = False
         self.strings = {}
         self.string_counter = 0
@@ -1202,7 +1287,7 @@ class CodeGenerator:
         # call each other, two functions' spilled locals would collide at the
         # same zero-page address. Advance the base per function so each gets a
         # disjoint spill region.
-        self._spill_window = self.SPILL_REGION_START
+        self._spill_window = self.spill_region_start
         # Spill window assigned to the function currently being generated
         # (None when the spill region is exhausted -> keep locals FP-relative).
         self._function_spill_base = None
@@ -1747,7 +1832,7 @@ class CodeGenerator:
             # low RAM, and stays far below globals (0x8000) and spills
             # (0xC000+). Non-ISR programs are unaffected (functions follow
             # the stub sequentially without an explicit ORG).
-            self.assembly.append("ORG 0x1100")
+            self.assembly.append(f"ORG 0x{self.code_org:04X}")
             self.assembly.append("")
 
     # ------------------------------------------------------------------
@@ -2612,7 +2697,7 @@ class CodeGenerator:
         resolves them via EXTERN+relocation.  Static globals are allocated
         normally (they are file-local but still need storage).
         """
-        next_addr = self.GLOBAL_REGION_START
+        next_addr = self.global_region_start
         for decl in getattr(ast, 'globals', None) or []:
             # In object mode, extern globals are imported from another unit:
             # do not allocate local storage for them.
@@ -2784,7 +2869,7 @@ class CodeGenerator:
                     if not info.get('placement')]
         if unplaced:
             self.assembly.append("")
-            self.assembly.append(f"ORG 0x{self.GLOBAL_REGION_START:04X}")
+            self.assembly.append(f"ORG 0x{self.global_region_start:04X}")
             self.assembly.append("; Global Variables")
             for name, info in unplaced:
                 self._emit_global_entry(name, info)
@@ -3107,7 +3192,7 @@ class CodeGenerator:
         # region so spilled locals never collide with code, globals, the
         # stack, or another function's window. When the region is exhausted,
         # keep locals FP-relative (no migration) rather than corrupt memory.
-        if self._spill_window + self.opt_config.get('zero_page_size', 128) <= self.SPILL_REGION_END:
+        if self._spill_window + self.opt_config.get('zero_page_size', 128) <= self.spill_region_end:
             self._function_spill_base = self._spill_window
             self._spill_window += self.opt_config.get('zero_page_size', 128)
         else:
@@ -3652,7 +3737,7 @@ class CodeGenerator:
             self.emit(f"    MOV {reg}, [FP{field_fp_off:+d}]")
         elif var_name in self.global_vars:
             # Global variable: absolute addressing
-            base_addr = self.global_vars[var_name].get('address', 0x8000)
+            base_addr = self.global_vars[var_name].get('address', self.global_region_start)
             self.emit(f"    MOV {reg}, [0x{base_addr + offset:04X}]")
         else:
             raise NameError(f"Unknown variable '{var_name}' in struct field load")
@@ -3665,7 +3750,7 @@ class CodeGenerator:
             field_fp_off = fp_off + offset
             self.emit(f"    MOV [FP{field_fp_off:+d}], {src_reg}")
         elif var_name in self.global_vars:
-            base_addr = self.global_vars[var_name].get('address', 0x8000)
+            base_addr = self.global_vars[var_name].get('address', self.global_region_start)
             self.emit(f"    MOV [0x{base_addr + offset:04X}], {src_reg}")
         else:
             raise NameError(f"Unknown variable '{var_name}' in struct field store")
@@ -5260,14 +5345,19 @@ class CodeGenerator:
         else:
             raise RuntimeError(f"Unknown expression type: {type(expr)}")
 
-    def emit_unsigned_to_string(self, dest_reg: str, value_reg: str):
+    def emit_unsigned_to_string(self, dest_reg: str, value_reg: str,
+                                base_addr: int = None):
         """Emit a software unsigned-to-string conversion using only Nova-16 ops.
 
         This avoids inventing a new hardware instruction while keeping the
         correct 16-bit unsigned magnitude semantics for values like 655300.
-        The result is stored as a NUL-terminated ASCII string at 0xA000 and the
-        buffer address is returned in dest_reg.
+        The result is stored as a NUL-terminated ASCII string at the layout's
+        ITOS scratch cell (0xA000 by default, 0xC000 under bank-safe) and the
+        buffer address is returned in dest_reg. ``base_addr`` overrides that
+        cell so a caller can reserve a leading byte (the signed converter
+        prefixes '-' with it).
         """
+        base = self.itos_buffer if base_addr is None else base_addr
         tmp = self.get_register(exclude={value_reg, dest_reg})
         scratch = self.get_register(exclude={value_reg, dest_reg, tmp})
         quotient = self.get_register(exclude={value_reg, dest_reg, tmp, scratch})
@@ -5283,9 +5373,10 @@ class CodeGenerator:
         self.emit(f"    CMP {value_reg}, 0")
         self.emit(f"    JZ {zero_label}")
         
-        # Generate digits in reverse order at 0xA100
+        # Generate digits in reverse order at the ITOB scratch cell
+        # (layout-dependent: 0xA100 by default, 0xC100 under bank-safe).
         self.emit(f"    MOV {tmp}, {value_reg}")
-        self.emit(f"    MOV {scratch}, 0xA100")
+        self.emit(f"    MOV {scratch}, 0x{self.itob_buffer:04X}")
         self.emit_label(loop_label)
         self.emit(f"    CMP {tmp}, 0")
         self.emit(f"    JZ {done_label}")
@@ -5305,16 +5396,16 @@ class CodeGenerator:
         self.emit(f"    JMP {loop_label}")
 
         self.emit_label(done_label)
-        # Now reverse the digits from 0xA100..scratch into 0xA000...
+        # Now reverse the digits from the ITOB cell into the ITOS cell...
         # scratch points to ONE PAST the last digit, so DEC back to the last
         self.emit(f"    DEC {scratch}")
-        # Copy backward: read from scratch (going down), write to 0xA000 (going up)
-        self.emit(f"    MOV {tmp}, 0xA000")
+        # Copy backward: read from scratch (going down), write to target (going up)
+        self.emit(f"    MOV {tmp}, 0x{base:04X}")
         self.emit_label(reverse_label)
-        # Unsigned loop: continue while scratch >= 0xA100 (unsigned).
-        # Once scratch drops below 0xA100 (borrow), JC will jump.
-        self.emit(f"    CMP {scratch}, 0xA100")
-        self.emit(f"    JC {finish_label}")  # Unsigned: jump if carry (borrow), i.e., scratch < 0xA100
+        # Unsigned loop: continue while scratch >= the ITOB cell (unsigned).
+        # Once scratch drops below it (borrow), JC will jump.
+        self.emit(f"    CMP {scratch}, 0x{self.itob_buffer:04X}")
+        self.emit(f"    JC {finish_label}")  # Unsigned: jump if carry (borrow), i.e., scratch < ITOB
         # Byte reads/writes only: the source buffer holds packed ASCII bytes,
         # so a word read (high byte) or word store (high byte 0x00) would
         # contaminate the neighbouring cell.
@@ -5326,15 +5417,55 @@ class CodeGenerator:
         
         self.emit_label(finish_label)
         self.emit(f"    MOV [{tmp}], 0")
-        self.emit(f"    MOV {dest_reg}, 0xA000")
+        self.emit(f"    MOV {dest_reg}, 0x{base:04X}")
         self.emit(f"    JMP {finish_label}_end")
         
         self.emit_label(zero_label)
-        self.emit(f"    MOV [0xA000], 48")
-        self.emit(f"    MOV [0xA001], 0")
-        self.emit(f"    MOV {dest_reg}, 0xA000")
+        self.emit(f"    MOV [0x{base:04X}], 48")
+        self.emit(f"    MOV [0x{base + 1:04X}], 0")
+        self.emit(f"    MOV {dest_reg}, 0x{base:04X}")
         
         self.emit_label(f"{finish_label}_end")
+
+    def emit_signed_to_string(self, dest_reg: str, value_reg: str):
+        """Signed decimal conversion with NO hardware ITOS dependency.
+
+        WHY: the CPU's ITOS instruction ALWAYS writes its scratch digits to the
+        fixed 0xA000 cell (core/exec_handlers.py::_itos), regardless of the
+        operand, and 0xA000 lives inside the 0x8000-0xBFFF bank window. A banked
+        program (NovaDOS NDF disk I/O) would therefore scribble decimal digits
+        over a disk page. This routine produces the same text using only the
+        active layout's itos_buffer/itob_buffer cells (0xC000/0xC100 under
+        bank-safe), so the bank window is never written.
+
+        Negative values get '-' at the ITOS cell followed by the magnitude one
+        byte higher (base override), keeping every byte in the layout block.
+        """
+        negative_label = self.generate_label("stoa_neg")
+        end_label = self.generate_label("stoa_end")
+        magnitude = self.get_register(exclude={value_reg})
+
+        self.emit_comment("Signed decimal conversion (layout-local scratch)")
+        self.emit(f"    CMP {value_reg}, 0")
+        self.emit(f"    JS {negative_label}")
+        # Non-negative: plain unsigned conversion into the ITOS cell.
+        self.emit_unsigned_to_string(dest_reg, value_reg)
+        self.emit(f"    JMP {end_label}")
+
+        self.emit_label(negative_label)
+        # magnitude = 0 - value (two's complement). value_reg is dead from here,
+        # so R0 is free for the strict 8-bit byte store below.
+        self.emit(f"    MOV {magnitude}, 0")
+        self.emit(f"    SUB {magnitude}, {value_reg}")
+        self.emit(f"    MOV R0, 45")
+        self.emit(f"    MOV [0x{self.itos_buffer:04X}], R0")
+        self.emit(f"    MOV [0x{self.itos_buffer + 1:04X}], 0")
+        self.emit_unsigned_to_string(dest_reg, magnitude,
+                                     base_addr=self.itos_buffer + 1)
+        # Re-point the result at the leading '-', not at the first digit.
+        self.emit(f"    MOV {dest_reg}, 0x{self.itos_buffer:04X}")
+
+        self.emit_label(end_label)
 
     def emit_hex_string(self, dest_reg: str, value_reg: str):
         """Emit a software unsigned-to-hex-string conversion using only Nova-16 ops.
@@ -5359,7 +5490,7 @@ class CodeGenerator:
         nibble = self.get_register(exclude={value_reg, dest_reg, tmp, scratch})
 
         # Generate 4 hex digits (most significant nibble first)
-        self.emit(f"    MOV {scratch}, 0xA000")
+        self.emit(f"    MOV {scratch}, 0x{self.itos_buffer:04X}")
         self.emit(f"    MOV {tmp}, {value_reg}")
 
         # Process each nibble from bits 12-15 down to 0-3
@@ -5387,7 +5518,7 @@ class CodeGenerator:
 
         # NUL terminate
         self.emit(f"    MOV [{scratch}], 0")
-        self.emit(f"    MOV {dest_reg}, 0xA000")
+        self.emit(f"    MOV {dest_reg}, 0x{self.itos_buffer:04X}")
 
     def generate_cast(self, cast: Cast) -> str:
         """Generate code for type cast expressions using Nova-16 conversion instructions.
@@ -5483,14 +5614,18 @@ class CodeGenerator:
             if source_type == 'char':
                 self.emit_comment("Char-to-string: 1-byte glyph string")
                 self.emit(f"    MOV R0, {inner_reg}")
-                self.emit(f"    MOV [0xA000], R0")
-                self.emit(f"    MOV [0xA001], 0")
-                self.emit(f"    MOV {result_reg}, 0xA000")
+                self.emit(f"    MOV [0x{self.itos_buffer:04X}], R0")
+                self.emit(f"    MOV [0x{self.itos_buffer + 1:04X}], 0")
+                self.emit(f"    MOV {result_reg}, 0x{self.itos_buffer:04X}")
             # Use the built-in ITOS path for signed values. Unsigned values need
             # a software decimal conversion because the Nova-16 ISA does not have
             # a UITOS instruction.
             elif source_type == 'unsigned_int':
                 self.emit_unsigned_to_string(result_reg, inner_reg)
+            elif self.memory_layout_name == 'bank-safe':
+                # ITOS scribbles its digits at the fixed 0xA000 cell inside the
+                # bank window; a banked program would overwrite a disk page.
+                self.emit_signed_to_string(result_reg, inner_reg)
             else:
                 self.emit(f"    ITOS {result_reg}, {inner_reg}")
         elif target == 'stringh':
@@ -5503,7 +5638,7 @@ class CodeGenerator:
             # ITOB writes the binary string to the fixed buffer 0xA100 and
             # writes that buffer address into the destination operand.
             # First load the fixed buffer address into a temp register.
-            self.emit(f"    MOV {result_reg}, 0xA100")
+            self.emit(f"    MOV {result_reg}, 0x{self.itob_buffer:04X}")
             self.emit(f"    ITOB {result_reg}, {inner_reg}")
         elif target == 'int':
             # STOI parses a decimal string; BTOI parses a binary string.
@@ -5621,12 +5756,12 @@ class CodeGenerator:
         concat during evaluation -- the left operand's ADDRESS is safe on the
         stack because its bytes live in a DEFSTR or a buffer that will never
         be touched again within this concat tree."""
-        if self._concat_buf_index >= len(self.STRING_CONCAT_BUFFERS):
+        if self._concat_buf_index >= len(self.string_concat_buffers):
             raise SyntaxError(
                 "String concatenation nesting exceeds the scratch buffer "
                 "capacity ({}) -- split the expression or use strcat/strcpy"
-                .format(len(self.STRING_CONCAT_BUFFERS)))
-        addr = self.STRING_CONCAT_BUFFERS[self._concat_buf_index]
+                .format(len(self.string_concat_buffers)))
+        addr = self.string_concat_buffers[self._concat_buf_index]
         self._concat_buf_index += 1
         return addr
 
@@ -5914,9 +6049,13 @@ class CodeGenerator:
             if self._cast_source_type(call.args[0]) == 'char':
                 self.emit_comment("Char argument: store as single-byte string")
                 self.emit(f"    MOV R0, {val_reg}")
-                self.emit(f"    MOV [0xA000], R0")
-                self.emit(f"    MOV [0xA001], 0")
-                self.emit(f"    MOV {str_reg}, 0xA000")
+                self.emit(f"    MOV [0x{self.itos_buffer:04X}], R0")
+                self.emit(f"    MOV [0x{self.itos_buffer + 1:04X}], 0")
+                self.emit(f"    MOV {str_reg}, 0x{self.itos_buffer:04X}")
+            elif self.memory_layout_name == 'bank-safe':
+                # See generate_cast: no hardware ITOS under bank-safe (its
+                # scratch cell sits in the bank window).
+                self.emit_signed_to_string(str_reg, val_reg)
             else:
                 self.emit(f"    ITOS {str_reg}, {val_reg}")
             self.free_register()  # release val_reg (no longer needed)
@@ -6103,9 +6242,19 @@ class CodeGenerator:
         if not selected:
             return
         self.assembly.append("; Built-in Function Implementations")
+        # Region placeholders in builtin bodies are filled from the active
+        # memory layout, so a stub that parks a return address in the ITOS
+        # scratch cell (POPA) or measures stack headroom (stack_free) follows
+        # the same addresses as the generated code around it.
+        substitutions = {
+            'itos': f"0x{self.itos_buffer:04X}",
+            'itob': f"0x{self.itob_buffer:04X}",
+            'stack_floor': f"0x{self.stack_floor:04X}",
+        }
         for label, body in selected:
             self.emit_label(label)
-            for line in body:
+            for raw_line in body:
+                line = raw_line.format(**substitutions) if '{' in raw_line else raw_line
                 if line.startswith(';'):
                     # Comment lines are emitted verbatim (no extra indent).
                     self.assembly.append(line)

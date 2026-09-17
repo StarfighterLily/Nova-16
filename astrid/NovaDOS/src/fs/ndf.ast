@@ -1,0 +1,130 @@
+// =============================================================================
+// NovaDOS - NDF (NovaDisk) Volume Layer
+// WHAT: byte/word access to a hardware bank page, plus the NDF on-disk format:
+//       header "NDF1" + entry count, 16-byte directory entries starting at
+//       window offset 0x0010, file bytes from 0x0400.
+// WHY: the emulator's BANK register swaps the private 16 KB page selected by
+//      BANK into 0x8000-0xBFFF, so bank pages are the OS "disks". This is only
+//      safe because the kernel is built with the Astrid `bank-safe` memory
+//      layout (globals 0x4000, string scratch 0xC000, spills 0xC800): without
+//      it a bank switch would swap out the running kernel's own globals.
+// WHY every access restores bank 0: the rest of the kernel (and its interrupt
+//      handler) assumes base RAM is visible; a banked section must be as short
+//      as one byte operation.
+// =============================================================================
+
+// NDF geometry (all offsets are window-relative).
+//   header  +0 "NDF1", +4 entry count (word, big-endian)
+//   entry   +0 name[8] (NUL padded), +8 type, +9 flags,
+//           +10 length (word), +12 entry point (word), +14 reserved
+int ndf_window = 0x8000;       // base of the bank window while BANK != 0
+int ndf_entry_base = 0x0010;   // first directory entry
+int ndf_entry_size = 16;
+int ndf_name_len = 8;
+int ndf_data_base = 0x0400;    // first file byte
+int ndf_max_entries = 16;
+int ndf_cluster = 256;         // bytes reserved per file slot
+
+// Read one byte from bank page `bank` at window-relative `offset`.
+int ndf_read8(int bank, int offset) {
+    int v;
+    set_bank(bank);
+    v = peek(ndf_window + offset);
+    set_bank(0);
+    return v;
+}
+
+// Write one byte into bank page `bank` at window-relative `offset`.
+void ndf_write8(int bank, int offset, int value) {
+    set_bank(bank);
+    poke(ndf_window + offset, value);
+    set_bank(0);
+}
+
+// NDF stores multi-byte fields big-endian, matching the CPU's word order.
+int ndf_read16(int bank, int offset) {
+    int hi;
+    hi = ndf_read8(bank, offset);
+    return hi * 256 + ndf_read8(bank, offset + 1);
+}
+
+void ndf_write16(int bank, int offset, int value) {
+    int hi;
+    int lo;
+    hi = (value >> 8) & 0xFF;
+    lo = value & 0xFF;
+    ndf_write8(bank, offset, hi);
+    ndf_write8(bank, offset + 1, lo);
+}
+
+// Write a fresh NDF header ("NDF1" + zero entries) into `bank`.
+void ndf_format(int bank) {
+    ndf_write8(bank, 0, 78);    // 'N'
+    ndf_write8(bank, 1, 68);    // 'D'
+    ndf_write8(bank, 2, 70);    // 'F'
+    ndf_write8(bank, 3, 49);    // '1'
+    ndf_write16(bank, 4, 0);
+}
+
+// Non-zero when `bank` holds a formatted NDF volume.
+int ndf_mounted(int bank) {
+    if (ndf_read8(bank, 0) != 78) {
+        return 0;
+    }
+    if (ndf_read8(bank, 1) != 68) {
+        return 0;
+    }
+    if (ndf_read8(bank, 2) != 70) {
+        return 0;
+    }
+    if (ndf_read8(bank, 3) != 49) {
+        return 0;
+    }
+    return 1;
+}
+
+int ndf_entry_count(int bank) {
+    return ndf_read16(bank, 4);
+}
+
+// Byte `index` of entry `slot`'s name (0..7). Used by DIR to render names
+// without materialising the name in RAM first.
+int ndf_name_byte(int bank, int slot, int index) {
+    return ndf_read8(bank, ndf_entry_base + slot * ndf_entry_size + index);
+}
+
+int ndf_entry_type(int bank, int slot) {
+    return ndf_read8(bank, ndf_entry_base + slot * ndf_entry_size + 8);
+}
+
+int ndf_entry_size(int bank, int slot) {
+    return ndf_read16(bank, ndf_entry_base + slot * ndf_entry_size + 10);
+}
+
+// Append a directory entry whose name is the four bytes c0..c3. Data for slot
+// n starts at ndf_data_base + n * ndf_cluster. Returns the new entry count, or
+// -1 when the directory is full.
+int ndf_add(int bank, int c0, int c1, int c2, int c3, int type, int size) {
+    int count;
+    int base;
+    count = ndf_entry_count(bank);
+    if (count >= ndf_max_entries) {
+        return -1;
+    }
+    base = ndf_entry_base + count * ndf_entry_size;
+    ndf_write8(bank, base + 0, c0);
+    ndf_write8(bank, base + 1, c1);
+    ndf_write8(bank, base + 2, c2);
+    ndf_write8(bank, base + 3, c3);
+    ndf_write8(bank, base + 4, 0);
+    ndf_write8(bank, base + 5, 0);
+    ndf_write8(bank, base + 6, 0);
+    ndf_write8(bank, base + 7, 0);
+    ndf_write8(bank, base + 8, type);
+    ndf_write8(bank, base + 9, 0);
+    ndf_write16(bank, base + 10, size);
+    ndf_write16(bank, base + 12, ndf_data_base + count * ndf_cluster);
+    ndf_write16(bank, base + 14, 0);
+    ndf_write16(bank, 4, count + 1);
+    return count + 1;
+}

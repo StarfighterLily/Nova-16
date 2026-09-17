@@ -7,6 +7,9 @@
 
 include "memmgr.ast";
 include "interrupts.ast";
+// NDF disk layer: bank-page access + volume/directory primitives. Requires the
+// bank-safe memory layout (see docs/notes/start.md).
+include "../fs/ndf.ast";
 
 // Console cursor: DOS-style prompt block; no graphics imports yet.
 // Geometry: set_pos takes PIXELS, so every draw goes through shell_goto which
@@ -17,7 +20,7 @@ int shell_col = 2;
 // Shell state (globals so tests can read them through the .sym table).
 int line_buf[24];       // chars typed on the current command line
 int line_len = 0;       // 0..24
-int shell_cmd = 0;      // last dispatched command: 0 none, 1 HELP, 2 CLS, 3 PEEK, 4 BYE
+int shell_cmd = 0;      // last dispatched command: 0 none, 1 HELP, 2 CLS, 3 PEEK, 4 BYE, 5 DIR, 6 TYPE
 int cmd_count = 0;      // total dispatched command lines
 int shell_exit = 0;     // set by BYE/ESC: main leaves the poll loop and halts
 
@@ -116,9 +119,105 @@ void shell_peek() {
     shell_newline();
 }
 
+// DIR: list the NDF volume in bank 1 (entry count + each directory name).
+// WHY bank 1 is the default disk: bank 0 aliases base RAM (never a disk), so
+// the first private page is the boot volume, which main() formats at startup.
+void shell_dir() {
+    int bank;
+    int count;
+    int i;
+    int j;
+    int ch;
+    bank = 1;
+    if (ndf_mounted(bank) == 0) {
+        shell_puts("no NDF volume in bank 1");
+        return;
+    }
+    count = ndf_entry_count(bank);
+    shell_col = 2;
+    shell_goto(shell_col, shell_row);
+    write_text("DIR bank1=", 0x0F);
+    // "DIR bank1=" is 10 glyphs starting at cell column 2 -> column 12. The
+    // entry count is a single hex byte (the directory holds at most 16).
+    shell_col = 12;
+    shell_puthex(count);
+    shell_newline();
+    for (i = 0; i < count; i = i + 1) {
+        shell_col = 4;
+        shell_goto(shell_col, shell_row);
+        for (j = 0; j < ndf_name_len; j = j + 1) {
+            ch = ndf_name_byte(bank, i, j);
+            if (ch != 0) {
+                shell_putc(ch);
+            }
+        }
+        shell_newline();
+    }
+}
+
+// TYPE: display file contents from the NDF volume in bank 1.
+// Reads the filename from line_buf[1..line_len-1] and scans the directory
+// for a matching 8-byte entry name. On match, reads and displays the file
+// data bytes from the bank page.
+void shell_type() {
+    int bank;
+    int count;
+    int slot;
+    int name_i;
+    int match;
+    int file_size;
+    int data_off;
+    int byte_i;
+    int c;
+    bank = 1;
+    if (ndf_mounted(bank) == 0) {
+        shell_puts("no NDF volume in bank 1");
+        return;
+    }
+    count = ndf_entry_count(bank);
+    // Name starts at line_buf[1] (after the 'T' command char).
+    slot = 0;
+    match = 0;
+    while (slot < count) {
+        name_i = 0;
+        match = 1;
+        while (name_i < 8) {
+            if (name_i < line_len - 1) {
+                if (ndf_name_byte(bank, slot, name_i) != line_buf[name_i + 1]) {
+                    match = 0;
+                }
+            } else {
+                if (ndf_name_byte(bank, slot, name_i) != 0) {
+                    match = 0;
+                }
+            }
+            name_i = name_i + 1;
+        }
+        if (match != 0) {
+            break;
+        }
+        slot = slot + 1;
+    }
+    if (match == 0) {
+        shell_puts("file not found");
+        return;
+    }
+    file_size = ndf_entry_size(bank, slot);
+    data_off = ndf_data_base + slot * ndf_cluster;
+    shell_puts("---");
+    byte_i = 0;
+    while (byte_i < file_size) {
+        c = ndf_read8(bank, data_off + byte_i);
+        shell_putc(c);
+        byte_i = byte_i + 1;
+    }
+    shell_newline();
+    shell_puts("---");
+}
+
 // HELP: one-line command list.
 void shell_help() {
-    shell_puts("HELP PEEK CLS BYE");
+    shell_puts("HELP PEEK CLS DIR TYPE BYE");
 }
 
 // Dispatch one completed command line by its FIRST character (the same
@@ -147,6 +246,12 @@ void shell_dispatch() {
     } else if (c == 66 || c == 98) {    // 'B' / 'b'
         shell_cmd = 4;
         shell_exit = 1;                 // graceful shutdown: main halts after the loop
+    } else if (c == 68 || c == 100) {   // 'D' / 'd'
+        shell_cmd = 5;
+        shell_dir();
+    } else if (c == 84 || c == 116) {   // 'T' / 't'
+        shell_cmd = 6;
+        shell_type();
     }
     // Unknown first character: fall through silently (the '?' error of the
     // assembly REPL is skipped so the headless run stays quiet).
@@ -237,6 +342,17 @@ void main() {
     poke(0x0001, 0x44);
     poke(0x0002, 1);
     poke(0x0003, 0);
+    // Bring up the boot NDF volume on bank 1 and give it one directory entry.
+    // WHY: the bank-safe layout frees 0x8000-0xBFFF, so the disk layer can
+    // switch banks without swapping out the running kernel. This is the first
+    // user-visible proof that banked storage works.
+    ndf_format(1);
+    ndf_add(1, 66, 79, 79, 84, 0, 5);   // "BOOT" with 5 bytes of data
+    // Word writes keep the boot sample compact enough to leave code below
+    // the bank-safe globals at 0x4200; NDF words are big-endian.
+    ndf_write16(1, ndf_data_base, 0x4845);     // "HE"
+    ndf_write16(1, ndf_data_base + 2, 0x4C4C); // "LL"
+    ndf_write8(1, ndf_data_base + 4, 79);      // "O"
     banner();
     shell_prompt();
     task_spawn(demo_ctx, demo_stack, 64, &demo_task);

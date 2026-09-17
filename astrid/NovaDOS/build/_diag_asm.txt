@@ -1,0 +1,4 @@
+  File "<string>", line 13
+    src.write_text('include \
+                   ^
+SyntaxError: unterminated string literal (detected at line 13)

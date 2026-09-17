@@ -22,7 +22,7 @@ the continuation at the bottom.
 | Compiler ORG layout | fixed | codegen emits ISR code at `ORG 0x1100`; the 0x1000 entry stub stays intact |
 | Kernel boot slice | done | boots, runs the scheduler demo, halts cleanly at the stub `HLT` (0x100E) |
 | Kernel regression tests | done | `astrid/NovaDOS/tests/test_kernel_compile.py` (5 tests, includes the boot-slice end-to-end) |
-| FS / drivers / shell | not started | next milestones (see docs/plans) |
+| FS / drivers / shell | done | NDF volume (`ndf.ast`) + shell commands: HELP/CLS/PEEK/DIR/TYPE/BYE; kernel compiles and runs headless ✅ |
 
 ## 2026-09-15 — NovaDOS boot slice (scheduler + timer ISR)
 - what was decided / discovered

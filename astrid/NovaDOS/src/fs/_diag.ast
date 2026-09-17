@@ -1,0 +1,9 @@
+include "ndf.ast";
+int count;
+int first_name_byte;
+void main() {
+    ndf_format(1);
+    ndf_add(1, 66, 83, 89, 116, 0, 12);
+    count = ndf_entry_count(1);
+    first_name_byte = ndf_name_byte(1, 0, 0);
+}

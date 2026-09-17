@@ -70,6 +70,11 @@ def handle_astrid_compile(
     output_path_arg = args.get("output_path")
     verbose = bool(args.get("verbose", False))
     auto_load = bool(args.get("auto_load", False))
+    memory_layout = args.get("memory_layout") or "default"
+    if memory_layout not in ("default", "bank-safe"):
+        return json.dumps({
+            "error": "memory_layout must be 'default' or 'bank-safe', "
+                     f"got {memory_layout!r}"})
 
     source_path = Path(source_path_arg)
     if not source_path.is_absolute():
@@ -96,6 +101,7 @@ def handle_astrid_compile(
             str(source_path),
             str(output_path),
             verbose=verbose,
+            memory_layout=memory_layout,
             log=capture_compiler_output,
             assemble_callback=_assemble_in_process,
         )
@@ -131,6 +137,7 @@ def handle_astrid_compile(
         "source": str(source_path),
         "assembly": str(output_path),
         "binary": str(load_path),
+        "memory_layout": memory_layout,
     }
     # Surface the NOMF artifact path explicitly so callers can distinguish
     # the primary (.nex) artifact from a legacy (.bin) fallback.

@@ -1,0 +1,282 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.11, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\lokuj\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: C:\Code\projects\Nova
+configfile: pytest.ini
+plugins: anyio-4.12.0, hypothesis-6.151.5, cov-7.0.0, xdist-3.8.0
+collecting ... collected 22 items
+
+astrid/NovaDOS/tests/test_kernel_compile.py::test_entry_stub_is_intact PASSED [  4%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_vector_table_points_into_kernel_code PASSED [  9%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_code_does_not_overlap_stub PASSED [ 13%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_bank_window_is_free_for_ndf_disks PASSED [ 18%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_kernel_runs_without_opcode_crash PASSED [ 22%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_boot_slice_completes_cleanly FAILED [ 27%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_boot_signature_written FAILED [ 31%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_help_and_peek_commands FAILED [ 36%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_backspace_edits_line FAILED [ 40%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_unknown_command_is_swallowed FAILED [ 45%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_cls_command FAILED [ 50%]
+astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_bye_exits_early FAILED [ 54%]
+tests/astrid/test_ndf_probe.py::test_ndf_format_writes_header_and_count_is_zero PASSED [ 59%]
+tests/astrid/test_ndf_probe.py::test_ndf_add_one_entry_and_read_back PASSED [ 63%]
+tests/astrid/test_ndf_probe.py::test_ndf_add_returns_minus_one_only_path PASSED [ 68%]
+tests/astrid/test_astrid_memory_layout.py::test_default_layout_regions_unchanged PASSED [ 72%]
+tests/astrid/test_astrid_memory_layout.py::test_bank_safe_layout_clears_the_bank_window PASSED [ 77%]
+tests/astrid/test_astrid_memory_layout.py::test_unknown_layout_name_is_rejected PASSED [ 81%]
+tests/astrid/test_astrid_memory_layout.py::test_memory_layouts_expose_only_known_names PASSED [ 86%]
+tests/astrid/test_astrid_memory_layout.py::test_default_code_places_objects_in_the_bank_window PASSED [ 90%]
+tests/astrid/test_astrid_memory_layout.py::test_bank_safe_code_avoids_the_bank_window PASSED [ 95%]
+tests/astrid/test_astrid_memory_layout.py::test_bank_safe_bank_switch_preserves_program_state PASSED [100%]
+
+================================== FAILURES ===================================
+______________________ test_boot_slice_completes_cleanly ______________________
+
+kernel_binary = 'C:\\Users\\lokuj\\AppData\\Local\\Temp\\pytest-of-lokuj\\pytest-289\\novedos_kernel0\\kernel.bin'
+
+    def test_boot_slice_completes_cleanly(kernel_binary):
+        """End-to-end: the cooperative scheduler demo must finish and RET to the
+        stub's HLT with the original SP/FP, having run all three task resumptions.
+    
+        WHY: this proves the whole boot slice works -- entry stub -> main ->
+        task_spawn/task_switch ping-pong -> main completes -> RET into HLT. A task
+        that falls off the end of its entry function would pop garbage off the
+        fabricated task stack and jump to junk (previously halt at 0x0181).
+        demo_hits == 1 + 10 + 100 == 111 is the scheduler's fingerprint.
+        """
+        proc, mem, gfx, kbd, snd = initialize_system(enable_sound=False)
+        entry = mem.load(kernel_binary)
+        proc.pc = entry
+        syms = _load_syms(kernel_binary)
+        hits_addr = syms.get("gvar_demo_hits")
+        assert hits_addr is not None, "gvar_demo_hits missing from symbol table"
+    
+        cycles = 0
+        while cycles < 200000 and not proc.halted:
+            cycles += 1
+            proc.step()
+    
+        assert proc.halted, f"kernel never halted (PC=0x{proc.pc:04X})"
+        # The stub's HLT lives at 0x100E; PC is one past it once halted.
+>       assert proc.pc in (0x100E, 0x100F), (
+            f"kernel halted at 0x{proc.pc:04X}, expected the entry stub HLT "
+            f"at 0x100E (stale .bin, or a task returned off its own stack?)")
+E       AssertionError: kernel halted at 0x4204, expected the entry stub HLT at 0x100E (stale .bin, or a task returned off its own stack?)
+E       assert 16900 in (4110, 4111)
+E        +  where 16900 = <nova_cpu.CPU object at 0x000001D87EE91590>.pc
+
+astrid\NovaDOS\tests\test_kernel_compile.py:187: AssertionError
+---------------------------- Captured stdout call -----------------------------
+Nova Sound System initialized
+Sample Rate: 22050Hz, Channels: 8, Buffer: 512
+Loading C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.bin with ORG information from C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.org
+Loaded 15 bytes at 0x1000 from binary offset 0
+Loaded 2 bytes at 0x0100 from binary offset 15
+Loaded 12615 bytes at 0x1100 from binary offset 17
+Loaded 10850 bytes at 0x4200 from binary offset 12632
+______________________ test_shell_boot_signature_written ______________________
+
+kernel_binary = 'C:\\Users\\lokuj\\AppData\\Local\\Temp\\pytest-of-lokuj\\pytest-289\\novedos_kernel0\\kernel.bin'
+
+    def test_shell_boot_signature_written(kernel_binary):
+        """Boot writes the OS signature "ND\\x01\\x00" at 0x0000 (memory-map.md º2),
+        so PEEK 0x0000 has something real to print."""
+        proc, mem, gfx, kbd, cycles = boot_with_keys(kernel_binary, ())
+>       _assert_clean_halt(proc)
+
+astrid\NovaDOS\tests\test_kernel_compile.py:240: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+proc = <nova_cpu.CPU object at 0x000001D87EDF9D10>
+
+    def _assert_clean_halt(proc):
+        assert proc.halted, f"kernel never halted (PC=0x{proc.pc:04X})"
+>       assert proc.pc in (0x100E, 0x100F), (
+            f"kernel halted at 0x{proc.pc:04X}, expected the entry stub HLT")
+E       AssertionError: kernel halted at 0x4204, expected the entry stub HLT
+E       assert 16900 in (4110, 4111)
+E        +  where 16900 = <nova_cpu.CPU object at 0x000001D87EDF9D10>.pc
+
+astrid\NovaDOS\tests\test_kernel_compile.py:230: AssertionError
+---------------------------- Captured stdout call -----------------------------
+Nova Sound System initialized
+Sample Rate: 22050Hz, Channels: 8, Buffer: 512
+Loading C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.bin with ORG information from C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.org
+Loaded 15 bytes at 0x1000 from binary offset 0
+Loaded 2 bytes at 0x0100 from binary offset 15
+Loaded 12615 bytes at 0x1100 from binary offset 17
+Loaded 10850 bytes at 0x4200 from binary offset 12632
+______________________ test_shell_help_and_peek_commands ______________________
+
+kernel_binary = 'C:\\Users\\lokuj\\AppData\\Local\\Temp\\pytest-of-lokuj\\pytest-289\\novedos_kernel0\\kernel.bin'
+
+    def test_shell_help_and_peek_commands(kernel_binary):
+        """"H"+Enter prints the command list, "P"+Enter prints the signature as
+        hex glyphs; both record their command id for the test to observe."""
+        proc, mem, gfx, kbd, cycles = boot_with_keys(
+            kernel_binary, (ord('H'), ENTER, ord('P'), ENTER))
+>       _assert_clean_halt(proc)
+
+astrid\NovaDOS\tests\test_kernel_compile.py:249: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+proc = <nova_cpu.CPU object at 0x000001D87EDFAD50>
+
+    def _assert_clean_halt(proc):
+        assert proc.halted, f"kernel never halted (PC=0x{proc.pc:04X})"
+>       assert proc.pc in (0x100E, 0x100F), (
+            f"kernel halted at 0x{proc.pc:04X}, expected the entry stub HLT")
+E       AssertionError: kernel halted at 0x4204, expected the entry stub HLT
+E       assert 16900 in (4110, 4111)
+E        +  where 16900 = <nova_cpu.CPU object at 0x000001D87EDFAD50>.pc
+
+astrid\NovaDOS\tests\test_kernel_compile.py:230: AssertionError
+---------------------------- Captured stdout call -----------------------------
+Nova Sound System initialized
+Sample Rate: 22050Hz, Channels: 8, Buffer: 512
+Loading C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.bin with ORG information from C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.org
+Loaded 15 bytes at 0x1000 from binary offset 0
+Loaded 2 bytes at 0x0100 from binary offset 15
+Loaded 12615 bytes at 0x1100 from binary offset 17
+Loaded 10850 bytes at 0x4200 from binary offset 12632
+_______________________ test_shell_backspace_edits_line _______________________
+
+kernel_binary = 'C:\\Users\\lokuj\\AppData\\Local\\Temp\\pytest-of-lokuj\\pytest-289\\novedos_kernel0\\kernel.bin'
+
+    def test_shell_backspace_edits_line(kernel_binary):
+        """Backspace removes the previous character from the line buffer, so
+        "X",BS,"H",Enter dispatches HELP (not the unknown command "XH")."""
+        proc, mem, gfx, kbd, cycles = boot_with_keys(
+            kernel_binary, (ord('X'), BACKSPACE, ord('H'), ENTER))
+>       _assert_clean_halt(proc)
+
+astrid\NovaDOS\tests\test_kernel_compile.py:276: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+proc = <nova_cpu.CPU object at 0x000001D87EDFB4D0>
+
+    def _assert_clean_halt(proc):
+        assert proc.halted, f"kernel never halted (PC=0x{proc.pc:04X})"
+>       assert proc.pc in (0x100E, 0x100F), (
+            f"kernel halted at 0x{proc.pc:04X}, expected the entry stub HLT")
+E       AssertionError: kernel halted at 0x4204, expected the entry stub HLT
+E       assert 16900 in (4110, 4111)
+E        +  where 16900 = <nova_cpu.CPU object at 0x000001D87EDFB4D0>.pc
+
+astrid\NovaDOS\tests\test_kernel_compile.py:230: AssertionError
+---------------------------- Captured stdout call -----------------------------
+Nova Sound System initialized
+Sample Rate: 22050Hz, Channels: 8, Buffer: 512
+Loading C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.bin with ORG information from C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.org
+Loaded 15 bytes at 0x1000 from binary offset 0
+Loaded 2 bytes at 0x0100 from binary offset 15
+Loaded 12615 bytes at 0x1100 from binary offset 17
+Loaded 10850 bytes at 0x4200 from binary offset 12632
+___________________ test_shell_unknown_command_is_swallowed ___________________
+
+kernel_binary = 'C:\\Users\\lokuj\\AppData\\Local\\Temp\\pytest-of-lokuj\\pytest-289\\novedos_kernel0\\kernel.bin'
+
+    def test_shell_unknown_command_is_swallowed(kernel_binary):
+        """An unknown first character must not crash the shell: the line is
+        counted, no command id is set, and the kernel still halts cleanly."""
+        proc, mem, gfx, kbd, cycles = boot_with_keys(
+            kernel_binary, (ord('Q'), ENTER, ESC))
+>       _assert_clean_halt(proc)
+
+astrid\NovaDOS\tests\test_kernel_compile.py:291: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+proc = <nova_cpu.CPU object at 0x000001D87EDFB890>
+
+    def _assert_clean_halt(proc):
+        assert proc.halted, f"kernel never halted (PC=0x{proc.pc:04X})"
+>       assert proc.pc in (0x100E, 0x100F), (
+            f"kernel halted at 0x{proc.pc:04X}, expected the entry stub HLT")
+E       AssertionError: kernel halted at 0x4204, expected the entry stub HLT
+E       assert 16900 in (4110, 4111)
+E        +  where 16900 = <nova_cpu.CPU object at 0x000001D87EDFB890>.pc
+
+astrid\NovaDOS\tests\test_kernel_compile.py:230: AssertionError
+---------------------------- Captured stdout call -----------------------------
+Nova Sound System initialized
+Sample Rate: 22050Hz, Channels: 8, Buffer: 512
+Loading C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.bin with ORG information from C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.org
+Loaded 15 bytes at 0x1000 from binary offset 0
+Loaded 2 bytes at 0x0100 from binary offset 15
+Loaded 12615 bytes at 0x1100 from binary offset 17
+Loaded 10850 bytes at 0x4200 from binary offset 12632
+___________________________ test_shell_cls_command ____________________________
+
+kernel_binary = 'C:\\Users\\lokuj\\AppData\\Local\\Temp\\pytest-of-lokuj\\pytest-289\\novedos_kernel0\\kernel.bin'
+
+    def test_shell_cls_command(kernel_binary):
+        """"C"+Enter clears the console layer and repaints the prompt."""
+        proc, mem, gfx, kbd, cycles = boot_with_keys(
+            kernel_binary, (ord('C'), ENTER))
+>       _assert_clean_halt(proc)
+
+astrid\NovaDOS\tests\test_kernel_compile.py:301: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+proc = <nova_cpu.CPU object at 0x000001D87EE90F50>
+
+    def _assert_clean_halt(proc):
+        assert proc.halted, f"kernel never halted (PC=0x{proc.pc:04X})"
+>       assert proc.pc in (0x100E, 0x100F), (
+            f"kernel halted at 0x{proc.pc:04X}, expected the entry stub HLT")
+E       AssertionError: kernel halted at 0x4204, expected the entry stub HLT
+E       assert 16900 in (4110, 4111)
+E        +  where 16900 = <nova_cpu.CPU object at 0x000001D87EE90F50>.pc
+
+astrid\NovaDOS\tests\test_kernel_compile.py:230: AssertionError
+---------------------------- Captured stdout call -----------------------------
+Nova Sound System initialized
+Sample Rate: 22050Hz, Channels: 8, Buffer: 512
+Loading C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.bin with ORG information from C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.org
+Loaded 15 bytes at 0x1000 from binary offset 0
+Loaded 2 bytes at 0x0100 from binary offset 15
+Loaded 12615 bytes at 0x1100 from binary offset 17
+Loaded 10850 bytes at 0x4200 from binary offset 12632
+_________________________ test_shell_bye_exits_early __________________________
+
+kernel_binary = 'C:\\Users\\lokuj\\AppData\\Local\\Temp\\pytest-of-lokuj\\pytest-289\\novedos_kernel0\\kernel.bin'
+
+    def test_shell_bye_exits_early(kernel_binary):
+        """"B"+Enter sets the exit flag: the poll loop is abandoned immediately
+        (visible in a much lower cycle count) and the kernel halts cleanly."""
+        proc, mem, gfx, kbd, cycles = boot_with_keys(
+            kernel_binary, (ord('B'), ENTER))
+>       _assert_clean_halt(proc)
+
+astrid\NovaDOS\tests\test_kernel_compile.py:316: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+proc = <nova_cpu.CPU object at 0x000001D87EDFB890>
+
+    def _assert_clean_halt(proc):
+        assert proc.halted, f"kernel never halted (PC=0x{proc.pc:04X})"
+>       assert proc.pc in (0x100E, 0x100F), (
+            f"kernel halted at 0x{proc.pc:04X}, expected the entry stub HLT")
+E       AssertionError: kernel halted at 0x4204, expected the entry stub HLT
+E       assert 16900 in (4110, 4111)
+E        +  where 16900 = <nova_cpu.CPU object at 0x000001D87EDFB890>.pc
+
+astrid\NovaDOS\tests\test_kernel_compile.py:230: AssertionError
+---------------------------- Captured stdout call -----------------------------
+Nova Sound System initialized
+Sample Rate: 22050Hz, Channels: 8, Buffer: 512
+Loading C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.bin with ORG information from C:\Users\lokuj\AppData\Local\Temp\pytest-of-lokuj\pytest-289\novedos_kernel0\kernel.org
+Loaded 15 bytes at 0x1000 from binary offset 0
+Loaded 2 bytes at 0x0100 from binary offset 15
+Loaded 12615 bytes at 0x1100 from binary offset 17
+Loaded 10850 bytes at 0x4200 from binary offset 12632
+=========================== short test summary info ===========================
+FAILED astrid/NovaDOS/tests/test_kernel_compile.py::test_boot_slice_completes_cleanly
+FAILED astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_boot_signature_written
+FAILED astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_help_and_peek_commands
+FAILED astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_backspace_edits_line
+FAILED astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_unknown_command_is_swallowed
+FAILED astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_cls_command - ...
+FAILED astrid/NovaDOS/tests/test_kernel_compile.py::test_shell_bye_exits_early
+======================== 7 failed, 15 passed in 3.53s =========================

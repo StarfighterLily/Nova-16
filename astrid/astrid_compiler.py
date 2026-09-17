@@ -44,6 +44,13 @@ def main():
     parser.add_argument("--emit-all-builtins", action="store_true", dest="emit_all_builtins",
                         help="Emit every builtin implementation regardless of usage "
                              "(legacy behavior; default is lazy, usage-driven emission)")
+    parser.add_argument("--memory-layout", dest="memory_layout", default="default",
+                        choices=("default", "bank-safe"),
+                        help="Runtime memory layout. 'default' keeps globals/string "
+                             "scratch in the 0x8000-0xBFFF bank window (legacy). "
+                             "'bank-safe' moves them out of the window so programs "
+                             "can switch banks freely (NovaDOS NDF disks). Under "
+                             "bank-safe, code must stay below 0x4000.")
     args = parser.parse_args()
 
     if args.debug_optimizations:
@@ -82,6 +89,7 @@ def main():
             enable_live_range_scheduling=enable_live_range_scheduling,
             debug_optimizations=args.debug_optimizations,
             emit_all_builtins=args.emit_all_builtins,
+            memory_layout=args.memory_layout,
         )
         assembly = codegen.generate(ast)
         print(f"✓ Code Generator: Successfully generated assembly code")

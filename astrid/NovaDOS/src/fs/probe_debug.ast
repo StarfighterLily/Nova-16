@@ -1,0 +1,7 @@
+include "ndf.ast";
+int mounted;
+
+void main() {
+    ndf_format(1);
+    mounted = ndf_mounted(1);
+}

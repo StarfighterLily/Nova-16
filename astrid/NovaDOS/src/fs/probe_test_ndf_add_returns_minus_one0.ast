@@ -1,0 +1,24 @@
+include "ndf.ast";
+int r;
+int i;
+
+void main() {
+    ndf_format(1);
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    ndf_add(1, 65, 65, 65, 65, 0, 0);  // "AAAA"
+    r = ndf_add(1, 72, 76, 76, 84, 0, 0);  // overflow
+}

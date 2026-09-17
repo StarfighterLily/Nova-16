@@ -50,6 +50,10 @@ def kernel_binary(tmp_path_factory):
         sys.executable,
         os.path.join(_REPO_ROOT, "astrid", "astrid_compiler.py"),
         _KERNEL_SRC, "-o", asm_path,
+        # WHY bank-safe: NovaDOS stores NDF volumes in the 0x8000-0xBFFF bank
+        # window, so the runtime's own globals/scratch must live elsewhere.
+        # See tests/astrid/test_astrid_memory_layout.py and docs/notes/start.md.
+        "--memory-layout", "bank-safe",
     ])
     assert rc == 0, f"Astrid compile failed:\n{out}\n{err}"
     assert os.path.exists(asm_path)
@@ -105,6 +109,31 @@ def test_code_does_not_overlap_stub(kernel_binary):
         if start != 0x1000:
             assert end <= 0x1000 or start >= 0x100F, (
                 f"segment [{start:#x}-{end:#x}] overlaps stub [0x1000-0x100F]")
+
+
+def test_bank_window_is_free_for_ndf_disks(kernel_binary):
+    """The whole 0x8000-0xBFFF bank window must be free of kernel objects.
+
+    WHY: the NovaDOS filesystem maps NDF volumes onto bank pages, and the
+    hardware swaps the selected page into 0x8000-0xBFFF. If the kernel's own
+    globals, string scratch or spill windows lived there, selecting a disk
+    would swap out the running OS (that was the original blocker). The
+    `bank-safe` memory layout prevents exactly that, so this test guards the
+    build flag as much as the layout implementation.
+    """
+    org_path = kernel_binary.replace(".bin", ".org")
+    with open(org_path) as f:
+        lines = [l.strip() for l in f if l.strip() and not l.startswith("#")]
+    for line in lines:
+        start = int(line.split()[0], 16)
+        length = int(line.split()[1])
+        end = start + length
+        assert end <= 0x8000 or start >= 0xC000, (
+            f"segment [0x{start:04X}-0x{end:04X}] overlaps the bank window")
+    syms = _load_syms(kernel_binary)
+    for name, addr in syms.items():
+        assert not (0x8000 <= addr < 0xC000), (
+            f"{name} lives at 0x{addr:04X} inside the bank window")
 
 
 def test_kernel_runs_without_opcode_crash(kernel_binary):
@@ -291,6 +320,91 @@ def test_shell_bye_exits_early(kernel_binary):
     # The keyless boot slice runs ~99.7k cycles; BYE skips most of the poll
     # loop, so a fresh build must land well below that.
     assert cycles < 80000, f"BYE did not exit early ({cycles} cycles)"
+
+
+@pytest.mark.integration
+@pytest.mark.memory
+def test_kernel_segments_do_not_overlap(kernel_binary):
+    """Globals must not overwrite the tail of growing kernel code."""
+    segments = []
+    with open(kernel_binary.replace(".bin", ".org")) as f:
+        for line in f:
+            if not line.strip() or line.startswith("#"):
+                continue
+            start, length, _ = line.split()
+            start = int(start, 16)
+            segments.append((start, start + int(length)))
+    segments.sort()
+    for (_, end), (next_start, _) in zip(segments, segments[1:]):
+        assert end <= next_start, (
+            f"segment ending at 0x{end:04X} overlaps 0x{next_start:04X}")
+
+
+def _assert_shell_text(gfx, text, col, row):
+    """Compare actual output with glyphs, not merely nonempty screen bands."""
+    from nova.graphics.gfx import GFX
+
+    expected = GFX()
+    expected.draw_string_to_screen(text, col * 8, row * 8, color=0x0F)
+    x, y = col * 8, row * 8
+    actual = gfx._compositor.layers[0][y:y + 8, x:x + len(text) * 8]
+    wanted = expected._compositor.layers[0][y:y + 8, x:x + len(text) * 8]
+    assert (wanted != 0).any()
+    assert (actual == wanted).all(), f"expected {text!r} at cell ({col}, {row})"
+
+
+@pytest.mark.integration
+@pytest.mark.graphics
+@pytest.mark.parametrize("command", ["DIR", "dir"])
+def test_shell_dir_lists_boot_file(kernel_binary, command):
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        kernel_binary, (*map(ord, command), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(kernel_binary)
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 5
+    assert mem.read_word(syms["gvar_cmd_count"]) == 1
+    assert mem.read_word(syms["gvar_line_len"]) == 0
+    _assert_shell_text(gfx, "DIR bank1=01", 2, 5)
+    _assert_shell_text(gfx, "BOOT", 4, 6)
+    page = mem._bank_pages[1]
+    assert bytes(page[:6]) == b"NDF1\x00\x01"
+    assert bytes(page[0x10:0x18]) == b"BOOT\x00\x00\x00\x00"
+    assert bytes(page[0x1A:0x1E]) == b"\x00\x05\x04\x00"
+    assert bytes(page[0x400:0x405]) == b"HELLO"
+
+
+@pytest.mark.integration
+@pytest.mark.graphics
+@pytest.mark.parametrize("command", ["TBOOT", "tBOOT"])
+def test_shell_type_displays_boot_contents(kernel_binary, command):
+    # This boot slice dispatches one command character followed by the name.
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        kernel_binary, (*map(ord, command), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(kernel_binary)
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 6
+    assert mem.read_word(syms["gvar_cmd_count"]) == 1
+    assert mem.read_word(syms["gvar_line_len"]) == 0
+    assert mem.read_word(syms["gvar_demo_hits"]) == 111
+    _assert_shell_text(gfx, "---", 2, 5)
+    _assert_shell_text(gfx, "HELLO", 2, 6)
+    # The shutdown demo prints "111" at pixel (2, 60), covering the first
+    # two closing dashes. The third glyph remains unobscured.
+    _assert_shell_text(gfx, "-", 4, 7)
+
+
+@pytest.mark.integration
+@pytest.mark.graphics
+@pytest.mark.parametrize("command", ["T", "TMISS", "TBOO", "TBOOTX"])
+def test_shell_type_missing_file(kernel_binary, command):
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        kernel_binary, (*map(ord, command), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(kernel_binary)
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 6
+    assert mem.read_word(syms["gvar_cmd_count"]) == 1
+    assert mem.read_word(syms["gvar_line_len"]) == 0
+    _assert_shell_text(gfx, "file not found", 2, 5)
 
 
 if __name__ == "__main__":
