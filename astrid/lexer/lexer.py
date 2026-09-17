@@ -94,17 +94,27 @@ class Token:
         return f"Token({self.type}, {self.value!r}, {self.line}, {self.column})"
 
 class Lexer:
-    def __init__(self, code: str):
+    def __init__(self, code: str, defines=None, source_path=None):
+        self.source = code
         self.code = code
+        self.defines = defines
+        self.source_path = source_path
         self.tokens: List[Token] = []
 
     def tokenize(self) -> List[Token]:
+        from astrid.preprocessor import Preprocessor
+        preprocessor = Preprocessor(self.source, self.defines, self.source_path)
+        self.code = preprocessor.process()
+        self.tokens = []
         line_num = 1
         line_start = 0
         for mo in re.finditer(tok_regex, self.code):
             kind = mo.lastgroup
             value = mo.group()
             column = mo.start() - line_start + 1
+            columns = preprocessor.columns.get(line_num, [])
+            if column <= len(columns):
+                column = columns[column - 1]
             if kind == 'NUMBER':
                 self.tokens.append(Token('NUMBER', value, line_num, column))
             elif kind == 'ID':
@@ -140,6 +150,9 @@ class Lexer:
                 # columns relative to the first token, not the line).
                 line_num += value.count('\n')
                 line_start = mo.start() + value.rfind('\n') + 1
+        for token in self.tokens:
+            if token.value in ('include', 'inherits'):
+                token.defines = preprocessor.line_defines.get(token.line, {})
         self.tokens.append(Token('EOF', '', line_num, 1))
         return self.tokens
 
@@ -181,6 +194,7 @@ class Lexer:
                         'operators and delimiters')
         raise LexerError(
             message, line=line_num, column=column,
-            length=len(value), hint=hint, source_text=self.code)
+            length=len(value), hint=hint, source_text=self.source,
+            filename=self.source_path)
 
 

@@ -44,6 +44,8 @@ def main():
     parser.add_argument("--emit-all-builtins", action="store_true", dest="emit_all_builtins",
                         help="Emit every builtin implementation regardless of usage "
                              "(legacy behavior; default is lazy, usage-driven emission)")
+    parser.add_argument("-D", "--define", dest="defines", action="append", default=[],
+                        metavar="NAME[=VALUE]", help="Predefine a macro (default value: 1)")
     parser.add_argument("--memory-layout", dest="memory_layout", default="default",
                         choices=("default", "bank-safe"),
                         help="Runtime memory layout. 'default' keeps globals/string "
@@ -72,7 +74,11 @@ def main():
     print(f"Compiling: {args.source or 'stdin'} -> {out_file}")
 
     try:
-        lexer = Lexer(source_code)
+        defines = {}
+        for item in args.defines:
+            name, separator, value = item.partition('=')
+            defines[name] = value if separator else '1'
+        lexer = Lexer(source_code, defines=defines, source_path=args.source)
         tokens = lexer.tokenize()
         print(f"✓ Lexer: Generated {len(tokens)} tokens")
 

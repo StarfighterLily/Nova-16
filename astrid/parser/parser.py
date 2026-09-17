@@ -991,6 +991,7 @@ class Parser:
         inherits -- buffered as a base unit and merged at EOF; definitions
                     from this program shadow (override) the base's.
         """
+        defines = getattr(self.current, 'defines', None)
         self.advance()  # consume 'include' / 'inherits' keyword
         tok = self.current
         if tok.type != 'STRING':
@@ -1002,7 +1003,7 @@ class Parser:
         self.advance()
         if self.current.type == 'DELIMITER' and self.current.value == ';':
             self.advance()
-        unit = self._load_unit(raw[1:-1], mode, line)
+        unit = self._load_unit(raw[1:-1], mode, line, defines)
         if unit is None:
             return  # duplicate include: already merged elsewhere (pragma-once style)
         if mode == 'include':
@@ -1024,7 +1025,8 @@ class Parser:
                 f"(resolved to {resolved!r}, line {line})")
         return _os.path.abspath(resolved)
 
-    def _load_unit(self, filename: str, mode: str, line: int) -> Optional["Program"]:
+    def _load_unit(self, filename: str, mode: str, line: int,
+                   defines=None) -> Optional["Program"]:
         """Tokenize + parse an included/inherited file into a Program.
 
         Returns None when the same file was already pulled in anywhere in
@@ -1043,7 +1045,7 @@ class Parser:
         seen.add(resolved)
         with open(resolved, 'r', encoding='utf-8') as f:
             source = f.read()
-        sub_tokens = Lexer(source).tokenize()
+        sub_tokens = Lexer(source, defines=defines, source_path=resolved).tokenize()
         sub_parser = Parser(sub_tokens, source_path=resolved,
                             include_state=self.include_state)
         stack.append(resolved)

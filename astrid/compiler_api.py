@@ -32,7 +32,8 @@ def compile_astrid(source_file: str, output_file: str = None,
                    emit_all_builtins: bool = False,
                    memory_layout: str = 'default',
                    log=print,
-                   assemble_callback=None) -> bool:
+                   assemble_callback=None,
+                   defines: dict = None) -> bool:
     """Compile an Astrid source file to Nova-16 assembly (and optionally binary).
 
     Args:
@@ -47,6 +48,8 @@ def compile_astrid(source_file: str, output_file: str = None,
         memory_layout: Named runtime memory layout ('default' | 'bank-safe').
             'bank-safe' moves globals/string scratch out of the 0x8000-0xBFFF
             bank window so programs can switch banks (NovaDOS NDF disks).
+        defines: Optional macro mapping; None values mean '1', empty strings
+            define empty replacement lists. Child file units inherit snapshots.
         log: Optional callback for compiler messages; defaults to print
         assemble_callback: Optional callback invoked as
             ``assemble_callback(assembly_path: Path, verbose: bool, emit)``
@@ -80,7 +83,7 @@ def compile_astrid(source_file: str, output_file: str = None,
 
     emit(f"Compiling {source_path} -> {output_path}")
 
-    lexer = Lexer(source_code)
+    lexer = Lexer(source_code, defines=defines, source_path=str(source_path))
     tokens = lexer.tokenize()
     if verbose:
         emit(f"Lexer complete: {len(tokens)} tokens")
