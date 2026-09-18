@@ -407,5 +407,99 @@ def test_shell_type_missing_file(kernel_binary, command):
     _assert_shell_text(gfx, "file not found", 2, 5)
 
 
+# Build variants exercise the real CLI as well as the compiler API.
+@pytest.fixture(scope="module")
+def diskless_binary(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("novados_diskless")
+    asm_path = str(tmp / "kernel.asm")
+    rc, out, err = _run([
+        sys.executable, os.path.join(_REPO_ROOT, "astrid", "astrid_compiler.py"),
+        _KERNEL_SRC, "-o", asm_path, "--memory-layout", "bank-safe",
+        "-DNOVADOS_ENABLE_NDF=0",
+    ])
+    assert rc == 0, f"Diskless compile failed:\n{out}\n{err}"
+    from nova_assembler import Assembler
+    assert Assembler(log=None, trace=False).assemble(asm_path)
+    return str(tmp / "kernel.bin")
+
+
+@pytest.mark.integration
+def test_diskless_excludes_ndf_and_reduces_binary(kernel_binary, diskless_binary):
+    syms = _load_syms(diskless_binary)
+    assert not any(name.startswith(("func_ndf_", "gvar_ndf_")) for name in syms)
+    assert "func_shell_dir" not in syms
+    assert "func_shell_type" not in syms
+    assert "builtin_set_bank" not in syms
+    assert os.path.getsize(diskless_binary) < os.path.getsize(kernel_binary)
+    test_kernel_segments_do_not_overlap(diskless_binary)
+
+
+@pytest.mark.integration
+@pytest.mark.graphics
+@pytest.mark.parametrize("command, expected_id", [("H", 1), ("D", 0), ("TBOOT", 0), ("P", 3), ("B", 4)])
+def test_diskless_shell(diskless_binary, command, expected_id):
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        diskless_binary, (*map(ord, command), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(diskless_binary)
+    assert mem.read_word(syms["gvar_shell_cmd"]) == expected_id
+    assert mem.read_word(syms["gvar_cmd_count"]) == 1
+    assert mem.read_word(syms["gvar_demo_hits"]) == 111
+    assert bytes(mem._mem[:4]) == b"ND\x01\x00"
+    assert 1 not in mem._bank_pages
+    assert (gfx._compositor.layers[0] != 0).any()
+    if command == "H":
+        _assert_shell_text(gfx, "HELP PEEK CLS BYE", 2, 5)
+    if command == "P":
+        _assert_shell_text(gfx, "4E 44", 2, 5)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("limit, expected_commands", [(1, 0), (2, 1)])
+def test_poll_limit_controls_keyboard_iterations(tmp_path, limit, expected_commands):
+    from astrid.compiler_api import compile_astrid
+    from nova_assembler import Assembler
+
+    asm = tmp_path / "poll.asm"
+    compile_astrid(_KERNEL_SRC, str(asm), memory_layout="bank-safe", log=None,
+                   defines={"NOVADOS_ENABLE_NDF": 0, "NOVADOS_POLL_LIMIT": limit})
+    assert Assembler(log=None, trace=False).assemble(str(asm))
+    binary = str(asm.with_suffix(".bin"))
+    proc, mem, gfx, kbd, cycles = boot_with_keys(binary, (ord("H"), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(binary)
+    assert mem.read_word(syms["gvar_cmd_count"]) == expected_commands
+    assert mem.read_word(syms["gvar_line_len"]) == 1 - expected_commands
+    assert mem.read_word(syms["gvar_demo_hits"]) == 111
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name, value", [
+    ("NOVADOS_ENABLE_NDF", -1), ("NOVADOS_ENABLE_NDF", 2),
+    ("NOVADOS_POLL_LIMIT", 0), ("NOVADOS_POLL_LIMIT", -1),
+    ("NOVADOS_POLL_LIMIT", 32768),
+])
+def test_invalid_build_settings_fail_before_output(tmp_path, name, value):
+    from astrid.compiler_api import compile_astrid
+    from astrid.preprocessor import PreprocessorError
+
+    output = tmp_path / "invalid.asm"
+    with pytest.raises(PreprocessorError, match=name) as error:
+        compile_astrid(_KERNEL_SRC, str(output), log=None, defines={name: value})
+    assert error.value.filename == _KERNEL_SRC
+    assert not output.exists()
+
+
+@pytest.mark.unit
+def test_maximum_poll_limit_compiles(tmp_path):
+    from astrid.compiler_api import compile_astrid
+
+    output = tmp_path / "maximum.asm"
+    assert compile_astrid(_KERNEL_SRC, str(output), log=None,
+                          memory_layout="bank-safe", defines={"NOVADOS_POLL_LIMIT": 32767})
+    assert output.exists()
+
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

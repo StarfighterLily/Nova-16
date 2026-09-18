@@ -223,7 +223,17 @@ class IRet(BaseInstruction):
             # Ensure explicit type conversion to avoid numpy overflow
             flag_value = 1 if bit_set else 0
             cpu.flags[i] = int(flag_value) & 0xFF
-        
+
+        # Pure Option B: restore the BANK snapshot for this nesting level.
+        bank_stack = getattr(cpu, '_bank_irq_stack', None)
+        if bank_stack:
+            saved_bank = bank_stack.pop()
+            try:
+                if int(cpu.memory.current_bank) != int(saved_bank):
+                    cpu.memory.set_bank(int(saved_bank))
+            except Exception:
+                pass
+
         # Re-enable interrupts after restoring context
         cpu.flags[5] = 1
         

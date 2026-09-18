@@ -221,7 +221,13 @@ class InterruptController:
         return False
 
     def _trigger(self, vector: int):
-        """Push PC + flags to stack, jump to handler."""
+        """Push PC + flags to stack, preserve BANK across handler, jump to handler.
+
+        Pure Option B: BANK is snapshotted onto the CPU's nesting stack and
+        force-reset to 0, so the handler always executes with bank 0 visible.
+        IRET pops the snapshot and restores it. No ISA/frame change: handlers
+        that set BANK for their own use work unchanged.
+        """
         cpu = self._cpu
         mem = self._memory
         if cpu is None or mem is None:
@@ -261,6 +267,23 @@ class InterruptController:
 
         # Update SP
         cpu.Pregisters[8] = sp
+
+        # Pure Option B: preserve BANK across the handler. Snapshot the entry
+        # bank onto the CPU's nesting stack and force bank 0 visible for the
+        # handler. The bus path only snapshots when memory exposes a banked
+        # current_bank/set_bank API; otherwise it behaves as before.
+        try:
+            saved_bank = int(mem.current_bank)
+            bank_stack = getattr(cpu, '_bank_irq_stack', None)
+            if bank_stack is not None:
+                bank_stack.append(saved_bank)
+        except Exception:
+            saved_bank = None
+        if saved_bank:
+            try:
+                mem.set_bank(0)
+            except Exception:
+                pass
 
         # Disable interrupts during handler
         flags_obj[Flags.I] = 0

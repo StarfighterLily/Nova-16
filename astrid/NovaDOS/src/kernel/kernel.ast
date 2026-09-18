@@ -5,11 +5,30 @@
 // WHY: proves kernel pieces execute on the emulator before adding FS/drivers.
 // =============================================================================
 
+// Build settings live in the entry unit so include-site snapshots propagate
+// consistently. Keep the historical boot slice unless explicitly overridden.
+#ifndef NOVADOS_ENABLE_NDF
+#define NOVADOS_ENABLE_NDF 1
+#endif
+#if NOVADOS_ENABLE_NDF != 0 && NOVADOS_ENABLE_NDF != 1
+#error NOVADOS_ENABLE_NDF must be 0 or 1
+#endif
+#ifndef NOVADOS_POLL_LIMIT
+#define NOVADOS_POLL_LIMIT 200
+#endif
+// The loop counter is signed 16-bit; larger limits would wrap before exit.
+#if NOVADOS_POLL_LIMIT < 1 || NOVADOS_POLL_LIMIT > 32767
+#error NOVADOS_POLL_LIMIT must be between 1 and 32767
+#endif
+
+
 include "memmgr.ast";
 include "interrupts.ast";
 // NDF disk layer: bank-page access + volume/directory primitives. Requires the
 // bank-safe memory layout (see docs/notes/start.md).
+#if NOVADOS_ENABLE_NDF
 include "../fs/ndf.ast";
+#endif
 
 // Console cursor: DOS-style prompt block; no graphics imports yet.
 // Geometry: set_pos takes PIXELS, so every draw goes through shell_goto which
@@ -119,6 +138,7 @@ void shell_peek() {
     shell_newline();
 }
 
+#if NOVADOS_ENABLE_NDF
 // DIR: list the NDF volume in bank 1 (entry count + each directory name).
 // WHY bank 1 is the default disk: bank 0 aliases base RAM (never a disk), so
 // the first private page is the boot volume, which main() formats at startup.
@@ -215,9 +235,15 @@ void shell_type() {
     shell_puts("---");
 }
 
-// HELP: one-line command list.
+#endif
+
+// HELP: only advertise commands compiled into this build.
 void shell_help() {
+#if NOVADOS_ENABLE_NDF
     shell_puts("HELP PEEK CLS DIR TYPE BYE");
+#else
+    shell_puts("HELP PEEK CLS BYE");
+#endif
 }
 
 // Dispatch one completed command line by its FIRST character (the same
@@ -246,12 +272,14 @@ void shell_dispatch() {
     } else if (c == 66 || c == 98) {    // 'B' / 'b'
         shell_cmd = 4;
         shell_exit = 1;                 // graceful shutdown: main halts after the loop
+#if NOVADOS_ENABLE_NDF
     } else if (c == 68 || c == 100) {   // 'D' / 'd'
         shell_cmd = 5;
         shell_dir();
     } else if (c == 84 || c == 116) {   // 'T' / 't'
         shell_cmd = 6;
         shell_type();
+#endif
     }
     // Unknown first character: fall through silently (the '?' error of the
     // assembly REPL is skipped so the headless run stays quiet).
@@ -342,6 +370,7 @@ void main() {
     poke(0x0001, 0x44);
     poke(0x0002, 1);
     poke(0x0003, 0);
+#if NOVADOS_ENABLE_NDF
     // Bring up the boot NDF volume on bank 1 and give it one directory entry.
     // WHY: the bank-safe layout frees 0x8000-0xBFFF, so the disk layer can
     // switch banks without swapping out the running kernel. This is the first
@@ -353,6 +382,7 @@ void main() {
     ndf_write16(1, ndf_data_base, 0x4845);     // "HE"
     ndf_write16(1, ndf_data_base + 2, 0x4C4C); // "LL"
     ndf_write8(1, ndf_data_base + 4, 79);      // "O"
+#endif
     banner();
     shell_prompt();
     task_spawn(demo_ctx, demo_stack, 64, &demo_task);
@@ -369,7 +399,7 @@ void main() {
     // still drains the full 200 iterations and halts deterministically.
     shell_exit = 0;
     i = 0;
-    while (i < 200 && shell_exit == 0) {
+    while (i < NOVADOS_POLL_LIMIT && shell_exit == 0) {
         wake_sleepers(system_ticks);
         if (key_available()) {
             shell_key(key_read());

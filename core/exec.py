@@ -205,11 +205,13 @@ def _ret(cpu) -> None:
 
 
 def _iret(cpu) -> None:
-    """IRET: Return from interrupt. Restore PC and flags.
+    """IRET: Return from interrupt. Restore PC, flags, and entry BANK.
 
     Legacy interrupt entry pushes PC first, then flags, so the stack layout
     at the handler is (top -> bottom): flags, PC.  IRET therefore pops PC
-    first and flags second.
+    first and flags second. Pure Option B: also pop the CPU's BANK nesting
+    stack (pushed by the interrupt controller) and restore that entry bank.
+    No ISA/frame change.
     """
     sp = cpu.regfile.get('P', 8)
 
@@ -232,6 +234,16 @@ def _iret(cpu) -> None:
         [(flags_val >> i) & 1 for i in range(12)]
     )
     cpu.pc = ret_addr
+
+    # Pure Option B: restore the BANK snapshot for this nesting level.
+    bank_stack = getattr(cpu, '_bank_irq_stack', None)
+    if bank_stack:
+        saved_bank = bank_stack.pop()
+        try:
+            if int(cpu.memory.current_bank) != int(saved_bank):
+                cpu.memory.set_bank(int(saved_bank))
+        except Exception:
+            pass
 
 
 def _cli(cpu) -> None:

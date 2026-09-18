@@ -52,6 +52,10 @@ class CPU:
         self.hw_breakpoints = [0] * 4
         self.hw_breakpoint_enabled = [False] * 4
 
+        # Pure Option B: nesting stack of BANK snapshots taken by the
+        # interrupt controller at each entry and restored by IRET.
+        self._bank_irq_stack = []
+
         import random
         self.rng_seed = random.randint(0, 0xFFFF)
         self.rtc_time_source = time.time
@@ -947,6 +951,19 @@ class CPU:
             self.memory.write_word(self.Pregisters[8], flags_val)
             self.Pregisters[8] = (int(self.Pregisters[8]) - 2) & 0xFFFF
             self.memory.write_word(self.Pregisters[8], self.pc)
+            # Pure Option B: preserve BANK across the handler. Snapshot the
+            # entry bank and force bank 0 visible for the handler.
+            try:
+                saved_bank = int(self.memory.current_bank)
+            except Exception:
+                saved_bank = None
+            if saved_bank is not None:
+                self._bank_irq_stack.append(saved_bank)
+                if saved_bank:
+                    try:
+                        self.memory.set_bank(0)
+                    except Exception:
+                        pass
             self.flags_obj[5] = 0
             self.pc = handler_address
 
