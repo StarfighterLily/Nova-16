@@ -11,6 +11,12 @@
 // WHY every access restores bank 0: the rest of the kernel (and its interrupt
 //      handler) assumes base RAM is visible; a banked section must be as short
 //      as one byte operation.
+// WHY the bracket survives interrupts: the interrupt controller snapshots the
+//      BANK register on every entry ("Pure Option B") and forces bank 0 for
+//      the handler, and IRET pops the snapshot back. A tick landing between
+//      set_bank(bank) and the closing set_bank(0) therefore cannot leak a
+//      bank switch into the ISR or the interrupted access, which is what
+//      makes calling these helpers from an ISR safe too.
 // =============================================================================
 
 // NDF geometry (all offsets are window-relative).

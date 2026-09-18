@@ -20,6 +20,23 @@
 #if NOVADOS_POLL_LIMIT < 1 || NOVADOS_POLL_LIMIT > 32767
 #error NOVADOS_POLL_LIMIT must be between 1 and 32767
 #endif
+// Timer heartbeat (vector 0): brings the timer ISR in interrupts.ast to life.
+// NOVADOS_ENABLE_TIMER 0 removes only the bring-up (the ISR and its vector
+// table entry stay compiled in but never fire, restoring the pre-heartbeat
+// behaviour for deterministic bank-free debugging runs). The arm sequence in
+// main() programs the cadence directly (TM=100, TS=31 -> one tick per
+// (31+1)*100 = 3200 cycles, roughly one tick per poll-loop iteration so
+// system_ticks advances visibly in every headless run without dominating the
+// cycle budget).
+#ifndef NOVADOS_ENABLE_TIMER
+#define NOVADOS_ENABLE_TIMER 1
+#endif
+#if NOVADOS_ENABLE_TIMER != 0 && NOVADOS_ENABLE_TIMER != 1
+#error NOVADOS_ENABLE_TIMER must be 0 or 1
+#endif
+
+
+include "memmgr.ast";
 
 
 include "memmgr.ast";
@@ -382,6 +399,37 @@ void main() {
     ndf_write16(1, ndf_data_base, 0x4845);     // "HE"
     ndf_write16(1, ndf_data_base + 2, 0x4C4C); // "LL"
     ndf_write8(1, ndf_data_base + 4, 79);      // "O"
+#endif
+#if NOVADOS_ENABLE_TIMER
+    // Arm the tick heartbeat AFTER the NDF bring-up so boot-time disk
+    // formatting stays interrupt-free, then let every later banked access
+    // (DIR/TYPE below) run under live timer pressure. TC=3 = count enable +
+    // interrupt enable: the peripheral unmasks vector 0 in the interrupt
+    // controller and publishes 'timer.fired' every (TS+1)*TM cycles. STI
+    // raises the global I flag; nesting stays off because entry clears I and
+    // timer_isr never re-enables it.
+    //
+    // WHY a live interrupt source is safe next to the banked disk layer at
+    // all: interrupt entry snapshots the BANK register onto the CPU's IRQ
+    // bank stack ("Pure Option B", nova/bus/interrupt.py) and forces bank 0
+    // for the handler; IRET pops the snapshot and restores the entry bank.
+    // A tick landing inside an ndf_read8/ndf_write8 bracket therefore runs
+    // with base RAM visible and hands the disk bank back on return -- the
+    // ISR can never leak a bank switch into either the interrupted disk
+    // access or its own global updates.
+    //
+    // FOOTPRINT: the bank-safe layout caps kernel code below the globals
+    // segment at 0x4200 and this boot slice's headroom is only ~23 bytes.
+    // The CALL-based sti()/set_timer() builtins cost ~85 bytes here, which
+    // overflowed the cap so the loader overwrote the code tail with globals
+    // (wild PC into 0x4200 on the first POP). Raw register writes do the
+    // same job in ~13 bytes; asm blocks are also compiler barriers, so the
+    // optimizer cannot reorder the arm sequence.
+    asm("STI");            // raise I: accept interrupts
+    asm("MOV TT, 0");      // restart the tick counter
+    asm("MOV TM, 100");    // modulo threshold: TM counts per tick
+    asm("MOV TS, 31");     // divisor: (TS+1) cycles per count -> ~3200 cycles/tick
+    asm("MOV TC, 3");      // bit0 = enable, bit1 = interrupt enable
 #endif
     banner();
     shell_prompt();
