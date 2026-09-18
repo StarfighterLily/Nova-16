@@ -776,6 +776,20 @@ def _int(cpu, values) -> None:
     sp = (sp - 2) & 0xFFFF
     cpu.memory.write_word(sp, cpu.pc)
     cpu.regfile.set('P', 8, sp)
+    # Pure Option B: preserve BANK across the handler (see _iret).
+    try:
+        saved_bank = int(cpu.memory.current_bank)
+    except Exception:
+        saved_bank = None
+    if saved_bank is not None:
+        bank_stack = getattr(cpu, '_bank_irq_stack', None)
+        if bank_stack is not None:
+            bank_stack.append(saved_bank)
+        if saved_bank:
+            try:
+                cpu.memory.set_bank(0)
+            except Exception:
+                pass
     cpu.flags_obj[5] = 0
     vector_addr = 0x0100 + (values[0] * 4)
     cpu.pc = cpu.memory.read_word(vector_addr)
