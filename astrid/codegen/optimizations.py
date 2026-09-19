@@ -118,7 +118,10 @@ def _expression_key(expr: Any,
     if isinstance(expr, FuncCall):
         args = ",".join(_expression_key(arg, string_vars, string_funcs, volatile_vars, _counter)
                         for arg in expr.args)
-        return f"call:{expr.name}({args})"
+        callee_key = (expr.name if isinstance(getattr(expr, 'callee', None), str)
+                      else _expression_key(expr.callee, string_vars, string_funcs,
+                                           volatile_vars, _counter))
+        return f"call:{callee_key}({args})"
     if isinstance(expr, Cast):
         return f"cast:{expr.target_type}:{getattr(expr, 'pointer_depth', 0)}:{_expression_key(expr.expr, string_vars, string_funcs, volatile_vars, _counter)}"
     return repr(expr)
@@ -207,7 +210,9 @@ class ExpressionSimplifier:
             folded = self._fold_builtin_call(expr.name, simplified_args)
             if folded is not None:
                 return folded
-            return FuncCall(expr.name, simplified_args)
+            # Preserve the callee shape: a string for direct calls, an
+            # expression for indirect calls through a function pointer.
+            return FuncCall(expr.callee, simplified_args)
         if isinstance(expr, Cast):
             simplified_inner = self._simplify_node(expr.expr)
             # Address casts ((int *)0xF000, (char *)addr) are identity
@@ -377,7 +382,11 @@ class ExpressionSimplifier:
         non-foldable argument, which falls through to the real opcode at
         runtime.
         """
-        name = func_name.lower()
+        name = func_name.lower() if func_name is not None else None
+        # Indirect calls (callee is an expression, name is None) never fold:
+        # the target is unknown at compile time.
+        if name is None:
+            return None
         side_effect_builtins = {
             "set_mode", "set_vmode", "set_layer", "set_pos", "write_screen",
             "scroll_x", "scroll_y", "set_pointers", "write_text", "set_font",
@@ -551,7 +560,10 @@ class FunctionInliner:
         callees = set()
         def walk(node):
             if isinstance(node, FuncCall):
-                callees.add(node.name)
+                # Indirect calls have no static callee (node.name is None);
+                # they cannot be inlined by name, so leave them out.
+                if node.name is not None:
+                    callees.add(node.name)
             elif isinstance(node, list):
                 for n in node:
                     walk(n)
@@ -670,6 +682,9 @@ class FunctionInliner:
             node.left = self._substitute(node.left, mapping)
             return node
         if isinstance(node, FuncCall):
+            if not isinstance(getattr(node, 'callee', None), str):
+                # Indirect callee expression: substitute through it too.
+                node.callee = self._substitute(node.callee, mapping)
             node.args = [self._substitute(arg, mapping) for arg in node.args]
             return node
         if isinstance(node, Cast):
@@ -926,7 +941,15 @@ class StrengthReducer:
             return PostfixOp(self._reduce_node(expr.left), expr.op)
 
         elif isinstance(expr, FuncCall):
-            return FuncCall(expr.name, [self._reduce_node(arg) for arg in expr.args])
+            # Preserve the callee SHAPE: a string for direct calls, an
+            # expression for indirect calls through a function pointer
+            # (`(*fp)(x)`, `handlers[i](x)`). Rebuilding via expr.name would
+            # turn an indirect call into FuncCall(None, ...) and lose the
+            # callee entirely.
+            callee = expr.callee
+            if not isinstance(callee, str):
+                callee = self._reduce_node(callee)
+            return FuncCall(callee, [self._reduce_node(arg) for arg in expr.args])
 
         elif isinstance(expr, Cast):
             return Cast(expr.target_type, self._reduce_node(expr.expr),

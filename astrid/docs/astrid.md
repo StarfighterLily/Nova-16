@@ -17,6 +17,8 @@ A C language for the Nova-16, built from the ground up.
 13. [Structs and unions](#structs-and-unions)
 14. [Standard builtins](#standard-builtins)
 15. [Common patterns](#common-patterns)
+16. [Function pointers and indirect calls](#function-pointers-and-indirect-calls)
+17. [Two-dimensional arrays](#two-dimensional-arrays)
 
 ---
 
@@ -614,3 +616,180 @@ Applies to globals, locals, and parameters alike:
 void poll(volatile int *status) { ... }   // volatile parameter
 volatile int lv = 5;                      // volatile local (FP-relative)
 ```
+---
+
+## Function pointers and indirect calls
+
+A function name used as a value is its 16-bit entry address, so a function
+pointer is stored and moved exactly like any other pointer -- one word.
+
+### Declaring a function pointer
+
+The declarator uses C syntax: the `(` comes **before** the stars.
+
+```c
+int addone(int v) { return v + 1; }
+
+int (*fp)(int) = &addone;   // local, initialized with a function address
+int (*gfp)(int);            // global (also works as a static local)
+
+int apply(int (*cb)(int), int v) {   // function pointer PARAMETER
+    return cb(v);
+}
+```
+
+The parameter type list (`(int)`, `(int, char)`) is parsed for syntax and
+**discarded**: Astrid pointers are untyped 16-bit addresses, so callers and
+callees are not signature-checked. A function pointer occupies one word and
+is loaded/stored by the ordinary pointer machinery.
+
+### Calling through a pointer
+
+All of the C call forms work, and they all compile to a register-indirect
+`CALL`:
+
+```c
+int (*fp)(int) = &addone;
+int (*handlers[3])(int);          // array of function pointers
+
+int main() {
+    int a = fp(3);                // through the variable
+    int b = (*fp)(3);             // classic C star form
+    int c = (&addone)(3);         // through a taken address
+    handlers[0] = &addone;
+    int d = handlers[0](3);       // through a table entry
+    return apply(&addone, a + b + c + d);   // callback argument
+}
+```
+
+`(*fp)(x)` follows the C decay rule: `fp` is a *function designator*, so the
+dereference yields the stored address rather than loading memory at that
+address. A genuine pointer-to-function-pointer (`int **pp = &fp;
+(*pp)(x)`) still performs the real load.
+
+Because the target is not known at compile time, an indirect call:
+
+* cannot be inlined or constant-folded,
+* returns its result the same way a direct call does (16-bit value in `P0`,
+  low byte mirrored in `R0`),
+* follows the ordinary cdecl-style convention -- arguments are pushed by the
+  caller and the **caller** deallocates them, so indirect calls inside loops
+  do not leak stack bytes.
+
+### Addresses, tables, and dispatch
+
+`&func` on a **user** function yields its assembly label; on a **builtin** it
+also marks that builtin as used, so taking a builtin's address links its
+implementation:
+
+```c
+int (*math_op)(int, int) = &max;     // builtin address
+```
+
+Arrays of function pointers may be initialized with an initializer list,
+locally or at global scope:
+
+```c
+int op_add(int v) { return v + 1; }
+int op_sub(int v) { return v - 1; }
+
+int (*gtbl[2])(int) = { &op_add, &op_sub };   // global: DW func_op_add, func_op_sub
+
+int main() {
+    int (*ltbl[2])(int) = { &op_add, &op_sub };  // local: filled by the prologue
+    return gtbl[0](1) + ltbl[1](2);
+}
+```
+
+Both user functions and builtins (`&abs`, `&min`) are accepted as global
+initializer elements; referencing a builtin this way links its
+implementation. Assigning into a pointer array element at runtime works too
+(`handlers[0] = &op_add;`).
+
+> **Caveat -- indirect calls must target user functions.** An indirect call
+> site cannot know *what* it will call. User functions follow the cdecl-style
+> convention (they **leave** the pushed arguments for the caller to pop),
+> while builtin stubs **pop their own** arguments. Because an indirect call
+> always cleans up the argument words itself, calling a *builtin* through a
+> function pointer double-pops the stack. Taking a builtin's address is still
+> useful (it links the implementation, and the address is a legal 16-bit
+> value), but to put a builtin in a dispatch table, wrap it in a one-line
+> user function:
+>
+> ```c
+> int my_abs(int v) { return abs(v); }      // correct stack ownership
+> int (*gtbl[2])(int) = { &op_add, &my_abs };
+> ```
+
+Re-assigning the pointer between calls gives a state machine without any
+control-flow machinery:
+
+```c
+int (*step)(int) = &state_a;
+int v = step(3);
+step = &state_b;
+v = step(v);
+```
+
+Calling a name that is neither a function, a builtin, nor a declared
+function-pointer variable is still a compile error (`Undefined function
+'x'`).
+
+---
+
+## Two-dimensional arrays
+
+`int grid[rows][cols];` declares a 2-D array. Both dimensions must be
+**positive compile-time constants** (this is not C99 VLA territory), and the
+storage is flat and row-major: `rows * cols` elements, exactly as if it had
+been declared `int grid[rows * cols]`.
+
+```c
+int grid[4][4];                 // global
+char map[2][3];                 // byte elements
+int m[2][3] = {1, 2, 3, 4, 5, 6};  // flat initializer list, row-major
+
+int main() {
+    int local[3][3];            // local
+    grid[1][2] = 42;            // chained subscript write
+    local[0][0] = grid[1][2];   // chained subscript read
+    local[1][1] += 7;           // compound assignment
+    local[2][2]++;              // postfix increment
+    return local[0][0] + local[1][1] + local[2][2];
+}
+```
+
+`grid[i][j]` is desugared to the flat index `grid[i * cols + j]` before any
+addressing code is emitted, so 2-D arrays inherit every 1-D array feature:
+
+* **Flat equivalence.** Because the storage is one flat block, a single
+  subscript reaches the same slot: `grid[i * cols + j]` and `grid[i][j]` are
+  the same element -- handy for linear traversal and for `memcpy`/`memset`.
+
+  ```c
+  grid[1][2] = 99;
+  int a = grid[6];            // int grid[?][4]: linear index 6 == row 1, col 2
+  ```
+
+* **Address-of.** `&grid[i][j]` yields the flat slot address, and the array
+  name decays to its base address when passed to a function.
+
+  ```c
+  int *p = &grid[1][1];
+  *p = 77;
+  fill_row(grid, 2, 4, 9);    // callee indexes flat: base[row * cols + j]
+  ```
+
+* **Loop traversal** visits memory in row-major order, so a nested
+  `for (i) for (j)` walk is sequential and cache-friendly.
+
+### Restrictions
+
+* Exactly **two** dimensions: `int cube[2][2][2];` is a parse error
+  (`more than two subscripts are not supported`).
+* Both dimensions are required: `int grid[2][];` is rejected.
+* Applying a second subscript to a 1-D array is rejected with a clear
+  message (`'flat[...][...]' requires a 2-D array`).
+* Member access on a 2-D element (`grid[i][j].field`) is not supported --
+  copy the element into a struct variable first, or use a 1-D array of
+  structs.

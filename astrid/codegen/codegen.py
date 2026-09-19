@@ -2020,6 +2020,8 @@ class CodeGenerator:
             # shared ExpressionSimplifier does not know their shape.
             if isinstance(node, ArrayAccess):
                 node.index = simplify_node(node.index)
+                if node.index2 is not None:
+                    node.index2 = simplify_node(node.index2)
                 return node
             if isinstance(node, StringIndexAccess):
                 node.index = simplify_node(node.index)
@@ -2036,6 +2038,8 @@ class CodeGenerator:
                 return node
             if isinstance(node, ArrayAssignment):
                 node.target.index = simplify_node(node.target.index)
+                if node.target.index2 is not None:
+                    node.target.index2 = simplify_node(node.target.index2)
                 node.value = simplify_node(node.value)
                 return node
             if isinstance(node, MemberAssignment):
@@ -2385,6 +2389,10 @@ class CodeGenerator:
                 f"'{name}' is not a struct variable or struct pointer")
         if isinstance(base, ArrayAccess):
             arr_name = base.name
+            if base.index2 is not None:
+                raise CodeGenError(
+                    f"member access on 2-D arrays is not supported "
+                    f"('{arr_name}[i][j].{expr.field}')")
             info = self.array_vars.get(arr_name)
             if info is None:
                 g = self.global_vars.get(arr_name)
@@ -2519,6 +2527,21 @@ class CodeGenerator:
                         or getattr(decl, 'array_size', None) is not None)
         return decl.is_array
 
+    def _decl_2d_dims(self, decl: VarDecl):
+        """(rows, cols) for a 2-D array declaration, or None for 1-D.
+
+        Both dimensions must be positive compile-time constants; storage is
+        flat (rows*cols elements) and subscripts desugar to i*cols + j."""
+        if getattr(decl, 'array_size2', None) is None:
+            return None
+        rows = self._const_eval(decl.array_size) if decl.array_size is not None else None
+        cols = self._const_eval(decl.array_size2)
+        if rows is None or cols is None or rows <= 0 or cols <= 0:
+            raise TypeError(
+                f"Array '{decl.name}' 2-D dimensions must be positive "
+                f"compile-time constants")
+        return (rows, cols)
+
     def _resolve_array_count(self, decl: VarDecl) -> int:
         """Resolve an array's element count at compile time.
 
@@ -2528,7 +2551,9 @@ class CodeGenerator:
         a compile error. Without an explicit size the initializer list
         determines the count. Struct arrays take flat WORD initializers,
         so the initializer budget is size * words-per-struct and a sizeless
-        struct array derives its element count from the word count."""
+        struct array derives its element count from the word count.
+        2-D arrays (rows x cols) resolve to the flat element count
+        rows*cols."""
         declared = None
         if decl.array_size is not None:
             if isinstance(decl.array_size, Number):
@@ -2539,6 +2564,14 @@ class CodeGenerator:
                 if declared is None:
                     raise TypeError(
                         f"Array '{decl.name}' size must be a compile-time constant")
+        dims2d = self._decl_2d_dims(decl)
+        if dims2d is not None:
+            # 2-D storage is flat: the element count is rows * cols.
+            if declared is None:
+                raise TypeError(
+                    f"Array '{decl.name}' needs both dimensions for a 2-D "
+                    f"array (int {decl.name}[rows][cols])")
+            declared = declared * dims2d[1]
         decl_tag = getattr(decl, 'struct_tag', None)
         words_per_struct = (self._struct_size(decl_tag) // 2) if decl_tag else 1
         init_count = len(decl.init_list) if decl.init_list is not None else None
@@ -2698,6 +2731,12 @@ class CodeGenerator:
         normally (they are file-local but still need storage).
         """
         next_addr = self.global_region_start
+        # Function pre-registration happens after this pass (see generate()),
+        # but global function-POINTER initializers need to know which names
+        # are user functions so they can emit the `func_<name>` label instead
+        # of failing the compile-time-constant check. Collect them up front.
+        self._declared_func_names = frozenset(
+            f.name for f in (getattr(ast, 'functions', None) or []))
         for decl in getattr(ast, 'globals', None) or []:
             # In object mode, extern globals are imported from another unit:
             # do not allocate local storage for them.
@@ -2796,6 +2835,14 @@ class CodeGenerator:
                         for e in decl.init_list:
                             v = self._const_eval(e)
                             if v is None:
+                                # A function-pointer array's initializer is a
+                                # function ADDRESS, which is an assembly label
+                                # resolved in the assembler's second pass, not
+                                # a numeric constant. Accept `&func` for user
+                                # functions and builtins (the builtin's
+                                # implementation is linked on demand here).
+                                v = self._fnptr_array_init(e, decl.name)
+                            if v is None:
                                 raise TypeError(
                                     f"Global array '{decl.name}' initializers must be "
                                     f"compile-time constants")
@@ -2803,7 +2850,7 @@ class CodeGenerator:
                 total_size = count * (stride or elem_size)
                 _arr_addr = (placement_value if placement_value is not None
                              else next_addr)
-                self.global_vars[decl.name] = {
+                ginfo = {
                     'address': _arr_addr, 'type': decl.var_type,
                     'size': total_size, 'is_array': True,
                     'elem_size': elem_size,
@@ -2815,6 +2862,11 @@ class CodeGenerator:
                     **({'tag': struct_tag} if struct_tag else {}),
                     **({'placement': True} if placement_value is not None else {}),
                 }
+                dims2d = self._decl_2d_dims(decl)
+                if dims2d is not None:
+                    # 2-D layout bookkeeping (a[i][j] -> a[i*cols + j]).
+                    ginfo['rows'], ginfo['cols'] = dims2d
+                self.global_vars[decl.name] = ginfo
                 if placement_value is None:
                     next_addr += total_size
             else:
@@ -2830,7 +2882,18 @@ class CodeGenerator:
                         # The RAW form is used (get_string_label keys by it,
                         # shared with local literals of the same text).
                         init_value = self.get_string_label(decl.value.value)
-                    else:
+                    elif (getattr(decl, 'is_fn_ptr', False)
+                          and isinstance(decl.value, AddressOf)
+                          and isinstance(decl.value.operand, Identifier)):
+                        # Function-pointer global initialized with &func: the
+                        # DW initializer is the function's assembly label, which
+                        # the assembler resolves in its second pass. Only user
+                        # functions qualify (builtins are lazily linked and may
+                        # not exist when the DW is emitted).
+                        fname = decl.value.operand.name
+                        if any(f.name == fname for f in ast.functions):
+                            init_value = f'func_{fname}'
+                    if init_value is None:
                         init_value = self._const_eval(decl.value)
                     if init_value is None:
                         raise TypeError(
@@ -2846,6 +2909,9 @@ class CodeGenerator:
                     'is_pointer': bool(decl.pointer_depth),
                     'count': 1,
                     'init_values': [init_value] if init_value is not None else [],
+                    # Function-pointer globals: generate_call resolves an
+                    # indirect call through this slot.
+                    'fn_ptr': bool(getattr(decl, 'is_fn_ptr', False)),
                     # Struct pointers remember their layout so pp->field
                     # resolves member offsets through the pointee type.
                     **({'tag': struct_tag} if struct_tag else {}),
@@ -2917,6 +2983,9 @@ class CodeGenerator:
                     'elem_size': self._elem_size(g['type']),
                     **({'stride': g['stride']} if g.get('stride') else {}),
                     **({'tag': g['tag']} if g.get('tag') else {}),
+                    # 2-D layout bookkeeping (a[i][j] -> a[i*cols + j]).
+                    **({'rows': g['rows'], 'cols': g['cols']}
+                       if 'cols' in g else {}),
                     'base_addr': g['address'], 'is_global': True}
         if name in self.pointer_vars or name in self.address_params:
             return {'is_pointer': True, 'name': name,
@@ -2953,6 +3022,31 @@ class CodeGenerator:
         word arrays) step by elem_size; arrays of structs step by the
         whole struct size via the optional 'stride' key."""
         return info.get('stride') or info['elem_size']
+
+    def _linearize_2d_inplace(self, access: ArrayAccess) -> ArrayAccess:
+        """Desugar a 2-D subscript in place: a[i][j] -> a[i*COLS + j].
+
+        A 2-D array is stored flat (rows*cols elements, row-major), so the
+        second subscript is folded into a linear element index that the
+        ordinary 1-D addressing machinery (load/store, compound assignment,
+        ISR variants, address-of) already handles. Mutating the shared node
+        in place preserves the parser's object-identity link between an
+        assignment target and its compound-assignment RHS (`a[i][j] += v`
+        shares one node), so compound detection keeps working after the
+        rewrite."""
+        if access.index2 is None:
+            return access
+        info = self._get_array_info(access.name)
+        cols = info.get('cols')
+        if cols is None:
+            raise CodeGenError(
+                f"'{access.name}[...][...]' requires a 2-D array "
+                f"(declare it as {access.name}[rows][cols])")
+        access.index = BinaryOp(
+            BinaryOp(access.index, '*', Number(str(cols))),
+            '+', access.index2)
+        access.index2 = None
+        return access
 
     def _emit_array_addr(self, info: Dict, idx_reg: str, addr_reg: str):
         """Emit code computing an element address into addr_reg.
@@ -3296,7 +3390,11 @@ class CodeGenerator:
         # params are at positive offsets from FP starting at +4.
         param_offset = 4
         for param in func_def.params:
-            self.local_vars[param.name] = {'offset': param_offset}
+            param_entry = {'offset': param_offset}
+            if getattr(param, 'is_fn_ptr', False):
+                # Function-pointer parameter: the slot holds an entry address.
+                param_entry['fn_ptr'] = True
+            self.local_vars[param.name] = param_entry
             if param.name in self.array_vars and self.array_vars[param.name].get('is_param'):
                 self.array_vars[param.name]['offset'] = param_offset
             param_offset += 2 if (param.var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary', 'float')
@@ -3324,10 +3422,13 @@ class CodeGenerator:
                 if decl_tag:
                     info['struct_tag'] = decl_tag
                 self.static_locals[(self.current_function, decl.name)] = info
-                self.local_vars[decl.name] = {
+                static_entry = {
                     'offset': -local_offset,  # unused for static locals
                     'static_addr': static_addr,
                 }
+                if getattr(decl, 'is_fn_ptr', False):
+                    static_entry['fn_ptr'] = True
+                self.local_vars[decl.name] = static_entry
                 # Static locals are NOT counted in local_size (no stack slot).
                 continue
             if self._decl_is_true_array(decl):
@@ -3340,6 +3441,11 @@ class CodeGenerator:
                     'elem_size': 2 if decl_tag else self._elem_size(decl.var_type),
                     'offset': -local_offset,
                 }
+                dims2d = self._decl_2d_dims(decl)
+                if dims2d is not None:
+                    # 2-D layout bookkeeping: _linearize_2d_inplace folds
+                    # a[i][j] into a[i*cols + j] using the cols stride.
+                    info['rows'], info['cols'] = dims2d
                 if decl_tag:
                     info['tag'] = decl_tag
                     info['stride'] = stride
@@ -3347,7 +3453,11 @@ class CodeGenerator:
                 self.array_vars[decl.name] = info
             elif decl.pointer_depth:
                 local_offset += 2
-                self.local_vars[decl.name] = {'offset': -local_offset}
+                local_entry = {'offset': -local_offset}
+                if getattr(decl, 'is_fn_ptr', False):
+                    # Function-pointer local: indirect calls read the slot.
+                    local_entry['fn_ptr'] = True
+                self.local_vars[decl.name] = local_entry
             elif decl_tag:
                 # Scalar struct/union local: register as an N-word array so
                 # all array addressing paths (member loads, &p, decay) apply.
@@ -3868,6 +3978,10 @@ class CodeGenerator:
 
     def generate_array_assignment(self, stmt: ArrayAssignment):
         """Generate arr[index] = value (simple or compound)."""
+        # 2-D subscripts desugar to the flat form first (no-op for 1-D).
+        # The rewrite mutates the shared node in place, preserving the
+        # compound-assignment identity check below.
+        stmt.target = self._linearize_2d_inplace(stmt.target)
         target = stmt.target
         # String/binary scalar variables: s[i] = c writes one byte through
         # (pointer stored in s) + i.
@@ -4107,10 +4221,15 @@ class CodeGenerator:
             # Check if it's a builtin function
             if name in self.builtin_functions:
                 builtin_label = self.builtin_functions[name]
+                # Lazily-linked builtins only exist if marked used: taking a
+                # builtin's address is itself a use, so record it now.
+                self.used_builtins.add(builtin_label)
                 self.emit(f"    MOV {reg}, {builtin_label}")
                 return reg
             raise NameError(f"Cannot take address of undefined variable or function '{name}'")
         if isinstance(operand, ArrayAccess):
+            # 2-D subscripts desugar to the flat form first (no-op 1-D).
+            operand = self._linearize_2d_inplace(operand)
             info = self._get_array_info(operand.name)
             idx_reg = self.generate_expression(operand.index)
             addr_reg = self.get_register(exclude={idx_reg})
@@ -4286,6 +4405,8 @@ class CodeGenerator:
 
     def generate_array_access(self, expr: ArrayAccess) -> str:
         """Read arr[index]: compute the element address, then load through it."""
+        # 2-D subscripts desugar to the flat form first (no-op for 1-D).
+        expr = self._linearize_2d_inplace(expr)
         # String/binary SCALAR variables hold a char* pointer, so s[i] is a
         # byte read through (pointer stored in s) + i.  _get_array_info would
         # reject them, so handle them before the real-array path.
@@ -5317,7 +5438,8 @@ class CodeGenerator:
                 return result_reg
             if isinstance(expr.left, ArrayAccess):
                 # arr[i]++ / arr[i]-- : returns the OLD value (C semantics).
-                target = expr.left
+                # 2-D subscripts desugar to the flat form first (no-op 1-D).
+                target = self._linearize_2d_inplace(expr.left)
                 info = self._get_array_info(target.name)
                 can_push = not self._is_interrupt_handler
                 idx_reg = self.generate_expression(target.index)
@@ -6085,39 +6207,91 @@ class CodeGenerator:
             self.emit(f"    MOV {result_reg}, R0")
             return result_reg
         
-        # --- Normal call path: push all args in reversed order ---
+        # --- Normal call path: push all args in reversed order so the
+        # stack top matches the source argument order expected by the
+        # callee (user functions and builtins alike). Both direct and
+        # indirect calls share this argument prologue; for indirect calls
+        # the callee address is evaluated LAST, after every argument
+        # temporary has been pushed and freed, so round-robin register
+        # allocation cannot clobber the target register.
+        indirect_call = False
         for arg in reversed(call.args):
             arg_reg = self.generate_expression(arg)
             self.emit(f"    PUSH {arg_reg}")
             self.free_register()
         
-        if call.name in self.functions:
-            label = self.functions[call.name]['label']
+        if isinstance(call.callee, str):
+            if call.name in self.functions:
+                label = self.functions[call.name]['label']
+            else:
+                # Arity-aware builtin resolution: optional-argument builtins
+                # (scroll_x/scroll_y/roll_x/roll_y) select a dedicated stub per
+                # argument count so the stack layout always matches the callee.
+                label = self._resolve_builtin_label(call.name, len(call.args))
+            if not label:
+                # Not a user function and not a builtin: the callee name may
+                # be a function-pointer VARIABLE whose value is a function
+                # entry address (taken with &func, or loaded from anywhere).
+                if not self._is_fnptr_var(call.name):
+                    raise NameError(f"Undefined function '{call.name}'")
+                self.emit_comment(f"Indirect call via '{call.name}'")
+                indirect_call = True
+                target_reg = self.get_register()
+                self._emit_var_load(target_reg, call.name)
+                self.emit(f"    CALL {target_reg}")
+                self.free_register()
+                if call.args:
+                    # Indirect callees follow the user-function (cdecl-style)
+                    # convention: the callee leaves pushed args on the stack
+                    # and the caller deallocates them (one word per arg).
+                    self.emit(f"    ADD SP, {len(call.args) * 2} ; Caller cleans up args")
+                result_reg = self.get_register()
+                self.emit(f"    MOV {result_reg}, P0")
+                return result_reg
+            # Record builtin usage so generate_builtins only emits what is called.
+            if label in self.BUILTIN_IMPLEMENTATIONS:
+                self.used_builtins.add(label)
+            
+            self.emit(f"    CALL {label}")
+            if call.name in self.functions and call.args:
+                # User-function callees end with MOV SP, FP / POP FP / RET,
+                # which restores SP to the frame base and LEAVES the
+                # caller-pushed arguments on the stack. Deallocate them here
+                # (cdecl-style, one word per argument -- every PUSH above is a
+                # full 16-bit word regardless of the parameter's declared type).
+                # Without this, loops that call functions with arguments leak
+                # stack bytes every iteration until SP walks down through low
+                # memory, wraps, and corrupts the running program.
+                self.emit(f"    ADD SP, {len(call.args) * 2} ; Caller cleans up args")
+            elif call.args:
+                # Builtin stubs pop their own arguments off the stack.
+                self.emit(f"    ; Args consumed by callee")
         else:
-            # Arity-aware builtin resolution: optional-argument builtins
-            # (scroll_x/scroll_y/roll_x/roll_y) select a dedicated stub per
-            # argument count so the stack layout always matches the callee.
-            label = self._resolve_builtin_label(call.name, len(call.args))
-        if not label:
-            raise NameError(f"Undefined function '{call.name}'")
-        # Record builtin usage so generate_builtins only emits what is called.
-        if label in self.BUILTIN_IMPLEMENTATIONS:
-            self.used_builtins.add(label)
-        
-        self.emit(f"    CALL {label}")
-        if call.name in self.functions and call.args:
-            # User-function callees end with MOV SP, FP / POP FP / RET,
-            # which restores SP to the frame base and LEAVES the
-            # caller-pushed arguments on the stack. Deallocate them here
-            # (cdecl-style, one word per argument -- every PUSH above is a
-            # full 16-bit word regardless of the parameter's declared type).
-            # Without this, loops that call functions with arguments leak
-            # stack bytes every iteration until SP walks down through low
-            # memory, wraps, and corrupts the running program.
-            self.emit(f"    ADD SP, {len(call.args) * 2} ; Caller cleans up args")
-        elif call.args:
-            # Builtin stubs pop their own arguments off the stack.
-            self.emit(f"    ; Args consumed by callee")
+            # --- Indirect call: the callee is an expression evaluating to a
+            # function entry address -- fp(x), (*fp)(x), (&f)(x), or an array
+            # element of function pointers (handlers[0](x)). A bare identifier
+            # that names a known user function degenerates to a direct call.
+            callee = call.callee
+            # `(*fp)(x)` -- in C a function designator decays straight back
+            # to the pointer, so a dereference of a function-pointer slot
+            # yields the slot VALUE, not a memory load at that address.
+            # Only unwrap when the operand really is an fn-ptr slot; a
+            # pointer-to-function-pointer keeps the load (real C semantics).
+            if isinstance(callee, Deref) and self._is_fnptr_expr(callee.operand):
+                callee = callee.operand
+            if isinstance(callee, Identifier) and callee.name in self.functions:
+                self.emit_comment(f"Direct call via '{callee.name}'")
+                self.emit(f"    CALL {self.functions[callee.name]['label']}")
+            else:
+                self.emit_comment("Indirect call via function pointer")
+                indirect_call = True
+                target_reg = self.generate_expression(callee)
+                self.emit(f"    CALL {target_reg}")
+                self.free_register()
+            if call.args:
+                # Indirect callees follow the user-function convention: the
+                # caller owns the pushed argument words.
+                self.emit(f"    ADD SP, {len(call.args) * 2} ; Caller cleans up args")
 
         result_reg = self.get_register()
         # User-defined functions return their 16-bit int result in P0
@@ -6160,11 +6334,65 @@ class CodeGenerator:
             'bcda', 'bcds', 'bcdcmp',
             'mouse_ctrl', 'mouse_read', 'mouse_pos',
         }
-        if call.name in self.functions or call.name in p0_returning_builtins:
+        if (indirect_call or call.name in self.functions
+                or call.name in p0_returning_builtins):
             self.emit(f"    MOV {result_reg}, P0")
         else:
             self.emit(f"    MOV {result_reg}, R0")
         return result_reg
+
+    def _is_fnptr_expr(self, expr) -> bool:
+        """Whether `expr` denotes a function-pointer SLOT (a variable whose
+        stored 16-bit value is a function entry address), as opposed to a
+        plain pointer that must be dereferenced to reach such a slot.
+
+        Used to give `(*fp)(x)` the C meaning (the designator decays back to
+        the pointer, so no memory load happens) while leaving
+        `(*pp)(x)` -- a pointer to a function pointer -- as a real load.
+        """
+        if isinstance(expr, Identifier):
+            return self._is_fnptr_var(expr.name)
+        if isinstance(expr, ArrayAccess):
+            return self._is_fnptr_var(expr.name)
+        return False
+
+    def _fnptr_array_init(self, expr, arr_name: str):
+        """Resolve one global function-pointer-array initializer element.
+
+        `&func` is a symbol reference, not an integer, so it cannot go through
+        _const_eval; it is emitted as the function's assembly label and
+        resolved by the assembler. User functions map to `func_<name>`;
+        builtins resolve through the lazily-linked builtin table (referencing
+        one here records its use so both the label and its implementation are
+        emitted). Returns None when the element is neither -- the caller then
+        reports the usual "compile-time constants" error.
+        """
+        if not (isinstance(expr, AddressOf)
+                and isinstance(expr.operand, Identifier)):
+            return None
+        fname = expr.operand.name
+        # Function pre-registration runs AFTER global allocation (see
+        # generate()), so self.functions is still empty here. Prefer the
+        # AST-derived name set stashed by _allocate_globals, and fall back to
+        # self.functions for any caller that allocates globals later.
+        if fname in getattr(self, '_declared_func_names', ()) \
+                or fname in self.functions:
+            return f'func_{fname}'
+        label = self._resolve_builtin_label(fname, None)
+        if label and label in self.BUILTIN_IMPLEMENTATIONS:
+            self.used_builtins.add(label)
+            return label
+        return None
+
+    def _is_fnptr_var(self, name: str) -> bool:
+        """Whether `name` is a declared function-pointer variable (a local,
+        parameter, static, or global whose slot holds a function entry
+        address). Used by generate_call to resolve indirect calls."""
+        d = self.local_vars.get(name)
+        if d is not None and d.get('fn_ptr'):
+            return True
+        g = self.global_vars.get(name)
+        return bool(g and g.get('fn_ptr'))
 
     def generate_method_call(self, call: MethodCall) -> str:
         """Generate an instance-method call: p.method(...), pp->method(...).

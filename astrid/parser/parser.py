@@ -127,7 +127,8 @@ class VarDecl(ASTNode):
                  is_array_param: bool = False,
                  struct_tag: Optional[str] = None,
                                   array_syntax: bool = False,
-                 qualifiers: Optional[List[str]] = None):
+                 qualifiers: Optional[List[str]] = None,
+                 array_size2: Optional["Expression"] = None):
         self.var_type = var_type
         self.name = name
         self.value = value
@@ -139,6 +140,10 @@ class VarDecl(ASTNode):
         # expression. `int arr[] = {1, 2, 3};` leaves array_size None and
         # infers the count from init_list.
         self.array_size = array_size
+        # Second dimension of a 2-D array: `int grid[rows][cols];` stores
+        # `cols` here. The array is stored flat (rows*cols elements) and
+        # the code generator desugars grid[i][j] to grid[i*cols + j].
+        self.array_size2 = array_size2
         # True when the declarator used explicit `[ ... ]` brackets
         # (`int arr[4]`, `int arr[] = {...}`, `struct Point pts[2]`).
         # Distinct from init_list: `struct Point p = {10, 20}` is a SCALAR
@@ -224,9 +229,18 @@ class Continue(ASTNode):
     """continue statement - skips to next loop iteration."""
 
 class FuncCall(ASTNode):
-    def __init__(self, name: str, args: List["Expression"]):
-        self.name = name
+    def __init__(self, callee, args: List["Expression"]):
+        # `callee` is a function name (str) for direct calls, or an
+        # Expression evaluating to a function address for indirect calls
+        # through a function pointer (`fp(3)`, `(*fp)(3)`, `(&f)(3)`).
+        # `name` exposes the string form; it is None for indirect calls,
+        # so every existing `call.name` check stays None-safe.
+        self.callee = callee
         self.args = args
+
+    @property
+    def name(self):
+        return self.callee if isinstance(self.callee, str) else None
 
 class Cast(Expression):
     """Type cast expression node: (int)expr, (char)expr, (string)expr, (binary)expr.
@@ -243,10 +257,15 @@ class Cast(Expression):
         self.pointer_depth = pointer_depth
 
 class ArrayAccess(Expression):
-    """Array element access: arr[index]."""
-    def __init__(self, name: str, index: "Expression"):
+    """Array element access: arr[index] (or grid[index][index2] for 2-D)."""
+    def __init__(self, name: str, index: "Expression",
+                 index2: Optional["Expression"] = None):
         self.name = name
         self.index = index
+        # Second subscript of a 2-D array: grid[i][j]. Desugared to the
+        # flat linear index i*COLS + j by the code generator before any
+        # addressing machinery runs.
+        self.index2 = index2
 
 
 class StringIndexAccess(Expression):
@@ -1527,11 +1546,48 @@ class Parser:
                             f"individual fields instead "
                             f"(parameter near line {tag_tok.line})")
             pointer_depth = 0
-            while self.current.type == 'OPERATOR' and self.current.value == '*':
-                pointer_depth += 1
-                self.advance()
-            name = self.current.value
-            self.expect('IDENTIFIER')
+            # Function pointer parameter: void f(int (*cb)(int, char)).
+            # Same parenthesized-star form as declarations ('(' comes BEFORE
+            # the stars in C declarator syntax); the signature type list is
+            # parsed for syntax and discarded.
+            is_fn_ptr = False
+            if (self.current.type == 'DELIMITER'
+                    and self.current.value == '('):
+                nxt = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+                if nxt is not None and nxt.type == 'OPERATOR' and nxt.value == '*':
+                    self.advance()  # '('
+                    while self.current.type == 'OPERATOR' and self.current.value == '*':
+                        pointer_depth += 1
+                        self.advance()
+                    name = self.current.value
+                    self.expect('IDENTIFIER')
+                    # Array bounds sit inside the parens in C declarator
+                    # syntax: `void f(int (*cbs[4])(int))`.
+                    if self.current.type == 'DELIMITER' and self.current.value == '[':
+                        self.advance()
+                        if not (self.current.type == 'DELIMITER' and self.current.value == ']'):
+                            self.parse_expression()  # size ignored (decay)
+                        self.expect('DELIMITER', ']')
+                    self.expect('DELIMITER', ')')
+                    is_fn_ptr = True
+                    self.expect('DELIMITER', '(')
+                    depth = 1
+                    while depth > 0:
+                        if self.current.type == 'EOF':
+                            raise self.error("unterminated function-pointer parameter list")
+                        if self.current.type == 'DELIMITER' and self.current.value == '(':
+                            depth += 1
+                        elif self.current.type == 'DELIMITER' and self.current.value == ')':
+                            depth -= 1
+                        self.advance()
+                    if pointer_depth == 0:
+                        pointer_depth = 1
+            else:
+                while self.current.type == 'OPERATOR' and self.current.value == '*':
+                    pointer_depth += 1
+                    self.advance()
+                name = self.current.value
+                self.expect('IDENTIFIER')
             is_array_param = False
             if self.current.type == 'DELIMITER' and self.current.value == '[':
                 # Array parameter: void f(int arr[], int n). Arrays decay to
@@ -1540,12 +1596,19 @@ class Parser:
                 if not (self.current.type == 'DELIMITER' and self.current.value == ']'):
                     self.parse_expression()  # size ignored (decay semantics)
                 self.expect('DELIMITER', ']')
+                if self.current.type == 'DELIMITER' and self.current.value == '[':
+                    raise self.error(
+                        "2-D array parameters are not supported; pass a "
+                        "pointer (int *m) and pass the dimensions as "
+                        "separate arguments")
                 is_array_param = True
             params.append(VarDecl(var_type, name, None,
                                   pointer_depth=pointer_depth,
                                   is_array_param=is_array_param,
                                   struct_tag=struct_tag,
                                   qualifiers=param_quals if param_quals else None))
+            if is_fn_ptr:
+                params[-1].is_fn_ptr = True
             if self.current.type == 'DELIMITER' and self.current.value == ',':
                 self.advance()
             else:
@@ -1654,9 +1717,18 @@ class Parser:
         if self.current.type == 'KEYWORD' and self.current.value in {'int', 'signed_int', 'unsigned_int', 'char', 'void', 'string', 'binary', 'float'}:
             # int(x), char(x), string(x), binary(x) at statement start is a
             # function call, not a variable declaration. Peek for '(' after
-            # the type keyword to distinguish.
+            # the type keyword to distinguish. The one exception is the C
+            # function-pointer declarator `int (*fp)(int) = &f;`, whose '('
+            # comes BEFORE the stars -- that is a declaration.
             peek_pos = self.pos + 1
+            is_type_call = False
             if peek_pos < len(self.tokens) and self.tokens[peek_pos].value == '(':
+                after_paren = (self.tokens[peek_pos + 1]
+                               if peek_pos + 1 < len(self.tokens) else None)
+                is_type_call = not (after_paren is not None
+                                    and after_paren.type == 'OPERATOR'
+                                    and after_paren.value == '*')
+            if is_type_call:
                 func_name = self.current.value
                 self.advance()  # skip keyword
                 self.expect('DELIMITER', '(')
@@ -1741,24 +1813,90 @@ class Parser:
         decls = []
         while True:
             pointer_depth = 0
-            while self.current.type == 'OPERATOR' and self.current.value == '*':
-                pointer_depth += 1
-                self.advance()
-            name = self.current.value
-            self.expect('IDENTIFIER')
+            # Function pointer declarator: `int (*fp)(int, char) = &f;` or
+            # `int (*handlers[4])(void);`. The parenthesized-star form names a
+            # pointer (or 1-D array of pointers) whose value is a function
+            # entry address. The parameter type list is parsed for syntax and
+            # DISCARDED -- Astrid pointers are untyped 16-bit addresses, so
+            # the signature is not checked at call sites. NOTE: the '(' comes
+            # BEFORE the stars in C declarator syntax.
+            is_fn_ptr = False
             array_size = None
+            if (self.current.type == 'DELIMITER'
+                    and self.current.value == '('):
+                nxt = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+                if nxt is not None and nxt.type == 'OPERATOR' and nxt.value == '*':
+                    self.advance()  # '('
+                    while self.current.type == 'OPERATOR' and self.current.value == '*':
+                        pointer_depth += 1
+                        self.advance()
+                    name = self.current.value
+                    self.expect('IDENTIFIER')
+                    # Optional 1-D array of function pointers. In C declarator
+                    # syntax the bounds live INSIDE the parens: `(*hs[4])(...)`.
+                    if self.current.type == 'DELIMITER' and self.current.value == '[':
+                        self.advance()
+                        if not (self.current.type == 'DELIMITER' and self.current.value == ']'):
+                            array_size = self.parse_expression()
+                        self.expect('DELIMITER', ']')
+                    self.expect('DELIMITER', ')')
+                    is_fn_ptr = True
+                    # Discard the parameter type list: ( ... ) with nesting.
+                    self.expect('DELIMITER', '(')
+                    depth = 1
+                    while depth > 0:
+                        if self.current.type == 'EOF':
+                            raise self.error("unterminated function-pointer parameter list")
+                        if self.current.type == 'DELIMITER' and self.current.value == '(':
+                            depth += 1
+                        elif self.current.type == 'DELIMITER' and self.current.value == ')':
+                            depth -= 1
+                        self.advance()
+                    # A function pointer is at least a pointer: keep the
+                    # pointer_depth >= 1 invariant for slot sizing.
+                    if pointer_depth == 0:
+                        pointer_depth = 1
+            else:
+                while self.current.type == 'OPERATOR' and self.current.value == '*':
+                    pointer_depth += 1
+                    self.advance()
+                name = self.current.value
+                self.expect('IDENTIFIER')
             init_list = None
             value = None
             is_array = False
             # Array declaration: int arr[SIZE]; or int arr[]; (size inferred)
+            # 2-D: int grid[rows][cols]; -- stored flat (rows*cols elements).
+            array_size2 = None
             array_syntax = False
-            if self.current.type == 'DELIMITER' and self.current.value == '[':
+            if (not is_fn_ptr and self.current.type == 'DELIMITER'
+                    and self.current.value == '['):
                 self.advance()
                 is_array = True
                 array_syntax = True
                 if not (self.current.type == 'DELIMITER' and self.current.value == ']'):
                     array_size = self.parse_expression()
                 self.expect('DELIMITER', ']')
+                if self.current.type == 'DELIMITER' and self.current.value == '[':
+                    # Second dimension: int grid[rows][cols].
+                    if array_size is None:
+                        raise self.error(
+                            "first array dimension is required for a 2-D array "
+                            "(declare it as int name[rows][cols])")
+                    self.advance()
+                    if self.current.type == 'DELIMITER' and self.current.value == ']':
+                        raise self.error(
+                            "column dimension is required for a 2-D array "
+                            "(declare it as int name[rows][cols])")
+                    array_size2 = self.parse_expression()
+                    self.expect('DELIMITER', ']')
+                    if struct_tag:
+                        raise self.error(
+                            f"2-D arrays of structs are not supported "
+                            f"(struct '{struct_tag}')")
+                    if self.current.type == 'DELIMITER' and self.current.value == '[':
+                        raise self.error(
+                            "more than two array dimensions are not supported")
             if self.current.value == '=':
                 self.advance()
                 if self.current.type == 'DELIMITER' and self.current.value == '{':
@@ -1801,8 +1939,14 @@ class Parser:
                            pointer_depth=pointer_depth,
                            struct_tag=struct_tag,
                            array_syntax=array_syntax,
-                           qualifiers=[])
+                           qualifiers=[],
+                           array_size2=array_size2)
             decl.placement_addr = placement_addr
+            if is_fn_ptr:
+                # Function pointer variable (or 1-D array of them): the slot
+                # holds a function entry address. The code generator uses
+                # this marker to resolve `fp(args)` as an indirect call.
+                decl.is_fn_ptr = True
             decls.append(decl)
             if self.current.value == ',':
                 self.advance()
@@ -2066,6 +2210,31 @@ class Parser:
 
     def parse_binary_op(self, precedence=0):
         left = self.parse_unary()
+        # Postfix indirect call: any expression that evaluates to a function
+        # entry address may be invoked with a trailing argument list --
+        # `handlers[0](10)`, `table[i](x)`, `(*fp)(x)`-style callees built
+        # from non-identifier bases. Plain `name(args)` and the
+        # parenthesized forms `(*fp)(args)` / `(&f)(args)` are already built
+        # in parse_primary; this loop covers the expression-callee shapes
+        # that parse_primary cannot know about (array elements above all).
+        # MemberAccess is deliberately excluded: `p.method(...)` is an
+        # instance-method call and is consumed in parse_primary.
+        while (self.current.type == 'DELIMITER' and self.current.value == '('
+               and isinstance(left, (ArrayAccess, Deref, AddressOf, Cast,
+                                     StringIndexAccess))):
+            self.advance()
+            args = []
+            if self.current.type != 'DELIMITER' or self.current.value != ')':
+                while True:
+                    # Assignment-expressions so the comma separates args
+                    # instead of acting as the comma operator.
+                    args.append(self.parse_binary_op(1))
+                    if self.current.type == 'DELIMITER' and self.current.value == ',':
+                        self.advance()
+                    else:
+                        break
+            self.expect('DELIMITER', ')')
+            left = FuncCall(left, args)
         while True:
             op = self.current.value
             op_prec = self.get_precedence(op)
@@ -2090,10 +2259,15 @@ class Parser:
                 elif isinstance(left, ArrayAccess):
                     # Array element assignment: arr[i] = v, with compound
                     # forms decomposed like scalars (arr[i] += v becomes
-                    # arr[i] = arr[i] + v).
+                    # arr[i] = arr[i] + v). The read-back copy must carry the
+                    # SAME subscripts as the target, including the second
+                    # dimension of a 2-D array (grid[i][j] += v has to read
+                    # grid[i][j], not the flat grid[i]).
                     if op in ['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=']:
                         base_op = op[:-1]
-                        right = BinaryOp(ArrayAccess(left.name, left.index), base_op, right)
+                        read_back = ArrayAccess(left.name, left.index,
+                                                getattr(left, 'index2', None))
+                        right = BinaryOp(read_back, base_op, right)
                     left = ArrayAssignment(left, right)
                 elif isinstance(left, Deref):
                     # Assignment through a pointer: *p = v. Compound forms
@@ -2224,14 +2398,24 @@ class Parser:
                             break
                 self.expect('DELIMITER', ')')
                 return FuncCall(token.value, args)
-            # Array indexing: arr[expr] (chained indexing not needed for
-            # 1-D arrays, but allow postfix on the result for future use).
+            # Array indexing: arr[expr], and chained 2-D subscripts
+            # grid[i][j] (the second subscript rides on ArrayAccess.index2;
+            # the code generator desugars it to a flat linear index).
             node = None
             if self.current.type == 'DELIMITER' and self.current.value == '[':
                 self.advance()
                 index = self.parse_expression()
                 self.expect('DELIMITER', ']')
                 node = ArrayAccess(token.value, index)
+                if self.current.type == 'DELIMITER' and self.current.value == '[':
+                    self.advance()
+                    index2 = self.parse_expression()
+                    self.expect('DELIMITER', ']')
+                    node.index2 = index2
+                    if self.current.type == 'DELIMITER' and self.current.value == '[':
+                        raise self.error(
+                            "more than two subscripts are not supported "
+                            "(2-D arrays only)")
             if node is None:
                 node = Identifier(token.value)
             # Struct member access: p.field and arrays/pointers chain on
@@ -2404,6 +2588,22 @@ class Parser:
                 return Cast(target_type, cast_expr, pointer_depth=pointer_depth)
             expr = self.parse_expression()
             self.expect('DELIMITER', ')')
+            # Indirect call through a parenthesized callee: (*fp)(args) or
+            # (&f)(args). A plain identifier callee is equivalent to the
+            # direct form fp(args) -- both build a FuncCall whose callee is
+            # an expression; the code generator resolves direct-vs-indirect.
+            if self.current.type == 'DELIMITER' and self.current.value == '(':
+                self.advance()
+                args = []
+                if self.current.type != 'DELIMITER' or self.current.value != ')':
+                    while True:
+                        args.append(self.parse_binary_op(1))
+                        if self.current.type == 'DELIMITER' and self.current.value == ',':
+                            self.advance()
+                        else:
+                            break
+                self.expect('DELIMITER', ')')
+                return FuncCall(expr, args)
             return expr
         else:
             raise self.error(f"Unexpected token in expression: {self._describe_token(self.current)}")
