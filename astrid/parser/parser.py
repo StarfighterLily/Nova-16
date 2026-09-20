@@ -1570,14 +1570,18 @@ class Parser:
                 struct_tag = tag_tok.value
                 self.advance()
                 var_type = 'struct'  # unions use the same var_type as struct
-                # By-value union parameters are unsupported
+                # By-value union parameter (`union Tag u`): supported -- the
+                # caller pushes the union's words, and that push sequence IS
+                # the callee's private copy.  A by-value parameter needs a
+                # complete type, so the union must already be defined.
                 if not (self.current.type == 'OPERATOR'
                         and self.current.value == '*'):
-                    raise self.error(
-                        f"Union parameters are not supported by value; "
-                        f"pass a pointer (union {struct_tag} *p) or "
-                        f"individual fields instead "
-                        f"(parameter near line {tag_tok.line})")
+                    if struct_tag not in self.union_defs:
+                        raise self.error(
+                            f"Undefined union '{struct_tag}' used as a "
+                            f"by-value parameter (line {tag_tok.line}); "
+                            f"define the union first, or pass a pointer "
+                            f"(union {struct_tag} *p)")
             else:
                 self.expect('KEYWORD')
                 if var_type == 'struct':
@@ -1588,16 +1592,22 @@ class Parser:
                             f"parameter list (line {tag_tok.line})")
                     struct_tag = tag_tok.value
                     self.advance()
-                    # By-value struct parameters are unsupported (no hidden
-                    # copy semantics); pointer forms (`struct Tag *p`) are
-                    # accepted and decoded via the pointee layout for ->field.
+                    # By-value struct parameter (`struct Tag p`): supported --
+                    # the caller pushes the struct's words onto the stack and
+                    # that push sequence IS the callee's private copy, so
+                    # writes to the parameter do not touch the caller's struct.
+                    # Pointer forms (`struct Tag *p`) pass an address instead,
+                    # decoded via the pointee layout for ->field.  A by-value
+                    # parameter needs a complete type, matching the rule for
+                    # by-value struct fields.
                     if not (self.current.type == 'OPERATOR'
                             and self.current.value == '*'):
-                        raise self.error(
-                            f"Struct parameters are not supported by value; "
-                            f"pass a pointer (struct {struct_tag} *p) or "
-                            f"individual fields instead "
-                            f"(parameter near line {tag_tok.line})")
+                        if struct_tag not in self.struct_defs:
+                            raise self.error(
+                                f"Undefined struct '{struct_tag}' used as a "
+                                f"by-value parameter (line {tag_tok.line}); "
+                                f"define the struct first, or pass a pointer "
+                                f"(struct {struct_tag} *p)")
             pointer_depth = 0
             # Function pointer parameter: void f(int (*cb)(int, char)).
             # Same parenthesized-star form as declarations ('(' comes BEFORE

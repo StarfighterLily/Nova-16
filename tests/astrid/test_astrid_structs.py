@@ -13,8 +13,9 @@ Covers:
    - Pointers: &struct, &struct.member, ->member (local + global pointers).
    - Compound assignment on members, postfix/prefix ++/--, address-of.
    - sizeof(struct Tag) == sizeof(scalarVar) == fields*2.
-4. Error cases: unknown field, duplicate field, struct parameters, struct
-   return values, excess initializers.
+4. Error cases: unknown field, duplicate field, struct returns, excess
+   initializers. (By-value struct parameters are covered in
+   test_astrid_struct_byval.py.)
 5. Multi-file: include merges struct definitions; conflicting layouts are
    rejected; identical layouts tolerated.
 6. Graphics integration: struct fields driving set_pos/write_screen produce
@@ -675,15 +676,17 @@ def test_duplicate_field_rejected():
     print('PASS test_duplicate_field_rejected')
 
 
-def test_struct_parameter_rejected():
+def test_struct_parameter_by_value_accepted():
+    """By-value struct parameters are now supported (see test_astrid_struct_byval)."""
     src = chr(10).join([
         'struct P { int x; };',
         'void f(struct P v) { }',
         'void main() { }',
     ])
-    with pytest.raises(SyntaxError, match='Struct parameters'):
-        parse_source(src)
-    print('PASS test_struct_parameter_rejected')
+    ast = parse_source(src)
+    assert ast.functions[0].params[0].struct_tag == 'P'
+    assert ast.functions[0].params[0].pointer_depth == 0
+    print('PASS test_struct_parameter_by_value_accepted')
 
 
 def test_struct_return_rejected():

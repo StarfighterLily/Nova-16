@@ -21,6 +21,14 @@
 >   and full-size reservation for nested globals. Documented in `astrid.md`
 >   → *Nested struct and union members*. Tests:
 >   `tests/astrid/test_astrid_nested_structs.py`.
+> * **Item 4 (struct parameters by value) — IMPLEMENTED.** `struct Tag p` /
+>   `union Tag u` parameters, multi-word cdecl push of the aggregate, private
+>   copy semantics, nested member addressing on the parameter, mixed scalar
+>   + aggregate param lists, `impl` method args, and type-checked call sites
+>   (variables, array elements, nested members). Struct *returns* remain
+>   unsupported (out-parameter only). Documented in `astrid.md` → *By-value
+>   struct and union parameters*. Tests:
+>   `tests/astrid/test_astrid_struct_byval.py`.
 >
 > The items below are still open, in the recommended order.
 
@@ -32,7 +40,7 @@ __2. Multi-dimensional arrays__ — ✅ **DONE** (see status above). `VarDecl` p
 
 __3. Nested struct/union fields__ — ✅ **DONE** (see status above). Struct/union fields may now themselves be structs or unions (`struct Rect { struct Point topLeft; };`), including typedef-aliased field types, and member access chains to any depth (`a.b.c`, run-time-indexed `arr[i].inner.x`, pointer receivers `p->inner.x`). Layout accumulates each field's real footprint (a nested aggregate spans several words), whole-struct assignment copies every word of the footprint, and nested globals reserve their full byte size. Documented in `astrid.md` → *Nested struct and union members*. Tests: `tests/astrid/test_astrid_nested_structs.py`.
 
-__4. Struct parameters by value (and struct returns)__ ✗ *verified: explicit compiler error `Struct parameters are not supported by value; pass a pointer...`* The docs are honest about this ("Astrid has no by-value struct parameters"). Whole-struct *assignment* works, so a by-value parameter is implementable by copying the arg block into the callee frame at prologue (or hidden-pointer convention like small-C). Struct returns need a hidden sret pointer. Lower urgency than 1–3 (pointer-passing is idiomatic and cheaper on a 16-bit part), but it's a documented C-parity hole.
+__4. Struct parameters by value (and struct returns)__ — ✅ **DONE for parameters** (see status above). `struct Tag p` / `union Tag u` parameters push the aggregate's words (cdecl); the push sequence IS the callee's private copy. Nested members, mixed param lists, array-element / nested-member arguments, recursion, chaining, and `impl` method args all work. **Struct returns remain open** (out-parameter only for now).
 
 ### Tier 2 — Accepted-but-vestigial keywords (semantic gaps)
 

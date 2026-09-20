@@ -1613,11 +1613,8 @@ class CodeGenerator:
                 self.explicit_extern_fn.add(func_def.name)
             if 'static' in quals:
                 self.explicit_static_fn.add(func_def.name)
-            self.functions[func_def.name] = {
-                'label': f'func_{func_def.name}',
-                'params': len(func_def.params),
-                'return_type': func_def.return_type
-            }
+            self.functions[func_def.name] = self._function_signature(
+                func_def, f'func_{func_def.name}')
         # Pre-register impl-block methods under namespaced keys
         # "TypeName::method" so `p.method()` call sites resolve. Method
         # labels are namespaced too (func_TypeName_method), allowing two
@@ -1643,11 +1640,8 @@ class CodeGenerator:
                               '`func_TypeName_method`; rename the method or '
                               'the colliding function'))
                 used_labels.add(method_label)
-                self.functions[key] = {
-                    'label': method_label,
-                    'params': len(method.params),
-                    'return_type': method.return_type,
-                }
+                self.functions[key] = self._function_signature(
+                    method, method_label)
                 method.impl_tag = block.tag
 
         # Emit object prologue (GLOBAL / EXTERN directives + main entry stub).
@@ -3247,6 +3241,14 @@ class CodeGenerator:
             if byte_off:
                 self.emit(f"    ADD {addr_reg}, {byte_off}")
             return
+        if info.get('is_struct_param'):
+            # By-value aggregate parameter: the words live INLINE at
+            # FP+offset (the caller's PUSH sequence is the copy), so the
+            # element address is FP + offset + byte offset.  This differs
+            # from 'is_param' below, where the slot holds an *address*.
+            self.emit(f"    MOV {addr_reg}, FP")
+            self.emit(f"    ADD {addr_reg}, {info['offset'] + byte_off}")
+            return
         if info.get('is_param'):
             self.emit(f"    MOV {addr_reg}, [FP{info['offset']:+d}]")
             self.emit(f"    ADD {addr_reg}, {byte_off}")
@@ -3283,6 +3285,12 @@ class CodeGenerator:
             return
         if name in self.array_vars:
             info = self.array_vars[name]
+            if info.get('is_struct_param'):
+                # By-value aggregate parameter decays to the address of its
+                # inline copy at FP+offset (positive, above FP).
+                self.emit(f"    MOV {reg}, FP")
+                self.emit(f"    ADD {reg}, {info['offset']}")
+                return
             if self._is_interrupt_handler:
                 # SP-relative decay: use the array stride (struct arrays
                 # step by the whole struct size, not elem_size) so the
@@ -3321,6 +3329,43 @@ class CodeGenerator:
             self.emit(f"    MOV [0x{g['address']:04X}], {src_reg}")
             return
         raise NameError(f"Undefined variable '{name}'")
+
+    def _function_signature(self, func_def: FunctionDef, label: str) -> Dict:
+        """Descriptor stored in ``self.functions`` for a function or method.
+
+        ``param_kinds`` lets a call site size each argument slot correctly:
+        a by-value aggregate parameter consumes several argument words while
+        every scalar parameter consumes exactly one.
+        """
+        return {
+            'label': label,
+            'params': len(func_def.params),
+            'return_type': func_def.return_type,
+            'param_kinds': [self._param_kind(p) for p in func_def.params],
+        }
+
+    def _param_byval_struct_tag(self, param) -> Optional[str]:
+        """Struct/union tag when ``param`` is a by-value aggregate parameter.
+
+        ``struct Tag p`` / ``union Tag p`` (no pointer, not an array) names an
+        inline aggregate copy: the caller pushes the struct's words and the
+        callee owns a private instance.  Pointer (``struct Tag *p``) and array
+        (``struct Tag p[]``) forms pass an address instead and return None.
+        """
+        tag = getattr(param, 'struct_tag', None)
+        if not tag or param.pointer_depth:
+            return None
+        if getattr(param, 'is_array_param', False):
+            return None
+        return tag
+
+    def _param_kind(self, param) -> Dict:
+        """Argument-slot descriptor for one parameter (see _function_signature)."""
+        tag = self._param_byval_struct_tag(param)
+        if tag:
+            return {'byval_struct': tag,
+                    'words': self._struct_size(tag) // 2}
+        return {}
 
     def _function_label(self, func_def: FunctionDef) -> str:
         """Assembly label for a function or impl-block method.
@@ -3390,11 +3435,10 @@ class CodeGenerator:
 
     def generate_function(self, func_def: FunctionDef):
         label = self._function_label(func_def)
-        self.functions[func_def.name] = {
-            'label': label,
-            'params': len(func_def.params),
-            'return_type': func_def.return_type
-        }
+        # Keep the signature descriptor in sync with pre-registration so a
+        # caller generated later still sees param_kinds (argument slot sizes).
+        self.functions[func_def.name] = self._function_signature(
+            func_def, label)
         # Only a top-level function named timer_interrupt is an ISR. A method
         # inside an `impl` block is never an interrupt handler, even if it
         # happens to be called timer_interrupt.
@@ -3450,7 +3494,27 @@ class CodeGenerator:
         param_size = 0
         for param in func_def.params:
             self.var_types[param.name] = param.var_type
-            if param.pointer_depth or getattr(param, 'is_array_param', False):
+            byval_tag = self._param_byval_struct_tag(param)
+            if byval_tag:
+                # By-value struct/union parameter: the caller pushed the whole
+                # aggregate, so the slot spans the struct's full word count
+                # rather than a single address word.
+                words = self._struct_size(byval_tag) // 2
+                param_size += words * 2
+                # Track the tag so `p = q` (whole-aggregate assignment) is
+                # recognised when either side is a by-value parameter.
+                self.struct_tag_vars[param.name] = byval_tag
+                # Register layout info so `p.field` / `p.nested.field` resolve
+                # FP-relative into the caller's argument area.  The offset is
+                # POSITIVE (above FP, unlike locals) and is filled in once the
+                # running param offset is known below.
+                self.array_vars[param.name] = {
+                    'elem_type': 'struct', 'count': words,
+                    'elem_size': 2, 'stride': 2,
+                    'offset': None, 'is_struct_param': True,
+                    'tag': byval_tag,
+                }
+            elif param.pointer_depth or getattr(param, 'is_array_param', False):
                 # Pointers and array parameters hold a 16-bit address.
                 param_size += 2
                 self.pointer_vars.add(param.name)
@@ -3531,9 +3595,16 @@ class CodeGenerator:
             self.local_vars[param.name] = param_entry
             if param.name in self.array_vars and self.array_vars[param.name].get('is_param'):
                 self.array_vars[param.name]['offset'] = param_offset
-            param_offset += 2 if (param.var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary', 'float')
-                                  or param.pointer_depth
-                                  or getattr(param, 'is_array_param', False)) else 1
+            byval_tag = self._param_byval_struct_tag(param)
+            if byval_tag:
+                # By-value aggregate: the slot spans the whole struct, and
+                # member addressing starts at FP+param_offset (positive).
+                self.array_vars[param.name]['offset'] = param_offset
+                param_offset += self._struct_size(byval_tag)
+            else:
+                param_offset += 2 if (param.var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary', 'float')
+                                      or param.pointer_depth
+                                      or getattr(param, 'is_array_param', False)) else 1
 
         # Local offsets: start at -2 going down (2 bytes per slot for simplicity;
         # char vars also get 2 bytes to keep word access alignment simple)
@@ -6262,6 +6333,98 @@ class CodeGenerator:
             return True
         return False
 
+    def _aggregate_expr_tag(self, expr) -> Optional[str]:
+        """Struct/union tag of an aggregate-valued expression, if known.
+
+        Handles the forms that can denote a whole struct value: a variable
+        (``rect``), a chained member (``box.outer``), and an element of an
+        array of structs (``arr[2]``).  Returns None when the expression is
+        not an aggregate at all (a scalar, an unknown name, or a call).
+        """
+        if isinstance(expr, Identifier):
+            return self._var_struct_tag(expr.name)
+        if isinstance(expr, MemberAccess):
+            # Walk to the innermost non-member base to find the starting tag,
+            # then step through each field's declared type.
+            chain = []
+            node = expr
+            while isinstance(node, MemberAccess):
+                chain.append(node)
+                node = node.base
+            tag = self._aggregate_expr_tag(node)
+            if tag is None:
+                return None
+            chain.reverse()
+            for mae in chain:
+                tag = self._struct_field_info(tag, mae.field)[1]
+            return tag
+        if isinstance(expr, ArrayAccess):
+            info = self.array_vars.get(expr.name)
+            if info is not None and info.get('tag'):
+                return info['tag']
+            g = self.global_vars.get(expr.name)
+            if g is not None and g.get('tag'):
+                return g['tag']
+        return None
+
+    def _emit_aggregate_value_addr(self, arg, reg: str, tag: str):
+        """Compute the base address of a by-value aggregate argument.
+
+        Validates that the argument really is an aggregate of the declared
+        tag, so a scalar or mismatched struct is a compile error instead of
+        silently passing one word where the callee reads several.
+        """
+        arg_tag = self._aggregate_expr_tag(arg)
+        if arg_tag is None:
+            raise TypeError(
+                f"cannot pass this expression by value as struct/union "
+                f"'{tag}'; store it in a variable first")
+        if arg_tag != tag:
+            raise TypeError(
+                f"by-value argument has type '{arg_tag}' but parameter "
+                f"expects '{tag}'")
+        if isinstance(arg, Identifier):
+            self._emit_var_load(reg, arg.name)
+            return
+        if isinstance(arg, MemberAccess):
+            self._emit_member_addr(arg, reg)
+            return
+        if isinstance(arg, ArrayAccess):
+            info = self.array_vars.get(arg.name)
+            if info is None:
+                g = self.global_vars.get(arg.name)
+                info = {
+                    'elem_type': g['type'], 'count': g['count'],
+                    'elem_size': self._elem_size(g['type']),
+                    'stride': g.get('stride'),
+                    'base_addr': g['address'], 'is_global': True,
+                }
+            idx_reg = self.generate_expression(arg.index)
+            if idx_reg != reg:
+                self._emit_array_addr(info, idx_reg, reg)
+                self.free_register()
+            return
+        raise TypeError(
+            f"unsupported by-value aggregate argument for struct/union '{tag}'")
+
+    def _emit_push_struct_arg(self, arg, tag: str) -> int:
+        """Push a by-value aggregate argument; returns the word count pushed.
+
+        The caller's PUSH sequence IS the copy the callee reads, so the words
+        go out in reverse layout order: the last word is pushed first (landing
+        at the highest address) and word 0 last (landing at the lowest
+        argument address) -- exactly where the callee's FP+param_offset points.
+        """
+        words = self._struct_size(tag) // 2
+        base_reg = self.get_register()
+        self._emit_aggregate_value_addr(arg, base_reg, tag)
+        for k in range(words - 1, -1, -1):
+            off = k * 2
+            operand = f"[{base_reg}]" if off == 0 else f"[{base_reg}+{off}]"
+            self.emit(f"    PUSH {operand}")
+        self.free_register()
+        return words
+
     def generate_call(self, call: FuncCall) -> str:
         self.emit_comment(f"Call to {call.name}")
 
@@ -6346,10 +6509,26 @@ class CodeGenerator:
         # temporary has been pushed and freed, so round-robin register
         # allocation cannot clobber the target register.
         indirect_call = False
-        for arg in reversed(call.args):
-            arg_reg = self.generate_expression(arg)
-            self.emit(f"    PUSH {arg_reg}")
-            self.free_register()
+        # Argument-slot sizes come from the callee's signature.  A by-value
+        # struct/union parameter consumes several argument words, and the
+        # caller-cleanup must pop exactly the number of words it pushed.
+        param_kinds = []
+        if isinstance(call.callee, str):
+            entry = self.functions.get(call.name)
+            if entry:
+                param_kinds = entry.get('param_kinds') or []
+        total_arg_words = 0
+        for idx in range(len(call.args) - 1, -1, -1):
+            arg = call.args[idx]
+            kind = param_kinds[idx] if idx < len(param_kinds) else {}
+            byval_tag = kind.get('byval_struct')
+            if byval_tag:
+                total_arg_words += self._emit_push_struct_arg(arg, byval_tag)
+            else:
+                arg_reg = self.generate_expression(arg)
+                self.emit(f"    PUSH {arg_reg}")
+                self.free_register()
+                total_arg_words += 1
         
         if isinstance(call.callee, str):
             if call.name in self.functions:
@@ -6374,8 +6553,9 @@ class CodeGenerator:
                 if call.args:
                     # Indirect callees follow the user-function (cdecl-style)
                     # convention: the callee leaves pushed args on the stack
-                    # and the caller deallocates them (one word per arg).
-                    self.emit(f"    ADD SP, {len(call.args) * 2} ; Caller cleans up args")
+                    # and the caller deallocates them (one word per argument
+                    # word -- by-value aggregates span several).
+                    self.emit(f"    ADD SP, {total_arg_words * 2} ; Caller cleans up args")
                 result_reg = self.get_register()
                 self.emit(f"    MOV {result_reg}, P0")
                 return result_reg
@@ -6392,8 +6572,9 @@ class CodeGenerator:
                 # full 16-bit word regardless of the parameter's declared type).
                 # Without this, loops that call functions with arguments leak
                 # stack bytes every iteration until SP walks down through low
-                # memory, wraps, and corrupts the running program.
-                self.emit(f"    ADD SP, {len(call.args) * 2} ; Caller cleans up args")
+                # memory, wraps, and corrupts the running program.  A by-value
+                # aggregate argument occupies one word per struct word.
+                self.emit(f"    ADD SP, {total_arg_words * 2} ; Caller cleans up args")
             elif call.args:
                 # Builtin stubs pop their own arguments off the stack.
                 self.emit(f"    ; Args consumed by callee")
@@ -6422,7 +6603,7 @@ class CodeGenerator:
             if call.args:
                 # Indirect callees follow the user-function convention: the
                 # caller owns the pushed argument words.
-                self.emit(f"    ADD SP, {len(call.args) * 2} ; Caller cleans up args")
+                self.emit(f"    ADD SP, {total_arg_words * 2} ; Caller cleans up args")
 
         result_reg = self.get_register()
         # User-defined functions return their 16-bit int result in P0
@@ -6561,11 +6742,24 @@ class CodeGenerator:
         # Push the explicit arguments in reverse source order so the stack
         # top ends up as the LAST argument (the callee reads params at
         # ascending FP offsets, so the first parameter -- `self` -- must be
-        # pushed last, right before the CALL).
-        for arg in reversed(call.args):
-            arg_reg = self.generate_expression(arg)
-            self.emit(f"    PUSH {arg_reg}")
-            self.free_register()
+        # pushed last, right before the CALL).  Argument-slot sizes come from
+        # the method signature: `self` occupies param_kinds[0] (supplied
+        # implicitly by the receiver push below), so explicit argument `i`
+        # maps to param_kinds[i + 1] and a by-value aggregate argument
+        # consumes several words.
+        param_kinds = (info.get('param_kinds') or [])[1:]
+        total_arg_words = 0
+        for idx in range(len(call.args) - 1, -1, -1):
+            arg = call.args[idx]
+            kind = param_kinds[idx] if idx < len(param_kinds) else {}
+            byval_tag = kind.get('byval_struct')
+            if byval_tag:
+                total_arg_words += self._emit_push_struct_arg(arg, byval_tag)
+            else:
+                arg_reg = self.generate_expression(arg)
+                self.emit(f"    PUSH {arg_reg}")
+                self.free_register()
+                total_arg_words += 1
 
         # Evaluate and push the receiver address (the implicit `self` arg).
         recv_reg = self.get_register()
@@ -6576,8 +6770,8 @@ class CodeGenerator:
         self.emit(f"    CALL {info['label']}")
         # User-function callees restore SP to the frame base, leaving the
         # caller-pushed arguments on the stack; deallocate all of them
-        # (receiver + explicit args), one word each, cdecl-style.
-        self.emit(f"    ADD SP, {(len(call.args) + 1) * 2} ; Caller cleans up args + receiver")
+        # (receiver + explicit argument words), cdecl-style.
+        self.emit(f"    ADD SP, {(total_arg_words + 1) * 2} ; Caller cleans up args + receiver")
 
         result_reg = self.get_register()
         self.emit(f"    MOV {result_reg}, P0")

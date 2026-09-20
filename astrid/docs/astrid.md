@@ -20,6 +20,7 @@ A C language for the Nova-16, built from the ground up.
 16. [Function pointers and indirect calls](#function-pointers-and-indirect-calls)
 17. [Two-dimensional arrays](#two-dimensional-arrays)
 18. [Nested struct and union members](#nested-struct-and-union-members)
+19. [By-value struct and union parameters](#by-value-struct-and-union-parameters)
 
 ---
 
@@ -78,9 +79,10 @@ int main() { clear_screen(); return border; }             // uses both
 Astrid supports Rust-style `impl` blocks that attach methods to a struct or
 union type. Methods are ordinary functions scoped to a type; the first
 parameter must be the receiver `self`, which is implicitly typed
-`struct Tag *` (unions use `union Tag *`). Because Astrid has no by-value
-struct parameters, the receiver is always passed by address, so `self.field`
-resolves through the pointee layout.
+`struct Tag *` (unions use `union Tag *`). The receiver is always passed by
+address so `self.field` resolves through the pointee layout; additional
+parameters may be scalars or by-value aggregates (see
+[By-value struct and union parameters](#by-value-struct-and-union-parameters)).
 
 ```c
 struct Point { int x; int y; };
@@ -901,3 +903,100 @@ a = b;                          // copies all words of a's nested children too
   supported; use a 1-D array of structs.
 * **Nested method-call receivers** (`obj.inner.method()`) are not supported --
   only a single member level is accepted as an `impl` receiver.
+
+## By-value struct and union parameters
+
+A function may take a struct or union **by value**:
+
+```c
+struct Point { int x; int y; };
+
+int sum(struct Point p) {       // by-value parameter
+    return p.x + p.y;
+}
+
+int main() {
+    struct Point a;
+    a.x = 10;
+    a.y = 20;
+    return sum(a);              // copies a's words onto the stack
+}
+```
+
+The caller's `PUSH` sequence of the aggregate's words **is** the callee's
+private copy. Writes through the parameter (`p.x = 99`) do not reach the
+caller's original, and `&p` points at that private stack slot -- never at
+the caller's storage.
+
+### What can be passed
+
+Any expression that already denotes an aggregate of the declared tag:
+
+```c
+struct Point { int x; int y; };
+struct Rect  { struct Point tl; struct Point br; };
+
+int sum(struct Point p) { return p.x + p.y; }
+
+int main() {
+    struct Point a;
+    struct Point arr[3];
+    struct Rect r;
+    a.x = 1; a.y = 2;
+    arr[2].x = 5; arr[2].y = 6;
+    r.br.x = 7; r.br.y = 8;
+    return sum(a)               // variable
+         + sum(arr[2])          // array element
+         + sum(r.br);           // nested member
+}
+```
+
+Type mismatches are compile errors: a scalar where a struct is expected, or
+a different struct tag, is rejected rather than silently pushing one word.
+
+### Mixed parameter lists
+
+A multi-word slot can sit anywhere in the parameter list. The caller and
+callee agree on the footprint through the function's signature, so offsets
+stay correct:
+
+```c
+int f(int a, struct Point p, int b) {
+    return a + p.x * 10 + b;    // p.x at FP+6, a at FP+4, b at FP+10
+}
+```
+
+The same layout applies to `impl` methods. `self` is still the receiver
+address (a single word); additional by-value arguments push their full
+footprint after it:
+
+```c
+impl Point {
+    int plus(self, struct Point o) { return self.x + o.x; }
+}
+```
+
+### Calling convention
+
+* Arguments are pushed in reverse source order (cdecl). For a by-value
+  aggregate the **words themselves** are pushed in reverse layout order, so
+  word 0 lands at the lowest address -- exactly where the callee's
+  `FP + param_offset` points.
+* The caller deallocates every word it pushed after the call returns
+  (`ADD SP, N*2`). Loops that pass structs by value do not leak stack.
+* Nested aggregates are handled transparently: a 3-field nested struct
+  parameter occupies 3 words, and the callee addresses nested members via
+  the same chain walker used for locals and globals.
+
+### Restrictions
+
+* **Struct / union returns are not supported.** Returning an aggregate still
+  requires an out-parameter (`void fill(struct Point *out)`). By-value
+  parameters only cover the *argument* direction.
+* The parameter type must be a **complete** struct or union defined earlier
+  in the translation unit (same rule as by-value nested fields).
+* Temporary aggregates from function calls cannot be passed by value yet --
+  store the result in a variable first.
+* Indirect calls through a function pointer still clean up one word per
+  source argument (they cannot see the callee's multi-word signature), so
+  do not pass by-value aggregates through an indirect call site.
