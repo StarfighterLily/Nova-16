@@ -19,6 +19,7 @@ A C language for the Nova-16, built from the ground up.
 15. [Common patterns](#common-patterns)
 16. [Function pointers and indirect calls](#function-pointers-and-indirect-calls)
 17. [Two-dimensional arrays](#two-dimensional-arrays)
+18. [Nested struct and union members](#nested-struct-and-union-members)
 
 ---
 
@@ -793,3 +794,110 @@ addressing code is emitted, so 2-D arrays inherit every 1-D array feature:
 * Member access on a 2-D element (`grid[i][j].field`) is not supported --
   copy the element into a struct variable first, or use a 1-D array of
   structs.
+
+## Nested struct and union members
+
+A struct or union field may itself be a struct or union ("nested aggregate"),
+and member access chains to any depth.
+
+```c
+struct Point { int x; int y; };
+struct Rect  { struct Point topLeft; struct Point botRight; };
+struct Box   { struct Rect outer; int depth; };   // three levels deep
+
+typedef struct Point Coord;                       // alias as a field type
+struct Line  { Coord from; Coord to; };
+
+int main() {
+    struct Box b;
+    b.outer.topLeft.x   = 10;     // a.b.c.d -- full name each level
+    b.depth             = 4;
+    return b.outer.topLeft.x + b.depth;
+}
+```
+
+The inner type must be **already defined** when used as a by-value field (C
+requires a complete type for a by-value member), and the diagnostic points at
+the offending field:
+
+```
+Undefined struct 'Inner' used as a field of struct 'Outer' (line 4);
+define it first -- nested aggregates must be complete types
+```
+
+### Layout
+
+Layout follows the same rule Astrid already used for flat structs, applied
+recursively: **every scalar field occupies exactly one 16-bit word slot**
+(chars are word-padded, mirroring how locals are laid out), and a nested
+aggregate field occupies as many consecutive words as its own layout needs.
+
+```c
+struct Point { int x; int y; };            // 2 words / 4 bytes
+struct Rect  { struct Point tl; struct Point br; };  // 4 words / 8 bytes
+
+// Rect.tl lives at byte offset 0, Rect.br at byte offset 4.
+// tl.x = +0, tl.y = +2, br.x = +4, br.y = +6.
+```
+
+Offsets are therefore *not* simply `index * 2` once an aggregate is involved;
+the compiler accumulates each preceding field's real footprint. A global
+scalar struct of nested type reserves its full size (`DS 8` for `struct Rect`
+above, not `DS 4`), so nested globals cannot overlap the next global.
+
+### What works everywhere
+
+Nested access is resolved for every base kind, including run-time indices and
+pointer receivers:
+
+```c
+struct Wrap { struct Inner inner; int z; };
+
+struct Wrap g;
+
+int main() {
+    struct Wrap local;          // local: FP-relative
+    struct Wrap arr[3];
+    struct Wrap *p;
+    int i;
+
+    g.inner.x = 1;              // global
+    local.inner.y = 2;          // local
+    p = &local;
+    p->inner.x = 3;             // struct pointer receiver
+    arr[2].inner.y = 4;         // run-time index into an array of structs
+    for (i = 0; i < 3; i = i + 1) {
+        arr[i].inner.x = i;     // chained access inside a loop
+    }
+    return local.inner.x + arr[2].inner.y;
+}
+```
+
+`arr[i].inner.x` is handled by computing the element address first and then
+adding the accumulated chain offset, so the run-time index is never dropped
+(the emitter keys off the *innermost* base, not the outer member node).
+
+Whole-struct assignment copies every word of the footprint, so nested children
+are copied completely rather than truncated to their first word:
+
+```c
+struct Wrap a;
+struct Wrap b;
+a = b;                          // copies all words of a's nested children too
+```
+
+### Restrictions
+
+* **Unions share offset 0.** All fields of a union -- nested or not --
+  overlap at byte offset 0, and a union's size is its largest member
+  footprint. Nested member access through a union field is resolved the same
+  way as for structs.
+* **Self-reference is rejected.** A struct or union may not contain itself,
+  directly (`struct A { struct A inner; };`) or indirectly
+  (`struct A { struct B b; }; struct B { struct A a; };`). Because a by-value
+  field requires a complete type, these are caught by the same completeness
+  check as an undefined tag rather than by a separate cycle pass.
+* **Member access on a 2-D array element** (`grid[i][j].field`) is still not
+  supported; use a 1-D array of structs.
+* **Nested method-call receivers** (`obj.inner.method()`) are not supported --
+  only a single member level is accepted as an `impl` receiver.

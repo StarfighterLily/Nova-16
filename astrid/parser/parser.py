@@ -1307,6 +1307,71 @@ class Parser:
         self.type_aliases[alias] = base_type
         self.expect('DELIMITER', ';')
 
+    def _parse_field_type(self, kind: str, tag: str) -> str:
+        """Consume and return the declared type of one struct/union field.
+
+        Accepts scalar type keywords, `struct Tag` / `union Tag` (nested
+        aggregates), and typedef aliases that resolve to either of those.
+        A nested aggregate tag must already be defined -- C requires a
+        complete type for a by-value member, and this gives the error at
+        the offending field rather than deep inside codegen.
+        """
+        tok = self.current
+        if tok.type == 'KEYWORD' and tok.value in ('struct', 'union'):
+            member_kind = tok.value
+            self.advance()
+            if self.current.type != 'IDENTIFIER':
+                raise self.error(
+                    f"Expected a tag name after '{member_kind}' in "
+                    f"{kind} '{tag}' (line {self.current.line})")
+            member_tag = self.current.value
+            self.advance()
+            defined = (self.struct_defs if member_kind == 'struct'
+                       else self.union_defs)
+            if member_tag not in defined:
+                raise self.error(
+                    f"Undefined {member_kind} '{member_tag}' used as a field "
+                    f"of {kind} '{tag}' (line {self.current.line}); define it "
+                    f"first -- nested aggregates must be complete types")
+            return f'{member_kind} {member_tag}'
+        if tok.type == 'KEYWORD' and tok.value in (
+                'int', 'signed_int', 'unsigned_int', 'char',
+                'string', 'binary', 'float'):
+            self.advance()
+            return tok.value
+        if tok.type == 'IDENTIFIER' and tok.value in self.type_aliases:
+            # typedef alias -- follow the chain to the base type.
+            self.advance()
+            base = self._resolve_alias(tok.value)
+            if base in ('int', 'signed_int', 'unsigned_int', 'char',
+                        'string', 'binary', 'float'):
+                return base
+            if base.startswith('struct ') or base.startswith('union '):
+                member_kind, member_tag = base.split(' ', 1)
+                defined = (self.struct_defs if member_kind == 'struct'
+                           else self.union_defs)
+                if member_tag not in defined:
+                    raise self.error(
+                        f"Alias '{tok.value}' names undefined {member_kind} "
+                        f"'{member_tag}' (line {tok.line})")
+                return base
+            raise self.error(
+                f"Alias '{tok.value}' does not name a usable field type "
+                f"(line {tok.line})")
+        raise self.error(
+            f"Unsupported {kind} field type '{tok.value}' in {kind} "
+            f"'{tag}' (line {tok.line}); expected a scalar type, a "
+            f"typedef alias, or 'struct Tag' / 'union Tag'")
+
+    def _resolve_alias(self, name: str) -> str:
+        """Follow a typedef alias chain to its base type name."""
+        seen = set()
+        current = name
+        while current in self.type_aliases and current not in seen:
+            seen.add(current)
+            current = self.type_aliases[current]
+        return current
+
     def parse_union_definition(self) -> List[VarDecl]:
         """Parse a union definition with optional footer declarators:
 
@@ -1324,13 +1389,7 @@ class Parser:
         self.expect('DELIMITER', '{')
         fields: List = []
         while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
-            ftype = self.current.value
-            if self.current.type != 'KEYWORD' or \
-                    ftype not in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float'}:
-                raise self.error(
-                    f"Unsupported union field type '{ftype}' in union "
-                    f"'{tag}' (line {self.current.line})")
-            self.advance()
+            ftype = self._parse_field_type('union', tag)
             while True:
                 fname = self.current.value
                 self.expect('IDENTIFIER')
@@ -1384,13 +1443,7 @@ class Parser:
         self.expect('DELIMITER', '{')
         fields: List = []
         while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
-            ftype = self.current.value
-            if self.current.type != 'KEYWORD' or \
-                    ftype not in {'int', 'signed_int', 'unsigned_int', 'char', 'string', 'binary', 'float'}:
-                raise self.error(
-                    f"Unsupported struct field type '{ftype}' in struct "
-                    f"'{tag}' (line {self.current.line})")
-            self.advance()
+            ftype = self._parse_field_type('struct', tag)
             while True:
                 fname = self.current.value
                 self.expect('IDENTIFIER')

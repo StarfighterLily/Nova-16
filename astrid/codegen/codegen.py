@@ -2259,31 +2259,91 @@ class CodeGenerator:
                 return ftype
         return None
 
+    def _field_type_size_words(self, ftype: str,
+                               _seen: Optional[frozenset] = None) -> int:
+        """Storage footprint of one struct/union field type, in WORDS.
+
+        Scalar slots are exactly one 16-bit word (chars are word-padded,
+        mirroring how locals are laid out). A nested-aggregate field
+        ('struct Tag' / 'union Tag') occupies as many words as the inner
+        layout contains. Recursion is guarded against direct and indirect
+        self-reference cycles (which the parser rejects at definition
+        time, but the guard keeps a pathological .sym table or a hostile
+        caller from hanging the compiler).
+        """
+        if not (ftype.startswith('struct ') or ftype.startswith('union ')):
+            return 1
+        member_kind, member_tag = ftype.split(' ', 1)
+        seen = _seen or frozenset()
+        if member_tag in seen:
+            raise NameError(
+                f"Circular {member_kind} '{member_tag}' in nested layout")
+        if member_kind == 'struct':
+            fields = self.struct_defs.get(member_tag)
+        else:
+            fields = self.union_defs.get(member_tag)
+        if fields is None:
+            raise NameError(
+                f"Undefined {member_kind} type '{member_tag}' in nested layout")
+        if member_kind == 'union':
+            return max((self._field_type_size_words(
+                            f[1] if isinstance(f, tuple) else 'int',
+                            seen | {member_tag})
+                        for f in fields), default=1)
+        return sum((self._field_type_size_words(
+                        f[1] if isinstance(f, tuple) else 'int',
+                        seen | {member_tag})
+                    for f in fields), 0)
+
     def _struct_size(self, tag: str) -> int:
         """Total byte size of one struct or union value.
 
-        For structs, each field is a word slot (len(fields) * 2).
-        For unions, all fields overlap at offset 0, so the size is the
-        max field size (2 bytes for int/struct fields).
+        For structs, the sum of the member footprints: each scalar field is
+        one word slot (2 bytes) and each nested-aggregate field occupies its
+        inner layout's word count. For unions, all fields overlap at offset
+        0, so the size is the largest member footprint.
         """
         if self._is_union_type(tag):
-            return 2  # All union fields share offset 0; max field is 1 word
-        return len(self._struct_fields(tag)) * 2
+            fields = self.union_defs.get(tag, [])
+            words = max((self._field_type_size_words(
+                             f[1] if isinstance(f, tuple) else 'int')
+                         for f in fields), default=1)
+            return words * 2
+        fields = self.struct_defs.get(tag)
+        if fields is None:
+            raise NameError(f"Undefined struct/union type '{tag}'")
+        words = sum((self._field_type_size_words(
+                         f[1] if isinstance(f, tuple) else 'int')
+                     for f in fields), 0)
+        return words * 2
 
     def _struct_field_offset(self, tag: str, field: str) -> int:
         """Byte offset of a field within the struct or union, or a clear error.
 
-        For structs, field i lives at byte offset i*2. For unions, all
-        fields share byte offset 0.
+        For structs, the offset is the accumulated footprint of the preceding
+        fields: each scalar takes one word slot (2 bytes) and each
+        nested-aggregate field takes its inner layout's word count. For
+        unions, all fields share byte offset 0.
         """
         if self._is_union_type(tag):
             return self._union_field_offset(tag, field)
-        fields = self._struct_fields(tag)
-        if field not in fields:
-            raise NameError(
-                f"Struct '{tag}' has no field '{field}' "
-                f"(fields: {', '.join(fields)})")
-        return fields.index(field) * 2
+        fields = self.struct_defs.get(tag)
+        if fields is None:
+            raise NameError(f"Undefined struct/union type '{tag}'")
+        offset_words = 0
+        for entry in fields:
+            if isinstance(entry, tuple):
+                fname, ftype = entry
+            else:
+                # Backwards-compatible: bare name (treat as 'int').
+                fname, ftype = entry, 'int'
+            if fname == field:
+                return offset_words * 2
+            offset_words += self._field_type_size_words(ftype)
+        field_names = [f[0] if isinstance(f, tuple) else f for f in fields]
+        raise NameError(
+            f"Struct '{tag}' has no field '{field}' "
+            f"(fields: {', '.join(field_names)})")
 
     def _resolve_type(self, name: str) -> str:
         """Resolve a type name through typedef aliases to its base type.
@@ -2331,28 +2391,83 @@ class CodeGenerator:
             return g['tag']
         return self.pointer_struct_tags.get(name)
 
-    def _member_base_info(self, expr: MemberAccess):
-        """Resolve a MemberAccess base into (kind, data, field_offset).
+    def _struct_field_info(self, tag: str, field: str) -> Tuple[int, str]:
+        """Byte offset and type key of a field within a struct or union.
 
-        kind 'array'   -- data is an array-info dict; the member address is
-                          the array element address plus the field offset.
-                          Covers scalar struct variables (an N-field struct
-                          is laid out exactly like an N-word array) AND
-                          arrays of structs via ArrayAccess bases.
-        kind 'pointer' -- data is (name, tag); the variable's VALUE is the
-                          struct base address (`pp->field`).
+        Returns ``(byte_offset, field_type_key)``.  Struct fields accumulate
+        the real footprint of the preceding fields (a nested aggregate spans
+        several words), while every union field shares byte offset 0.
+
+        For nested aggregations the type key is the inner struct/union's
+        **bare tag** (without the ``'struct '`` / ``'union '`` prefix) so the
+        ``a.b.c`` chain walker can step into the inner layout with a key that
+        matches ``struct_defs`` / ``union_defs``.  Scalar types (``'int'``,
+        ``'char'``, ...) are returned unchanged.
         """
-        base = expr.base
-        while isinstance(base, MemberAccess):
-            raise SyntaxError(
-                "Nested struct members (a.b.c) are not supported")
-        if isinstance(base, Identifier):
-            name = base.name
-            tag = self._var_struct_tag(name)
-            if tag is None:
+        is_union = self._is_union_type(tag)
+        fields = (self.union_defs if is_union else self.struct_defs).get(tag)
+        if fields is None:
+            raise NameError(
+                f"Undefined {'union' if is_union else 'struct'} type '{tag}'")
+        offset_words = 0
+        for entry in fields:
+            if isinstance(entry, tuple):
+                fname, ftype = entry
+            else:
+                fname, ftype = entry, 'int'
+            if fname == field:
+                # Aggregate type keys normalize to the bare tag.  This must be
+                # the *declared* type (not a placeholder): the chain walker
+                # uses it to resolve the next level's layout, so returning
+                # 'int' for a `struct Pair p;` union member would break
+                # `u.p.a` with "Undefined struct type 'int'".
+                if ftype.startswith('struct ') or ftype.startswith('union '):
+                    _, bare_tag = ftype.split(' ', 1)
+                    return (0 if is_union else offset_words * 2), bare_tag
+                return (0 if is_union else offset_words * 2), ftype
+            if not is_union:
+                offset_words += self._field_type_size_words(ftype)
+        field_names = [f[0] if isinstance(f, tuple) else f for f in fields]
+        raise NameError(
+            f"{'Union' if is_union else 'Struct'} '{tag}' has no field "
+            f"'{field}' (fields: {', '.join(field_names)})")
+
+    def _member_base_info(self, expr: MemberAccess):
+        """Resolve a ``MemberAccess`` chain -- flat *and* nested ``a.b.c`` --
+        into ``(kind, data, offset_bytes, innermost_base), outer_tag``.
+
+        ``kind`` is one of:
+
+        * ``'array_const'`` -- scalar struct variable with a compile-time
+          address (``r.inner.x``).
+        * ``'array_indexed'`` -- array of structs indexed at run time
+          (``pts[i].inner.x`` -- innermost base is an ``ArrayAccess``).
+        * ``'pointer'`` -- struct pointer whose value must be loaded
+          (``pp->inner.x``).
+
+        ``data`` carries the addressing metadata for the *innermost* base
+        (array-info dict for the two ``array_*`` kinds, ``(name, tag)`` for
+        ``pointer``).  ``offset_bytes`` is the **total** accumulated byte
+        offset across the entire chain.  ``innermost_base`` is the
+        non-``MemberAccess`` base expression so the emitter can tell whether a
+        run-time index is involved.  ``outer_tag`` is the struct/union tag of
+        the outermost variable (preserved for caller compatibility).
+        """
+        # ---- 1. Collect the chain, outermost -> innermost. ----------
+        chain = []
+        node = expr
+        while isinstance(node, MemberAccess):
+            chain.append(node)
+            node = node.base
+        innermost_base = node
+        chain.reverse()                       # outermost -> innermost
+
+        # ---- 2. Resolve the innermost (non-MemberAccess) base. --------
+        if isinstance(innermost_base, Identifier):
+            name = innermost_base.name
+            outer_tag = self._var_struct_tag(name)
+            if outer_tag is None:
                 if name in self.struct_defs:
-                    # The name IS a struct type -- the user likely declared
-                    # (or tried to use) an instance in the wrong scope.
                     hint = ''
                     g = self.global_vars.get(name)
                     if g is not None or name in self.local_vars:
@@ -2366,30 +2481,28 @@ class CodeGenerator:
                         f"{hint}")
                 raise NameError(
                     f"'{name}' is not a struct variable or struct pointer")
-            offset = self._struct_field_offset(tag, expr.field)
             info = self.array_vars.get(name)
             if info is not None and info.get('tag'):
-                # Scalar struct local: an N-word array under the hood.
-                return ('array', info, offset), tag
-            g = self.global_vars.get(name)
-            if name in self.pointer_vars or name in self.address_params or \
-                    (g is not None and g.get('is_pointer')):
-                # Struct pointer: pp->field loads the pointer then adds.
-                # NOTE: must be tested before the scalar-global branch --
-                # global struct pointers also carry the struct tag.
-                return ('pointer', (name, tag), offset), tag
-            if g is not None and g.get('tag'):
-                # Scalar struct global: registered as an is_array word block.
-                return ('array', {
-                    'elem_type': 'struct', 'count': g['count'],
-                    'elem_size': 2, 'stride': g.get('stride', 2),
-                    'base_addr': g['address'], 'is_global': True,
-                }, offset), tag
-            raise NameError(
-                f"'{name}' is not a struct variable or struct pointer")
-        if isinstance(base, ArrayAccess):
-            arr_name = base.name
-            if base.index2 is not None:
+                kind, data = 'array_const', info
+            else:
+                g = self.global_vars.get(name)
+                if (name in self.pointer_vars
+                        or name in self.address_params
+                        or (g is not None and g.get('is_pointer'))):
+                    kind, data = 'pointer', (name, outer_tag)
+                elif g is not None and g.get('tag'):
+                    kind, data = 'array_const', {
+                        'elem_type': 'struct', 'count': g['count'],
+                        'elem_size': 2, 'stride': g.get('stride', 2),
+                        'base_addr': g['address'], 'is_global': True,
+                    }
+                else:
+                    raise NameError(
+                        f"'{name}' is not a struct variable or struct pointer")
+
+        elif isinstance(innermost_base, ArrayAccess):
+            arr_name = innermost_base.name
+            if innermost_base.index2 is not None:
                 raise CodeGenError(
                     f"member access on 2-D arrays is not supported "
                     f"('{arr_name}[i][j].{expr.field}')")
@@ -2397,42 +2510,60 @@ class CodeGenerator:
             if info is None:
                 g = self.global_vars.get(arr_name)
                 if g and g.get('is_array'):
-                    info = {'elem_type': g['type'], 'count': g['count'],
-                            'elem_size': self._elem_size(g['type']),
-                            'stride': g.get('stride'),
-                            'base_addr': g['address'], 'is_global': True,
-                            **({'tag': g['tag']} if g.get('tag') else {})}
+                    info = {
+                        'elem_type': g['type'], 'count': g['count'],
+                        'elem_size': self._elem_size(g['type']),
+                        'stride': g.get('stride'),
+                        'base_addr': g['address'], 'is_global': True,
+                        **({'tag': g['tag']} if g.get('tag') else {}),
+                    }
                 else:
                     raise NameError(f"Undefined array '{arr_name}'")
             if not info.get('tag'):
                 raise NameError(
                     f"'{arr_name}' is not an array of structs")
-            offset = self._struct_field_offset(info['tag'], expr.field)
-            return ('array', info, offset), info['tag']
-        raise SyntaxError("Unsupported struct member base expression")
+            kind, data, outer_tag = ('array_indexed', info, info['tag'])
+        else:
+            raise SyntaxError("Unsupported struct member base expression")
+
+        # ---- 3. Walk the chain, accumulating byte offsets. ----------
+        total_offset_bytes = 0
+        tag = outer_tag
+        for i, mae in enumerate(chain):
+            foffset, ftype = self._struct_field_info(tag, mae.field)
+            total_offset_bytes += foffset
+            if i < len(chain) - 1:
+                tag = ftype                 # step into the nested aggregate
+
+        return (kind, data, total_offset_bytes, innermost_base), outer_tag
 
     def _emit_member_addr(self, expr: MemberAccess, addr_reg: str,
                           idx_reg: Optional[str] = None):
         """Emit code computing a member's byte address into addr_reg.
 
         For ArrayAccess bases the caller may pass a pre-evaluated index in
-        idx_reg; for Identifier bases the address is fully constant."""
-        (kind, data, offset), tag = self._member_base_info(expr)
+        idx_reg; for Identifier bases the address is fully constant.
+
+        Nested chains (``r.inner.x``, ``pts[i].inner.x``, ``pp->inner.x``)
+        are handled by _member_base_info, which returns the innermost base
+        so this function can tell whether a run-time index is involved.
+        """
+        (kind, data, offset, innermost_base), _tag = self._member_base_info(expr)
         if kind == 'pointer':
             name, _tag2 = data
             self._emit_var_load(addr_reg, name)
             if offset:
                 self.emit(f"    ADD {addr_reg}, {offset}")
-        elif isinstance(expr.base, ArrayAccess):
+        elif kind == 'array_indexed':
             info = data
             if idx_reg is None:
-                idx_reg = self.generate_expression(expr.base.index)
+                idx_reg = self.generate_expression(innermost_base.index)
             self._emit_array_addr(info, idx_reg, addr_reg)
             if offset:
                 self.emit(f"    ADD {addr_reg}, {offset}")
         else:
-            # Constant scalar-struct base: field j of an N-field struct is
-            # element j of its underlying N-word array layout.
+            # 'array_const': scalar struct local/global -- field j of an
+            # N-field struct is element j of its underlying N-word array layout.
             info = data
             self._emit_array_const_addr(info, offset // 2, addr_reg)
 
@@ -2778,8 +2909,11 @@ class CodeGenerator:
             init_values = []
             if decl.is_array or is_struct_scalar:
                 if is_struct_scalar:
-                    # N fields == N word slots; init lists fill words.
-                    count = len(self._struct_fields(struct_tag))
+                    # A scalar struct occupies one word slot per field
+                    # (including every word of nested aggregate fields),
+                    # so the word count is the total struct size, not just
+                    # the top-level field count.
+                    count = self._struct_size(struct_tag) // 2
                     elem_size = 2
                     if getattr(decl, 'init_list', None):
                         if len(decl.init_list) > count:
@@ -3808,34 +3942,31 @@ class CodeGenerator:
             self.free_register()
 
     def _generate_struct_assignment(self, lhs_name: str, rhs_name: str, tag: str):
-        """Generate field-by-field copy for struct/union assignment: lhs = rhs.
+        """Generate a word-by-word copy for struct/union assignment: lhs = rhs.
 
-        Each field is one 16-bit word slot. For structs, field i lives at
-        byte offset i*2; for unions, all fields share byte offset 0 (so a
-        union assignment is effectively a single-word copy of the active
-        field, but we copy all declared fields for correctness).
+        Each scalar field occupies one 16-bit word slot; a nested-aggregate
+        field occupies as many consecutive words as its inner layout needs.
+        The copy therefore walks every word of the *total* footprint (see
+        ``_struct_size``) rather than only the top-level field names, so the
+        second and later words of a nested child are not dropped.
+
+        For unions all fields share byte offset 0, so ``_struct_size`` yields
+        a single word and the copy degenerates to one word transfer.
         """
-        is_union = self._is_union_type(tag)
-        if is_union:
-            fields = self.union_defs.get(tag, [])
-        else:
-            fields = self.struct_defs.get(tag, [])
-        if not fields:
-            return
-        field_names = [f[0] if isinstance(f, tuple) else f for f in fields]
+        # Copy every word of the struct/union footprint, not just the
+        # top-level field names.  A nested aggregate field spans multiple
+        # consecutive word slots (e.g. a 2-field nested struct occupies 2
+        # words), so iterating top-level fields alone would copy only the
+        # first word of each nested child and silently drop the rest.
+        total_words = self._struct_size(tag) // 2
         self.emit_comment(f"Struct/union assignment: {lhs_name} = {rhs_name} ({tag})")
-        for fname in field_names:
-            if is_union:
-                src_off = 0
-                dst_off = 0
-            else:
-                src_off = self._struct_field_offset(tag, fname)
-                dst_off = self._struct_field_offset(tag, fname)
-            # Load field from RHS
+        for word_idx in range(total_words):
+            offset = word_idx * 2
+            # For unions all fields share offset 0, so a single word copy
+            # suffices (total_words == 1 for unions by _struct_size).
             src_reg = self.get_register()
-            self._emit_member_field_load(src_reg, rhs_name, src_off)
-            # Store field to LHS
-            self._emit_member_field_store(lhs_name, dst_off, src_reg)
+            self._emit_member_field_load(src_reg, rhs_name, offset)
+            self._emit_member_field_store(lhs_name, offset, src_reg)
 
     def _emit_member_field_load(self, reg: str, var_name: str, offset: int):
         """Load a struct/union field (at byte offset from the variable's

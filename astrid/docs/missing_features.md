@@ -14,6 +14,13 @@
 >   for 3-D, missing dimensions and 2-D access on 1-D arrays. Documented in
 >   `astrid.md` → *Two-dimensional arrays*. Tests:
 >   `tests/astrid/test_astrid_2d_arrays.py`.
+> * **Item 3 (nested struct/union fields) — IMPLEMENTED.** Nested aggregate
+>   fields in struct/union definitions (including typedef-aliased field
+>   types), deep member chains (`a.b.c`, `arr[i].inner.x`, `p->inner.x`),
+>   footprint-accumulating layout, whole-struct copy of every nested word,
+>   and full-size reservation for nested globals. Documented in `astrid.md`
+>   → *Nested struct and union members*. Tests:
+>   `tests/astrid/test_astrid_nested_structs.py`.
 >
 > The items below are still open, in the recommended order.
 
@@ -23,7 +30,7 @@ __1. Function pointers / indirect calls__ — ✅ **DONE** (see status above). `
 
 __2. Multi-dimensional arrays__ — ✅ **DONE** (see status above). `VarDecl` previously supported exactly one `array_size`. On a game-console language this was the most *felt* gap — every 2D tilemap had to be written as flat `grid[y*8+x]`. Implemented as row-major flat storage with compile-time desugaring of `a[i][j]` to `a[i*COLS+j]`.
 
-__3. Nested struct/union fields__ ✗ *verified: `Unsupported struct field type 'struct' in struct 'Outer'`; enum-typed fields also rejected (there's a skipped test acknowledging it)* Struct fields can only be scalars/arrays/pointers today. `impl` blocks make struct-rich code idiomatic, so composable structs (`struct Body { struct Vec2 pos; struct Vec2 vel; };`) are a natural expectation. Note `union` fields would inherit the fix. Moderate effort — mostly layout logic in `parse_struct_definition` + member-address computation recursion.
+__3. Nested struct/union fields__ — ✅ **DONE** (see status above). Struct/union fields may now themselves be structs or unions (`struct Rect { struct Point topLeft; };`), including typedef-aliased field types, and member access chains to any depth (`a.b.c`, run-time-indexed `arr[i].inner.x`, pointer receivers `p->inner.x`). Layout accumulates each field's real footprint (a nested aggregate spans several words), whole-struct assignment copies every word of the footprint, and nested globals reserve their full byte size. Documented in `astrid.md` → *Nested struct and union members*. Tests: `tests/astrid/test_astrid_nested_structs.py`.
 
 __4. Struct parameters by value (and struct returns)__ ✗ *verified: explicit compiler error `Struct parameters are not supported by value; pass a pointer...`* The docs are honest about this ("Astrid has no by-value struct parameters"). Whole-struct *assignment* works, so a by-value parameter is implementable by copying the arg block into the callee frame at prologue (or hidden-pointer convention like small-C). Struct returns need a hidden sret pointer. Lower urgency than 1–3 (pointer-passing is idiomatic and cheaper on a 16-bit part), but it's a documented C-parity hole.
 
