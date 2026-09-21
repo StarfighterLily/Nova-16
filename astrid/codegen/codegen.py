@@ -2995,6 +2995,12 @@ class CodeGenerator:
                     # 2-D layout bookkeeping (a[i][j] -> a[i*cols + j]).
                     ginfo['rows'], ginfo['cols'] = dims2d
                 self.global_vars[decl.name] = ginfo
+                # Scalar struct/union globals are laid out like N-word arrays
+                # (is_array=True) so bare-name loads decay to the base address,
+                # but they still participate in whole-struct assignment and
+                # by-value return destinations -- register the tag.
+                if is_struct_scalar and struct_tag:
+                    self.struct_tag_vars[decl.name] = struct_tag
                 if placement_value is None:
                     next_addr += total_size
             else:
@@ -3335,13 +3341,22 @@ class CodeGenerator:
 
         ``param_kinds`` lets a call site size each argument slot correctly:
         a by-value aggregate parameter consumes several argument words while
-        every scalar parameter consumes exactly one.
+        every scalar parameter consumes exactly one.  When the function
+        returns a struct/union by value, a hidden sret pointer is prepended
+        as the first argument slot (the caller pushes the destination
+        address last, so it lands at FP+4).
         """
+        kinds = [self._param_kind(p) for p in func_def.params]
+        ret_tag = getattr(func_def, 'return_struct_tag', None) or None
+        if ret_tag:
+            # Hidden destination pointer: one word, first in the frame.
+            kinds = [{'sret': True, 'words': 1}] + kinds
         return {
             'label': label,
             'params': len(func_def.params),
             'return_type': func_def.return_type,
-            'param_kinds': [self._param_kind(p) for p in func_def.params],
+            'return_struct_tag': ret_tag,
+            'param_kinds': kinds,
         }
 
     def _param_byval_struct_tag(self, param) -> Optional[str]:
@@ -3483,6 +3498,9 @@ class CodeGenerator:
         self.array_vars = {}  # per-function local array scope
         self.pointer_vars = set()   # per-function pointer-declared locals/params
         self.address_params = set()  # per-function array/pointer parameters
+        # By-value aggregate return: hidden sret pointer lives at FP+4.
+        self._current_sret_tag = getattr(func_def, 'return_struct_tag', None)
+        self._pending_sret_dest = None
         
         self.assembly.append(f"; Function: {func_def.name}")
         self.assembly.append(f"{label}:")
@@ -3527,12 +3545,22 @@ class CodeGenerator:
                 if getattr(param, 'is_array_param', False):
                     self.address_params.add(param.name)
                     # Register layout info so arr[i] indexing works on the
-                    # parameter (offset filled in once known below).
-                    self.array_vars[param.name] = {
+                    # parameter (offset filled in once known below).  A
+                    # `struct Tag arr[]` parameter also carries the element
+                    # tag so `return arr[i]` can resolve as a by-value
+                    # aggregate of that tag.
+                    info = {
                         'elem_type': param.var_type, 'count': 0,
                         'elem_size': self._elem_size(param.var_type),
                         'offset': None, 'is_param': True,
                     }
+                    ptag = getattr(param, 'struct_tag', None)
+                    if ptag:
+                        info['tag'] = ptag
+                        info['elem_type'] = 'struct'
+                        info['elem_size'] = 2
+                        info['stride'] = self._struct_size(ptag)
+                    self.array_vars[param.name] = info
             else:
                 param_size += 2 if param.var_type in ('int', 'signed_int', 'unsigned_int', 'string', 'binary', 'float') else 1
         
@@ -3586,7 +3614,13 @@ class CodeGenerator:
 
         # Param offsets: after ENTER pushes FP (2 bytes) and CALL pushes ret addr (2 bytes),
         # params are at positive offsets from FP starting at +4.
+        # A by-value aggregate return prepends a hidden sret pointer at FP+4
+        # so the callee can write the result into the caller's destination.
         param_offset = 4
+        if self._current_sret_tag:
+            self.local_vars['__sret'] = {'offset': param_offset}
+            self.pointer_vars.add('__sret')
+            param_offset += 2
         for param in func_def.params:
             param_entry = {'offset': param_offset}
             if getattr(param, 'is_fn_ptr', False):
@@ -3893,6 +3927,35 @@ class CodeGenerator:
             return
         if var_decl.value:
             self.emit_comment(f"var {var_decl.name} = ...")
+            # struct Point p = make(1, 2); -- call writes through sret into p.
+            if (isinstance(var_decl.value, (FuncCall, MethodCall))
+                    and var_decl.name in self.struct_tag_vars):
+                lhs_tag = self.struct_tag_vars[var_decl.name]
+                call = var_decl.value
+                if isinstance(call, FuncCall) and isinstance(call.callee, str):
+                    entry = self.functions.get(call.name)
+                    ret_tag = entry.get('return_struct_tag') if entry else None
+                    if ret_tag and ret_tag == lhs_tag:
+                        self._pending_sret_dest = var_decl.name
+                        try:
+                            reg = self.generate_call(call)
+                            self.free_register()
+                        finally:
+                            self._pending_sret_dest = None
+                        return
+                if isinstance(call, MethodCall):
+                    member = call.base
+                    rtag = self._receiver_struct_tag(member.base)
+                    info = self.functions.get(f'{rtag}::{member.field}') if rtag else None
+                    ret_tag = info.get('return_struct_tag') if info else None
+                    if ret_tag and ret_tag == lhs_tag:
+                        self._pending_sret_dest = var_decl.name
+                        try:
+                            reg = self.generate_method_call(call)
+                            self.free_register()
+                        finally:
+                            self._pending_sret_dest = None
+                        return
             reg = self.generate_expression(var_decl.value)
             # Implicit int -> float promotion when initializing a float var
             # with an integer expression (e.g. `float f = 5;`).
@@ -3914,6 +3977,52 @@ class CodeGenerator:
             if lhs_tag == rhs_tag:
                 self._generate_struct_assignment(assignment.name, assignment.value.name, lhs_tag)
                 return
+        # By-value aggregate return used as RHS of a struct assignment:
+        #   struct Point p; p = make(1, 2);
+        # The call writes directly into p through the hidden sret pointer.
+        if (isinstance(assignment.value, FuncCall)
+                and assignment.name in self.struct_tag_vars):
+            lhs_tag = self.struct_tag_vars[assignment.name]
+            call = assignment.value
+            entry = self.functions.get(call.name) if isinstance(call.callee, str) else None
+            ret_tag = entry.get('return_struct_tag') if entry else None
+            if ret_tag and ret_tag == lhs_tag:
+                self._pending_sret_dest = assignment.name
+                try:
+                    # generate_call performs the call (and the sret write);
+                    # discard the returned destination address.
+                    reg = self.generate_call(call)
+                    self.free_register()
+                finally:
+                    self._pending_sret_dest = None
+                return
+            if ret_tag and ret_tag != lhs_tag:
+                raise TypeError(
+                    f"cannot assign return of '{ret_tag}' to '{lhs_tag}' "
+                    f"variable '{assignment.name}'")
+        # Method returning a struct assigned to a struct variable:
+        #   p = q.make();
+        if (isinstance(assignment.value, MethodCall)
+                and assignment.name in self.struct_tag_vars):
+            lhs_tag = self.struct_tag_vars[assignment.name]
+            call = assignment.value
+            # Resolve method signature the same way generate_method_call does.
+            member = call.base
+            tag = self._receiver_struct_tag(member.base)
+            info = self.functions.get(f'{tag}::{member.field}') if tag else None
+            ret_tag = info.get('return_struct_tag') if info else None
+            if ret_tag and ret_tag == lhs_tag:
+                self._pending_sret_dest = assignment.name
+                try:
+                    reg = self.generate_method_call(call)
+                    self.free_register()
+                finally:
+                    self._pending_sret_dest = None
+                return
+            if ret_tag and ret_tag != lhs_tag:
+                raise TypeError(
+                    f"cannot assign return of '{ret_tag}' to '{lhs_tag}' "
+                    f"variable '{assignment.name}'")
         # Check for compound assignment pattern: x = x <op> rhs
         # The parser decomposes x += y into Assignment('x', BinaryOp(Identifier('x'), '+', y)).
         # NOTE: the ExpressionSimplifier may canonicalize commutative ops
@@ -4721,18 +4830,68 @@ class CodeGenerator:
     def generate_return(self, return_stmt: Return):
         self.emit_comment("Function return")
         if return_stmt.value:
-            reg = self.generate_expression(return_stmt.value)
-            # Astrid 'int' is 16-bit, but R0 is an 8-bit register. Returning
-            # only via R0 truncates values > 255 (e.g. 1234 -> 210). Place the
-            # full 16-bit result in P0 (the canonical 16-bit return register)
-            # and the low byte in R0 for byte-level callers / compatibility.
-            self.emit(f"    MOV P0, {reg}")
-            self.emit(f"    MOV R0, {reg}")
-            self.free_register()
+            ret_tag = self._current_sret_tag
+            if ret_tag:
+                # By-value aggregate return: copy the returned value through
+                # the hidden sret pointer the caller pushed as the first arg.
+                # P0 still receives the destination address so a discarded
+                # call result (or a chained pass) can locate the written block.
+                self._emit_sret_return(return_stmt.value, ret_tag)
+            else:
+                reg = self.generate_expression(return_stmt.value)
+                # Astrid 'int' is 16-bit, but R0 is an 8-bit register. Returning
+                # only via R0 truncates values > 255 (e.g. 1234 -> 210). Place the
+                # full 16-bit result in P0 (the canonical 16-bit return register)
+                # and the low byte in R0 for byte-level callers / compatibility.
+                self.emit(f"    MOV P0, {reg}")
+                self.emit(f"    MOV R0, {reg}")
+                self.free_register()
         self.emit("    MOV SP, FP")
         self.emit("    POP FP")
         self.emit("    RET")
         self._emitted_return = True
+
+    def _emit_sret_return(self, value_expr, tag: str):
+        """Copy a by-value aggregate return into the caller's sret destination.
+
+        The callee loads the hidden destination pointer from FP+4, walks every
+        word of the returned aggregate (variable, nested member, array element,
+        or by-value parameter), stores each word through the destination, and
+        leaves the destination address in P0 for the caller.
+        """
+        words = self._struct_size(tag) // 2
+        # Resolve source address of the returned aggregate.
+        src_reg = self.get_register()
+        src_tag = self._aggregate_expr_tag(value_expr)
+        if src_tag is None:
+            raise TypeError(
+                f"cannot return this expression by value as struct/union "
+                f"'{tag}'; return a named aggregate (variable, member, or "
+                f"array element)")
+        if src_tag != tag:
+            raise TypeError(
+                f"return value has type '{src_tag}' but function returns "
+                f"'{tag}'")
+        self._emit_aggregate_value_addr(value_expr, src_reg, tag)
+        # Load the hidden sret destination pointer (FP+4).
+        dst_reg = self.get_register(exclude={src_reg})
+        self.emit(f"    MOV {dst_reg}, [FP+4] ; sret destination")
+        # Word-by-word copy: src -> dest.
+        tmp = self.get_register(exclude={src_reg, dst_reg})
+        for k in range(words):
+            off = k * 2
+            src_op = f"[{src_reg}]" if off == 0 else f"[{src_reg}+{off}]"
+            dst_op = f"[{dst_reg}]" if off == 0 else f"[{dst_reg}+{off}]"
+            self.emit(f"    MOV {tmp}, {src_op}")
+            self.emit(f"    MOV {dst_op}, {tmp}")
+        # Leave destination address in P0 (and low byte in R0) so the caller
+        # can locate the written block if it needs to (e.g. discarded call,
+        # or chaining into another by-value parameter push).
+        self.emit(f"    MOV P0, {dst_reg}")
+        self.emit(f"    MOV R0, {dst_reg}")
+        self.free_register()  # tmp
+        self.free_register()  # dst
+        self.free_register()  # src
 
 
     def generate_if(self, if_stmt: If):
@@ -6425,6 +6584,57 @@ class CodeGenerator:
         self.free_register()
         return words
 
+    def _emit_push_sret_dest(self, tag: Optional[str]) -> int:
+        """Push the hidden destination pointer for a by-value aggregate return.
+
+        When the call is the RHS of a struct assignment (``p = make(...)``),
+        ``_pending_sret_dest`` names the LHS variable and we push its address
+        so the callee writes straight into it.  Otherwise a temporary is
+        allocated in the caller's frame (or a scratch buffer is used) and its
+        address is pushed; the call result then lives there for the rest of
+        the expression (P0 holds the same address after RET).
+
+        Returns 1 (one word pushed).
+        """
+        dest_reg = self.get_register()
+        dest_name = getattr(self, '_pending_sret_dest', None)
+        if dest_name:
+            # Assignment destination: push &dest so the callee fills it.
+            self.emit_comment(f"sret dest := &{dest_name}")
+            # Reuse address-of logic for locals/globals/by-value params.
+            fake = AddressOf(Identifier(dest_name))
+            # generate_address_of allocates its own register; copy into dest_reg
+            # and free the temporary so register pressure stays bounded.
+            addr = self.generate_address_of(fake)
+            if addr != dest_reg:
+                self.emit(f"    MOV {dest_reg}, {addr}")
+                self.free_register()  # free addr
+        else:
+            # Standalone / nested call: allocate a scratch slot large enough
+            # for the returned aggregate and pass its address.  The scratch
+            # lives in a fixed high-memory buffer so nested returns of the
+            # same size share storage (last-writer-wins, matching C temporary
+            # lifetime for discarded results).
+            words = self._struct_size(tag) // 2 if tag else 1
+            scratch = self._sret_scratch_addr(words)
+            self.emit_comment(f"sret scratch @ 0x{scratch:04X} ({words} words)")
+            self.emit(f"    MOV {dest_reg}, 0x{scratch:04X}")
+        self.emit(f"    PUSH {dest_reg} ; sret destination")
+        self.free_register()
+        return 1
+
+    def _sret_scratch_addr(self, words: int) -> int:
+        """Fixed scratch buffer for discarded / temporary aggregate returns.
+
+        Placed just below the ITOS conversion buffer so it does not collide
+        with code, globals, or the descending stack.  Nested returns of the
+        same (or smaller) size reuse the buffer; larger returns extend it.
+        """
+        # itos_buffer is typically 0xA000; park sret temps at 0x9F00 so a
+        # 128-word (256-byte) aggregate still fits below ITOS.
+        base = getattr(self, 'itos_buffer', 0xA000) - 0x100
+        return base
+
     def generate_call(self, call: FuncCall) -> str:
         self.emit_comment(f"Call to {call.name}")
 
@@ -6512,15 +6722,25 @@ class CodeGenerator:
         # Argument-slot sizes come from the callee's signature.  A by-value
         # struct/union parameter consumes several argument words, and the
         # caller-cleanup must pop exactly the number of words it pushed.
+        # When the callee returns a struct/union by value, param_kinds[0]
+        # is the hidden sret pointer; source args map to the remaining
+        # slots and the sret destination is pushed last (so it lands at
+        # FP+4 for the callee).
         param_kinds = []
+        entry = None
+        ret_struct_tag = None
         if isinstance(call.callee, str):
             entry = self.functions.get(call.name)
             if entry:
-                param_kinds = entry.get('param_kinds') or []
+                param_kinds = list(entry.get('param_kinds') or [])
+                ret_struct_tag = entry.get('return_struct_tag')
+        has_sret = bool(param_kinds and param_kinds[0].get('sret'))
+        # Source-argument kinds: strip the leading sret slot if present.
+        src_kinds = param_kinds[1:] if has_sret else param_kinds
         total_arg_words = 0
         for idx in range(len(call.args) - 1, -1, -1):
             arg = call.args[idx]
-            kind = param_kinds[idx] if idx < len(param_kinds) else {}
+            kind = src_kinds[idx] if idx < len(src_kinds) else {}
             byval_tag = kind.get('byval_struct')
             if byval_tag:
                 total_arg_words += self._emit_push_struct_arg(arg, byval_tag)
@@ -6529,6 +6749,10 @@ class CodeGenerator:
                 self.emit(f"    PUSH {arg_reg}")
                 self.free_register()
                 total_arg_words += 1
+        # Hidden sret destination: push the address of the caller's result
+        # storage last so it sits at the lowest argument address (FP+4).
+        if has_sret:
+            total_arg_words += self._emit_push_sret_dest(ret_struct_tag)
         
         if isinstance(call.callee, str):
             if call.name in self.functions:
@@ -6550,11 +6774,11 @@ class CodeGenerator:
                 self._emit_var_load(target_reg, call.name)
                 self.emit(f"    CALL {target_reg}")
                 self.free_register()
-                if call.args:
+                if total_arg_words:
                     # Indirect callees follow the user-function (cdecl-style)
                     # convention: the callee leaves pushed args on the stack
                     # and the caller deallocates them (one word per argument
-                    # word -- by-value aggregates span several).
+                    # word -- by-value aggregates span several; sret adds one).
                     self.emit(f"    ADD SP, {total_arg_words * 2} ; Caller cleans up args")
                 result_reg = self.get_register()
                 self.emit(f"    MOV {result_reg}, P0")
@@ -6564,7 +6788,7 @@ class CodeGenerator:
                 self.used_builtins.add(label)
             
             self.emit(f"    CALL {label}")
-            if call.name in self.functions and call.args:
+            if call.name in self.functions and total_arg_words:
                 # User-function callees end with MOV SP, FP / POP FP / RET,
                 # which restores SP to the frame base and LEAVES the
                 # caller-pushed arguments on the stack. Deallocate them here
@@ -6573,7 +6797,8 @@ class CodeGenerator:
                 # Without this, loops that call functions with arguments leak
                 # stack bytes every iteration until SP walks down through low
                 # memory, wraps, and corrupts the running program.  A by-value
-                # aggregate argument occupies one word per struct word.
+                # aggregate argument occupies one word per struct word; an
+                # sret destination pointer adds one more.
                 self.emit(f"    ADD SP, {total_arg_words * 2} ; Caller cleans up args")
             elif call.args:
                 # Builtin stubs pop their own arguments off the stack.
@@ -6600,7 +6825,7 @@ class CodeGenerator:
                 target_reg = self.generate_expression(callee)
                 self.emit(f"    CALL {target_reg}")
                 self.free_register()
-            if call.args:
+            if total_arg_words:
                 # Indirect callees follow the user-function convention: the
                 # caller owns the pushed argument words.
                 self.emit(f"    ADD SP, {total_arg_words * 2} ; Caller cleans up args")
@@ -6743,11 +6968,15 @@ class CodeGenerator:
         # top ends up as the LAST argument (the callee reads params at
         # ascending FP offsets, so the first parameter -- `self` -- must be
         # pushed last, right before the CALL).  Argument-slot sizes come from
-        # the method signature: `self` occupies param_kinds[0] (supplied
-        # implicitly by the receiver push below), so explicit argument `i`
-        # maps to param_kinds[i + 1] and a by-value aggregate argument
-        # consumes several words.
-        param_kinds = (info.get('param_kinds') or [])[1:]
+        # the method signature.  When the method returns a struct/union by
+        # value, param_kinds[0] is the hidden sret pointer, param_kinds[1]
+        # is `self`, and explicit argument `i` maps to param_kinds[i + 2].
+        all_kinds = list(info.get('param_kinds') or [])
+        has_sret = bool(all_kinds and all_kinds[0].get('sret'))
+        # Skip sret (if any) and the implicit self slot to get explicit-arg kinds.
+        skip = 2 if has_sret else 1
+        param_kinds = all_kinds[skip:]
+        ret_struct_tag = info.get('return_struct_tag')
         total_arg_words = 0
         for idx in range(len(call.args) - 1, -1, -1):
             arg = call.args[idx]
@@ -6766,12 +6995,17 @@ class CodeGenerator:
         self._emit_receiver_addr(receiver_expr, recv_reg)
         self.emit(f"    PUSH {recv_reg} ; Receiver := self")
         self.free_register()
+        total_arg_words += 1
+
+        # Hidden sret destination last so it lands at FP+4.
+        if has_sret:
+            total_arg_words += self._emit_push_sret_dest(ret_struct_tag)
 
         self.emit(f"    CALL {info['label']}")
         # User-function callees restore SP to the frame base, leaving the
         # caller-pushed arguments on the stack; deallocate all of them
-        # (receiver + explicit argument words), cdecl-style.
-        self.emit(f"    ADD SP, {(total_arg_words + 1) * 2} ; Caller cleans up args + receiver")
+        # (receiver + explicit argument words [+ sret]), cdecl-style.
+        self.emit(f"    ADD SP, {total_arg_words * 2} ; Caller cleans up args + receiver")
 
         result_reg = self.get_register()
         self.emit(f"    MOV {result_reg}, P0")

@@ -21,6 +21,7 @@ A C language for the Nova-16, built from the ground up.
 17. [Two-dimensional arrays](#two-dimensional-arrays)
 18. [Nested struct and union members](#nested-struct-and-union-members)
 19. [By-value struct and union parameters](#by-value-struct-and-union-parameters)
+20. [By-value struct and union returns](#by-value-struct-and-union-returns)
 
 ---
 
@@ -990,13 +991,89 @@ impl Point {
 
 ### Restrictions
 
-* **Struct / union returns are not supported.** Returning an aggregate still
-  requires an out-parameter (`void fill(struct Point *out)`). By-value
-  parameters only cover the *argument* direction.
 * The parameter type must be a **complete** struct or union defined earlier
   in the translation unit (same rule as by-value nested fields).
 * Temporary aggregates from function calls cannot be passed by value yet --
-  store the result in a variable first.
+  store the result in a variable first (or assign the call into a local and
+  pass that; see [By-value struct and union returns](#by-value-struct-and-union-returns)).
 * Indirect calls through a function pointer still clean up one word per
   source argument (they cannot see the callee's multi-word signature), so
   do not pass by-value aggregates through an indirect call site.
+
+## By-value struct and union returns
+
+A function may return a struct or union **by value**:
+
+```c
+struct Point { int x; int y; };
+
+struct Point make(int x, int y) {
+    struct Point p;
+    p.x = x;
+    p.y = y;
+    return p;                   // copies p through a hidden destination pointer
+}
+
+int main() {
+    struct Point a;
+    a = make(10, 20);           // make writes straight into a
+    struct Point b = make(1, 2); // same for initializers
+    return a.x + a.y;
+}
+```
+
+### Hidden sret convention
+
+Because Nova-16 has no multi-register return path large enough for an
+arbitrary aggregate, the compiler lowers a by-value return to a **hidden
+first parameter**: a pointer to the caller's destination storage.
+
+1. **Caller** evaluates the ordinary arguments (pushed reverse-order, as
+   usual), then pushes the destination address last so it lands at `FP+4`.
+2. **Callee** copies every word of the returned aggregate through that
+   pointer and leaves the destination address in `P0`.
+3. **Caller** cleans up all pushed words (including the sret slot) with
+   `ADD SP, N*2`.
+
+When the call is the RHS of a matching struct assignment or initializer
+(`p = make(...)`, `struct Point p = make(...)`), the destination is `&p`
+directly -- no intermediate buffer.  Discarded or nested call results use a
+fixed scratch buffer just below the ITOS conversion cell.
+
+### What can be returned
+
+Any expression that already denotes an aggregate of the declared tag:
+
+```c
+struct Point id(struct Point p) { return p; }          // by-value param
+struct Point br(struct Rect r)  { return r.br; }       // nested member
+struct Point pick(struct Point a[3], int i) { return a[i]; }  // array elem
+```
+
+Type mismatches (returning a different tag, or a scalar) are compile errors.
+
+### Methods
+
+`impl` methods may also return aggregates.  The sret pointer is the true
+first frame slot; `self` follows it:
+
+```c
+impl Point {
+    struct Point doubled(self) {
+        struct Point q;
+        q.x = self.x * 2;
+        q.y = self.y * 2;
+        return q;
+    }
+}
+```
+
+### Restrictions
+
+* The return type must be a **complete** struct or union defined earlier in
+  the translation unit.  Pointer returns (`struct Point *f()`) are ordinary
+  scalar address returns and do **not** use sret.
+* Returning a temporary from another struct-returning call
+  (`return make(1, 2);`) is not yet supported -- store it in a local first.
+* Indirect calls through a function pointer cannot see the callee's sret
+  slot; do not call a struct-returning function through a function pointer.

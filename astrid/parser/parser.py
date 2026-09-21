@@ -102,7 +102,8 @@ class Program(ASTNode):
 class FunctionDef(ASTNode):
     def __init__(self, return_type: str, name: str, params: List["VarDecl"],
                  body: List["ASTNode"], qualifiers: Optional[List[str]] = None,
-                 prototype: bool = False):
+                 prototype: bool = False,
+                 return_struct_tag: Optional[str] = None):
         self.return_type = return_type
         self.name = name
         self.params = params
@@ -118,6 +119,11 @@ class FunctionDef(ASTNode):
         # block. The code generator then namespaces the emitted label as
         # `func_TypeName_method` so two structs may share method names.
         self.impl_tag: Optional[str] = None
+        # When the function returns a struct/union by value, this names the
+        # complete tag.  The code generator uses a hidden sret pointer
+        # (first parameter) so the callee writes the result through the
+        # caller's destination address.  None for scalar/void returns.
+        self.return_struct_tag: Optional[str] = return_struct_tag
 
 class VarDecl(ASTNode):
     def __init__(self, var_type: str, name: str, value: Optional["ASTNode"],
@@ -773,9 +779,24 @@ class Parser:
                 continue
             # Union definitions: like struct, but all members share byte offset 0.
             #   union Tag { int i; char c; };
+            # Non-definition forms (globals, function returns) fall through to
+            # the detailed union handler further below.
             if self.current.type == 'KEYWORD' and self.current.value == 'union':
-                self.parse_union_definition()
-                continue
+                tag_peek = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
+                brace_peek = self.tokens[self.pos + 2] if self.pos + 2 < len(self.tokens) else None
+                if (tag_peek is not None and tag_peek.type == 'IDENTIFIER'
+                        and brace_peek is not None
+                        and brace_peek.type == 'DELIMITER'
+                        and brace_peek.value == '{'):
+                    for g in self.parse_union_definition():
+                        if any(e.name == g.name for e in globals_):
+                            raise self.error(
+                                f"Duplicate definition of global '{g.name}' "
+                                f"at top level")
+                        globals_.append(g)
+                    continue
+                # else: not a definition -- fall through to the union-return /
+                # union-global handler below (do not continue).
             # impl blocks attach methods to a struct/union type:
             #   impl TypeName { int method(self, ...) { ... } }
             if self.current.type == 'KEYWORD' and self.current.value == 'impl':
@@ -811,18 +832,28 @@ class Parser:
                                 f"at top level")
                         globals_.append(g)
                     continue
-                # Function returning a struct (`struct Point make()`) is not
-                # supported: the name would be followed by '('.
-                name_tok = after
-                call_tok = (self.tokens[self.pos + 3]
-                            if self.pos + 3 < len(self.tokens) else None)
+                # Function returning a struct by value OR a pointer to struct:
+                #   struct Point make(...) { ... }
+                #   struct Point *get(...) { ... }
+                # Skip optional '*' stars between the tag and the name.
+                j = self.pos + 2  # after 'struct' Tag
+                while (j < len(self.tokens) and self.tokens[j].type == 'OPERATOR'
+                       and self.tokens[j].value == '*'):
+                    j += 1
+                name_tok = self.tokens[j] if j < len(self.tokens) else None
+                call_tok = self.tokens[j + 1] if j + 1 < len(self.tokens) else None
                 if (name_tok is not None and name_tok.type == 'IDENTIFIER'
                         and call_tok is not None
                         and call_tok.type == 'DELIMITER'
                         and call_tok.value == '('):
-                    raise self.error(
-                        f"Returning structs from functions is not supported "
-                        f"(line {self.current.line})")
+                    func = self.parse_function()
+                    if func is not None:
+                        if any(e.name == func.name for e in functions):
+                            raise self.error(
+                                f"Duplicate definition of function "
+                                f"'{func.name}' at top level")
+                        functions.append(func)
+                    continue
                 new_globals = self.parse_var_decl(struct_tag=tag_tok.value)
                 for g in new_globals:
                     if any(e.name == g.name for e in globals_):
@@ -831,8 +862,10 @@ class Parser:
                             f"at top level")
                     globals_.append(g)
                 continue
-            # Top-level union-typed global variables:
+            # Top-level union-typed global variables OR functions returning
+            # a union by value:
             #   union Tag u;  union Tag us[4];
+            #   union Tag make(...);
             if self.current.type == 'KEYWORD' and self.current.value == 'union':
                 tag_tok = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
                 if tag_tok is None or tag_tok.type != 'IDENTIFIER':
@@ -850,6 +883,26 @@ class Parser:
                                 f"Duplicate definition of global '{g.name}' "
                                 f"at top level")
                         globals_.append(g)
+                    continue
+                # Function returning a union by value OR a pointer to union.
+                # Skip optional '*' stars between the tag and the name.
+                j = self.pos + 2
+                while (j < len(self.tokens) and self.tokens[j].type == 'OPERATOR'
+                       and self.tokens[j].value == '*'):
+                    j += 1
+                name_tok = self.tokens[j] if j < len(self.tokens) else None
+                call_tok = self.tokens[j + 1] if j + 1 < len(self.tokens) else None
+                if (name_tok is not None and name_tok.type == 'IDENTIFIER'
+                        and call_tok is not None
+                        and call_tok.type == 'DELIMITER'
+                        and call_tok.value == '('):
+                    func = self.parse_function()
+                    if func is not None:
+                        if any(e.name == func.name for e in functions):
+                            raise self.error(
+                                f"Duplicate definition of function "
+                                f"'{func.name}' at top level")
+                        functions.append(func)
                     continue
                 # Consume 'union' and the tag name, then parse declarators
                 self.advance()  # consume 'union'
@@ -1166,17 +1219,40 @@ class Parser:
         while not (self.current.type == 'DELIMITER' and self.current.value == '}'):
             # Parse the method header exactly like parse_function but with
             # the receiver requirement and no prototype declarations.
-            return_type = self.current.value
-            if self.current.type != 'KEYWORD':
-                raise self.error(
-                    f"impl {tag}: expected a method definition, got "
-                    f"{self.current.type} '{self.current.value}' "
-                    f"(line {self.current.line})")
-            self.expect('KEYWORD')
+            # Return type may be a scalar keyword or `struct Tag` /
+            # `union Tag` for a by-value aggregate return.
+            return_struct_tag = None
+            if (self.current.type == 'KEYWORD'
+                    and self.current.value in ('struct', 'union')):
+                kind = self.current.value
+                self.advance()
+                tag_tok = self.current
+                if tag_tok.type != 'IDENTIFIER':
+                    raise self.error(
+                        f"impl {tag}: expected a {kind} tag after '{kind}' "
+                        f"(line {tag_tok.line})")
+                return_struct_tag = tag_tok.value
+                self.advance()
+                defs = self.struct_defs if kind == 'struct' else self.union_defs
+                if return_struct_tag not in defs:
+                    raise self.error(
+                        f"Undefined {kind} '{return_struct_tag}' used as a "
+                        f"method return type (line {tag_tok.line})")
+                return_type = 'struct'
+            else:
+                return_type = self.current.value
+                if self.current.type != 'KEYWORD':
+                    raise self.error(
+                        f"impl {tag}: expected a method definition, got "
+                        f"{self.current.type} '{self.current.value}' "
+                        f"(line {self.current.line})")
+                self.expect('KEYWORD')
             pointer_depth = 0
             while self.current.type == 'OPERATOR' and self.current.value == '*':
                 pointer_depth += 1
                 self.advance()
+            if pointer_depth:
+                return_struct_tag = None
             name_tok = self.current
             name = self.current.value
             self.expect('IDENTIFIER')
@@ -1208,12 +1284,14 @@ class Parser:
             self.expect('DELIMITER', '{')
             body = self.parse_block()
             self.expect('DELIMITER', '}')
-            method = FunctionDef(return_type, name, params, body)
+            method = FunctionDef(return_type, name, params, body,
+                                 return_struct_tag=return_struct_tag)
             # Attach the method header position so codegen diagnostics can
             # point at the source line when generating the method fails.
             method.line = name_tok.line
             method.column = name_tok.column
             method.impl_tag = tag
+            method.return_pointer_depth = pointer_depth
             methods.append(method)
         self.expect('DELIMITER', '}')
         if not methods:
@@ -1497,13 +1575,42 @@ class Parser:
             self.advance()  # consume number
             self.expect('DELIMITER', ')')
         quals = self._drain_qualifiers()
-        return_type = self.current.value
-        self.expect('KEYWORD')
-        # Pointer-returning functions: `int *get_ptr() { ... }`
+        # Return type: scalar keyword, or `struct Tag` / `union Tag` for a
+        # by-value aggregate return (lowered via a hidden sret pointer).
+        return_struct_tag = None
+        if (self.current.type == 'KEYWORD'
+                and self.current.value in ('struct', 'union')):
+            kind = self.current.value
+            self.advance()  # consume 'struct' / 'union'
+            tag_tok = self.current
+            if tag_tok.type != 'IDENTIFIER':
+                raise self.error(
+                    f"Expected a {kind} tag name after '{kind}' in "
+                    f"function return type (line {tag_tok.line})")
+            return_struct_tag = tag_tok.value
+            self.advance()
+            # By-value aggregate return needs a complete type.
+            defs = self.struct_defs if kind == 'struct' else self.union_defs
+            if return_struct_tag not in defs:
+                raise self.error(
+                    f"Undefined {kind} '{return_struct_tag}' used as a "
+                    f"return type (line {tag_tok.line}); define the {kind} "
+                    f"first, or return a pointer ({kind} {return_struct_tag} *)")
+            return_type = 'struct'  # unions share the 'struct' return_type tag
+        else:
+            return_type = self.current.value
+            self.expect('KEYWORD')
+        # Pointer-returning functions: `int *get_ptr() { ... }` /
+        # `struct Point *get_p() { ... }` (pointer-to-struct returns keep
+        # return_struct_tag for pointee layout of ->field on the result).
         pointer_depth = 0
         while self.current.type == 'OPERATOR' and self.current.value == '*':
             pointer_depth += 1
             self.advance()
+        # A pointer return is NOT a by-value aggregate return: clear the
+        # sret marker so codegen treats it as a scalar address return.
+        if pointer_depth:
+            return_struct_tag = None
         name_tok = self.current
         name = self.current.value
         self.expect('IDENTIFIER')
@@ -1520,13 +1627,17 @@ class Parser:
         body = self.parse_block()
         self.expect('DELIMITER', '}')
         func = FunctionDef(return_type, name, params, body,
-                           qualifiers=quals if quals else None)
+                           qualifiers=quals if quals else None,
+                           return_struct_tag=return_struct_tag)
         # Attach the declaration position so codegen diagnostics can point
         # at the source line when generating the function fails.
         func.line = name_tok.line
         func.column = name_tok.column
         # Attach interrupt vector (None for non-interrupt functions).
         func.interrupt_vector = interrupt_vector
+        # Remember pointer depth on the return (used only for diagnostics /
+        # future pointee-aware callers; scalar codegen ignores it today).
+        func.return_pointer_depth = pointer_depth
         return func
 
     def parse_params(self) -> List["VarDecl"]:

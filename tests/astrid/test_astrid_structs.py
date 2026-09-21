@@ -13,9 +13,9 @@ Covers:
    - Pointers: &struct, &struct.member, ->member (local + global pointers).
    - Compound assignment on members, postfix/prefix ++/--, address-of.
    - sizeof(struct Tag) == sizeof(scalarVar) == fields*2.
-4. Error cases: unknown field, duplicate field, struct returns, excess
-   initializers. (By-value struct parameters are covered in
-   test_astrid_struct_byval.py.)
+4. Error cases: unknown field, duplicate field, excess initializers.
+   (By-value struct parameters are covered in test_astrid_struct_byval.py;
+   by-value struct returns are covered in test_astrid_struct_return.py.)
 5. Multi-file: include merges struct definitions; conflicting layouts are
    rejected; identical layouts tolerated.
 6. Graphics integration: struct fields driving set_pos/write_screen produce
@@ -689,15 +689,16 @@ def test_struct_parameter_by_value_accepted():
     print('PASS test_struct_parameter_by_value_accepted')
 
 
-def test_struct_return_rejected():
+def test_struct_return_accepted():
+    """By-value struct returns are now supported (see test_astrid_struct_return)."""
     src = chr(10).join([
         'struct P { int x; };',
-        'struct P make() { }',
+        'struct P make() { struct P p; return p; }',
         'void main() { }',
     ])
-    with pytest.raises(SyntaxError, match='Returning structs'):
-        parse_source(src)
-    print('PASS test_struct_return_rejected')
+    ast = parse_source(src)
+    assert ast.functions[0].return_struct_tag == 'P'
+    print('PASS test_struct_return_accepted')
 
 
 def test_excess_initializers_rejected():
