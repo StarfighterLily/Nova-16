@@ -158,3 +158,45 @@ the continuation at the bottom.
     segment = entry point; segments applied in ORG-address order via the
     `.org` sidecar, which is why the overlap was real)
   - `nova_mcp/handlers_astrid.py:8` (docstring updated to `ORG 0x1100`)
+
+## 2026-09-21 — Astrid-feature pass: space + ISR + NDF brackets
+
+- what was decided / discovered
+  - Dead RAM dominated the boot-slice binary: `task_stacks[4096]` (8 KB),
+    `shell_stack[512]` (1 KB), `ctx_words[352]`, `root_dir[16]`, and unused
+    metadata arrays had zero readers. Dropped from the default build.
+  - Full `task_create`/`task_yield`/`task_sleep` path gated behind
+    `NOVADOS_ENABLE_FULL_SCHEDULER` (default 0). Demo keeps using
+    `task_spawn`/`task_switch` builtins on its own ctx/stack.
+  - Naked `interrupt(0) timer_isr` with string-form asm + `{varname}` cuts the
+    19-register save/restore every tick. Block-form `asm { }` cannot host
+    `{var}` because braces are delimiters; use semicolon-separated string form.
+  - NDF geometry moved from `int` globals to enums (immediates). Multi-byte
+    helpers (`format`/`add`/`mounted`/`read16`/`write16`) hold one bank bracket
+    instead of N individual `set_bank` pairs.
+  - Measured (bank-safe): binary 22110 -> 11214 (-49%); globals 10850 -> 392
+    (-96%); code 11243 -> 10805. Tests: 37/37 NovaDOS + 3/3 NDF probes green.
+- exact commands run
+  - `py -3.13 astrid/astrid_compiler.py astrid/NovaDOS/src/kernel/kernel.ast -o astrid/NovaDOS/build/kernel.asm --memory-layout bank-safe`
+  - `py -3.13 nova_assembler.py astrid/NovaDOS/build/kernel.asm`
+  - `py -3.13 -m pytest astrid/NovaDOS/tests tests/astrid/test_ndf_probe.py -q`
+- links
+  - `astrid/NovaDOS/src/kernel/interrupts.ast`, `memmgr.ast`, `fs/ndf.ast`
+  - `astrid/NovaDOS/docs/plans/build-settings.md`
+
+## 2026-09-21 (follow-up) — naked ISR register clobber fixed
+
+- **Bug**: the naked timer ISR used P0 as scratch (`MOV P0/add/store`). Interrupt
+  entry saves only PC + flags (+ bank snapshot), so any tick landing while the
+  interrupted code had a live value in P0 (the ABI return/scratch register)
+  corrupted it. Symptom was timing-dependent: the diskless BYE path jumped into
+  the OS-signature bytes at 0x0001, which decode as KEYSTAT with an immediate
+  operand — surfacing as the misleading `Cannot write result to operand type:
+  immediate` crash.
+- **Fix**: ISR body is now `INC {system_ticks}; INC {pending_timer}` — memory-
+  operand word increments, zero register clobber. Verified `INC [abs]` performs
+  a correct word increment (0x00FF -> 0x0100); note `MOV [mem], small_imm`
+  byte-writes the HIGH byte (big-endian), so it is NOT a safe latch primitive
+  for word globals.
+- **Result**: diskless BYE passes; suite 39 passed (NovaDOS) + 3 (NDF probes)
+  + 24 compiler naked/interrupt tier tests. Binary 12,010 bytes.

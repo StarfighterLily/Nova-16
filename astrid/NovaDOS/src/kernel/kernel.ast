@@ -39,7 +39,6 @@
 include "memmgr.ast";
 
 
-include "memmgr.ast";
 include "interrupts.ast";
 // NDF disk layer: bank-page access + volume/directory primitives. Requires the
 // bank-safe memory layout (see docs/notes/start.md).
@@ -56,7 +55,7 @@ int shell_col = 2;
 // Shell state (globals so tests can read them through the .sym table).
 int line_buf[24];       // chars typed on the current command line
 int line_len = 0;       // 0..24
-int shell_cmd = 0;      // last dispatched command: 0 none, 1 HELP, 2 CLS, 3 PEEK, 4 BYE, 5 DIR, 6 TYPE
+int shell_cmd = 0;      // 0 none, 1 HELP, 2 CLS, 3 PEEK, 4 BYE, 5 DIR, 6 TYPE, 7 MEM, 8 TIME
 int cmd_count = 0;      // total dispatched command lines
 int shell_exit = 0;     // set by BYE/ESC: main leaves the poll loop and halts
 
@@ -206,13 +205,15 @@ void shell_type() {
     int data_off;
     int byte_i;
     int c;
+    int want;
     bank = 1;
     if (ndf_mounted(bank) == 0) {
         shell_puts("no NDF volume in bank 1");
         return;
     }
     count = ndf_entry_count(bank);
-    // Name starts at line_buf[1] (after the 'T' command char).
+    // One bank open for the whole directory name scan (was 16 flips/slot).
+    set_bank(bank);
     slot = 0;
     match = 0;
     while (slot < count) {
@@ -220,13 +221,12 @@ void shell_type() {
         match = 1;
         while (name_i < 8) {
             if (name_i < line_len - 1) {
-                if (ndf_name_byte(bank, slot, name_i) != line_buf[name_i + 1]) {
-                    match = 0;
-                }
+                want = line_buf[name_i + 1];
             } else {
-                if (ndf_name_byte(bank, slot, name_i) != 0) {
-                    match = 0;
-                }
+                want = 0;
+            }
+            if (peek(ndf_window + ndf_entry_base + slot * ndf_entry_size + name_i) != want) {
+                match = 0;
             }
             name_i = name_i + 1;
         }
@@ -235,31 +235,62 @@ void shell_type() {
         }
         slot = slot + 1;
     }
+    set_bank(0);
     if (match == 0) {
         shell_puts("file not found");
         return;
     }
     file_size = ndf_entry_size(bank, slot);
-    data_off = ndf_data_base + slot * ndf_cluster;
+    data_off = ndf_entry_data(bank, slot);
     shell_puts("---");
+    // Hold bank for payload stream; shell_putc only touches graphics/cursor.
+    set_bank(bank);
     byte_i = 0;
     while (byte_i < file_size) {
-        c = ndf_read8(bank, data_off + byte_i);
+        c = peek(ndf_window + data_off + byte_i);
         shell_putc(c);
         byte_i = byte_i + 1;
     }
+    set_bank(0);
     shell_newline();
     shell_puts("---");
 }
 
 #endif
 
+// MEM: report kmalloc bump-allocator free bytes as 4 hex digits.
+void shell_mem() {
+    int freeb;
+    freeb = kmalloc_free();
+    shell_col = 2;
+    shell_goto(shell_col, shell_row);
+    write_text("MEM free=", 0x0F);
+    shell_col = 11;
+    shell_puthex((freeb >> 8) & 0xFF);
+    shell_puthex(freeb & 0xFF);
+    shell_newline();
+}
+
+// TIME: print system_ticks (ISR counter) as 4 hex digits.
+// First-char dispatch uses 'I' because 'T' is already TYPE.
+void shell_time() {
+    int t;
+    t = system_ticks;
+    shell_col = 2;
+    shell_goto(shell_col, shell_row);
+    write_text("TIME ", 0x0F);
+    shell_col = 7;
+    shell_puthex((t >> 8) & 0xFF);
+    shell_puthex(t & 0xFF);
+    shell_newline();
+}
+
 // HELP: only advertise commands compiled into this build.
 void shell_help() {
 #if NOVADOS_ENABLE_NDF
-    shell_puts("HELP PEEK CLS DIR TYPE BYE");
+    shell_puts("HELP PEEK CLS DIR TYPE MEM TIME BYE");
 #else
-    shell_puts("HELP PEEK CLS BYE");
+    shell_puts("HELP PEEK CLS MEM TIME BYE");
 #endif
 }
 
@@ -289,6 +320,12 @@ void shell_dispatch() {
     } else if (c == 66 || c == 98) {    // 'B' / 'b'
         shell_cmd = 4;
         shell_exit = 1;                 // graceful shutdown: main halts after the loop
+    } else if (c == 77 || c == 109) {   // 'M' / 'm'
+        shell_cmd = 7;
+        shell_mem();
+    } else if (c == 73 || c == 105) {   // 'I' / 'i'  (tIme -- T is TYPE)
+        shell_cmd = 8;
+        shell_time();
 #if NOVADOS_ENABLE_NDF
     } else if (c == 68 || c == 100) {   // 'D' / 'd'
         shell_cmd = 5;

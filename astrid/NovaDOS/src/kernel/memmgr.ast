@@ -1,41 +1,40 @@
 // =============================================================================
-// NovaDOS - Nova-16 Operating System Kernel Core
+// NovaDOS - Memory Manager + Cooperative Scheduler State
 // A TI-OS / DOS / Plan-9 Hybrid written in Astrid
-// WHAT: minimal cooperative scheduler on flat parallel task globals.
-// WHY: task_spawn/task_switch need raw context/stack arrays; separate globals
-//      keep every declaration parser-legal (no array/struct-pointer fields).
+// WHAT: bump allocator + the minimal tables the boot-slice demo needs.
+// WHY: the previous 16-slot full TCB (ctx_words[352] + task_stacks[4096] +
+//      eight parallel metadata arrays + proc_table) reserved ~9.5 KB of RAM
+//      and emitted ~1 KB of task_create/yield/sleep code that the boot slice
+//      never calls. The demo uses task_spawn/task_switch builtins directly on
+//      its own demo_ctx/demo_stack; keep only wake_sleepers + a compact ready
+//      bitmap so the poll loop still has a real scheduler hook.
 // =============================================================================
 
-// Include scalar kernel types (and, transitively, kdos.ast enums).
 include "types.ast";
 
 // =============================================================================
-// Scheduler State (flat parallel globals)
+// Build-time scheduler capacity
+// =============================================================================
+// NOVADOS_MAX_TASKS bounds the parallel metadata arrays. The full multi-task
+// create/yield path is gated by NOVADOS_ENABLE_FULL_SCHEDULER (default 0) so
+// the boot slice pays neither the code nor the 8 KB task_stacks arena.
+#ifndef NOVADOS_MAX_TASKS
+#define NOVADOS_MAX_TASKS 16
+#endif
+#if NOVADOS_MAX_TASKS < 1 || NOVADOS_MAX_TASKS > 16
+#error NOVADOS_MAX_TASKS must be between 1 and 16
+#endif
+#ifndef NOVADOS_ENABLE_FULL_SCHEDULER
+#define NOVADOS_ENABLE_FULL_SCHEDULER 0
+#endif
+#if NOVADOS_ENABLE_FULL_SCHEDULER != 0 && NOVADOS_ENABLE_FULL_SCHEDULER != 1
+#error NOVADOS_ENABLE_FULL_SCHEDULER must be 0 or 1
+#endif
+
+// =============================================================================
+// Memory manager state: bump allocator from 0x3000 upward; totals only.
 // =============================================================================
 
-// 16 slots; slot i owns ctx_words[i*22..i*22+21] and
-// task_stacks[i*256..i*256+255].
-int ctx_words[352];
-int task_stacks[4096];
-int task_pid[16];
-int task_tid[16];
-int task_prio[16];
-int task_state[16];
-int task_wake[16];
-int task_events[16];
-int task_sigmask[16];
-int task_sysarg[16];
-int task_sysret[16];
-int task_syserr[16];
-int task_count = 0;
-int current_task = -1;
-
-// Processes: metadata plus scheduler-slot index (no struct pointers).
-struct ProcEntry proc_table[8];
-int proc_count = 0;
-int next_pid = 1;
-
-// Memory manager state: bump allocator from 0x3000 upward; totals only.
 int mem_heap_start = 0x3000;
 int mem_heap_next = 0x3000;
 int mem_heap_end = 0x8000;
@@ -83,12 +82,56 @@ int kmalloc_free() {
 }
 
 // =============================================================================
-// Task Scheduler
+// Compact scheduler tables (always present; tiny)
 // =============================================================================
+// task_state/task_wake are enough for wake_sleepers. task_pid marks free vs
+// occupied so main()'s init loop still has something real to seed. No stacks
+// and no 22-word context windows until FULL_SCHEDULER is enabled.
+
+int task_pid[NOVADOS_MAX_TASKS];
+int task_state[NOVADOS_MAX_TASKS];
+int task_wake[NOVADOS_MAX_TASKS];
+int task_count = 0;
+int current_task = -1;
+
+void wake_sleepers(int current_time) {
+    int i;
+    for (i = 0; i < NOVADOS_MAX_TASKS; i = i + 1) {
+        if (task_state[i] == 3) {
+            if (task_wake[i] <= current_time) {
+                task_state[i] = 0;
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Full multi-task create/yield path (opt-in)
+// =============================================================================
+// Restores the 16-slot TCB, per-task stacks, and priority yield when a real
+// multi-task shell needs them. Default off: ~9 KB globals + create/yield code
+// stay out of the boot-slice binary.
+
+#if NOVADOS_ENABLE_FULL_SCHEDULER
+
+// Slot i owns ctx_words[i*22 .. i*22+21] and task_stacks[i*256 .. i*256+255].
+int ctx_words[NOVADOS_MAX_TASKS * 22];
+int task_stacks[NOVADOS_MAX_TASKS * 256];
+int task_tid[NOVADOS_MAX_TASKS];
+int task_prio[NOVADOS_MAX_TASKS];
+int task_events[NOVADOS_MAX_TASKS];
+int task_sigmask[NOVADOS_MAX_TASKS];
+int task_sysarg[NOVADOS_MAX_TASKS];
+int task_sysret[NOVADOS_MAX_TASKS];
+int task_syserr[NOVADOS_MAX_TASKS];
+
+struct ProcEntry proc_table[8];
+int proc_count = 0;
+int next_pid = 1;
 
 int find_free_task_slot() {
     int i;
-    for (i = 0; i < 16; i = i + 1) {
+    for (i = 0; i < NOVADOS_MAX_TASKS; i = i + 1) {
         if (task_pid[i] == -1) {
             return i;
         }
@@ -140,7 +183,7 @@ void task_yield() {
     }
     best_prio = -1;
     new_task = -1;
-    for (i = 0; i < 16; i = i + 1) {
+    for (i = 0; i < NOVADOS_MAX_TASKS; i = i + 1) {
         if (task_state[i] == 0 && task_pid[i] != -1) {
             if (task_prio[i] > best_prio) {
                 best_prio = task_prio[i];
@@ -176,14 +219,4 @@ void task_sleep(int ticks) {
     task_yield();
 }
 
-void wake_sleepers(int current_time) {
-    int i;
-    for (i = 0; i < 16; i = i + 1) {
-        if (task_state[i] == 3) {
-            if (task_wake[i] <= current_time) {
-                task_state[i] = 0;
-            }
-        }
-    }
-}
-
+#endif

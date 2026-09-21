@@ -407,6 +407,35 @@ def test_shell_type_missing_file(kernel_binary, command):
     _assert_shell_text(gfx, "file not found", 2, 5)
 
 
+
+@pytest.mark.integration
+@pytest.mark.graphics
+def test_shell_mem_command(kernel_binary):
+    """MEM prints free heap bytes and records shell_cmd = 7."""
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        kernel_binary, (ord("M"), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(kernel_binary)
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 7
+    assert mem.read_word(syms["gvar_cmd_count"]) == 1
+    _assert_shell_text(gfx, "MEM free=", 2, 5)
+
+
+@pytest.mark.integration
+@pytest.mark.graphics
+def test_shell_time_command(kernel_binary):
+    """TIME (first-char I) prints system_ticks and records shell_cmd = 8."""
+    proc, mem, gfx, kbd, cycles = boot_with_keys(
+        kernel_binary, (ord("I"), ENTER))
+    _assert_clean_halt(proc)
+    syms = _load_syms(kernel_binary)
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 8
+    assert mem.read_word(syms["gvar_cmd_count"]) == 1
+    ticks = mem.read_word(syms["gvar_system_ticks"])
+    assert ticks > 0
+    _assert_shell_text(gfx, "TIME ", 2, 5)
+
+
 # Build variants exercise the real CLI as well as the compiler API.
 @pytest.fixture(scope="module")
 def diskless_binary(tmp_path_factory):
@@ -449,7 +478,7 @@ def test_diskless_shell(diskless_binary, command, expected_id):
     assert 1 not in mem._bank_pages
     assert (gfx._compositor.layers[0] != 0).any()
     if command == "H":
-        _assert_shell_text(gfx, "HELP PEEK CLS BYE", 2, 5)
+        _assert_shell_text(gfx, "HELP PEEK CLS MEM TIME BYE", 2, 5)
     if command == "P":
         _assert_shell_text(gfx, "4E 44", 2, 5)
 

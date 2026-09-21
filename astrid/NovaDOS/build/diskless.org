@@ -2,5 +2,5 @@
 # Format: <start_address> <length> <binary_offset>
 0x1000 15 0
 0x0100 2 15
-0x1100 11601 17
-0x4200 392 11618
+0x1100 6760 17
+0x4200 392 6777
