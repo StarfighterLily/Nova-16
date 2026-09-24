@@ -2071,6 +2071,22 @@ class Parser:
                     if self.current.type == 'DELIMITER' and self.current.value == '[':
                         raise self.error(
                             "more than two array dimensions are not supported")
+            # Absolute-placement attribute: `int scb[16] @ 0xF000;`
+            # Pins a global at a fixed address (codegen emits it in its own
+            # ORG segment). Only valid on globals; codegen rejects it on
+            # locals. The address is a compile-time constant expression.
+            # It precedes the normal initializer, so initialized declarations
+            # use the unambiguous `int x @ addr = value;` grammar.
+            placement_addr = None
+            if self.current.type == 'OPERATOR' and self.current.value == '@':
+                self.advance()
+                # Stop before assignment precedence so the following '=' is
+                # handled as this declarator's initializer, not as part of
+                # the placement expression.
+                placement_addr = self.parse_binary_op(2)
+                if self.current.value not in ('=', ';', ','):
+                    raise self.error(
+                        "expected '=', ';' or ',' after global placement address")
             if self.current.value == '=':
                 self.advance()
                 if self.current.type == 'DELIMITER' and self.current.value == '{':
@@ -2101,14 +2117,6 @@ class Parser:
                         if array_size is None:
                             array_size = Number(str(len(init_list)))
                         value = None
-            # Absolute-placement attribute: `int scb[16] @ 0xF000;`
-            # Pins a global at a fixed address (codegen emits it in its own
-            # ORG segment). Only valid on globals; codegen rejects it on
-            # locals. The address is a compile-time constant expression.
-            placement_addr = None
-            if self.current.type == 'OPERATOR' and self.current.value == '@':
-                self.advance()
-                placement_addr = self.parse_binary_op(1)
             decl = VarDecl(var_type, name, value, array_size, init_list,
                            pointer_depth=pointer_depth,
                            struct_tag=struct_tag,
@@ -2410,7 +2418,8 @@ class Parser:
             self.expect('DELIMITER', ')')
             left = FuncCall(left, args)
         while True:
-            op = self.current.value
+            op_tok = self.current
+            op = op_tok.value
             op_prec = self.get_precedence(op)
             if self.current.type != 'OPERATOR' or op_prec < precedence:
                 break
@@ -2429,7 +2438,7 @@ class Parser:
                     if op in ['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=']:
                         base_op = op[:-1]  # Remove trailing '=': '+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>'
                         right = BinaryOp(Identifier(left.name), base_op, right)
-                    left = Assignment(left.name, right)
+                    left = self._loc(Assignment(left.name, right), op_tok)
                 elif isinstance(left, ArrayAccess):
                     # Array element assignment: arr[i] = v, with compound
                     # forms decomposed like scalars (arr[i] += v becomes
@@ -2442,14 +2451,14 @@ class Parser:
                         read_back = ArrayAccess(left.name, left.index,
                                                 getattr(left, 'index2', None))
                         right = BinaryOp(read_back, base_op, right)
-                    left = ArrayAssignment(left, right)
+                    left = self._loc(ArrayAssignment(left, right), op_tok)
                 elif isinstance(left, Deref):
                     # Assignment through a pointer: *p = v. Compound forms
                     # decompose the same way (*p += v becomes *p = *p + v).
                     if op in ['+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=']:
                         base_op = op[:-1]
                         right = BinaryOp(Deref(left.operand), base_op, right)
-                    left = DerefAssignment(left, right)
+                    left = self._loc(DerefAssignment(left, right), op_tok)
                 elif isinstance(left, MemberAccess):
                     # Struct member assignment: p.x = v. Compound forms
                     # decompose like scalars/arrays (p.x += v becomes
@@ -2460,7 +2469,7 @@ class Parser:
                         right = BinaryOp(
                             MemberAccess(left.base, left.field, left.arrow),
                             base_op, right)
-                    left = MemberAssignment(left, right)
+                    left = self._loc(MemberAssignment(left, right), op_tok)
                 else:
                     raise self.error("Invalid assignment target")
             else:
@@ -2480,22 +2489,34 @@ class Parser:
 
         return left
 
+    def _loc(self, node, tok):
+        """Attach a source position to an AST node.
+
+        Assignment/increment nodes have no position of their own -- the
+        operator token does. Codegen's const-violation diagnostics
+        underline this spot in the rendered source snippet.
+        """
+        node.line = tok.line
+        node.column = tok.column
+        return node
+
     def parse_unary(self):
         # Prefix increment/decrement: ++i / --i (C semantics: yields the
         # updated value, unlike postfix which yields the old value).
         if self.current.type == 'OPERATOR' and self.current.value in ('++', '--'):
-            op = self.current.value
+            op_tok = self.current
+            op = op_tok.value
             self.advance()
             operand = self.parse_unary()
             if isinstance(operand, Deref):
                 # ++(*p) / --(*p): increment/decrement the pointee VALUE.
-                return PrefixOp(op, operand)
+                return self._loc(PrefixOp(op, operand), op_tok)
             if isinstance(operand, MemberAccess):
                 # ++p.x / --p.y: increment/decrement the member in place.
-                return PrefixOp(op, operand)
+                return self._loc(PrefixOp(op, operand), op_tok)
             if not isinstance(operand, Identifier):
                 raise self.error(f"Prefix '{op}' requires a variable operand")
-            return PrefixOp(op, operand)
+            return self._loc(PrefixOp(op, operand), op_tok)
 
         if self.current.type == 'OPERATOR' and self.current.value in ('-', '+', '!', '~', '&', '*'):
             op = self.current.value
@@ -2518,9 +2539,10 @@ class Parser:
         expr = self.parse_primary()
         # Handle postfix operators
         while self.current.value in ['++', '--']:
-            op = self.current.value
+            op_tok = self.current
+            op = op_tok.value
             self.advance()
-            expr = PostfixOp(expr, op)
+            expr = self._loc(PostfixOp(expr, op), op_tok)
         return expr
 
     def parse_primary(self):

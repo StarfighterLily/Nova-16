@@ -1,5 +1,10 @@
 include "includes\debug.ast"
 
+int myvar @ 0xE000;
+
 void main() {
-    
+    myvar = 5;
+    dbg.print_hex(*myvar);
+    dbg.print_hex(&myvar);
+    dbg.print_hex(myvar);
 }

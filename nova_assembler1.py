@@ -245,6 +245,17 @@ class Parser:
 
     def parse_file(self, filename: str) -> List[AssemblyLine]:
         """Parse an entire assembly file, with include and macro support"""
+        # Guard against feeding high-level sources (Astrid/NoBASIC) straight
+        # into the assembler: their `include "x.ast"` + `if (cond) {` lines
+        # would otherwise surface as a baffling "Unclosed conditional
+        # directives" error instead of a file-type mistake.
+        if filename.lower().endswith(('.ast', '.as', '.astrid', '.nb')):
+            raise Exception(
+                f"Refusing to assemble '{filename}': it looks like "
+                f"high-level source, not assembly. Compile it first (e.g. "
+                f"py astrid/astrid_compiler.py {filename}) and assemble "
+                f"the generated .asm file instead."
+            )
         lines = []
         try:
             with open(filename, 'r', encoding='utf-8') as f:
@@ -275,36 +286,41 @@ class Parser:
         return self._expand_includes_recursive(raw_lines, base_filename, included_files)
 
     def _expand_includes_recursive(self, raw_lines: List[str], base_filename: str, included_files: set) -> List[str]:
-        """Recursively expand includes"""
+        """Expand assembly INCLUDE directives recursively.
+
+        Astrid's lowercase ``include "library.ast";`` is source-language
+        syntax, not an assembly directive. Keeping that distinction prevents
+        misplaced high-level input from being spliced into assembly.
+        """
         output_lines = []
         base_dir = os.path.dirname(os.path.abspath(base_filename))
 
         for line in raw_lines:
-            stripped = line.strip()
-            if stripped.upper().startswith('INCLUDE'):
-                # Parse include directive
-                parts = stripped.split(None, 1)
-                if len(parts) < 2:
-                    raise ValueError(f"Invalid INCLUDE directive: {line}")
-                include_file = parts[1].strip().strip('"').strip("'")
-                include_path = os.path.join(base_dir, include_file)
-                abs_include_path = os.path.abspath(include_path)
-
-                if abs_include_path in included_files:
-                    raise ValueError(f"Circular include detected: {include_file}")
-
-                included_files.add(abs_include_path)
-
-                try:
-                    with open(include_path, 'r', encoding='utf-8') as f:
-                        include_lines = f.readlines()
-                    # Recursively expand includes in the included file
-                    expanded_include = self._expand_includes_recursive(include_lines, include_path, included_files)
-                    output_lines.extend(expanded_include)
-                except IOError as e:
-                    raise ValueError(f"Could not include file {include_file}: {e}")
-            else:
+            code = line.split(';', 1)[0].strip()
+            parts = code.split(None, 1)
+            if len(parts) < 2 or parts[0].upper() != 'INCLUDE':
                 output_lines.append(line)
+                continue
+
+            include_file = parts[1].strip().strip('"').strip("'")
+            if not include_file.lower().endswith(('.asm', '.inc')):
+                output_lines.append(line)
+                continue
+
+            include_path = os.path.join(base_dir, include_file)
+            abs_include_path = os.path.abspath(include_path)
+            if abs_include_path in included_files:
+                raise ValueError(f"Circular include detected: {include_file}")
+            included_files.add(abs_include_path)
+
+            try:
+                with open(include_path, 'r', encoding='utf-8') as f:
+                    include_lines = f.readlines()
+                output_lines.extend(self._expand_includes_recursive(
+                    include_lines, include_path, included_files))
+            except IOError as e:
+                raise ValueError(
+                    f"Could not include file {include_file}: {e}") from e
 
         return output_lines
 
@@ -328,41 +344,68 @@ class Parser:
 
         while i < n:
             line = raw_lines[i]
-            stripped = line.strip().upper()
+            # Strip assembly comments (`; ...`) before directive matching
+            # so a plain `; IF ...` comment is never read as a directive.
+            code = line.split(';', 1)[0]
+            stripped = code.strip()
+            # Match directive names case-insensitively because the assembly
+            # parser itself is case-insensitive.  C/C++ keywords are
+            # lowercase, but rejecting all lowercase `if` would unnecessarily
+            # break valid assembly such as `if 1`; the operand grammar below
+            # is what distinguishes a C condition from an assembly condition.
+            tokens = stripped.split(None, 1)
+            head = tokens[0].upper() if tokens else ''
+            rest = tokens[1] if len(tokens) > 1 else ''
 
-            if stripped.startswith('IF '):
+            if head == 'IF':
                 # Parse IF condition
-                parts = stripped.split(None, 1)
-                if len(parts) < 2:
+                if not rest:
                     raise ValueError(f"Invalid IF directive: {line}")
-                condition = parts[1].strip()
+                # A genuine assembly conditional is `IF 1` / `IF TRUE`
+                # (a single symbol). Anything shaped like high-level code
+                # -- `if (x) {`, `if x > 1`, trailing `{`/`(`/`)` -- is
+                # NOT a directive; leave it for normal parsing so a
+                # mis-fed .ast file errors on the real problem instead of
+                # opening a phantom conditional block.
+                condition = rest.strip().upper()
+                if not re.fullmatch(r'[A-Z_][A-Z0-9_]*|0[X][0-9A-F]+|\d+',
+                                    condition):
+                    output_lines.append(line)
+                    i += 1
+                    continue
                 # Simple evaluation: if condition is '1' or 'TRUE', include, else skip
                 include = condition in ['1', 'TRUE']
                 condition_stack.append(include)
                 i += 1
                 continue
 
-            elif stripped.startswith('IFDEF '):
-                parts = stripped.split(None, 1)
-                if len(parts) < 2:
+            elif head == 'IFDEF':
+                if not rest:
                     raise ValueError(f"Invalid IFDEF directive: {line}")
-                symbol = parts[1].strip()
+                symbol = rest.strip().upper()
+                if not re.fullmatch(r'[A-Z_][A-Z0-9_]*', symbol):
+                    output_lines.append(line)
+                    i += 1
+                    continue
                 include = symbol in defined_symbols
                 condition_stack.append(include)
                 i += 1
                 continue
 
-            elif stripped.startswith('IFNDEF '):
-                parts = stripped.split(None, 1)
-                if len(parts) < 2:
+            elif head == 'IFNDEF':
+                if not rest:
                     raise ValueError(f"Invalid IFNDEF directive: {line}")
-                symbol = parts[1].strip()
+                symbol = rest.strip().upper()
+                if not re.fullmatch(r'[A-Z_][A-Z0-9_]*', symbol):
+                    output_lines.append(line)
+                    i += 1
+                    continue
                 include = symbol not in defined_symbols
                 condition_stack.append(include)
                 i += 1
                 continue
 
-            elif stripped == 'ELSE':
+            elif head == 'ELSE' and not rest:
                 if not condition_stack:
                     raise ValueError(f"ELSE without IF: {line}")
                 # Toggle the condition
@@ -370,7 +413,7 @@ class Parser:
                 i += 1
                 continue
 
-            elif stripped == 'ENDIF':
+            elif head == 'ENDIF' and not rest:
                 if not condition_stack:
                     raise ValueError(f"ENDIF without IF: {line}")
                 condition_stack.pop()

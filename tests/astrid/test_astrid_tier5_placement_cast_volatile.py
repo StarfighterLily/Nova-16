@@ -153,11 +153,84 @@ class TestPlacement:
         finally:
             _cleanup(asm_path, tmp_src)
 
+    def test_initialized_placed_global_keeps_data_at_exact_address(self):
+        """A scalar initializer belongs at the explicit address, not 0x8000."""
+        source = """
+int placed @ 0xE000 = 0x1234;
+int ordinary;
+
+int main() {
+    ordinary = 7;
+    return 0;
+}
+"""
+        asm_path, tmp_src = _compile_to_asm(source)
+        try:
+            _assemble(asm_path)
+            sym = asm_path.replace('.asm', '.sym')
+            assert _sym_addr(sym, 'gvar_placed') == 0xE000
+            assert _sym_addr(sym, 'gvar_ordinary') == 0x8000
+            proc, mem = _run_to_halt(asm_path)
+            assert mem.read_word(0xE000) == 0x1234
+            assert mem.read_word(0x8000) == 7
+        finally:
+            _cleanup(asm_path, tmp_src)
+
     def test_placement_on_local_is_rejected(self):
         """@ addr on a local is a compile error (globals only)."""
         assert _compile_expect_failure(
             "int main() { int x @ 0xF000; return 0; }\n"), (
             "local @ placement should fail to compile")
+
+    def test_placed_global_with_included_control_flow_assembles_and_runs(
+            self, tmp_path):
+        """Regression: an included @ global must survive the full pipeline.
+
+        Astrid include expansion can bring high-level `if` statements into a
+        compilation unit. Code generation must lower those statements rather
+        than emitting IF/ENDIF text that the assembly preprocessor mistakes
+        for unclosed assembly conditionals.
+        """
+        include_path = tmp_path / "placed_include.ast"
+        include_path.write_text(
+            "int counter @ 0xE010;\n"
+            "void bump() { counter = counter + 1; }\n",
+            encoding="utf-8")
+        source_path = tmp_path / "placed_main.ast"
+        source_path.write_text(
+            'include "placed_include.ast"\n'
+            "int main() { bump(); if (counter) { counter = 2; } return 0; }\n",
+            encoding="utf-8")
+        asm_path = tmp_path / "placed_main.asm"
+
+        import sys
+        from astrid_compiler import main as compiler_main
+        old_argv = sys.argv
+        sys.argv = [old_argv[0], str(source_path), "-o", str(asm_path)]
+        try:
+            assert compiler_main() == 0
+        finally:
+            sys.argv = old_argv
+
+        text = asm_path.read_text(encoding="utf-8")
+        assert "ORG 0xE010" in text
+        assert not any(line.strip().upper().startswith(("IF ", "ENDIF"))
+                       for line in text.splitlines())
+
+        proc, mem = _run_to_halt(str(asm_path))
+        assert mem.read_word(0xE010) == 2
+
+    def test_placed_global_survives_assembler_segment_loading(self):
+        """The assembler's .org metadata must load the pinned segment."""
+        asm_path, tmp_src = _compile_to_asm(SCB_SOURCE)
+        try:
+            proc, mem = _run_to_halt(asm_path)
+            assert proc.halted
+            assert mem.read_word(0xF000) == 0x1234
+            assert mem.read_word(0xF004) == 0xBEEF
+            assert mem.read_word(0x8000) == 7
+        finally:
+            _cleanup(asm_path, tmp_src)
 
     def test_placement_non_constant_is_rejected(self):
         """@ addr with a non-constant expression is a compile error.

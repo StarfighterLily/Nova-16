@@ -266,11 +266,25 @@ class ExpressionSimplifier:
             if operator == "/":
                 if right_val == 0:
                     return None
-                return Number(str(left_val // right_val))
+                # C truncates toward zero (-7/2 == -3); Python's // floors
+                # toward -infinity (-4), which disagrees with both the
+                # Nova-16 DIV instruction's truncation and the preprocessor's
+                # own #if math. Compute the truncated quotient with integers
+                # so large operands stay exact.
+                q = abs(left_val) // abs(right_val)
+                if (left_val < 0) != (right_val < 0):
+                    q = -q
+                return Number(str(q))
             if operator == "%":
                 if right_val == 0:
                     return None
-                return Number(str(left_val % right_val))
+                # C's % takes the sign of the dividend (-7%2 == -1); Python's
+                # % follows the divisor (1). Derive it from the truncated
+                # quotient above so '/' and '%' folds share one definition.
+                q = abs(left_val) // abs(right_val)
+                if (left_val < 0) != (right_val < 0):
+                    q = -q
+                return Number(str(left_val - q * right_val))
             if operator == "&":
                 return Number(str(left_val & right_val))
             if operator == "|":

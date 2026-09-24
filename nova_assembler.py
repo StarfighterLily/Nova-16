@@ -81,6 +81,17 @@ def main() -> int:
 
     filename = sys.argv[1]
 
+    # Fail at the CLI boundary for high-level source.  In particular, an
+    # Astrid ``if (condition) {`` line otherwise reaches the assembly
+    # conditional preprocessor and is reported as an unclosed IF block even
+    # though the user meant to assemble the generated .asm sidecar.
+    if filename.lower().endswith(('.ast', '.as', '.astrid', '.nb')):
+        print(
+            f"Refusing to assemble '{filename}': it looks like high-level "
+            "source, not assembly. Compile it first, then assemble the "
+            "generated .asm file.")
+        return 1
+
     # Detect GLOBAL/EXTERN directives to decide which assembler to use.
     try:
         with open(filename, "r", encoding="utf-8") as _f:

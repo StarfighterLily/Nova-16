@@ -70,6 +70,17 @@ class Assembler:
         """
         try:
             self.errors = []
+
+            # Astrid and NoBASIC both use control-flow keywords with
+            # high-level syntax (``if (...)``, includes into source files).
+            # Reject those extensions before tokenization so they cannot be
+            # mistaken for assembly conditionals.  The CLI has the same guard
+            # in its legacy route, but the public API can be called directly.
+            if filename.lower().endswith(('.ast', '.as', '.astrid', '.nb')):
+                raise ValueError(
+                    f"refusing to assemble '{filename}': it looks like "
+                    "high-level source, not assembly; compile it to .asm first")
+
             base_dir = os.path.dirname(os.path.abspath(filename))
 
             with open(filename, "r", encoding="utf-8") as f:

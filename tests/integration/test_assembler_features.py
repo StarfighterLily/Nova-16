@@ -36,6 +36,78 @@ def test_conditional_assembly():
         assert "TEST_DATA" in sym_content  # Since RELEASE not defined
 
 
+
+
+class TestLegacyPreprocessor:
+    """The executable-image preprocessor must not parse source code."""
+
+    def test_astrid_source_is_rejected_before_preprocessing(self, tmp_path):
+        source = tmp_path / "source.ast"
+        source.write_text(
+            'include "library.ast"\n'
+            'int value @ 0xE000;\n'
+            'void main() { if (value) { value = 1; } }\n',
+            encoding="utf-8")
+
+        from nova_assembler1 import Parser
+
+        with pytest.raises(Exception, match="high-level source, not assembly"):
+            Parser(InstructionSet()).parse_file(str(source))
+
+        # The public API normally takes the token-based assembler route, so it
+        # needs the same early guard as the CLI's legacy route.
+        messages = []
+        from nova.assembler import Assembler as TokenAssembler
+        assert not TokenAssembler(log=messages.append).assemble(str(source))
+        assert any("high-level source, not assembly" in message
+                   for message in messages)
+
+    def test_cli_rejects_astrid_source_with_actionable_message(self, tmp_path,
+                                                                 monkeypatch, capsys):
+        source = tmp_path / "source.ast"
+        source.write_text(
+            'include "library.ast"\n'
+            'int value @ 0xE000;\n'
+            'void main() { if (value) { value = 1; } }\n',
+            encoding="utf-8")
+
+        import nova_assembler
+
+        monkeypatch.setattr(nova_assembler.sys, "argv", ["nova_assembler.py", str(source)])
+        assert nova_assembler.main() == 1
+        output = capsys.readouterr().out
+        assert "Refusing to assemble" in output
+        assert "generated .asm" in output
+        assert "Unclosed conditional directives" not in output
+        assert "Traceback" not in output
+
+    def test_c_style_if_is_not_an_assembly_conditional(self):
+        from nova_assembler1 import Parser
+
+        parser = Parser(InstructionSet())
+        lines = [
+            "if (value) {\n",
+            "    value = 1;\n",
+            "}\n",
+        ]
+        assert parser._expand_conditionals(lines, set()) == lines
+
+    @pytest.mark.parametrize("directive_name", ["if", "If", "IF"])
+    def test_conditional_assembly_names_are_case_insensitive(self, directive_name):
+        from nova_assembler1 import Parser
+
+        parser = Parser(InstructionSet())
+        lines = [f"{directive_name} 1\n", "MOV R0, 1\n", "endIf\n"]
+        assert parser._expand_conditionals(lines, set()) == [
+            "MOV R0, 1\n"]
+
+    def test_conditional_text_in_comments_is_ignored(self):
+        from nova_assembler1 import Parser
+
+        parser = Parser(InstructionSet())
+        lines = ["; IF 1 must stay a comment\n", "MOV R0, 1\n"]
+        assert parser._expand_conditionals(lines, set()) == lines
+
 @pytest.mark.assembler
 def test_ds_directive():
     """Test DS directive for defining space"""

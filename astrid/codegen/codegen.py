@@ -40,6 +40,16 @@ class CodeGenerator:
     # collide with code (ORG 0x1000+), globals (0x8000+), or the stack.
     STATIC_LOCAL_REGION_END = 0x8000
     STATIC_LOCAL_REGION_START = 0x7F00  # 256 bytes for static locals
+    # Read-only window for initialized `const` globals. A `const int table[] =
+    # {..}` is never written (any write is already a compile error), so it does
+    # not need writable RAM: it is emitted as part of the program image and
+    # loaded with the code, exactly like the DEFSTR bytes of a string literal.
+    # 0x5000 sits above the largest Astrid image measured so far (~0x4C71 of
+    # code for starfield.ast) and below the static-local window, leaving
+    # ~12 KB of tables. A program whose CODE grows past 0x5000 must pin its
+    # tables with the explicit `@ addr` placement form, which always wins.
+    CONST_REGION_START = 0x5000
+    CONST_REGION_END = 0x7F00
     # Dedicated RAM region for spilled locals (hot-variable migration).
     # Each compiled function gets a disjoint window here so spilled locals
     # never collide with code (ORG 0x1000+), globals (0x8000+), the ITOS /
@@ -93,6 +103,15 @@ class CodeGenerator:
         'default': {
             'code_org': 0x1100,
             'globals_start': 0x8000,
+            # `const` tables (Tier-2 item 5): unplaced read-only globals are
+            # emitted as initialized data in the CODE image (below the entry
+            # stub at 0x1000, above the highest interrupt vector slot at
+            # 0x011F) instead of the writable global region. Nothing else
+            # lives in this window -- no runtime object is ever allocated
+            # here -- so const tables are part of the loaded program image
+            # and read-only by construction (any write is a compile error).
+            'const_rom_start': 0x0120,
+            'const_rom_end': 0x0F00,
             'static_locals_start': 0x7F00,
             'static_locals_end': 0x8000,
             'itos_buffer': 0xA000,
@@ -107,6 +126,12 @@ class CodeGenerator:
             'code_org': 0x1100,
             'code_limit': 0x4200,
             'globals_start': 0x4200,
+            # Const-ROM window: identical to the 'default' layout. The
+            # 0x0120-0x0EFF gap is free in every layout (vectors end at
+            # 0x011F, the entry stub starts at 0x1000), so const tables keep
+            # their addresses when a program switches layouts.
+            'const_rom_start': 0x0120,
+            'const_rom_end': 0x0F00,
             'static_locals_start': 0x7F00,
             'static_locals_end': 0x8000,
             'itos_buffer': 0xC000,
@@ -1189,6 +1214,12 @@ class CodeGenerator:
         # code reads these so the layout is actually selectable.
         self.code_org = int(layout['code_org'])
         self.global_region_start = int(layout['globals_start'])
+        # Const-ROM window (Tier-2 item 5): unplaced `const` globals are
+        # allocated sequentially here and emitted as initialized data with
+        # the code image, so read-only tables are never mixed into the
+        # writable global region.
+        self.const_rom_start = int(layout['const_rom_start'])
+        self.const_rom_end = int(layout['const_rom_end'])
         self.static_local_region_start = int(layout['static_locals_start'])
         self.static_local_region_end = int(layout['static_locals_end'])
         self.itos_buffer = int(layout['itos_buffer'])
@@ -1225,6 +1256,18 @@ class CodeGenerator:
         self.array_vars = {}   # per-function LOCAL arrays: name -> {'elem_type', 'count', 'elem_size', 'offset'}
         self.local_vars = {}
         self.var_types = {}  # name -> 'int' (16-bit, 2 bytes) or 'char' (8-bit)
+        # const-enforcement tables. Global sets are filled by
+        # _collect_storage_qualifiers; the per-function sets are rebuilt at
+        # the top of every generate_function (methods included).
+        self.const_globals = set()
+        self.const_pointee_globals = set()
+        # Next free address in the const-ROM window (0x0120+) and the
+        # highest address any const global reached, used for the overflow
+        # diagnostic in _allocate_globals.
+        self._const_rom_next_addr = None
+        self._const_rom_high_water = 0
+        self._fn_const_names = set()
+        self._fn_const_pointees = set()
         # Pointer-declared variables (`int *p`) and array parameters
         # (`void f(int arr[])`): both hold 16-bit addresses (2 bytes).
         self.pointer_vars: Set[str] = set()
@@ -1847,7 +1890,11 @@ class CodeGenerator:
           register local/param   -> keep in registers; never spill.
           volatile var           -> memory-backed; reads/writes always touch
                                     memory and are never folded/cached.
-          const                  -> read-only intent; normal value otherwise.
+          const                  -> read-only storage: direct assignments,
+                                    ++/--, and writes through a const
+                                    pointee are compile errors; unplaced
+                                    const globals emit into the code
+                                    region (ROM tables).
 
         The parser keeps every qualifier on VarDecl.qualifiers /
         FunctionDef.qualifiers; this intake centralizes them into codegen
@@ -1861,6 +1908,12 @@ class CodeGenerator:
         self.volatile_vars = set()
         self.register_hint_vars = set()
         self.static_locals = {}
+        # Rebuilt from scratch (generate() may run more than once on one
+        # generator, e.g. from tools that re-compile the same AST).
+        self.const_globals = set()
+        self.const_pointee_globals = set()
+        self._const_rom_next_addr = None
+        self._const_rom_high_water = 0
         self.object_mode = False
 
         for decl in list(getattr(ast, 'globals', None) or []):
@@ -1872,6 +1925,13 @@ class CodeGenerator:
                 self.volatile_vars.add(decl.name)
             if 'register' in quals:
                 self.register_hint_vars.add(decl.name)
+            if 'const' in quals:
+                if getattr(decl, 'pointer_depth', 0):
+                    # `const T *p`: the pointee is read-only; p itself stays
+                    # rebindable (C's pointer-to-const).
+                    self.const_pointee_globals.add(decl.name)
+                else:
+                    self.const_globals.add(decl.name)
             if 'extern' in quals:
                 self.extern_symbols.add(decl.name)
                 # Single-file backward compatibility: do not force object mode
@@ -2817,11 +2877,45 @@ class CodeGenerator:
                 if left is None or right is None:
                     return None
                 op = expr.op
+
+                def signed_lit(node, masked):
+                    # A unary-minus operand arrives pre-masked (0xFFF9 for
+                    # -7). Recover its signed value so '/', '%' and relational
+                    # folds use the same interpretation as the
+                    # ExpressionSimplifier (which folds -7 into an unmasked
+                    # Number('-7')) and as C's signed literals. Positive and
+                    # hex constants keep their masked/unsigned reading.
+                    if masked and isinstance(node, UnaryOp) and node.op == '-' \
+                            and (masked & 0x8000):
+                        return masked - 0x10000
+                    return masked
+
+                if op == '/' and right != 0:
+                    # int() truncates toward zero: C semantics (-7/2 == -3).
+                    return int(signed_lit(expr.left, left) /
+                               signed_lit(expr.right, right)) & 0xFFFF
+                if op == '%' and right != 0:
+                    # C remainder takes the dividend's sign (-7%2 == -1),
+                    # not Python's divisor-signed %.
+                    lv = signed_lit(expr.left, left)
+                    rv = signed_lit(expr.right, right)
+                    q = abs(lv) // abs(rv)
+                    if (lv < 0) != (rv < 0):
+                        q = -q
+                    return (lv - q * rv) & 0xFFFF
+                if op in ('<', '<=', '>', '>='):
+                    # Relate in the signed domain when a unary-minus literal
+                    # is an operand (-7 < 2 must fold to 1, not to the masked
+                    # 65529 < 2). ==/!= stay masked: two's-complement
+                    # equality is sign-agnostic for symmetric operands.
+                    lv = signed_lit(expr.left, left)
+                    rv = signed_lit(expr.right, right)
+                    return int({'<': lv < rv, '<=': lv <= rv,
+                                '>': lv > rv, '>=': lv >= rv}[op])
                 if op == '+': return (left + right) & 0xFFFF
                 if op == '-': return (left - right) & 0xFFFF
                 if op == '*': return (left * right) & 0xFFFF
-                if op == '/' and right != 0: return int(left / right) & 0xFFFF
-                if op == '%' and right != 0: return (left % right) & 0xFFFF
+                # ('/' and '%' were handled above with C signed semantics.)
                 if op == '&': return left & right
                 if op == '|': return left | right
                 if op == '^': return left ^ right
@@ -2844,6 +2938,41 @@ class CodeGenerator:
             return None
         except (ValueError, ArithmeticError):
             return None
+
+    def _alloc_const_rom(self, name: str, size: int) -> int:
+        """Reserve ``size`` bytes in the const-ROM window for ``name``.
+
+        The window (0x0120-0x0EFF by default) lies above the interrupt
+        vector table (0x0100-0x011F) and below the entry stub at 0x1000, so
+        no code, global, static local, string scratch cell, spill window or
+        stack frame is ever allocated there: a `const` table is emitted as
+        part of the loaded program image and is read-only by construction
+        (any write to it is rejected at compile time by the const
+        enforcement in `_check_const_target`).
+
+        Raises CodeGenError when the table does not fit, naming the object
+        that overflowed so the fix (place it with `@ addr`, shrink it, or
+        make it non-const) is obvious.
+        """
+        if self._const_rom_next_addr is None:
+            self._const_rom_next_addr = self.const_rom_start
+        addr = self._const_rom_next_addr
+        end = addr + size
+        if end > self.const_rom_end:
+            capacity = self.const_rom_end - self.const_rom_start
+            raise CodeGenError(
+                f"const data does not fit in the read-only window: "
+                f"'{name}' needs {size} byte(s) at 0x{addr:04X} but the "
+                f"window ends at 0x{self.const_rom_end:04X}",
+                hint=(f"the const window holds {capacity} bytes "
+                      f"(0x{self.const_rom_start:04X}-"
+                      f"0x{self.const_rom_end - 1:04X}); place the table "
+                      f"with '@ addr', shrink it, or drop 'const' so it "
+                      f"uses the global region"),
+                source_text=self._diag_source_text())
+        self._const_rom_next_addr = end
+        self._const_rom_high_water = max(self._const_rom_high_water, end)
+        return addr
 
     def _allocate_globals(self, ast: Program):
         """Assign fixed storage addresses to all global variables/scalals.
@@ -2883,6 +3012,15 @@ class CodeGenerator:
                     raise TypeError(
                         f"Global '{decl.name}' placement address "
                         f"0x{placement_value:X} is out of the 16-bit range")
+            # Unplaced `const` globals (Tier-2 item 5) are read-only tables:
+            # allocate them in the const-ROM window of the code image instead
+            # of the writable global region. An explicit `@ addr` placement
+            # always wins (the programmer asked for that address).  Object
+            # mode is excluded: a relocatable unit's data must stay in the
+            # global region so the linker/NOMF can relocate it.
+            is_const_rom = (placement_value is None
+                            and decl.name in self.const_globals
+                            and not self.object_mode)
             struct_tag = getattr(decl, 'struct_tag', None)
             # Pointers always occupy 2 bytes regardless of pointee type.
             elem_size = 2 if decl.pointer_depth else self._elem_size(decl.var_type)
@@ -2976,8 +3114,14 @@ class CodeGenerator:
                                     f"compile-time constants")
                             init_values.append(v)
                 total_size = count * (stride or elem_size)
-                _arr_addr = (placement_value if placement_value is not None
-                             else next_addr)
+                if is_const_rom:
+                    # Read-only table: reserve it in the const-ROM window of
+                    # the program image (see _alloc_const_rom) so it never
+                    # consumes writable global storage.
+                    _arr_addr = self._alloc_const_rom(decl.name, total_size)
+                else:
+                    _arr_addr = (placement_value if placement_value is not None
+                                 else next_addr)
                 ginfo = {
                     'address': _arr_addr, 'type': decl.var_type,
                     'size': total_size, 'is_array': True,
@@ -2989,6 +3133,7 @@ class CodeGenerator:
                     **({'stride': stride} if stride else {}),
                     **({'tag': struct_tag} if struct_tag else {}),
                     **({'placement': True} if placement_value is not None else {}),
+                    **({'const_rom': True} if is_const_rom else {}),
                 }
                 dims2d = self._decl_2d_dims(decl)
                 if dims2d is not None:
@@ -3001,7 +3146,7 @@ class CodeGenerator:
                 # by-value return destinations -- register the tag.
                 if is_struct_scalar and struct_tag:
                     self.struct_tag_vars[decl.name] = struct_tag
-                if placement_value is None:
+                if placement_value is None and not is_const_rom:
                     next_addr += total_size
             else:
                 init_value = None
@@ -3033,9 +3178,16 @@ class CodeGenerator:
                         raise TypeError(
                             f"Global variable '{decl.name}' initializer must be "
                             f"a compile-time constant")
+                if is_const_rom:
+                    # Read-only scalar constant: same const-ROM window as
+                    # const tables.
+                    _scalar_addr = self._alloc_const_rom(decl.name, elem_size)
+                else:
+                    _scalar_addr = (placement_value
+                                    if placement_value is not None
+                                    else next_addr)
                 self.global_vars[decl.name] = {
-                    'address': (placement_value if placement_value is not None
-                                else next_addr),
+                    'address': _scalar_addr,
                     'type': decl.var_type,
                     'size': elem_size, 'is_array': False,
                     'elem_size': elem_size,
@@ -3050,23 +3202,39 @@ class CodeGenerator:
                     # resolves member offsets through the pointee type.
                     **({'tag': struct_tag} if struct_tag else {}),
                     **({'placement': True} if placement_value is not None else {}),
+                    **({'const_rom': True} if is_const_rom else {}),
                 }
                 # Track scalar struct/union variables for struct assignment
                 if struct_tag and not self.global_vars[decl.name].get('is_array'):
                     self.struct_tag_vars[decl.name] = struct_tag
-                if placement_value is None:
+                if placement_value is None and not is_const_rom:
                     next_addr += elem_size
 
     def _emit_globals_data(self):
-        """Emit the global-variable data segment at GLOBAL_REGION_START."""
+        """Emit the global-variable data segments.
+
+        Three destinations: unplaced `const` globals go to the read-only
+        window of the program image (const-ROM, see `_alloc_const_rom`),
+        placed globals (`@ addr`) go to their own ORG segment, and
+        everything else stays contiguous in the writable global region.
+        """
         if not self.global_vars:
             return
-        # Placed globals (`@ 0xF000`) are emitted in their own ORG segments;
-        # unplaced globals stay contiguous in the 0x8000 region.
+        const_rom = [(name, info) for name, info in self.global_vars.items()
+                     if info.get('const_rom')]
         placed = [(name, info) for name, info in self.global_vars.items()
                   if info.get('placement')]
         unplaced = [(name, info) for name, info in self.global_vars.items()
-                    if not info.get('placement')]
+                    if not info.get('placement') and not info.get('const_rom')]
+        if const_rom:
+            self.assembly.append("")
+            self.assembly.append("; Const data -- read-only program image")
+            for name, info in const_rom:
+                self.assembly.append("")
+                self.assembly.append(f"ORG 0x{info['address']:04X}")
+                self.assembly.append(f"; const global '{name}'")
+                self._emit_global_entry(name, info)
+            self.assembly.append("")
         if unplaced:
             self.assembly.append("")
             self.assembly.append(f"ORG 0x{self.global_region_start:04X}")
@@ -3506,6 +3674,31 @@ class CodeGenerator:
         self.assembly.append(f"{label}:")
         
         all_local_decls = self.find_local_vars(func_def.body)
+
+        # const intake for THIS scope: params plus every local decl (the
+        # sets are rebuilt per function; impl methods run through
+        # generate_function as well). Locals/params shadow globals
+        # entirely (C scoping), so ownership is decided per-name by
+        # _const_scope at each write site.
+        self._fn_const_names = {
+            d.name for d in all_local_decls
+            if 'const' in (getattr(d, 'qualifiers', None) or [])
+            and not getattr(d, 'pointer_depth', 0)}
+        self._fn_const_pointees = {
+            d.name for d in all_local_decls
+            if 'const' in (getattr(d, 'qualifiers', None) or [])
+            and getattr(d, 'pointer_depth', 0)}
+        for param in func_def.params:
+            if 'const' not in (getattr(param, 'qualifiers', None) or []):
+                continue
+            if (getattr(param, 'pointer_depth', 0)
+                    or getattr(param, 'is_array_param', False)):
+                # `const int *p` / `const int p[]`: the elements are
+                # read-only; the pointer parameter itself stays rebindable.
+                self._fn_const_pointees.add(param.name)
+            else:
+                # By-value `const int x`: the slot itself is read-only.
+                self._fn_const_names.add(param.name)
         
         # Compute stack frame size: each int/string/binary var/param takes 2 bytes, char takes 1
         # Params: int/string/binary params use 2 bytes each, char params use 1 byte
@@ -3964,7 +4157,86 @@ class CodeGenerator:
             self._emit_var_store(var_decl.name, reg)
             self.free_register()
 
+    # ------------------------------------------------------------------
+    # const enforcement (Tier-2 item 5)
+    # ------------------------------------------------------------------
+    def _const_scope(self, name):
+        """(const_names, const_pointees) for the scope owning ``name``.
+
+        Locals and params shadow globals entirely (C scoping): a local
+        ``int x`` hides a global ``const int x`` and vice versa, so the
+        owning table is selected by local_vars membership.
+        """
+        if name in self.local_vars:
+            return self._fn_const_names, self._fn_const_pointees
+        return self.const_globals, self.const_pointee_globals
+
+    def _is_const_name(self, name: str) -> bool:
+        names, _ = self._const_scope(name)
+        return name in names
+
+    def _is_const_pointee(self, name: str) -> bool:
+        _, pointees = self._const_scope(name)
+        return name in pointees
+
+    def _member_root_name(self, node):
+        """Base variable name under a member/deref chain, or None.
+
+        Resolves ``a.b.c``, ``arr[i].f``, ``p->f`` (arrow keeps the
+        Identifier base) and ``(*p).f`` down to the declared variable so
+        const rules apply to the object being written.  Computed-address
+        forms (``*(q+1)``) return None: their constness is not tracked
+        statically -- the same blind spot C has without whole-program
+        analysis of cast-away pointers.
+        """
+        while True:
+            if isinstance(node, Identifier):
+                return node.name
+            if isinstance(node, ArrayAccess):
+                return node.name
+            if isinstance(node, MemberAccess):
+                node = node.base
+            elif isinstance(node, Deref):
+                node = node.operand
+            else:
+                return None
+
+    def _reject_const_write(self, name, node, pointee=False):
+        if pointee:
+            message = f"cannot modify const data through pointer '{name}'"
+            hint = ("the pointer's target type is declared const; write "
+                    "through a non-const pointer instead")
+        else:
+            message = f"cannot assign to const variable '{name}'"
+            hint = ("remove 'const' from the declaration, or write through "
+                    "a non-const pointer")
+        raise CodeGenError(
+            message, filename=self.source_path,
+            line=getattr(node, 'line', None),
+            column=getattr(node, 'column', None),
+            hint=hint, source_text=self._diag_source_text())
+
+    def _check_const_target(self, name, node):
+        """Raise when a direct write to ``name`` violates const.
+
+        Covers both a const object itself (``const T x``) and a write
+        THROUGH a const pointee (``const T *p`` -> ``*p`` / ``p[i]``).
+        """
+        if self._is_const_name(name):
+            self._reject_const_write(name, node)
+        elif self._is_const_pointee(name):
+            self._reject_const_write(name, node, pointee=True)
+
+    def _check_const_base(self, base, node):
+        """Const check for an assignment/increment base expression."""
+        root = self._member_root_name(base)
+        if root is not None:
+            self._check_const_target(root, node)
+
     def generate_assignment(self, assignment: Assignment):
+        # A write site: reject `const x = ...` reassignment before any code
+        # is emitted (declarations/initializers never reach this path).
+        self._check_const_target(assignment.name, assignment)
         self.emit_comment(f"Assignment to {assignment.name}")
         # Struct/union assignment: s1 = s2 copies all fields from s2 to s1.
         # Detected when the RHS is a simple Identifier naming a struct/union
@@ -4103,9 +4375,9 @@ class CodeGenerator:
                 elif op == '-': self.emit(f"    SUB {var_reg}, {rhs_reg}")
                 elif op == '*':
                     self.emit(f"    {'FMUL' if is_float else 'MUL'} {var_reg}, {rhs_reg}")
-                elif op == '/':
-                    self.emit(f"    {'FDIV' if is_float else 'DIV'} {var_reg}, {rhs_reg}")
-                elif op == '%': self.emit(f"    MOD {var_reg}, {rhs_reg}")
+                elif op in ('/', '%'):
+                    self._emit_divmod(op, var_reg, rhs_reg,
+                                      value.left, value.right, is_float)
                 elif op == '&': self.emit(f"    AND {var_reg}, {rhs_reg}")
                 elif op == '|': self.emit(f"    OR {var_reg}, {rhs_reg}")
                 elif op == '^': self.emit(f"    XOR {var_reg}, {rhs_reg}")
@@ -4207,6 +4479,9 @@ class CodeGenerator:
         evaluation via the stack (expression temporaries are round-robin
         reused and a deep RHS could clobber the address register)."""
         target = stmt.target
+        # `const struct S s; s.f = ...` (and writes through a pointer to
+        # const) are compile errors; resolve the chain to its base variable.
+        self._check_const_base(target.base, stmt)
 
         # Detect compound assignment: p.x += v decomposes to
         # MemberAssignment(p.x, BinaryOp(p.x, '+', v)).
@@ -4254,8 +4529,9 @@ class CodeGenerator:
             elif compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
             elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
             elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
-            elif compound_op == '/': self.emit(f"    DIV {acc_reg}, {rhs_reg}")
-            elif compound_op == '%': self.emit(f"    MOD {acc_reg}, {rhs_reg}")
+            elif compound_op in ('/', '%'):
+                self._emit_divmod(compound_op, acc_reg, rhs_reg,
+                                  target, rhs)
             elif compound_op == '&': self.emit(f"    AND {acc_reg}, {rhs_reg}")
             elif compound_op == '|': self.emit(f"    OR {acc_reg}, {rhs_reg}")
             elif compound_op == '^': self.emit(f"    XOR {acc_reg}, {rhs_reg}")
@@ -4294,6 +4570,9 @@ class CodeGenerator:
         # compound-assignment identity check below.
         stmt.target = self._linearize_2d_inplace(stmt.target)
         target = stmt.target
+        # Writes to `const arr[...]` or through `const T *p` are rejected
+        # before any code is emitted (covers the string/binary branch too).
+        self._check_const_target(target.name, stmt)
         # String/binary scalar variables: s[i] = c writes one byte through
         # (pointer stored in s) + i.
         if self._is_string_or_binary_scalar(target.name):
@@ -4403,8 +4682,9 @@ class CodeGenerator:
                 if compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
                 elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
                 elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
-                elif compound_op == '/': self.emit(f"    DIV {acc_reg}, {rhs_reg}")
-                elif compound_op == '%': self.emit(f"    MOD {acc_reg}, {rhs_reg}")
+                elif compound_op in ('/', '%'):
+                    self._emit_divmod(compound_op, acc_reg, rhs_reg,
+                                      target, rhs)
                 elif compound_op == '&': self.emit(f"    AND {acc_reg}, {rhs_reg}")
                 elif compound_op == '|': self.emit(f"    OR {acc_reg}, {rhs_reg}")
                 elif compound_op == '^': self.emit(f"    XOR {acc_reg}, {rhs_reg}")
@@ -4477,8 +4757,10 @@ class CodeGenerator:
             elif compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
             elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
             elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
-            elif compound_op == '/': self.emit(f"    DIV {acc_reg}, {rhs_reg}")
-            elif compound_op == '%': self.emit(f"    MOD {acc_reg}, {rhs_reg}")
+            elif compound_op in ('/', '%'):
+                # No PUSH in ISR context: _emit_divmod stays in registers.
+                self._emit_divmod(compound_op, acc_reg, rhs_reg,
+                                  target, rhs)
             elif compound_op == '&': self.emit(f"    AND {acc_reg}, {rhs_reg}")
             elif compound_op == '|': self.emit(f"    OR {acc_reg}, {rhs_reg}")
             elif compound_op == '^': self.emit(f"    XOR {acc_reg}, {rhs_reg}")
@@ -4560,6 +4842,9 @@ class CodeGenerator:
         """*ptr = value (simple or compound). Returns register holding value."""
         target = stmt.target
         can_push = not self._is_interrupt_handler
+        # `*p = ...` writes the pointee: reject when p is `const T *`
+        # (or when the root is a const object, e.g. `*arr` on const arr).
+        self._check_const_base(target.operand, stmt)
 
         # Detect compound assignment: *p += v decomposes to
         # DerefAssignment(*p, BinaryOp(*p, '+', v)) sharing the same operand.
@@ -4600,8 +4885,11 @@ class CodeGenerator:
             elif compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
             elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
             elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
-            elif compound_op == '/': self.emit(f"    DIV {acc_reg}, {rhs_reg}")
-            elif compound_op == '%': self.emit(f"    MOD {acc_reg}, {rhs_reg}")
+            elif compound_op in ('/', '%'):
+                # Type comes from the Deref node: a signed pointee selects
+                # the signed sequence, an untyped/unknown one stays raw.
+                self._emit_divmod(compound_op, acc_reg, rhs_reg,
+                                  stmt.value.left, rhs)
             elif compound_op == '&': self.emit(f"    AND {acc_reg}, {rhs_reg}")
             elif compound_op == '|': self.emit(f"    OR {acc_reg}, {rhs_reg}")
             elif compound_op == '^': self.emit(f"    XOR {acc_reg}, {rhs_reg}")
@@ -4769,6 +5057,8 @@ class CodeGenerator:
 
         Pointer operands advance by the pointee size; dereference operands
         increment/decrement the pointee VALUE by 1."""
+        # `++`/`--` perform a write: same const rules as '='.
+        self._check_const_base(expr.operand, expr)
         if isinstance(expr.operand, Deref):
             self.emit_comment(f"Prefix {expr.op} on *ptr")
             ptr_reg = self.generate_expression(expr.operand.operand)
@@ -5449,8 +5739,20 @@ class CodeGenerator:
                         if right_val == 0:
                             folded = None
                             raise ArithmeticError("Division by zero")
+                        # int() truncates toward zero: C's rule (-7/2 == -3),
+                        # matching the ExpressionSimplifier's '/' fold.
                         folded = int(left_val / right_val)
-                    elif op == '%': folded = left_val % right_val if right_val != 0 else None
+                    elif op == '%':
+                        if right_val == 0:
+                            folded = None
+                        else:
+                            # C remainder (sign of the dividend, -7%2 == -1),
+                            # not Python's divisor-signed %: derived from the
+                            # truncated quotient so both folds agree.
+                            _q = abs(left_val) // abs(right_val)
+                            if (left_val < 0) != (right_val < 0):
+                                _q = -_q
+                            folded = left_val - _q * right_val
                     elif op == '&': folded = left_val & right_val
                     elif op == '|': folded = left_val | right_val
                     elif op == '^': folded = left_val ^ right_val
@@ -5585,9 +5887,12 @@ class CodeGenerator:
             elif op == '-': self.emit(f"    SUB {left_reg}, {right_reg}")
             elif op == '*':
                 self.emit(f"    {'FMUL' if float_op else 'MUL'} {left_reg}, {right_reg}")
-            elif op == '/':
-                self.emit(f"    {'FDIV' if float_op else 'DIV'} {left_reg}, {right_reg}")
-            elif op == '%': self.emit(f"    MOD {left_reg}, {right_reg}")
+            elif op in ('/', '%'):
+                # Signed operands (signed_int, negative literal) get the
+                # sign-corrected sequence; plain/unsigned ints keep raw
+                # hardware DIV/MOD -- see _use_signed_division.
+                self._emit_divmod(op, left_reg, right_reg,
+                                  expr.left, expr.right, float_op)
             elif op in ['==', '!=', '>', '<', '>=', '<=']:
                 true_label = self.generate_label("cmp_true")
                 end_label = self.generate_label("cmp_end")
@@ -5733,6 +6038,8 @@ class CodeGenerator:
         elif isinstance(expr, PrefixOp):
             return self.generate_prefix(expr)
         elif isinstance(expr, PostfixOp):
+            # `const x++` / `const p[0]++` are writes: same rules as '='.
+            self._check_const_base(expr.left, expr)
             if isinstance(expr.left, Identifier):
                 reg = self.get_register()
                 self._emit_var_load(reg, expr.left.name)
@@ -6491,6 +6798,108 @@ class CodeGenerator:
         if lval == 0 or rval == 0:
             return True
         return False
+
+    def _use_signed_division(self, left: Expression,
+                             right: Expression) -> bool:
+        """Whether integer '/' or '%' on these operands needs C signed semantics.
+
+        Shares ``_use_signed_comparison``'s operand policy so division and
+        relational ops agree: an explicit ``signed_int`` operand or a
+        top-bit constant (negative literal) selects the sign-corrected
+        sequence; ``unsigned_int``/``char`` and plain ``int`` (historically
+        unsigned on this machine -- addresses live at 0x8000+) keep the raw
+        hardware DIV/MOD.  For values < 0x8000 both interpretations produce
+        the same bits, so the default path stays byte-identical for
+        existing programs.
+        """
+        # Float '%' has no Q8.8 meaning and keeps its legacy raw path;
+        # float '/' never reaches this helper (FDIV is chosen at the call
+        # site before signedness is consulted).
+        if self._cast_source_type(left) == 'float' or \
+                self._cast_source_type(right) == 'float':
+            return False
+        return self._use_signed_comparison(left, right)
+
+    def _emit_divmod(self, op: str, dst: str, src: str, left,
+                     right, is_float: bool = False):
+        """Emit DIV/FDIV/MOD -- or the signed sequence -- for ``dst {op} src``.
+
+        ``left``/``right`` are the original operand expressions: their
+        types and constant values decide signed vs unsigned per
+        _use_signed_division.  ``is_float`` routes '/' to FDIV; float '%'
+        falls through to raw MOD.  Shared by the binary-operator path and
+        every compound-assignment site so all of them pick the same rule.
+        Clobbers dst and src (both are temporaries at every call site).
+        """
+        if op == '/' and is_float:
+            self.emit(f"    FDIV {dst}, {src}")
+        elif not is_float and self._use_signed_division(left, right):
+            if op == '/':
+                self._emit_signed_div(dst, src)
+            else:
+                self._emit_signed_mod(dst, src)
+        else:
+            self.emit(f"    {'DIV' if op == '/' else 'MOD'} {dst}, {src}")
+
+    def _emit_signed_div(self, dst: str, src: str):
+        """``dst /= src`` with C truncation-toward-zero semantics.
+
+        Hardware DIV is unsigned, so negate negative operands into their
+        magnitudes first, divide, then negate the quotient iff exactly one
+        operand was negative: -7/2 == -3, never 0x7FFD.  Clobbers dst and
+        src; uses no stack (ISR-safe, mirrors NoBASIC's _emit_signed_div).
+        """
+        dst_pos = self.generate_label("sdiv_pos")
+        src_pos = self.generate_label("sdiv_np")
+        both_pos = self.generate_label("sdiv_pp")
+        done = self.generate_label("sdiv_done")
+        self.emit(f"    CMP {dst}, 0")
+        self.emit(f"    JGE {dst_pos}")
+        self.emit(f"    NEG {dst}")                   # dst < 0 -> |dst|
+        self.emit(f"    CMP {src}, 0")
+        self.emit(f"    JGE {src_pos}")               # |dst| / src
+        self.emit(f"    NEG {src}")                   # |dst| / |src|
+        self.emit(f"    DIV {dst}, {src}")            # both neg -> positive
+        self.emit(f"    JMP {done}")
+        self.emit_label(src_pos)
+        self.emit(f"    DIV {dst}, {src}")
+        self.emit(f"    NEG {dst}")                   # one neg -> negative
+        self.emit(f"    JMP {done}")
+        self.emit_label(dst_pos)                      # dst >= 0
+        self.emit(f"    CMP {src}, 0")
+        self.emit(f"    JGE {both_pos}")
+        self.emit(f"    NEG {src}")
+        self.emit(f"    DIV {dst}, {src}")
+        self.emit(f"    NEG {dst}")                   # one neg -> negative
+        self.emit(f"    JMP {done}")
+        self.emit_label(both_pos)
+        self.emit(f"    DIV {dst}, {src}")
+        self.emit_label(done)
+
+    def _emit_signed_mod(self, dst: str, src: str):
+        """``dst %= src`` with C sign-of-dividend remainder semantics.
+
+        Make src positive first (MOD's result then follows dst's
+        magnitude), and negate the remainder when dst was negative so
+        -7%2 == -1.  Clobbers dst and src; no stack (ISR-safe, mirrors
+        NoBASIC's _emit_signed_mod).
+        """
+        src_pos = self.generate_label("smod_pos")
+        dst_pos = self.generate_label("smod_pos2")
+        done = self.generate_label("smod_done")
+        self.emit(f"    CMP {src}, 0")
+        self.emit(f"    JGE {src_pos}")
+        self.emit(f"    NEG {src}")
+        self.emit_label(src_pos)
+        self.emit(f"    CMP {dst}, 0")
+        self.emit(f"    JGE {dst_pos}")
+        self.emit(f"    NEG {dst}")
+        self.emit(f"    MOD {dst}, {src}")
+        self.emit(f"    NEG {dst}")
+        self.emit(f"    JMP {done}")
+        self.emit_label(dst_pos)
+        self.emit(f"    MOD {dst}, {src}")
+        self.emit_label(done)
 
     def _aggregate_expr_tag(self, expr) -> Optional[str]:
         """Struct/union tag of an aggregate-valued expression, if known.

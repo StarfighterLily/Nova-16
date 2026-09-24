@@ -20,7 +20,7 @@ KEYWORDS = {
     # byte, 1/256 fractional part in the low byte), the floating-point
     # representation the Nova-16 CPU implements via ITOF/FTOI/FMUL/FDIV.
     # C qualifiers/operators added for expanded C support:
-    'const',    # const qualifier (accepted; treated as a normal variable)
+    'const',    # const qualifier: read-only enforcement + const-ROM emission
     'sizeof',   # sizeof(type) / sizeof(expr) compile-time byte-size operator
     # C enum support:
     'enum',     # enum declarations introduce named integer constants
