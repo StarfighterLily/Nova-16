@@ -1,0 +1,567 @@
+//=============================================================================
+// Sprite Library for Astrid
+//=============================================================================
+// Provides three game-oriented sprite types without handling input:
+//
+//   1. Bitmap sprites: memory-backed SCBs rendered by SPBLIT / SPBLITALL.
+//   2. Primitive sprites: pixels, lines, rectangles, and circles drawn to a
+//      chosen graphics layer.
+//   3. Text sprites: 8x8 font glyphs drawn, moved, and erased on a chosen
+//      layer.
+//
+// VRAM is also exposed as linear 256x256 byte storage (address = y*256+x).
+// Frames can be loaded from RAM, copied back to RAM, inspected byte-by-byte,
+// filled, and transferred to a graphics layer with sprite_vram_blit().
+//
+// Bitmap data must come from ordinary Nova RAM, not VRAM: the hardware sprite
+// engine reads an SCB data address through the banked system-memory window.
+// Use a VRAM frame and sprite_vram_blit() when software-rendered sprite data
+// is desired instead.
+//
+// Usage:
+//   include "includes\sprite.ast";
+//
+//   int pixels[64] = { ... };       // row-major bitmap data
+//   sprite_bitmap_upload(1, 0x8000, pixels, 64);
+//   sprite_bitmap_configure(0, 0x8000, 32, 40, 8, 8, 0x03, 0x00);
+//   sprite_bitmap_blit(1, 0);
+//=============================================================================
+
+//-----------------------------------------------------------------------------
+// VRAM storage and transfer
+//-----------------------------------------------------------------------------
+
+// Shared guards keep generated code compact and make invalid arguments fail
+// consistently across every public sprite helper.
+int sprite_internal_byte(unsigned int value) {
+    if (value > 255) {
+        return 0;
+    }
+    return 1;
+}
+
+int sprite_internal_coordinate(unsigned int x, unsigned int y) {
+    if (!sprite_internal_byte(x)) {
+        return 0;
+    }
+    if (!sprite_internal_byte(y)) {
+        return 0;
+    }
+    return 1;
+}
+
+int sprite_internal_layer(int layer) {
+    if (layer < 0) {
+        return 0;
+    }
+    if (layer > 8) {
+        return 0;
+    }
+    return 1;
+}
+
+
+// Read one byte from linear VRAM. This form is independent of graphics mode.
+unsigned int sprite_vram_read(unsigned int address) {
+    return vread(address);
+}
+
+// Write one byte to linear VRAM. Leave graphics in coordinate mode so a later
+// primitive call cannot accidentally interpret a pixel position as an address.
+int sprite_vram_write(unsigned int address, unsigned int value) {
+    if (address > 65535) {
+        return 0;
+    }
+    if (value > 255) {
+        return 0;
+    }
+    set_vmode(1);
+    set_pos((address >> 8) & 255, address & 255);
+    vwrite(value);
+    set_vmode(0);
+    return 1;
+}
+
+// Fill a half-open linear VRAM range. The half-open form avoids a 16-bit
+// wrap at 65535 and is convenient for bounded frame operations.
+int sprite_vram_fill(unsigned int address, unsigned int count,
+                     unsigned int value) {
+    if (count < 1) {
+        return 0;
+    }
+    if (count > 65535) {
+        return 0;
+    }
+    if (value > 255) {
+        return 0;
+    }
+    if (address > 65535 - (count - 1)) {
+        return 0;
+    }
+    for (int i = 0; i < count; i++) {
+        sprite_vram_write(address + i, value);
+    }
+    return 1;
+}
+
+// Clear the complete VRAM frame without requiring a representable 65536 count.
+int sprite_vram_clear() {
+    for (int address = 0; address < 65535; address++) {
+        sprite_vram_write(address, 0);
+    }
+    sprite_vram_write(65535, 0);
+    return 1;
+}
+
+// Copy a row-major pixel array from RAM into a rectangular VRAM frame at (x,y).
+int sprite_vram_load(unsigned int x, unsigned int y, int pixels[],
+                     unsigned int count) {
+    if (x < 0) {
+        return 0;
+    }
+    if (x > 255) {
+        return 0;
+    }
+    if (y < 0) {
+        return 0;
+    }
+    if (y > 255) {
+        return 0;
+    }
+    if (count < 1) {
+        return 0;
+    }
+    int address = (y * 256) + x;
+    if (address != 0) {
+        if (count > 65535 - (address - 1)) {
+            return 0;
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        if (!sprite_vram_write(address + i, pixels[i])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+// Copy a rectangular VRAM frame at (x,y) back into a caller-owned RAM array.
+int sprite_vram_save(unsigned int x, unsigned int y, int pixels[],
+                     unsigned int count) {
+    if (x < 0) {
+        return 0;
+    }
+    if (x > 255) {
+        return 0;
+    }
+    if (y < 0) {
+        return 0;
+    }
+    if (y > 255) {
+        return 0;
+    }
+    if (count < 1) {
+        return 0;
+    }
+    int address = (y * 256) + x;
+    if (address != 0) {
+        if (count > 65535 - (address - 1)) {
+            return 0;
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        pixels[i] = sprite_vram_read(address + i);
+    }
+    return 1;
+}
+
+// Transfer the complete VRAM frame into a graphics layer. The hardware blit
+// clears VRAM afterward, making this useful for software-composited frames.
+int sprite_vram_blit(int layer) {
+    if (layer < 0) {
+        return 0;
+    }
+    if (layer > 8) {
+        return 0;
+    }
+    int original_layer = get_layer();
+    set_vmode(0);
+    set_layer(layer);
+    screen_blit();
+    set_layer(original_layer);
+    return 1;
+}
+
+//-----------------------------------------------------------------------------
+// Memory-backed bitmap sprites
+//-----------------------------------------------------------------------------
+
+// Upload row-major bitmap data to a selected bank. The previous bank is
+// restored so a sprite helper never changes the caller's memory context.
+int sprite_bitmap_upload(int bank, unsigned int address, int pixels[],
+                        unsigned int count) {
+    if (bank < 0) {
+        return 0;
+    }
+    if (bank > 15) {
+        return 0;
+    }
+    if (address < 0) {
+        return 0;
+    }
+    if (address > 65535) {
+        return 0;
+    }
+    if (count < 1) {
+        return 0;
+    }
+    if (count > 65535) {
+        return 0;
+    }
+    if (address > 65535 - (count - 1)) {
+        return 0;
+    }
+    int original_bank = read_bank();
+    set_bank(bank);
+    for (int i = 0; i < count; i++) {
+        poke(address + i, pixels[i]);
+    }
+    set_bank(original_bank);
+    return 1;
+}
+
+// Configure one of the 16 memory-mapped sprite control blocks. Flags normally
+// use 0x01 for active and 0x02 for transparency; bit 7 selects sprite layer 6.
+int sprite_bitmap_configure(int id, unsigned int address, unsigned int x,
+                            unsigned int y, unsigned int width,
+                            unsigned int height, unsigned int flags,
+                            unsigned int transparency) {
+    if (id < 0) {
+        return 0;
+    }
+    if (id > 15) {
+        return 0;
+    }
+    if (address < 0) {
+        return 0;
+    }
+    if (address > 65535) {
+        return 0;
+    }
+    if (x < 0) {
+        return 0;
+    }
+    if (x > 255) {
+        return 0;
+    }
+    if (y < 0) {
+        return 0;
+    }
+    if (y > 255) {
+        return 0;
+    }
+    if (width < 1) {
+        return 0;
+    }
+    if (width > 255) {
+        return 0;
+    }
+    if (height < 1) {
+        return 0;
+    }
+    if (height > 255) {
+        return 0;
+    }
+    if (flags < 0) {
+        return 0;
+    }
+    if (flags > 255) {
+        return 0;
+    }
+    if (transparency < 0) {
+        return 0;
+    }
+    if (transparency > 255) {
+        return 0;
+    }
+    unsigned int size = width * height;
+    if (address > 65535 - (size - 1)) {
+        return 0;
+    }
+    int base = 0xF000 + (id * 16);
+    poke(base + 0, (address >> 8) & 255);
+    poke(base + 1, address & 255);
+    poke(base + 2, x);
+    poke(base + 3, y);
+    poke(base + 4, width);
+    poke(base + 5, height);
+    poke(base + 6, flags);
+    poke(base + 7, transparency);
+    for (int i = 8; i < 16; i++) {
+        poke(base + i, 0);
+    }
+    return 1;
+}
+
+// Move an existing sprite without rewriting the rest of its SCB.
+int sprite_bitmap_move(int id, unsigned int x, unsigned int y) {
+    if (id < 0) {
+        return 0;
+    }
+    if (id > 15) {
+        return 0;
+    }
+    if (x < 0) {
+        return 0;
+    }
+    if (x > 255) {
+        return 0;
+    }
+    if (y < 0) {
+        return 0;
+    }
+    if (y > 255) {
+        return 0;
+    }
+    int base = 0xF000 + (id * 16);
+    poke(base + 2, x);
+    poke(base + 3, y);
+    return 1;
+}
+
+// Enable or disable a sprite while preserving its layer and transparency bits.
+int sprite_bitmap_enable(int id) {
+    if (id < 0) {
+        return 0;
+    }
+    if (id > 15) {
+        return 0;
+    }
+    int base = 0xF000 + (id * 16);
+    poke(base + 6, peek(base + 6) | 1);
+    return 1;
+}
+
+int sprite_bitmap_disable(int id) {
+    if (id < 0) {
+        return 0;
+    }
+    if (id > 15) {
+        return 0;
+    }
+    int base = 0xF000 + (id * 16);
+    poke(base + 6, peek(base + 6) & 254);
+    return 1;
+}
+
+// Blit bitmap data from the bank in which it was uploaded, restoring the old
+// bank afterward. The caller may repeatedly configure before blitting all.
+int sprite_bitmap_blit(int bank, int id) {
+    if (bank < 0) {
+        return 0;
+    }
+    if (bank > 15) {
+        return 0;
+    }
+    if (id < 0) {
+        return 0;
+    }
+    if (id > 15) {
+        return 0;
+    }
+    int original_bank = read_bank();
+    set_bank(bank);
+    sprite_blit(id);
+    set_bank(original_bank);
+    return 1;
+}
+
+int sprite_bitmap_blit_all(int bank) {
+    if (bank < 0) {
+        return 0;
+    }
+    if (bank > 15) {
+        return 0;
+    }
+    int original_bank = read_bank();
+    set_bank(bank);
+    sprite_blitall();
+    set_bank(original_bank);
+    return 1;
+}
+
+//-----------------------------------------------------------------------------
+// Primitive sprites
+//-----------------------------------------------------------------------------
+
+// Primitive helpers preserve the active layer. They are intended for sprites
+// on a dedicated layer that the game clears and rebuilds each frame.
+int sprite_primitive_clear(int layer) {
+    if (!sprite_internal_layer(layer)) {
+        return 0;
+    }
+    int original_layer = get_layer();
+    set_vmode(0);
+    set_layer(layer);
+    screen_fill(0);
+    set_layer(original_layer);
+    return 1;
+}
+
+int sprite_primitive_pixel(int layer, int x, int y, int color) {
+    if (!sprite_internal_layer(layer)) {
+        return 0;
+    }
+    if (!sprite_internal_coordinate(x, y)) {
+        return 0;
+    }
+    if (!sprite_internal_byte(color)) {
+        return 0;
+    }
+    int original_layer = get_layer();
+    set_vmode(0);
+    set_layer(layer);
+    set_pos(x, y);
+    write_screen(color);
+    set_layer(original_layer);
+    return 1;
+}
+
+int sprite_primitive_line(int layer, int x1, int y1, int x2, int y2, int color) {
+    if (!sprite_internal_layer(layer)) {
+        return 0;
+    }
+    if (!sprite_internal_coordinate(x1, y1)) {
+        return 0;
+    }
+    if (!sprite_internal_coordinate(x2, y2)) {
+        return 0;
+    }
+    if (!sprite_internal_byte(color)) {
+        return 0;
+    }
+    int original_layer = get_layer();
+    set_vmode(0);
+    set_layer(layer);
+    set_color(color);
+    set_pos(x1, y1);
+    draw_line(x2, y2);
+    set_layer(original_layer);
+    return 1;
+}
+
+int sprite_primitive_rect(int layer, int x1, int y1, int x2, int y2,
+                          int filled, int color) {
+    if (!sprite_internal_layer(layer)) {
+        return 0;
+    }
+    if (!sprite_internal_coordinate(x1, y1)) {
+        return 0;
+    }
+    if (!sprite_internal_coordinate(x2, y2)) {
+        return 0;
+    }
+    if (!sprite_internal_byte(color)) {
+        return 0;
+    }
+    int original_layer = get_layer();
+    set_vmode(0);
+    set_layer(layer);
+    set_color(color);
+    set_pos(x1, y1);
+    draw_rect(x2, y2, filled);
+    set_layer(original_layer);
+    return 1;
+}
+
+int sprite_primitive_circle(int layer, int x, int y, int radius,
+                            int filled, int color) {
+    if (!sprite_internal_layer(layer)) {
+        return 0;
+    }
+    if (!sprite_internal_coordinate(x, y)) {
+        return 0;
+    }
+    if (!sprite_internal_byte(radius)) {
+        return 0;
+    }
+    if (!sprite_internal_byte(color)) {
+        return 0;
+    }
+    int original_layer = get_layer();
+    set_vmode(0);
+    set_layer(layer);
+    set_color(color);
+    set_pos(x, y);
+    draw_circle(radius, filled);
+    set_layer(original_layer);
+    return 1;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// Text sprites
+//-----------------------------------------------------------------------------
+
+int sprite_text_draw(int layer, int x, int y, string text, int color) {
+    if (!sprite_internal_layer(layer)) {
+        return 0;
+    }
+    if (!sprite_internal_coordinate(x, y)) {
+        return 0;
+    }
+    if (!sprite_internal_byte(color)) {
+        return 0;
+    }
+    int original_layer = get_layer();
+    set_vmode(0);
+    set_layer(layer);
+    set_pos(x, y);
+    write_text(text, color);
+    set_layer(original_layer);
+    return 1;
+}
+
+// Clear complete 8x8 cells rather than redrawing glyph foreground pixels. This
+// also removes trailing cells when one text sprite replaces a longer string.
+int sprite_text_erase(int layer, int x, int y, string text) {
+    if (!sprite_internal_layer(layer)) {
+        return 0;
+    }
+    if (!sprite_internal_coordinate(x, y)) {
+        return 0;
+    }
+    int original_layer = get_layer();
+    set_vmode(0);
+    set_layer(layer);
+    set_color(0);
+    int length = strlen(text);
+    for (int i = 0; i < length; i++) {
+        int cell_x = x + (i * 8);
+        set_pos(cell_x, y);
+        draw_rect(cell_x + 7, y + 7, 1);
+    }
+    set_layer(original_layer);
+    return 1;
+}
+
+int sprite_text_move(int layer, int old_x, int old_y, int new_x, int new_y,
+                     string text, int color) {
+    if (!sprite_internal_layer(layer)) {
+        return 0;
+    }
+    if (!sprite_internal_coordinate(old_x, old_y)) {
+        return 0;
+    }
+    if (!sprite_internal_coordinate(new_x, new_y)) {
+        return 0;
+    }
+    if (!sprite_internal_byte(color)) {
+        return 0;
+    }
+    if (!sprite_text_erase(layer, old_x, old_y, text)) {
+        return 0;
+    }
+    return sprite_text_draw(layer, new_x, new_y, text, color);
+}

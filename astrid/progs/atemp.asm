@@ -7,34 +7,35 @@ CALL func_main
 HLT
 ; Function: main
 func_main:
-ENTER 0
-; Assignment to myvar
-MOV P0, 5
-MOV [0xE000], P0
-; Method call dbg::print_hex
-MOV P1, [0xE000]
-MOV P1, [P1]
+ENTER 2
+; Call to set_pos
+MOV P0, 0
+PUSH P0
+MOV P1, 0
 PUSH P1
-MOV P2, 0x8000
-PUSH P2 ; Receiver := self
-CALL func_dbg_print_hex
-ADD SP, 4 ; Caller cleans up args + receiver
-MOV P4, P0
-; Method call dbg::print_hex
-MOV P5, 0xE000
-PUSH P5
-MOV P6, 0x8000
-PUSH P6 ; Receiver := self
-CALL func_dbg_print_hex
-ADD SP, 4 ; Caller cleans up args + receiver
-MOV P7, P0
-; Method call dbg::print_hex
-MOV P0, [0xE000]
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P2, R0
+; Call to vwrite
+MOV P4, 255
+PUSH P4
+CALL builtin_vwrite
+; Args consumed by callee
+MOV P5, R0
+; var var = ...
+; Call to vread
+CALL builtin_vread
+MOV P6, P0
+MOV [0xC000], P6
+; Method call dbg::scope
+MOV P7, 2
+PUSH P7
+MOV P0, 0xC000
 PUSH P0
 MOV P1, 0x8000
 PUSH P1 ; Receiver := self
-CALL func_dbg_print_hex
-ADD SP, 4 ; Caller cleans up args + receiver
+CALL func_dbg_scope
+ADD SP, 6 ; Caller cleans up args + receiver
 MOV P2, P0
 ; Implicit return for void function
 MOV SP, FP
@@ -744,6 +745,23 @@ POP P1
 SFILL P1
 PUSH P0
 RET
+builtin_vread:
+; Args: linear VRAM address. VREAD uses its operand as BOTH the
+; address input and the result destination, so the return address
+; must be stashed in P3 first (same pattern as builtin_random_range).
+POP P3
+POP P1
+VREAD P1
+MOV P0, P1
+PUSH P3
+RET
+builtin_vwrite:
+; Args: value (writes VRAM at VX/VY)
+POP P0
+POP P1
+VWRITE P1
+PUSH P0
+RET
 builtin_write_text:
 POP P0
 POP P1
@@ -790,7 +808,3 @@ ORG 0x8000
 ; Global Variables
 gvar_dbg:
 DW 0, 0, 0
-ORG 0xE000
-; Placed global 'myvar'
-gvar_myvar:
-DS 2
