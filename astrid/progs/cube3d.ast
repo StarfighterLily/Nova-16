@@ -1,0 +1,108 @@
+//=============================================================================
+// cube3d.ast -- wireframe cube on a turntable (camera.ast demo 1)
+//
+// An orbiting camera circles a wireframe cube above a ground grid. Edges are
+// depth-shaded, so the far side of the cube and the distant grid fade toward
+// the background; that is the same divide-by-depth used for position, only
+// read as a brightness instead of a coordinate.
+//
+// Trace: 144 frames of an orbit (a full turn is 2*pi in Q8.8, ~1608 ticks, so
+// yaw advances 11 per frame), then HLT. At frame f the camera sits at
+// radius CAM_R around the origin at eye height EYE_Y and looks back at the
+// cube, so the cube stays centered while the whole scene parades past it.
+//
+// Screen is 256x256, layer 0. Camera.h explains the units and the integer
+// projection; this file only supplies the scene.
+//=============================================================================
+include "includes/camera.ast";
+
+const int FRAMES = 144;       // one full orbit
+const int TURN = 11;          // yaw increments per frame (Q8.8 radians)
+const int CAM_R = 240;        // orbit radius, world units
+const int CAM_R8 = 1920;      // CAM_R * 8, the 1/8-unit form cam_qmul eats
+const int EYE_Y = -40;        // eye height, world units (origin is cube center)
+const int CUBE_H = 60;        // cube half-size (matches the corner tables)
+const int PI_Q88 = 804;       // pi in Q8.8: adds a half turn (look inward)
+
+// Cube corners: index bit 0 = x, bit 1 = y, bit 2 = z.
+signed int cx[8] = { -60, 60, -60, 60, -60, 60, -60, 60 };
+signed int cy[8] = { -60, -60, 60, 60, -60, -60, 60, 60 };
+signed int cz[8] = { -60, -60, -60, -60, 60, 60, 60, 60 };
+
+// The 12 edges as corner index pairs: 4 per face plus 4 connectors.
+signed int ea[12] = { 0, 1, 3, 2, 4, 5, 7, 6, 0, 1, 2, 3 };
+signed int eb[12] = { 1, 3, 2, 0, 5, 7, 6, 4, 4, 5, 6, 7 };
+
+//-----------------------------------------------------------------------------
+// shade: depth -> palette index. Depth reads act like a brightness ramp:
+// nearer lines get a bright foreground, distant ones sink into the background.
+// Palette 0 is the black background, 31 the brightest available attribute.
+//-----------------------------------------------------------------------------
+signed int shade(signed int d) {
+    if (d < 0) {
+        return 0x1F;              // behind the eye: cam_line clips it anyway
+    }
+    if (d < 90) {
+        return 0x1F;              // very close: white
+    }
+    if (d < 140) {
+        return 0x17;              // light gray
+    }
+    if (d < 200) {
+        return 0x15;              // gray
+    }
+    if (d < 270) {
+        return 0x13;              // dark gray
+    }
+    if (d < 340) {
+        return 0x12;              // darker
+    }
+    return 0x11;                  // farthest: faint
+}
+
+//-----------------------------------------------------------------------------
+// draw_grid: ground plane at y = -CUBE_H, five lines each way. Half of these
+// pass behind the camera during the orbit, which is exactly what the
+// near-plane clip in cam_line is for.
+//-----------------------------------------------------------------------------
+void draw_grid(signed int color) {
+    for (signed int k = -2; k <= 2; k++) {
+        cam_line(k * 100, -CUBE_H, -200, k * 100, -CUBE_H, 200, color);
+        cam_line(-200, -CUBE_H, k * 100, 200, -CUBE_H, k * 100, color);
+    }
+}
+
+void main() {
+    set_layer(0);
+    screen_fill(0);
+
+    for (signed int f = 0; f < FRAMES; f++) {
+        screen_fill(0);
+
+        // Angle for this frame. cam_set with the origin as position is just a
+        // convenient way to load cam_sin / cam_cos for an angle.
+        signed int a = f * TURN;
+        cam_set(0, 0, 0, a);
+
+        // Orbit: position = R * (sin a, 0, cos a) around the origin, then look
+        // back at the cube (heading a + pi turns the view exactly inward).
+        signed int px = cam_qmul(CAM_R8, cam_sin);
+        signed int pz = cam_qmul(CAM_R8, cam_cos);
+        cam_set8(px, EYE_Y * 8, pz, a + PI_Q88);
+
+        draw_grid(0x11);
+
+        // Cube edges, colored by the depth of their midpoint.
+        for (signed int e = 0; e < 12; e++) {
+            signed int i = ea[e];
+            signed int j = eb[e];
+            signed int mx = (cx[i] + cx[j]) / 2;
+            signed int my = (cy[i] + cy[j]) / 2;
+            signed int mz = (cz[i] + cz[j]) / 2;
+            cam_line(cx[i], cy[i], cz[i], cx[j], cy[j], cz[j],
+                     shade(cam_depth(mx, my, mz)));
+        }
+    }
+
+    halt();
+}

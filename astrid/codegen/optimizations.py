@@ -6,10 +6,14 @@ from typing import Dict, Set, List, Tuple, Optional, Any, FrozenSet
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
+import copy
+
 from astrid.parser.parser import (
     BinaryOp, UnaryOp, Number, Identifier, StringLiteral, CharLiteral,
     FuncCall, Expression, Assignment, Return, If, While, DoWhile, For,
     Switch, Break, Continue, VarDecl, PostfixOp, FunctionDef, Cast,
+    MemberAccess, MemberAssignment, ArrayAssignment, ArrayAccess,
+    PrefixOp, AddressOf, Deref, AsmBlock,
 )
 
 
@@ -628,10 +632,30 @@ class FunctionInliner:
                 callee = function_map.get(node.name)
                 if callee is None or callee.return_type != 'void':
                     return [node]
-                mapping = {param.name: arg for param, arg in zip(callee.params, node.args)}
+                if len(node.args) != len(callee.params):
+                    # Arity mismatch (e.g. default parameters): zip() would
+                    # silently drop arguments and leave params unsubstituted.
+                    return [node]
+                params = [p.name for p in callee.params]
+                if params and self._param_escapes(callee.body, params):
+                    # The body writes through / takes the address of a
+                    # parameter, which only stays valid when the call-site
+                    # argument is storage -- too risky to substitute.
+                    return [node]
+                mapping = {param.name: arg for param, arg in
+                           zip(callee.params, node.args)}
                 expanded: List[Any] = []
                 for stmt in callee.body:
-                    expanded.extend(self._substitute(stmt, mapping))
+                    # Substitute over a COPY: the callee must keep its own
+                    # body intact so every other call site (and the emitted
+                    # callee itself, which stays in the program) sees the
+                    # original parameters. _substitute returns statements
+                    # unwrapped, so normalize before extending.
+                    sub = self._substitute(copy.deepcopy(stmt), mapping)
+                    if isinstance(sub, list):
+                        expanded.extend(sub)
+                    else:
+                        expanded.append(sub)
                 return expanded
             if isinstance(node, VarDecl):
                 if node.value is not None:
@@ -680,30 +704,112 @@ class FunctionInliner:
         func.body = rewrite(func.body)
         return func
 
-    def _substitute(self, node: Any, mapping: Dict[str, Any]) -> Any:
+    @staticmethod
+    def _root_name(expr: Any) -> Optional[str]:
+        """Name at the base of an lvalue chain (a, a.b.c, a[i], *a), else None."""
+        if isinstance(expr, Identifier):
+            return expr.name
+        if isinstance(expr, MemberAccess):
+            return FunctionInliner._root_name(expr.base)
+        if isinstance(expr, ArrayAccess):
+            return expr.name
+        if isinstance(expr, Deref):
+            return FunctionInliner._root_name(expr.operand)
+        return None
+
+    @classmethod
+    def _mentions(cls, node: Any, params: List[str]) -> bool:
+        """True when the subtree references any name in `params`."""
         if isinstance(node, list):
-            return [self._substitute(item, mapping) for item in node]
-        if isinstance(node, Identifier) and node.name in mapping:
-            return mapping[node.name]
-        if isinstance(node, BinaryOp):
-            node.left = self._substitute(node.left, mapping)
-            node.right = self._substitute(node.right, mapping)
+            return any(cls._mentions(item, params) for item in node)
+        if isinstance(node, Identifier):
+            return node.name in params
+        if node is None or isinstance(node, (str, int, float, bytes)):
+            return False
+        if not hasattr(node, '__dict__'):
+            return False
+        for value in vars(node).values():
+            if isinstance(value, list):
+                if cls._mentions(value, params):
+                    return True
+            elif hasattr(value, '__dict__') and cls._mentions(value, params):
+                return True
+        return False
+
+    @classmethod
+    def _param_escapes(cls, node: Any, params: List[str]) -> bool:
+        """True when substituting `params` could produce an invalid statement.
+
+        Escape sites are positions where the parameter acts as STORAGE rather
+        than a value: assignment target, ++/-- target, address-of operand, or
+        an array base. Call-site arguments are arbitrary expressions, so `&a`
+        or `a = ...` after substitution may not be a valid lvalue. Raw asm
+        blocks reference operands textually and are never rewritable by AST
+        substitution, so any parameterised asm body also counts.
+        """
+        if isinstance(node, list):
+            return any(cls._param_escapes(item, params) for item in node)
+        if node is None or isinstance(node, (str, int, float, bytes)):
+            return False
+        if not hasattr(node, '__dict__'):
+            return False
+        if isinstance(node, AsmBlock):
+            return True
+        if isinstance(node, Assignment) and isinstance(node.name, str) \
+                and node.name in params:
+            return True
+        if isinstance(node, PostfixOp) and cls._root_name(node.left) in params:
+            return True
+        if isinstance(node, PrefixOp) and cls._root_name(node.operand) in params:
+            return True
+        if isinstance(node, (MemberAssignment, ArrayAssignment)) \
+                and cls._root_name(node.target) in params:
+            return True
+        if isinstance(node, ArrayAccess) and node.name in params:
+            return True
+        if isinstance(node, AddressOf) and cls._mentions(node.operand, params):
+            return True
+        for value in vars(node).values():
+            if isinstance(value, list):
+                if any(cls._param_escapes(item, params) for item in value):
+                    return True
+            elif hasattr(value, '__dict__') \
+                    and cls._param_escapes(value, params):
+                return True
+        return False
+
+    def _substitute(self, node: Any, mapping: Dict[str, Any]) -> Any:
+        """Return `node` with every free parameter identifier replaced.
+
+        The walk is in-place: callers pass a deepcopy of the callee statement
+        (the original body must survive for the other call sites and for the
+        emitted callee itself). Each replacement is a fresh deepcopy of the
+        mapped argument, so one argument used in several positions does not
+        alias, and identifiers inside the argument are terminal -- names that
+        collide with a callee parameter are never re-substituted. String-
+        valued fields (names, operators, types, literals, asm lines) pass
+        through untouched; they are not identifier references.
+        """
+        if not mapping:
             return node
-        if isinstance(node, UnaryOp):
-            node.right = self._substitute(node.right, mapping)
+        if isinstance(node, list):
+            for i in range(len(node)):
+                node[i] = self._substitute(node[i], mapping)
             return node
-        if isinstance(node, PostfixOp):
-            node.left = self._substitute(node.left, mapping)
+        if isinstance(node, Identifier):
+            if node.name in mapping:
+                return copy.deepcopy(mapping[node.name])
             return node
-        if isinstance(node, FuncCall):
-            if not isinstance(getattr(node, 'callee', None), str):
-                # Indirect callee expression: substitute through it too.
-                node.callee = self._substitute(node.callee, mapping)
-            node.args = [self._substitute(arg, mapping) for arg in node.args]
+        if node is None or isinstance(node, (str, int, float, bytes)):
             return node
-        if isinstance(node, Cast):
-            node.expr = self._substitute(node.expr, mapping)
+        if not hasattr(node, '__dict__'):
             return node
+        for key, value in list(vars(node).items()):
+            if isinstance(value, list):
+                setattr(node, key,
+                        [self._substitute(item, mapping) for item in value])
+            elif hasattr(value, '__dict__'):
+                setattr(node, key, self._substitute(value, mapping))
         return node
 
 

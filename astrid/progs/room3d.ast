@@ -1,0 +1,198 @@
+//=============================================================================
+// room3d.ast -- wireframe room you can walk through (camera.ast demo 3)
+//
+// Four walls, a door gap in the north wall, floor/ceiling beams, and a
+// floating marker cube, all drawn as 3D segments through cam_line. The
+// camera starts mid-room at eye height and the trace drives a fixed script
+// of moves and turns: up to the door, through the gap, back around, and off
+// toward the cube for a wide closing view.
+//
+// Trace: 200 scripted frames, then HLT. No input, layer 0. Some frames put
+// walls right against the eye, which is the point: the fixed sequence walks
+// every near-plane clip path while staying exactly checkable.
+//
+// Camera.h explains the units and the integer projection; this file only
+// supplies the room and the script.
+//=============================================================================
+include "includes/camera.ast";
+
+const int FRAMES = 200;       // fixed script length
+const int TURN_STEP = 12;     // turn quantum per scripted step (Q8.8 radians)
+const int WALK = 32;          // walk quantum: 4 world units in 1/8-unit form
+const int WALL = 192;         // walls at +/-192 (room is 384 wide)
+const int FLOOR = -80;        // floor height, world units
+const int CEIL = 112;         // ceiling height, world units
+const int DOOR = 48;          // half-width of the north-wall door gap
+const int EYE = -40;          // eye height while walking
+
+//-----------------------------------------------------------------------------
+// wall_run: one horizontal wall edge at height h along the wall at depth z.
+//-----------------------------------------------------------------------------
+void wall_run(signed int h, signed int z, signed int color) {
+    cam_line(-WALL, h, z, WALL, h, z, color);
+}
+
+//-----------------------------------------------------------------------------
+// room: the whole wireframe. North is +z; the door gap splits the north
+// floor and mid runs; the south wall is solid; east/west walls tie the
+// corners; verticals rise at all four corners; floor/ceiling beams keep the
+// perspective readable when one wall fills the screen.
+//-----------------------------------------------------------------------------
+void room() {
+    signed int wall = 0x13;
+    signed int trim = 0x17;
+
+    // South wall (z = -WALL): solid, three heights.
+    wall_run(FLOOR, 0 - WALL, wall);
+    wall_run(16, 0 - WALL, trim);
+    wall_run(CEIL, 0 - WALL, wall);
+
+    // North wall (z = +WALL): floor and mid runs split by the door gap.
+    cam_line(0 - WALL, FLOOR, WALL, 0 - DOOR, FLOOR, WALL, wall);
+    cam_line(DOOR, FLOOR, WALL, WALL, FLOOR, WALL, wall);
+    cam_line(0 - WALL, 16, WALL, 0 - DOOR, 16, WALL, trim);
+    cam_line(DOOR, 16, WALL, WALL, 16, WALL, trim);
+    // Lintel above the door, full ceiling run, and door posts.
+    cam_line(0 - DOOR, 64, WALL, DOOR, 64, WALL, trim);
+    wall_run(CEIL, WALL, wall);
+    cam_line(0 - DOOR, FLOOR, WALL, 0 - DOOR, 64, WALL, trim);
+    cam_line(DOOR, FLOOR, WALL, DOOR, 64, WALL, trim);
+
+    // East/west walls: tie south to north at floor, mid, and ceiling.
+    cam_line(0 - WALL, FLOOR, 0 - WALL, 0 - WALL, FLOOR, WALL, wall);
+    cam_line(WALL, FLOOR, 0 - WALL, WALL, FLOOR, WALL, wall);
+    cam_line(0 - WALL, 16, 0 - WALL, 0 - WALL, 16, WALL, trim);
+    cam_line(WALL, 16, 0 - WALL, WALL, 16, WALL, trim);
+    cam_line(0 - WALL, CEIL, 0 - WALL, 0 - WALL, CEIL, WALL, wall);
+    cam_line(WALL, CEIL, 0 - WALL, WALL, CEIL, WALL, wall);
+
+    // Corner verticals: floor to ceiling at all four corners.
+    cam_line(0 - WALL, FLOOR, 0 - WALL, 0 - WALL, CEIL, 0 - WALL, trim);
+    cam_line(WALL, FLOOR, 0 - WALL, WALL, CEIL, 0 - WALL, trim);
+    cam_line(0 - WALL, FLOOR, WALL, 0 - WALL, CEIL, WALL, trim);
+    cam_line(WALL, FLOOR, WALL, WALL, CEIL, WALL, trim);
+}
+
+//-----------------------------------------------------------------------------
+// beams: floor and ceiling cross beams (x = -96, 0, 96), south to north.
+//-----------------------------------------------------------------------------
+void beams() {
+    for (signed int k = -1; k <= 1; k++) {
+        cam_line(k * 96, FLOOR, 0 - WALL, k * 96, FLOOR, WALL, 0x11);
+        cam_line(k * 96, CEIL, 0 - WALL, k * 96, CEIL, WALL, 0x11);
+    }
+}
+
+//-----------------------------------------------------------------------------
+// marker: floating cube at (96, 0, 96), half-size 24: 12 edges.
+//-----------------------------------------------------------------------------
+void marker() {
+    signed int mh = 24;
+    signed int mc = 0x1F;
+    cam_line(96 - mh, 0 - mh, 96 - mh, 96 + mh, 0 - mh, 96 - mh, mc);
+    cam_line(96 - mh, 0 + mh, 96 - mh, 96 + mh, 0 + mh, 96 - mh, mc);
+    cam_line(96 - mh, 0 - mh, 96 + mh, 96 + mh, 0 - mh, 96 + mh, mc);
+    cam_line(96 - mh, 0 + mh, 96 + mh, 96 + mh, 0 + mh, 96 + mh, mc);
+    cam_line(96 - mh, 0 - mh, 96 - mh, 96 - mh, 0 - mh, 96 + mh, mc);
+    cam_line(96 + mh, 0 - mh, 96 - mh, 96 + mh, 0 - mh, 96 + mh, mc);
+    cam_line(96 - mh, 0 + mh, 96 - mh, 96 - mh, 0 + mh, 96 + mh, mc);
+    cam_line(96 + mh, 0 + mh, 96 - mh, 96 + mh, 0 + mh, 96 + mh, mc);
+    cam_line(96 - mh, 0 - mh, 96 - mh, 96 - mh, 0 + mh, 96 - mh, mc);
+    cam_line(96 + mh, 0 - mh, 96 - mh, 96 + mh, 0 + mh, 96 - mh, mc);
+    cam_line(96 - mh, 0 - mh, 96 + mh, 96 - mh, 0 + mh, 96 + mh, mc);
+    cam_line(96 + mh, 0 - mh, 96 + mh, 96 + mh, 0 + mh, 96 + mh, mc);
+}
+
+//-----------------------------------------------------------------------------
+// step: run one scripted motion frame, then draw the room from the result.
+//   op  0 = walk forward  1 = strafe right  2 = turn left  3 = turn right
+// The walk clamps to the room plus the door pocket so the eye never leaves
+// through a wall: x within +/-176, z within -176..+288, and z past +176 only
+// while |x| stays inside the 40-wide door pocket (then the lintel and
+// ceiling runs sweep overhead, exercising the clip from the other side).
+//-----------------------------------------------------------------------------
+void step(signed int op) {
+    if (op == 0) {
+        cam_forward(WALK);
+    }
+    if (op == 1) {
+        cam_strafe(WALK);
+    }
+    if (op == 2) {
+        cam_rotate(TURN_STEP);
+    }
+    if (op == 3) {
+        cam_rotate(0 - TURN_STEP);
+    }
+
+    signed int pocket = 0;
+    if (cam_zq > 1408) {                // past the north wall (176 * 8)
+        if (cam_xq > -320 && cam_xq < 320) {
+            pocket = 1;                 // |x| < 40: inside the door pocket
+        }
+    }
+    if (cam_xq < -1408) {
+        cam_xq = -1408;
+    }
+    if (cam_xq > 1408) {
+        cam_xq = 1408;
+    }
+    if (pocket == 0) {
+        if (cam_zq < -1408) {
+            cam_zq = -1408;
+        }
+        if (cam_zq > 1408) {
+            cam_zq = 1408;
+        }
+    } else {
+        if (cam_zq > 2304) {            // 288: a few steps past the door
+            cam_zq = 2304;
+        }
+        if (cam_zq < -1408) {
+            cam_zq = -1408;
+        }
+    }
+
+    screen_fill(0);
+    room();
+    beams();
+    marker();
+}
+
+void main() {
+    set_layer(0);
+    screen_fill(0);
+    cam_set(0, EYE, -96, 0);
+
+    for (signed int f = 0; f < FRAMES; f++) {
+        // Script: walk to the door (0-29), sidestep to center (30-39),
+        // through the gap (40-69), turn around outside (70-99), back in
+        // (100-129), sidestep right (130-149), face the cube (150-169),
+        // and back up for a wide view (170-199, swinging left at the end).
+        signed int op = 0;
+        if (f < 30) {
+            op = 0;
+        } else if (f < 40) {
+            op = 1;
+        } else if (f < 70) {
+            op = 0;
+        } else if (f < 100) {
+            op = 2;
+        } else if (f < 130) {
+            op = 0;
+        } else if (f < 150) {
+            op = 1;
+        } else if (f < 170) {
+            op = 3;
+        } else {
+            op = 0;
+            if (f >= 185) {
+                op = 2;
+            }
+        }
+        step(op);
+    }
+
+    halt();
+}
+
