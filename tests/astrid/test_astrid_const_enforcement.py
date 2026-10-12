@@ -198,3 +198,74 @@ def test_const_struct_byval_param_member_assignment_rejected():
         "int main() { struct S a = {1}; return f(a); }")
     assert "const variable 's'" in str(err)
 
+# ---------------------------------------------------------------------------
+# Const discarding: `int *p = &c` hands a writable alias to read-only storage
+# ---------------------------------------------------------------------------
+
+@pytest.mark.astrid
+def test_const_address_into_non_const_pointer_rejected():
+    """`int *p = &c` (c const) discards const -- rejected at the binding."""
+    err = compile_error(
+        "int main() { const int c = 1; int *p = &c; *p = 2; return c; }")
+    assert "discards const" in str(err)
+
+
+@pytest.mark.astrid
+def test_const_global_address_into_non_const_pointer_rejected():
+    """The escape is caught for globals as well as locals."""
+    err = compile_error(
+        "const int v = 1;\nint main() { int *p = &v; *p = 2; return v; }")
+    assert "discards const" in str(err)
+
+
+@pytest.mark.astrid
+def test_const_rebinding_to_non_const_pointer_rejected():
+    """`p = &c` after the declaration is the same escape, caught later."""
+    err = compile_error(
+        "const int v = 1;\nint main() { int *p; p = &v; *p = 2; return v; }")
+    assert "discards const" in str(err)
+
+
+@pytest.mark.astrid
+def test_const_array_decay_into_non_const_pointer_rejected():
+    """Array decay is no loophole: `int *p = a` (a const) is rejected."""
+    err = compile_error(
+        "const int a[2] = {1, 2};\n"
+        "int main() { int *p = a; p[0] = 9; return a[0]; }")
+    assert "discards const" in str(err)
+
+
+@pytest.mark.astrid
+def test_const_struct_address_into_non_const_pointer_rejected():
+    """`struct S *p = &s` (s const) discards const through the struct."""
+    err = compile_error(
+        "struct S { int x; };\nconst struct S s = {1};\n"
+        "int main() { struct S *p = &s; p->x = 2; return s.x; }")
+    assert "discards const" in str(err)
+
+
+@pytest.mark.astrid
+def test_const_address_into_const_pointer_accepted():
+    """`const int *p = &c` is the legal form: the pointee stays read-only."""
+    proc, _c, _m = run_source(
+        "int main() { const int c = 41; const int *p = &c; return *p + 1; }")
+    assert proc.p0 == 42
+
+
+@pytest.mark.astrid
+def test_const_pointer_rebindable_to_const():
+    """Rebinding a `const T *p` itself is legal; only `*p` is read-only."""
+    proc, _c, _m = run_source(
+        "const int v = 1;\n"
+        "int main() { const int *p; p = &v; return *p + 1; }")
+    assert proc.p0 == 2
+
+
+@pytest.mark.astrid
+def test_non_const_pointer_to_non_const_unaffected():
+    """Ordinary `int *p = &v` (v non-const) compiles and runs as before."""
+    proc, _c, _m = run_source(
+        "int main() { int v = 1; int *p = &v; *p = 2; return v; }")
+    assert proc.p0 == 2
+
+

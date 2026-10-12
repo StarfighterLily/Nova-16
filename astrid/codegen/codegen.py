@@ -1250,6 +1250,18 @@ class CodeGenerator:
         # offset 0; the union size is the max field size (always 2 bytes
         # for int/struct fields).
         self.union_defs: Dict[str, List[str]] = {}
+        # Bit-field widths: tag -> {field_name: bit_width}. Members listed
+        # here pack into the low bits of their containing 16-bit word instead
+        # of each owning a whole slot (see _field_type_size_words and the
+        # read/modify/write sequences in generate_member_access /
+        # generate_member_assignment).
+        self.struct_bitfields: Dict[str, Dict[str, int]] = {}
+        self.union_bitfields: Dict[str, Dict[str, int]] = {}
+        # Memoized packed layout per tag: tag -> list of
+        # (field_name, word_index, bit_offset, bit_width) in declaration
+        # order. Bitfields sharing a word collapse to the same word_index;
+        # ordinary (non-bitfield) members each take a whole word.
+        self._bitfield_layout_cache: Dict[str, List[Tuple[str, int, int, Optional[int]]]] = {}
         # Type aliases: alias -> base_type (from typedef declarations).
         self.type_aliases: Dict[str, str] = {}
         self.global_vars = {}  # name -> {'address', 'type', 'size', 'is_array', 'count', 'init_values'}
@@ -1553,6 +1565,12 @@ class CodeGenerator:
         # Adopt the parser's union layout table. All union fields share byte
         # offset 0; member access resolves to the same base address.
         self.union_defs = dict(getattr(ast, 'union_defs', None) or {})
+        # Adopt the parser's bit-field width tables (tag -> {field: width}).
+        # Empty for sources that declare no bitfields, so every layout path
+        # below behaves exactly as before for existing programs.
+        self.struct_bitfields = dict(getattr(ast, 'struct_bitfields', None) or {})
+        self.union_bitfields = dict(getattr(ast, 'union_bitfields', None) or {})
+        self._bitfield_layout_cache = {}
         # Adopt the parser's type alias table so typedef aliases resolve to
         # their base types during variable declaration code generation.
         self.type_aliases = dict(getattr(ast, 'type_aliases', None) or {})
@@ -2313,6 +2331,115 @@ class CodeGenerator:
                 return ftype
         return None
 
+    # ------------------------------------------------------------------
+    # Bit-field layout (Tier-2 item 7)
+    # ------------------------------------------------------------------
+    def _bitfield_widths(self, tag: str) -> Dict[str, int]:
+        """``{field_name: bit_width}`` for ``tag``, or an empty dict.
+
+        Bit-field members are only meaningful inside the aggregate that
+        declares them, so the lookup is tag-scoped and misses harmlessly for
+        every struct that has none (the overwhelmingly common case).
+        """
+        if self._is_union_type(tag):
+            return self.union_bitfields.get(tag, {})
+        return self.struct_bitfields.get(tag, {})
+
+    def _field_bit_width(self, tag: str, field: str) -> Optional[int]:
+        """Bit width of ``field`` in ``tag``, or None for an ordinary member."""
+        return self._bitfield_widths(tag).get(field)
+
+    def _has_bitfields(self, tag: str) -> bool:
+        """True when ``tag`` (or any aggregate nested inside it) packs bits."""
+        if self._bitfield_widths(tag):
+            return True
+        # A nested aggregate with bitfields makes the outer layout packed too,
+        # so its footprint must come from the packed word count below rather
+        # than from the field count.
+        for entry in (self._fields_of(tag) or []):
+            ftype = entry[1] if isinstance(entry, tuple) else 'int'
+            if ftype.startswith('struct ') or ftype.startswith('union '):
+                _, inner = ftype.split(' ', 1)
+                if self._has_bitfields(inner):
+                    return True
+        return False
+
+    def _fields_of(self, tag: str) -> Optional[List]:
+        """Ordered field entries for a struct or union tag."""
+        fields = self.struct_defs.get(tag)
+        if fields is None:
+            fields = self.union_defs.get(tag)
+        return fields
+
+    def _packed_layout(self, tag: str) -> List[Tuple[str, int, int, Optional[int]]]:
+        """Assign every member of ``tag`` a word index and (for bit-fields)
+        a bit offset within that word.
+
+        Returns a list of ``(field_name, word_index, bit_offset, bit_width)``
+        in declaration order, where ``bit_width`` is None for an ordinary
+        full-width member.  Bit-fields pack greedily into the low bits of the
+        current word; one that does not fit in the remaining bits opens a new
+        word, exactly like C's "a bit-field that doesn't fit moves to the next
+        unit" rule.  A non-bit-field member always occupies whole words and
+        therefore starts a fresh word.
+
+        The result is memoized because layout is queried from many places
+        (sizing, offsets, member access, initializer validation) and must
+        agree everywhere.
+        """
+        cached = self._bitfield_layout_cache.get(tag)
+        if cached is not None:
+            return cached
+        fields = self._fields_of(tag)
+        if fields is None:
+            raise NameError(f"Undefined struct/union type '{tag}'")
+        widths = self._bitfield_widths(tag)
+        layout: List[Tuple[str, int, int, Optional[int]]] = []
+        word = 0        # index of the word currently being filled
+        used_bits = 0   # bits consumed in `word`
+        for entry in fields:
+            fname, ftype = (entry if isinstance(entry, tuple) else (entry, 'int'))
+            width = widths.get(fname)
+            if width is None:
+                # Ordinary member: whole words, so it cannot share with bits.
+                if used_bits:
+                    word += 1
+                    used_bits = 0
+                layout.append((fname, word, 0, None))
+                word += self._field_type_size_words(ftype)
+                used_bits = 0
+            else:
+                # Bit-field: pack into the current word's free low bits.
+                if used_bits + width > 16:
+                    word += 1
+                    used_bits = 0
+                layout.append((fname, word, used_bits, width))
+                used_bits += width
+        if used_bits:
+            word += 1  # a partially-filled trailing word still counts
+        self._bitfield_layout_cache[tag] = layout
+        return layout
+
+    def _packed_word_count(self, tag: str) -> int:
+        """Word count of ``tag``'s packed layout (== field count when no
+        bit-fields are declared, so existing layouts are unchanged)."""
+        layout = self._packed_layout(tag)
+        if not layout:
+            return 0
+        last_word = layout[-1][1]
+        # The final member's own footprint matters for aggregates: a nested
+        # struct field spans several words past its own start index.
+        fname, word_idx, _bit, width = layout[-1]
+        ftype = None
+        for entry in (self._fields_of(tag) or []):
+            ename = entry[0] if isinstance(entry, tuple) else entry
+            if ename == fname:
+                ftype = entry[1] if isinstance(entry, tuple) else 'int'
+                break
+        if width is None and ftype is not None:
+            return word_idx + self._field_type_size_words(ftype)
+        return last_word + 1
+
     def _field_type_size_words(self, ftype: str,
                                _seen: Optional[frozenset] = None) -> int:
         """Storage footprint of one struct/union field type, in WORDS.
@@ -2339,6 +2466,12 @@ class CodeGenerator:
         if fields is None:
             raise NameError(
                 f"Undefined {member_kind} type '{member_tag}' in nested layout")
+        if self._has_bitfields(member_tag):
+            # Packed aggregate: bit-fields share words, so the footprint is
+            # the packed word count rather than the member count.
+            if member_tag in seen:
+                return 1
+            return self._packed_word_count(member_tag)
         if member_kind == 'union':
             return max((self._field_type_size_words(
                             f[1] if isinstance(f, tuple) else 'int',
@@ -2356,7 +2489,13 @@ class CodeGenerator:
         one word slot (2 bytes) and each nested-aggregate field occupies its
         inner layout's word count. For unions, all fields overlap at offset
         0, so the size is the largest member footprint.
+
+        Aggregates that declare bit-fields instead use the *packed* word
+        count: several narrow members share one 16-bit word, so the layout is
+        genuinely smaller than one word per member.
         """
+        if self._has_bitfields(tag):
+            return self._packed_word_count(tag) * 2
         if self._is_union_type(tag):
             fields = self.union_defs.get(tag, [])
             words = max((self._field_type_size_words(
@@ -2381,6 +2520,19 @@ class CodeGenerator:
         """
         if self._is_union_type(tag):
             return self._union_field_offset(tag, field)
+        if self._has_bitfields(tag):
+            # Packed layout: bit-fields sharing a word collapse to that word's
+            # byte offset, so consecutive narrow members report the same
+            # address and the read/modify/write sequences disambiguate them by
+            # their bit offset.
+            for fname, word_idx, _bit, _width in self._packed_layout(tag):
+                if fname == field:
+                    return word_idx * 2
+            fields = self._fields_of(tag) or []
+            field_names = [f[0] if isinstance(f, tuple) else f for f in fields]
+            raise NameError(
+                f"Struct '{tag}' has no field '{field}' "
+                f"(fields: {', '.join(field_names)})")
         fields = self.struct_defs.get(tag)
         if fields is None:
             raise NameError(f"Undefined struct/union type '{tag}'")
@@ -2463,6 +2615,23 @@ class CodeGenerator:
         if fields is None:
             raise NameError(
                 f"Undefined {'union' if is_union else 'struct'} type '{tag}'")
+        if self._has_bitfields(tag) and not is_union:
+            # Packed layout: report the containing word's byte offset. A
+            # bit-field's *bit* offset inside that word is resolved separately
+            # by _struct_field_bits, so the chain walker still lands on the
+            # right word for a nested member.
+            for fname, word_idx, _bit, _width in self._packed_layout(tag):
+                if fname != field:
+                    continue
+                ftype = self._struct_field_type(tag, fname)
+                if ftype.startswith('struct ') or ftype.startswith('union '):
+                    _, bare_tag = ftype.split(' ', 1)
+                    return word_idx * 2, bare_tag
+                return word_idx * 2, ftype
+            field_names = [f[0] if isinstance(f, tuple) else f for f in fields]
+            raise NameError(
+                f"Struct '{tag}' has no field '{field}' "
+                f"(fields: {', '.join(field_names)})")
         offset_words = 0
         for entry in fields:
             if isinstance(entry, tuple):
@@ -2485,6 +2654,104 @@ class CodeGenerator:
         raise NameError(
             f"{'Union' if is_union else 'Struct'} '{tag}' has no field "
             f"'{field}' (fields: {', '.join(field_names)})")
+
+    def _struct_field_bits(self, tag: str, field: str) -> Optional[Tuple[int, int]]:
+        """``(bit_offset, bit_width)`` of a bit-field member, else None.
+
+        The bit offset is relative to the low bit of the word that
+        ``_struct_field_offset`` reports, so a caller holding that word's
+        address can extract or replace the member without further layout
+        knowledge.
+        """
+        for fname, _word, bit, width in self._packed_layout(tag):
+            if fname == field and width is not None:
+                return bit, width
+        return None
+
+    def _member_bitfield(self, expr: MemberAccess) -> Optional[Tuple[str, int, int]]:
+        """Bit-field coordinates of a *terminal* member access, else None.
+
+        Returns ``(tag, bit_offset, bit_width)`` for the innermost field of a
+        chain when that field is a bit-field. Nested chains are handled: only
+        the last link's own aggregate is consulted, matching how the byte
+        offset is accumulated by ``_member_base_info``.
+        """
+        chain = []
+        node = expr
+        while isinstance(node, MemberAccess):
+            chain.append(node)
+            node = node.base
+        if not chain:
+            return None
+        # Rebuild the tag at each step so `outer.inner.flags` resolves the
+        # bit-field against the aggregate that actually declares it.
+        try:
+            inner_tag = self._aggregate_expr_tag(node)
+        except (NameError, SyntaxError, AttributeError):
+            inner_tag = None
+        if inner_tag is None:
+            return None
+        chain.reverse()
+        tag = inner_tag
+        for mae in chain[:-1]:
+            _, ftype = self._struct_field_info(tag, mae.field)
+            tag = ftype
+        bits = self._struct_field_bits(tag, chain[-1].field)
+        if bits is None:
+            return None
+        bit_off, width = bits
+        return tag, bit_off, width
+
+    def _emit_bitfield_extract(self, dst_reg: str, addr_reg: str,
+                               bit_off: int, width: int,
+                               signed: bool = False):
+        """Extract ``width`` bits at ``bit_off`` of ``[addr_reg]`` into dst.
+
+        Loads the containing word, shifts the field down to bit 0 and masks
+        off the neighbouring members that share the word. A ``signed``
+        bit-field is then sign-extended from its top bit so that e.g.
+        ``int delta : 5`` holding -1 reads back as -1 rather than 31.
+        """
+        self._emit_mem_load(dst_reg, addr_reg, 2)
+        if bit_off:
+            # Logical shift right: the mask below discards the upper members,
+            # so no sign bit can leak in from above the field.
+            self._emit_shift(dst_reg, bit_off, True, prefix="bf_shr")
+        mask = (1 << width) - 1
+        if mask != 0xFFFF:
+            self.emit(f"    AND {dst_reg}, 0x{mask:04X}")
+        if signed and width < 16:
+            # Sign-extend from bit width-1: shift the field's top bit to the
+            # word's top bit, then arithmetic-shift it back down.
+            pad = 16 - width
+            self._emit_shift(dst_reg, pad, False, prefix="bf_sal")
+            self.emit(f"    SAR {dst_reg}, {pad}")
+
+    def _emit_bitfield_insert(self, addr_reg: str, val_reg: str,
+                              bit_off: int, width: int):
+        """Merge ``val_reg``'s low ``width`` bits into the word at addr_reg.
+
+        Read-modify-write: the whole word is loaded, the member's bit range is
+        cleared, the (masked, shifted) value is OR-ed in, and the word is
+        stored back. Every other member sharing the word keeps its value,
+        which a plain store would have destroyed.
+        """
+        mask = (1 << width) - 1
+        keep = (~(mask << bit_off)) & 0xFFFF
+        # Narrow the incoming value to the field first so a wider assignment
+        # (`f.flags = 0x1234` on a 3-bit field) truncates instead of bleeding
+        # into the neighbouring members.
+        if mask != 0xFFFF:
+            self.emit(f"    AND {val_reg}, 0x{mask:04X}")
+        if bit_off:
+            self._emit_shift(val_reg, bit_off, False, prefix="bf_shl")
+        word_reg = self.get_register(exclude={addr_reg, val_reg})
+        self._emit_mem_load(word_reg, addr_reg, 2)
+        if keep != 0xFFFF:
+            self.emit(f"    AND {word_reg}, 0x{keep:04X}")
+        self.emit(f"    OR {word_reg}, {val_reg}")
+        self._emit_mem_store(addr_reg, word_reg, 2)
+        self.free_register()
 
     def _member_base_info(self, expr: MemberAccess):
         """Resolve a ``MemberAccess`` chain -- flat *and* nested ``a.b.c`` --
@@ -4092,6 +4359,13 @@ class CodeGenerator:
             raise CodeGenError(
                 f"absolute placement '@' is only valid on global variables "
                 f"('{var_decl.name}' is local)")
+        # `int *p = &c;` where c is const would hand out a writable alias to
+        # read-only storage -- reject it at the binding site. A const-qualified
+        # destination (`const int *p = &c`) is the legal form and is skipped.
+        if getattr(var_decl, 'pointer_depth', 0) and var_decl.value is not None:
+            self._check_const_escape(
+                var_decl.value, var_decl.name, var_decl,
+                dest_is_const='const' in (getattr(var_decl, 'qualifiers', None) or []))
         if var_decl.is_array:
             # Local arrays: emit runtime stores for initializer-list elements.
             # (Global array initializers are emitted as DW/DB data instead.)
@@ -4227,6 +4501,42 @@ class CodeGenerator:
         elif self._is_const_pointee(name):
             self._reject_const_write(name, node, pointee=True)
 
+    def _check_const_escape(self, value, dest_name, node, dest_is_const=False):
+        """Reject ``int *p = &c`` where ``c`` is const (const discarded).
+
+        Storing the address of a read-only object into a pointer whose own
+        type is not const-qualified hands out a writable alias to it, so a
+        later ``*p = ...`` would bypass the const rules entirely.  C treats
+        this as a constraint violation for exactly that reason; catching it
+        at the binding site keeps the enforcement from being a one-line
+        workaround away from useless.
+
+        ``dest_is_const`` marks a destination that is itself const-qualified
+        (``const int *p = &c``), which is the correct, legal way to bind
+        read-only storage and must not be rejected.
+        """
+        if value is None or dest_name is None or dest_is_const:
+            return
+        if isinstance(value, AddressOf):
+            root = self._member_root_name(value.operand)
+        elif isinstance(value, Identifier):
+            # Array/aggregate decay: `int *p = a;` where `a` is a const array
+            # binds the same read-only storage through a bare name.
+            root = self._member_root_name(value)
+        else:
+            return
+        if root is None or not self._is_const_name(root):
+            return
+        raise CodeGenError(
+            f"taking the address of const '{root}' into non-const pointer "
+            f"'{dest_name}' discards const",
+            filename=self.source_path,
+            line=getattr(node, 'line', None),
+            column=getattr(node, 'column', None),
+            hint=(f"declare the pointer as 'const <type> *{dest_name}' so the "
+                  f"pointee stays read-only"),
+            source_text=self._diag_source_text())
+
     def _check_const_base(self, base, node):
         """Const check for an assignment/increment base expression."""
         root = self._member_root_name(base)
@@ -4236,7 +4546,21 @@ class CodeGenerator:
     def generate_assignment(self, assignment: Assignment):
         # A write site: reject `const x = ...` reassignment before any code
         # is emitted (declarations/initializers never reach this path).
-        self._check_const_target(assignment.name, assignment)
+        # `p = ...` on a `const T *p` writes the POINTER, not its pointee:
+        # only the pointee is read-only, so rebinding stays legal (C's
+        # `const T * const p` is the form that would forbid it).
+        if not (assignment.name in self.pointer_vars
+                or assignment.name in self.address_params
+                or self._is_const_pointee(assignment.name)):
+            self._check_const_target(assignment.name, assignment)
+        # `p = &c;` (p non-const, c const) is the same const-discarding escape
+        # as the initializer form, caught at the rebinding site.
+        if (assignment.name in self.pointer_vars
+                or assignment.name in self.address_params
+                or self._is_const_pointee(assignment.name)):
+            self._check_const_escape(
+                assignment.value, assignment.name, assignment,
+                dest_is_const=self._is_const_pointee(assignment.name))
         self.emit_comment(f"Assignment to {assignment.name}")
         # Struct/union assignment: s1 = s2 copies all fields from s2 to s1.
         # Detected when the RHS is a simple Identifier naming a struct/union
@@ -4465,6 +4789,20 @@ class CodeGenerator:
 
     def generate_member_access(self, expr: MemberAccess) -> str:
         """Read a struct member (p.x, pts[i].y, pp->z) into a register."""
+        # A bit-field terminal member extracts its own bit range out of the
+        # shared word instead of reading the word wholesale.
+        bits = self._member_bitfield(expr)
+        if bits is not None:
+            _tag, bit_off, width = bits
+            signed = (self._cast_source_type(expr) == 'signed_int')
+            addr_reg = self.get_register()
+            self.emit_comment(f"Bit-field read ({expr.field}:{width})")
+            self._emit_member_addr(expr, addr_reg)
+            result_reg = self.get_register(exclude={addr_reg})
+            self._emit_bitfield_extract(result_reg, addr_reg, bit_off, width,
+                                        signed=signed)
+            self.free_register()   # addr_reg
+            return result_reg
         addr_reg = self.get_register()
         self.emit_comment(f"Member read ({expr.field})")
         self._emit_member_addr(expr, addr_reg)
@@ -4495,6 +4833,57 @@ class CodeGenerator:
 
         can_push = not self._is_interrupt_handler
         self.emit_comment(f"Member assignment to ...{target.field}")
+
+        # Bit-field target: a plain word store would clobber every member that
+        # shares the word, so the value is merged with a read-modify-write.
+        bits = self._member_bitfield(target)
+        if bits is not None:
+            _tag, bit_off, width = bits
+            idx_reg = None
+            if isinstance(target.base, ArrayAccess):
+                idx_reg = self.generate_expression(target.base.index)
+            addr_reg = self.get_register(exclude={idx_reg} if idx_reg else None)
+            self._emit_member_addr(target, addr_reg, idx_reg=idx_reg)
+            # Compound assignment (`f.flags += v`) reads the field, applies the
+            # operator, then merges back -- the field's extracted value is the
+            # accumulator, never the whole word.
+            if compound_op is not None:
+                acc_reg = self.get_register(exclude={addr_reg})
+                self._emit_bitfield_extract(acc_reg, addr_reg, bit_off, width)
+                can_push = not self._is_interrupt_handler
+                if can_push:
+                    self.emit(f"    PUSH {acc_reg}")
+                    self.emit(f"    PUSH {addr_reg}")
+                rhs_reg = self.generate_expression(rhs)
+                if can_push:
+                    self.emit(f"    POP {addr_reg}")
+                    rhs_reg = self._pop_preserving(acc_reg, rhs_reg)
+                if compound_op in ('<<', '>>'):
+                    if isinstance(rhs, Number):
+                        self._emit_shift(acc_reg, int(rhs.value, 0),
+                                         compound_op == '>>', prefix="shift")
+                    else:
+                        self._emit_shift(acc_reg, rhs_reg,
+                                         compound_op == '>>', prefix="shift")
+                elif compound_op == '+': self.emit(f"    ADD {acc_reg}, {rhs_reg}")
+                elif compound_op == '-': self.emit(f"    SUB {acc_reg}, {rhs_reg}")
+                elif compound_op == '*': self.emit(f"    MUL {acc_reg}, {rhs_reg}")
+                elif compound_op in ('/', '%'):
+                    self._emit_divmod(compound_op, acc_reg, rhs_reg,
+                                      target, rhs)
+                elif compound_op == '&': self.emit(f"    AND {acc_reg}, {rhs_reg}")
+                elif compound_op == '|': self.emit(f"    OR {acc_reg}, {rhs_reg}")
+                elif compound_op == '^': self.emit(f"    XOR {acc_reg}, {rhs_reg}")
+                else: raise SyntaxError(f"Unknown compound operator '{compound_op}'")
+                val_reg = acc_reg
+            else:
+                if not self._is_interrupt_handler:
+                    self.emit(f"    PUSH {addr_reg}")
+                val_reg = self.generate_expression(rhs)
+                if not self._is_interrupt_handler:
+                    val_reg = self._pop_preserving(addr_reg, val_reg)
+            self._emit_bitfield_insert(addr_reg, val_reg, bit_off, width)
+            return val_reg
 
         # Phase 1: compute the member's byte address.
         idx_reg = None
@@ -6695,6 +7084,24 @@ class CodeGenerator:
         if isinstance(expr, PostfixOp):
             if isinstance(expr.left, Identifier):
                 return self.var_types.get(expr.left.name)
+            # `p.x++`, `a[i]++`, `(*p)++`: the postfix yields the member /
+            # element / pointee value, so its type is the operand's own type.
+            return self._cast_source_type(expr.left)
+        if isinstance(expr, Deref):
+            # *p has the pointee's type. Pointer variables record their base
+            # type in var_types (locals/params) or global_vars['type'], and
+            # that IS the pointee type -- `unsigned int *p` stores
+            # 'unsigned_int' -- so `*p > 40000` compares unsigned, exactly
+            # like `p[0] > 40000` does through the ArrayAccess branch.
+            operand = expr.operand
+            if isinstance(operand, Identifier):
+                name = operand.name
+                if name in self.var_types:
+                    return self.var_types.get(name)
+                g = self.global_vars.get(name)
+                if g is not None and not g.get('is_array'):
+                    return g['type']
+            return None
         if isinstance(expr, ArrayAccess):
             # s[i] on a string/binary scalar is a single-byte character read.
             if self._is_string_or_binary_scalar(expr.name):

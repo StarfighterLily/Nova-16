@@ -22,6 +22,9 @@ A C language for the Nova-16, built from the ground up.
 18. [Nested struct and union members](#nested-struct-and-union-members)
 19. [By-value struct and union parameters](#by-value-struct-and-union-parameters)
 20. [By-value struct and union returns](#by-value-struct-and-union-returns)
+21. [Const enforcement and read-only data](#const-enforcement-and-read-only-data)
+22. [Signed and unsigned integers](#signed-and-unsigned-integers)
+23. [Bit-fields](#bit-fields)
 
 ---
 
@@ -1077,3 +1080,96 @@ impl Point {
   (`return make(1, 2);`) is not yet supported -- store it in a local first.
 * Indirect calls through a function pointer cannot see the callee's sret
   slot; do not call a struct-returning function through a function pointer.
+
+
+---
+
+## Const enforcement and read-only data
+
+`const` is a compile-time guarantee, not a hint. Assigning to a `const`
+object -- `=`, compound assignment, `++`/`--`, through a `const T *`
+pointer, or on a struct member to any depth -- is a compile error, as is
+handing a `const` object's address to a pointer that would let code mutate
+it. Reads, address-taking into a `const`-qualified pointer, and
+re-initializing that pointer itself are all legal:
+
+```c
+const int K = 40;
+
+int main() {
+    const int table[3] = {10, 20, 30};
+    const int *p = table;       // legal: pointee stays read-only
+    int *q = table;             // ERROR: discards const
+    K = 41;                     // ERROR: cannot assign to const variable 'K'
+    return p[0] + p[2];         // 40
+}
+```
+
+An unplaced `const` global is emitted as initialized data in the program
+image's read-only window (above the interrupt vectors, below the entry
+stub), so lookup tables cost no writable global RAM:
+
+```c
+const int sintab[8] = {0, 98, 181, 237, 256, 237, 181, 98};
+```
+
+A `const` with an `@ address` placement keeps its own segment instead of
+entering the window. Locals and parameters shadow globals per C scoping, so
+a local `int x` may shadow a global `const int x`.
+
+---
+
+## Signed and unsigned integers
+
+Plain `int` is historically unsigned on this machine (addresses live at
+0x8000+), but `unsigned int` and `signed int` are real types with real
+semantics, and the comparison and division machinery honors them:
+
+* an `unsigned` operand selects the borrow-based family (`JC`/`JNC`) and raw
+  hardware `DIV`/`MOD`;
+* a `signed`, `float`, or comparison-against-zero operand selects the
+  sign-corrected jumps (`JLT`/`JGE`/`JGT`/`JLE`) and the C-truncating
+  `sdiv`/`smod` sequences;
+* `char`/`binary`/`string` values are byte-oriented and compare unsigned.
+
+The sign survives every value shape -- identifiers, struct members *including
+bit-fields*, array elements, parameters, typedefs, casts, `*p` dereferences,
+and postfix increments:
+
+```c
+unsigned int size = 60000;
+if (size > 40000) { ... }        // JC: 60000 really is larger than 40000
+
+signed int health = -5;
+if (health < 0) { ... }          // JLT: -5 really is less than 0
+```
+
+---
+
+## Bit-fields
+
+A struct or union member may declare a bit width, and narrow members pack
+into the low bits of their shared 16-bit word instead of each costing a
+whole slot -- a genuine space saver for flag/attribute packs on a 64KB
+machine:
+
+```c
+struct Sprite {
+    unsigned int visible : 1;
+    unsigned int palette : 3;
+    unsigned int tile    : 12;
+};
+```
+
+Members pack greedily into the current word; one that does not fit in the
+remaining bits starts a new word (C's unit rule), and a full-width member
+always starts a fresh word. `sizeof` reflects the packed size, so the struct
+above is 2 bytes rather than 6.
+
+Reads extract and mask the field; writes are read-modify-write, so changing
+one member never disturbs its word-mates. An over-wide assignment truncates
+(`flags = 0xFF` on a 3-bit field keeps only the low 3 bits). A `signed`
+bit-field sign-extends on read (`signed int delta : 5` holding -1 reads back
+-1), and its comparisons use the signed jump family. Width 0 and widths
+above 16 are compile errors.
+

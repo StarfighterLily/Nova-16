@@ -31,6 +31,37 @@
 >   and *By-value struct and union returns*. Tests:
 >   `tests/astrid/test_astrid_struct_byval.py`,
 >   `tests/astrid/test_astrid_struct_return.py`.
+> * **Item 5 (`const` enforcement + const-ROM emission) — IMPLEMENTED.**
+>   Read-only enforcement rejects every direct write form (`=`, compound
+>   assignment, `++`/`--`, through a `const T *` pointee, on struct members to
+>   any depth, locals shadowing globals per C scoping) and now also the
+>   const-discarding escape (`int *p = &const_obj`, including array decay).
+>   Unplaced `const` globals are emitted as initialized data inside the
+>   program image's read-only window (above the interrupt vectors, below the
+>   entry stub), saving writable global RAM; placed `const` (`@ addr`) keeps
+>   its own segment. Documented in `astrid.md` → *Const enforcement and
+>   read-only data*. Tests: `tests/astrid/test_astrid_const_enforcement.py`,
+>   `tests/astrid/test_astrid_const_rom.py`.
+> * **Item 6 (`unsigned` / `signed` semantics) — IMPLEMENTED.** `unsigned_int`
+>   selects the unsigned comparison family (JC/JNC borrow-based) and raw
+>   hardware DIV/MOD; `signed_int` (and float, and any comparison against
+>   zero) selects the sign-corrected paths. The typing now survives every
+>   value shape -- identifier, struct member (including bit-fields), array
+>   element, function parameter, typedef, cast, dereference (`*p` inherits
+>   the pointee's sign), and postfix on all of those. Documented in
+>   `astrid.md` → *Signed and unsigned integers*. Tests:
+>   `tests/astrid/test_astrid_signed_type.py`,
+>   `tests/astrid/test_astrid_signed_division.py`,
+>   `tests/astrid/test_astrid_unsigned_ops.py`.
+> * **Item 7 (bitfields) — IMPLEMENTED.** `unsigned flags : 3;` packs into the
+>   low bits of the containing 16-bit word (greedy low-bit packing, spill to
+>   a new word when a field does not fit, C's unit rule), in structs and
+>   unions, comma lists, and nested aggregates. Reads extract-and-mask,
+>   `signed` fields sign-extend, writes are read-modify-write so word-mates
+>   survive, compound assignment and `++`/`--` operate on the field value,
+>   `sizeof` reflects the packed size, and widths 0/>16/non-constant are
+>   diagnosed at parse time. Documented in `astrid.md` → *Bit-fields*.
+>   Tests: `tests/astrid/test_astrid_bitfields.py`.
 >
 > The items below are still open, in the recommended order.
 
@@ -46,11 +77,24 @@ __4. Struct parameters by value (and struct returns)__ — ✅ **DONE** (see sta
 
 ### Tier 2 — Accepted-but-vestigial keywords (semantic gaps)
 
-__5. `const` is decorative__ — lexer comment says it plainly: *"const qualifier (accepted; treated as a normal variable)"*. No read-only enforcement, no ROM/code-segment emission for const tables. On a Princeton-architecture machine, `const int table[] = {...}` emitted as initialized data in the code region + a compile error on any assignment would be genuinely useful (lookup tables are everywhere in game code) and pairs naturally with the existing `@ addr` placement machinery.
+__5. `const` is decorative__ — ✅ **DONE** (see status above). Read-only
+enforcement rejects every write form plus the const-discarding escape;
+unplaced `const` globals are emitted as initialized data in the code region's
+read-only window, which pairs with the existing `@ addr` placement machinery
+(a placed `const` keeps its own segment).
 
-__6. `unsigned` is decorative__ — `unsigned_int` exists only as a type *tag* (codegen.py:2681 literally maps `unsigned_int → int`; it's used only so `get_rtc` prints correctly). No unsigned comparison (JNC-based), no unsigned division. C-parity gap with real behavioral consequences for mixed sign/pointer code. The `signed/long/short` keywords are likewise normalized away.
+__6. `unsigned` is decorative__ — ✅ **DONE** (see status above).
+Unsigned comparison is JNC/JC-based, unsigned division is raw hardware
+DIV/MOD, `signed`/`unsigned`/`long` normalize through the parser with the
+sign bit preserved for `int`, and the sign survives dereferences, struct
+members, array elements, postfix increments and casts, so mixed sign/pointer
+code compares with the right jump family.
 
-__7. Bitfields__ — `unsigned flags : 3;` has no support at all. On a 64KB machine under real memory pressure this is a legitimate space-saver for flag/attribute packs inside structs. Implementation: layout in struct stride computation + read-modify-write sequences for member access.
+__7. Bitfields__ — ✅ **DONE** (see status above). `unsigned flags : 3;`
+packs into the low bits of a shared 16-bit word, with layout in the struct
+stride computation and read-modify-write sequences for member access; the
+genuine space saver for flag/attribute packs inside structs on a 64KB
+machine, including `signed` sign-extension and `signed` comparisons.
 
 ### Tier 3 — Smaller C-parity polish
 

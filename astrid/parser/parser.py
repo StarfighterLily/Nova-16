@@ -74,7 +74,9 @@ class Program(ASTNode):
                  structs: Optional[Dict[str, List]] = None,
                  union_defs: Optional[Dict[str, List]] = None,
                  type_aliases: Optional[Dict[str, str]] = None,
-                 impl_blocks: Optional[List["ImplBlock"]] = None):
+                 impl_blocks: Optional[List["ImplBlock"]] = None,
+                 struct_bitfields: Optional[Dict[str, Dict[str, int]]] = None,
+                 union_bitfields: Optional[Dict[str, Dict[str, int]]] = None):
         self.functions = functions
         # Top-level (global) variable declarations. Empty for sources that
         # only define functions; populated when the source declares variables
@@ -98,6 +100,14 @@ class Program(ASTNode):
         # impl blocks attach methods to struct/union types:
         #   ImplBlock(tag, [FunctionDef, ...])  -- methods have impl_tag set.
         self.impl_blocks: List["ImplBlock"] = impl_blocks if impl_blocks is not None else []
+        # Bit-field widths: tag -> {field_name: bit_width}. Members listed
+        # here pack into the low bits of their containing 16-bit word rather
+        # than each owning a whole slot, so a struct's byte size is computed
+        # from the packed word count (see the code generator's layout pass).
+        self.struct_bitfields: Dict[str, Dict[str, int]] = (
+            struct_bitfields if struct_bitfields is not None else {})
+        self.union_bitfields: Dict[str, Dict[str, int]] = (
+            union_bitfields if union_bitfields is not None else {})
 
 class FunctionDef(ASTNode):
     def __init__(self, return_type: str, name: str, params: List["VarDecl"],
@@ -433,6 +443,12 @@ class Parser:
         # Union definitions accumulate here as `union Tag { ... };`
         # declarations are parsed. All fields share byte offset 0.
         self.union_defs: Dict[str, List[str]] = {}
+        # Bitfield declarations: tag -> {field_name: bit_width}. A bitfield
+        # member packs into the low bits of its containing 16-bit word
+        # instead of owning a whole slot, so several small flags share one
+        # word. Only present for aggregates that actually declare bitfields.
+        self.struct_bitfields: Dict[str, Dict[str, int]] = {}
+        self.union_bitfields: Dict[str, Dict[str, int]] = {}
         # Type aliases from typedef declarations (alias -> base_type).
         # Shared with the Program node so the codegen can resolve them.
         self.type_aliases: Dict[str, str] = {}
@@ -1002,6 +1018,13 @@ class Parser:
             # Base-file union definitions fill gaps only (same override rule).
             for tag, fields in unit.union_defs.items():
                 self.union_defs.setdefault(tag, fields)
+            # Base-file bit-field widths follow the same gap-filling rule as
+            # the layouts they belong to, so a child's redefinition of a tag
+            # does not inherit the parent's packed member widths.
+            for tag, widths in unit.struct_bitfields.items():
+                self.struct_bitfields.setdefault(tag, widths)
+            for tag, widths in unit.union_bitfields.items():
+                self.union_bitfields.setdefault(tag, widths)
             # Base-file type aliases fill gaps only (same override rule).
             for alias, base_type in unit.type_aliases.items():
                 self.type_aliases.setdefault(alias, base_type)
@@ -1043,7 +1066,8 @@ class Parser:
                     f"(line {self.current.line})")
         program = Program(functions, globals_, self.enum_constants,
                           self.struct_defs, self.union_defs, self.type_aliases,
-                          self.impl_blocks)
+                          self.impl_blocks, self.struct_bitfields,
+                          self.union_bitfields)
         # Carry the source path on the AST so codegen-phase diagnostics can
         # name the file (and render snippets) without extra plumbing.
         program.source_path = self.source_path
@@ -1441,6 +1465,53 @@ class Parser:
             f"'{tag}' (line {tok.line}); expected a scalar type, a "
             f"typedef alias, or 'struct Tag' / 'union Tag'")
 
+    def _parse_bitfield_width(self, kind: str, tag: str,
+                              fname: str) -> Optional[int]:
+        """Consume an optional `: width` bit-field declarator suffix.
+
+        ``unsigned flags : 3;`` declares a 3-bit member that packs into the
+        low bits of its containing word rather than owning a whole slot.
+        Returns None when no ``:`` follows (an ordinary full-width field).
+
+        Rejected forms, with C's rules:
+        * width 0 is only legal on an *unnamed* field (an alignment pad);
+          Astrid has no unnamed fields, so ``x : 0`` is an error.
+        * width > 16 cannot fit in the machine's word, which is the largest
+          storage unit a struct field can occupy.
+        """
+        if not (self.current.type == 'DELIMITER' and self.current.value == ':'):
+            return None
+        colon_tok = self.current
+        self.advance()
+        if self.current.type != 'NUMBER':
+            raise self.error(
+                f"Bit-field '{fname}' in {kind} '{tag}' needs a constant "
+                f"width after ':' (line {colon_tok.line})")
+        width = int(self.current.value, 0)
+        width_tok = self.current
+        self.advance()
+        if width == 0:
+            raise self.error(
+                f"Bit-field '{fname}' in {kind} '{tag}' has width 0, which "
+                f"only pads an unnamed field (line {width_tok.line}); give "
+                f"the member a name and a width of 1-16, or drop ':'")
+        if width > 16:
+            raise self.error(
+                f"Bit-field '{fname}' in {kind} '{tag}' is {width} bits wide, "
+                f"but a Nova-16 word holds at most 16 (line {width_tok.line})")
+        return width
+
+    def _record_bitfield(self, kind: str, tag: str, fname: str,
+                         width: int) -> None:
+        """Register ``fname`` as a ``width``-bit member of ``tag``."""
+        table = (self.struct_bitfields if kind == 'struct'
+                 else self.union_bitfields)
+        # Two bitfields may legitimately live in different words of the same
+        # struct (e.g. `a:3` then `b:13` then `c:3` spills into a new word),
+        # so re-declaring a name is the only real conflict -- caught already
+        # by the duplicate-field check, which runs before this.
+        table.setdefault(tag, {})[fname] = width
+
     def _resolve_alias(self, name: str) -> str:
         """Follow a typedef alias chain to its base type name."""
         seen = set()
@@ -1477,6 +1548,11 @@ class Parser:
                         f"Duplicate field '{fname}' in union '{tag}' "
                         f"(line {self.current.line})")
                 fields.append((fname, ftype))
+                # `unsigned flags : 3;` -- a bit-field packs into the shared
+                # word's low bits instead of owning a slot.
+                _bfw = self._parse_bitfield_width('union', tag, fname)
+                if _bfw is not None:
+                    self._record_bitfield('union', tag, fname, _bfw)
                 if self.current.type == 'DELIMITER' and self.current.value == ',':
                     self.advance()
                 else:
@@ -1533,6 +1609,11 @@ class Parser:
                         f"Duplicate field '{fname}' in struct '{tag}' "
                         f"(line {self.current.line})")
                 fields.append((fname, ftype))
+                # `unsigned flags : 3;` -- a bit-field packs into the shared
+                # word's low bits instead of owning a slot.
+                _bfw = self._parse_bitfield_width('struct', tag, fname)
+                if _bfw is not None:
+                    self._record_bitfield('struct', tag, fname, _bfw)
                 if self.current.type == 'DELIMITER' and self.current.value == ',':
                     self.advance()
                 else:
@@ -1833,6 +1914,20 @@ class Parser:
         if self.current.type == 'KEYWORD' and self.current.value == 'enum':
             self.parse_enum()
             return []
+        # Storage-qualified local declarations: `const int K = 5;`,
+        # `static int calls = 0;`, `volatile int flag;`, and also the
+        # aggregate forms `const struct S s;` / `const struct S *p;`.  The
+        # qualifier keywords are stashed up front so the struct/union checks
+        # below still see their own keywords, and so parse_var_decl can
+        # attach the qualifiers to the VarDecl nodes it produces instead of
+        # silently discarding them.
+        if (self.current.type == 'KEYWORD'
+                and self.current.value in STORAGE_QUALIFIERS):
+            while (self.current.type == 'KEYWORD'
+                   and self.current.value in STORAGE_QUALIFIERS):
+                self._stashed_qualifiers.append(self.current.value)
+                self.advance()
+            # No double-consume: parse_var_decl drains the stash itself.
         # Struct definitions and struct-typed local variable declarations
         # are valid statements inside function bodies. A definition
         # (`struct Tag { ... };`) produces no code; a declaration
@@ -1850,17 +1945,6 @@ class Parser:
                     f"Expected a struct tag name after 'struct' "
                     f"(line {self.current.line})")
             return self.parse_var_decl(struct_tag=tag_tok.value)
-        # Storage-qualified local declarations: `const int K = 5;`,
-        # `static int calls = 0;`, `volatile int flag;`, ...  The qualifier
-        # keywords are stashed so parse_var_decl can attach them to the
-        # produced VarDecl nodes instead of silently discarding them.
-        if (self.current.type == 'KEYWORD'
-                and self.current.value in STORAGE_QUALIFIERS):
-            while (self.current.type == 'KEYWORD'
-                    and self.current.value in STORAGE_QUALIFIERS):
-                self._stashed_qualifiers.append(self.current.value)
-                self.advance()
-            # No double-consume: parse_var_decl drains the stash itself.
         # Union-typed local variables: union Tag u;
         if self.current.type == 'KEYWORD' and self.current.value == 'union':
             tag_tok = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
