@@ -1,0 +1,120 @@
+// Conway's Game of Life for Nova-16
+//
+// The board is the full 256x256 screen. A permanently-dead one-cell border
+// (row/col 0 and 255) surrounds the live region [1,254] so edge cells read
+// dead neighbours instead of wrapping around the screen edges.
+//
+// The generation is advanced fully IN PLACE on layer 0 -- no shadow buffer in
+// memory. Each cell packs two generations into one pixel:
+//
+//     bit0 = the cell's state in the CURRENT generation
+//     bit1 = the cell's state in the NEXT    generation
+//
+// update_board() runs two passes:
+//   Pass 1 walks every live cell, counts its eight neighbours by reading bit0
+//          only, applies the Life rules, and writes back (cur | next<<1). The
+//          current state (bit0) is preserved, so a cell already rewritten this
+//          pass still reports its OLD state to neighbours visited later -- the
+//          classic read-one/write-one hazard that a shadow buffer would avoid,
+//          solved here with a spare bit instead of extra memory.
+//   Pass 2 promotes bit1 into the visible cell, drawing ALIVE/DEAD.
+//
+// Build the animated demo (random soup, runs forever):
+//     py -3.13 nova_assembler.py astrid/progs/conway.asm
+// Deterministic headless run of N generations (seeded glider, then halts):
+//     py -3.13 astrid/astrid_compiler.py astrid/progs/conway.ast -DCONWAY_TEST=5
+
+#define ALIVE 0x0F
+#define DEAD  0x00
+
+// Live region is [1, BOARD_HI] with a permanently-dead border at row/col 0
+// and BOARD_HI+1, so edge cells read dead neighbours instead of wrapping.
+// The animated demo uses the full screen; headless tests shrink it for speed.
+#ifndef BOARD_HI
+#define BOARD_HI 32
+#endif
+
+// Seed a random Life "soup" across the live region. ~1/3 density evolves
+// into a lively mix of still-lifes, oscillators and gliders.
+void seed_random() {
+    for (int y = 1; y <= BOARD_HI; y++) {
+        for (int x = 1; x <= BOARD_HI; x++) {
+            set_pos(x, y);
+            if (random_range(0, 5) == 0) {
+                write_screen(ALIVE);
+            } else {
+                write_screen(DEAD);
+            }
+        }
+    }
+}
+
+// Advance the whole board by one generation, in place (see header comment).
+void update_board() {
+    int x, y, live, cur, next;
+
+    // Pass 1: derive the next generation into bit1, keep the current in bit0.
+    for (y = 1; y <= BOARD_HI; y++) {
+        for (x = 1; x <= BOARD_HI; x++) {
+            live = 0;
+            set_pos(x - 1, y - 1); live = live + (read_screen() & 1);
+            set_pos(x,     y - 1); live = live + (read_screen() & 1);
+            set_pos(x + 1, y - 1); live = live + (read_screen() & 1);
+            set_pos(x - 1, y);     live = live + (read_screen() & 1);
+            set_pos(x + 1, y);     live = live + (read_screen() & 1);
+            set_pos(x - 1, y + 1); live = live + (read_screen() & 1);
+            set_pos(x,     y + 1); live = live + (read_screen() & 1);
+            set_pos(x + 1, y + 1); live = live + (read_screen() & 1);
+
+            set_pos(x, y);
+            cur = read_screen() & 1;
+            if (cur == 1) {
+                // Live cell survives with 2 or 3 neighbours, else it dies.
+                next = (live == 2 || live == 3) ? 1 : 0;
+            } else {
+                // Dead cell is born with exactly 3 neighbours.
+                next = (live == 3) ? 1 : 0;
+            }
+            write_screen(cur | (next << 1));
+        }
+    }
+
+    // Pass 2: promote the next generation (bit1) into the visible cell.
+    for (y = 1; y <= BOARD_HI; y++) {
+        for (x = 1; x <= BOARD_HI; x++) {
+            set_pos(x, y);
+            if ((read_screen() >> 1) == 1) {
+                write_screen(ALIVE);
+            } else {
+                write_screen(DEAD);
+            }
+        }
+    }
+}
+
+void main() {
+    set_layer(0);
+    screen_fill(DEAD);
+
+#ifdef CONWAY_TEST
+    // Deterministic glider near the top-left so headless runs can be checked
+    // against a reference. CONWAY_TEST is the number of generations to run.
+    set_pos(2, 1); write_screen(ALIVE);
+    set_pos(3, 2); write_screen(ALIVE);
+    set_pos(1, 3); write_screen(ALIVE);
+    set_pos(2, 3); write_screen(ALIVE);
+    set_pos(3, 3); write_screen(ALIVE);
+    for (int g = 0; g < CONWAY_TEST; g++) {
+        update_board();
+    }
+#else
+    seed_random();
+    while (1) {
+        update_board();
+        // Frame pacing: a full 254x254 pass is cheap on the 16 MHz target, so
+        // spin a little between generations to keep the sim watchable.
+        for (int d = 0; d < 8000; d++) {
+        }
+    }
+#endif
+}

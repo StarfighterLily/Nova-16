@@ -1219,6 +1219,40 @@ class TestGraphicsEdgeCases:
             result = graphics.blend_pixel(100, 50)
             assert 0 <= result <= 255
 
+    def test_get_screen_val_out_of_range_clamps_to_zero(self):
+        """SREAD reads clamp to 0 instead of raising on out-of-range pixels.
+
+        set_screen_val silently no-ops when VX/VY point off the board;
+        get_screen_val must mirror that (return 0, an empty pixel) so a
+        neighbour scan that steps past an edge -- e.g. Conway's Game of Life
+        border cells -- observes "dead" rather than aborting the program.
+        The CPU masks VX/VY to 0-255, so this pokes the registers directly.
+        """
+        gfx = nova_gfx.GFX()
+        gfx.vmode = 0  # coordinate mode
+
+        # In-range corner still reads normally.
+        gfx.screen[0, 0] = 0x42
+        gfx.Vregisters[0] = 0  # VX
+        gfx.Vregisters[1] = 0  # VY
+        assert gfx.get_screen_val() == 0x42
+
+        # Coordinate past the right/bottom edge clamps to 0 (no exception).
+        gfx.Vregisters[0] = 300  # VX > width
+        gfx.Vregisters[1] = 10
+        assert gfx.get_screen_val() == 0
+
+        gfx.Vregisters[0] = 10
+        gfx.Vregisters[1] = 999  # VY > height
+        assert gfx.get_screen_val() == 0
+
+        # Address mode: a linear address at/after total_pixels clamps to 0.
+        gfx.vmode = 1
+        gfx.Vregisters[0] = 0xFF  # VX = high byte of address
+        gfx.Vregisters[1] = 0xFF  # VY = low byte  -> addr 0xFFFF == total_pixels
+        assert gfx.get_screen_val() == 0
+
+
     def test_zero_size_sprites(self, graphics, memory):
         """Test sprites with zero size."""
         # Set up sprite with zero width

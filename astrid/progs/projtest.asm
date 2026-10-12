@@ -1709,7 +1709,7 @@ MOV P7, P0
 ; If statement
 ; Member read (z)
 MOV P0, FP
-SUB P0, 2
+SUB P0, 8
 MOV P1, [P0]
 PUSH P1
 MOV P2, [0x0128]
@@ -1725,7 +1725,7 @@ cmp_end_135:
 PUSH P1
 ; Member read (z)
 MOV P4, FP
-SUB P4, 8
+SUB P4, 2
 MOV P5, [P4]
 PUSH P5
 MOV P6, [0x0128]
@@ -1743,7 +1743,7 @@ CMP P1, 0
 JZ sc_false_138
 ; Member read (z)
 MOV P7, FP
-SUB P7, 8
+SUB P7, 2
 MOV P0, [P7]
 PUSH P0
 MOV P1, [0x0128]

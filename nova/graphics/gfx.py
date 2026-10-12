@@ -295,19 +295,25 @@ class GFX:
             raise ValueError(f"Unknown vmode: {self.Vregisters[2]}")
 
     def get_screen_val(self):
+        # Out-of-range reads clamp to 0 (an empty pixel) instead of raising,
+        # mirroring set_screen_val's silent no-op on out-of-range writes.
+        # Through the CPU this is defensive only -- VX/VY are masked to 0-255
+        # and address mode is bounded by total_pixels -- but SREAD is the sole
+        # reader, and a neighbour scan that steps off the board (e.g. Conway's
+        # Game of Life edge cells) must observe "dead", not abort the program.
         if self.Vregisters[2] == 1:
             addr = int(self.Vregisters[1]) | (int(self.Vregisters[0]) << 8)
             if 0 <= addr < self.total_pixels:
                 x = addr % self.width
                 y = addr // self.width
                 return int(self.screen[y, x])
-            raise IndexError(f"Screen address out of range: {addr}")
+            return 0
         elif self.Vregisters[2] == 0:
             x = int(self.Vregisters[0])
             y = int(self.Vregisters[1])
             if 0 <= x < self.width and 0 <= y < self.height:
                 return int(self.screen[y, x])
-            raise IndexError(f"Screen coordinates out of range: x={x}, y={y}")
+            return 0
         else:
             raise ValueError(f"Unknown vmode: {self.Vregisters[2]}")
 
