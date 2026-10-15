@@ -14,7 +14,7 @@ from astrid.parser.parser import (
     MemberAccess, MemberAssignment,
     CommaOp, Goto, Label, TypedefDecl,
     ImplBlock, MethodCall,
-    AsmBlock,
+    AsmBlock, StaticAssert,
 )
 from astrid.errors import CodeGenError
 from astrid.codegen.optimizations import (
@@ -567,6 +567,137 @@ class CodeGenerator:
         'builtin_strfindi': [
             '; STRFINDI writes result to R0',
             'POP P3', 'POP P1', 'POP P2', 'STRFINDI P1, P2', 'MOV P0, R0', 'PUSH P3', 'RET',
+        ],
+        # --- Bounded string copies (C semantics, byte-looped) ---
+        # strncpy always writes exactly n bytes (zero-padding when src is
+        # short); strncat appends at most n bytes and always NUL-terminates.
+        'builtin_strncpy': [
+            '; strncpy(dst, src, n) -> dst. P1=dst P2=src P4=n P6=count',
+            'POP P3', 'POP P1', 'POP P2', 'POP P4',
+            'MOV P0, P1', 'MOV P6, 0',
+            '.strncpy_copy:',
+            'CMP P6, P4', 'JZ .strncpy_done',
+            'MOV R0, [P2]', 'MOV [P1], R0',
+            'CMP R0, 0', 'JZ .strncpy_pad', 'INC P2',
+            '.strncpy_advance:',
+            'INC P1', 'INC P6',
+            'JMP .strncpy_copy',
+            '.strncpy_pad:',
+            'INC P1', 'INC P6',
+            '.strncpy_fill:',
+            'CMP P6, P4', 'JZ .strncpy_done',
+            'MOV R0, 0', 'MOV [P1], R0',
+            'JMP .strncpy_advance',
+            '.strncpy_done:',
+            'PUSH P3', 'RET',
+        ],
+        'builtin_strncat': [
+            '; strncat(dst, src, n) -> dst. P1=dst P2=src P4=n P6=count',
+            'POP P3', 'POP P1', 'POP P2', 'POP P4',
+            'MOV P0, P1', 'MOV P6, 0',
+            '.strncat_end:',
+            'MOV R0, [P1]', 'CMP R0, 0', 'JZ .strncat_copy',
+            'INC P1', 'JMP .strncat_end',
+            '.strncat_copy:',
+            'CMP P6, P4', 'JZ .strncat_term',
+            'MOV R0, [P2]', 'CMP R0, 0', 'JZ .strncat_term',
+            'MOV [P1], R0', 'INC P2', 'INC P1', 'INC P6',
+            'JMP .strncat_copy',
+            '.strncat_term:',
+            'MOV R0, 0', 'MOV [P1], R0',
+            'PUSH P3', 'RET',
+        ],
+        # --- String searches (C semantics, byte-looped) ---
+        # strchr returns a pointer to the first match (0 when absent);
+        # strrchr returns a pointer to the last match (0 when absent);
+        # strstr returns a pointer to the first needle occurrence (the
+        # haystack itself when the needle is empty, 0 when absent).
+        'builtin_strchr': [
+            '; strchr(s, c) -> &first match or 0. P1=s, P2=c (low byte)',
+            'POP P3', 'POP P1', 'POP P2',
+            '.strchr_scan:',
+            'MOV R0, [P1]',
+            'CMP R0, :P2', 'JZ .strchr_found',
+            'CMP R0, 0', 'JZ .strchr_miss',
+            'INC P1', 'JMP .strchr_scan',
+            '.strchr_found:',
+            'MOV P0, P1', 'PUSH P3', 'RET',
+            '.strchr_miss:',
+            'MOV P0, 0', 'PUSH P3', 'RET',
+        ],
+        'builtin_strrchr': [
+            '; strrchr(s, c) -> &last match or 0. P1=s, P2=c, P4=cursor',
+            'POP P3', 'POP P1', 'POP P2',
+            'MOV P4, P1',
+            '.strrchr_end:',
+            'MOV R0, [P4]', 'CMP R0, 0', 'JZ .strrchr_back',
+            'INC P4', 'JMP .strrchr_end',
+            '.strrchr_back:',
+            'CMP P4, P1', 'JZ .strrchr_miss',
+            'SUB P4, 1',
+            'MOV R0, [P4]',
+            'CMP R0, :P2', 'JZ .strrchr_found',
+            'JMP .strrchr_back',
+            '.strrchr_found:',
+            'MOV P0, P4', 'PUSH P3', 'RET',
+            '.strrchr_miss:',
+            'MOV P0, 0', 'PUSH P3', 'RET',
+        ],
+        'builtin_strstr': [
+            '; strstr(hay, needle) -> &first match or 0.',
+            '; P2=needle base (never moved), P4=window start,',
+            '; P5=needle scan (reset per window), P6=hay scan, P7=needle byte',
+            'POP P3', 'POP P1', 'POP P2',
+            'MOV P4, P1',
+            '.strstr_window:',
+            'MOV P5, P2', 'MOV P6, P4',
+            '.strstr_inner:',
+            'MOV R0, [P5]', 'CMP R0, 0', 'JZ .strstr_match',
+            'MOV P7, R0',
+            'MOV R0, [P6]', 'CMP R0, 0', 'JZ .strstr_miss',
+            'CMP R0, :P7', 'JNZ .strstr_next',
+            'INC P5', 'INC P6', 'JMP .strstr_inner',
+            '.strstr_next:',
+            'INC P4',
+            'MOV R0, [P4]', 'CMP R0, 0', 'JZ .strstr_miss',
+            'JMP .strstr_window',
+            '.strstr_match:',
+            'MOV P0, P4', 'PUSH P3', 'RET',
+            '.strstr_miss:',
+            'MOV P0, 0', 'PUSH P3', 'RET',
+        ],
+        'builtin_atoi': [
+            '; atoi(s) -> signed value of the leading decimal run. Skips',
+            '; leading spaces; accepts one optional + or - sign; stops at',
+            '; the first non-digit. P1=s, P0=result, P6=negative flag',
+            'POP P3', 'POP P1',
+            'MOV P0, 0', 'MOV P6, 0',
+            '.atoi_space:',
+            'MOV R0, [P1]',
+            'CMP R0, 32',
+            'JNZ .atoi_sign', 'INC P1', 'JMP .atoi_space',
+            '.atoi_sign:',
+            'CMP R0, 43', 'JNZ .atoi_minus', 'INC P1', 'JMP .atoi_digits',
+            '.atoi_minus:',
+            'CMP R0, 45', 'JNZ .atoi_digits',
+            'MOV P6, 1', 'INC P1', 'JMP .atoi_digits',
+            '.atoi_digits:',
+            'MOV R0, [P1]',
+            'CMP R0, 48', 'JC .atoi_done',
+            'CMP 57, R0', 'JC .atoi_done',
+            'MOV P5, P0',
+            'SHL P0, 3',
+            'SHL P5, 1',
+            'ADD P0, P5',
+            'MOV P4, R0',
+            'SUB P4, 48',
+            'ADD P0, P4',
+            'INC P1', 'JMP .atoi_digits',
+            '.atoi_done:',
+            'CMP P6, 0', 'JZ .atoi_ret',
+            'NEG P0',
+            '.atoi_ret:',
+            'PUSH P3', 'RET',
         ],
         # --- Serial ---
         'builtin_ser_out': [
@@ -1165,6 +1296,10 @@ class CodeGenerator:
         'random': 'int', 'random_range': 'int',
         # --- String (return type depends on the function) ---
         'strlen': 'int', 'strcmp': 'int', 'strfind': 'int', 'strfindi': 'int',
+        'strchr': 'int', 'strrchr': 'int', 'strstr': 'int',
+        'strncpy': 'int', 'strncat': 'int', 'atoi': 'int',
+        # format(fmt, ...) assembles and returns a formatted string.
+        'format': 'string',
         # --- Serial ---
         'ser_out': 'int', 'ser_in': 'int', 'ser_stat': 'int', 'ser_ctrl': 'int',
         # --- Memory ---
@@ -1455,6 +1590,10 @@ class CodeGenerator:
             'strupr': 'builtin_strupr', 'strlwr': 'builtin_strlwr',
             'strrev': 'builtin_strrev', 'strfind': 'builtin_strfind',
             'strfindi': 'builtin_strfindi',
+            'strchr': 'builtin_strchr', 'strrchr': 'builtin_strrchr',
+            'strstr': 'builtin_strstr',
+            'strncpy': 'builtin_strncpy', 'strncat': 'builtin_strncat',
+            'atoi': 'builtin_atoi',
             # Serial
             'ser_out': 'builtin_ser_out', 'ser_in': 'builtin_ser_in',
             'ser_stat': 'builtin_ser_stat', 'ser_ctrl': 'builtin_ser_ctrl',
@@ -1659,6 +1798,14 @@ class CodeGenerator:
         # Allocate global variables (scalars and arrays) at fixed addresses
         # in the dedicated global region so code can reference them directly.
         self._allocate_globals(ast)
+
+        # Validate file-scope static_asserts now that enums, struct layouts
+        # and global arrays are registered and the constant folder can
+        # resolve every legal guard (sizeof(struct Tag), enum arithmetic,
+        # global array sizes). Fires before any code is emitted, while the
+        # error is still the compiler's first word.
+        for assertion in getattr(ast, 'static_asserts', None) or []:
+            self._check_static_assert(assertion)
 
         # Pre-register ALL user functions before generating any bodies so
         # forward references (calls to functions defined later in the source,
@@ -2079,6 +2226,12 @@ class CodeGenerator:
                     visit(child)
 
         visit(ast)
+        # Builtins can return strings too (format()); the simplifier must
+        # treat those calls as concat operands instead of numbers so
+        # `format("%s", s) + "!"` keeps its operand order.
+        string_funcs.update(
+            n for n, t in self.BUILTIN_RETURN_TYPES.items()
+            if t in string_types)
         return string_vars, string_funcs
 
     def _simplify_function_expressions(self, func: FunctionDef, simplifier: ExpressionSimplifier):
@@ -3130,6 +3283,14 @@ class CodeGenerator:
                 return int(expr.value, 0) & 0xFFFF
             if isinstance(expr, CharLiteral):
                 return expr.char_value & 0xFFFF
+            if isinstance(expr, SizeofExpr):
+                # sizeof folds once struct layouts and global arrays are
+                # registered (both happen before any static_assert runs).
+                try:
+                    return self._sizeof_bytes(expr) & 0xFFFF
+                except (KeyError, TypeError, AttributeError, ValueError,
+                        IndexError):
+                    return None
             if isinstance(expr, Identifier):
                 # Enum constants are compile-time integers; any other
                 # identifier is not a compile-time constant.
@@ -3138,6 +3299,17 @@ class CodeGenerator:
             if isinstance(expr, UnaryOp) and expr.op == '-':
                 inner = self._const_eval(expr.right)
                 return None if inner is None else (-inner) & 0xFFFF
+            if isinstance(expr, UnaryOp):
+                # Logical and bitwise negation fold the same way C
+                # evaluates them (any nonzero counts as true for '!').
+                inner = self._const_eval(expr.right)
+                if inner is None:
+                    return None
+                if expr.op == '~':
+                    return (~inner) & 0xFFFF
+                if expr.op == '!':
+                    return 0 if inner else 1
+                return None
             if isinstance(expr, BinaryOp):
                 left = self._const_eval(expr.left)
                 right = self._const_eval(expr.right)
@@ -3188,6 +3360,10 @@ class CodeGenerator:
                 if op == '^': return left ^ right
                 if op == '<<': return (left << right) & 0xFFFF
                 if op == '>>': return (left >> right) & 0xFFFF
+                if op == '==': return int(left == right)
+                if op == '!=': return int(left != right)
+                if op == '&&': return int(bool(left) and bool(right))
+                if op == '||': return int(bool(left) or bool(right))
             if isinstance(expr, Cast):
                 # A cast of a constant is a compile-time constant. Pointer
                 # casts and int casts keep the full 16-bit value (an address
@@ -3205,6 +3381,32 @@ class CodeGenerator:
             return None
         except (ValueError, ArithmeticError):
             return None
+
+    def _check_static_assert(self, assertion) -> None:
+        """Fold and validate a static_assert; raise CodeGenError on failure.
+
+        The condition must fold at compile time (literals, enum constants,
+        sizeof(...) and arithmetic over them all fold); anything
+        runtime-shaped is rejected with a hint, because a runtime `if` is
+        what the caller actually wants in that case. Emits nothing."""
+        value = self._const_eval(assertion.cond)
+        if value is None:
+            raise CodeGenError(
+                "static_assert condition is not a compile-time constant",
+                filename=getattr(self, 'source_path', None),
+                line=getattr(assertion, 'line', None),
+                column=getattr(assertion, 'column', None),
+                hint=('static_assert folds only literals, enum constants, '
+                      'sizeof(...) and arithmetic over them; use a runtime '
+                      'if for values that change while the program runs'),
+                source_text=self._diag_source_text())
+        if (value & 0xFFFF) == 0:
+            raise CodeGenError(
+                f"static_assert failed: {assertion.message}",
+                filename=getattr(self, 'source_path', None),
+                line=getattr(assertion, 'line', None),
+                column=getattr(assertion, 'column', None),
+                source_text=self._diag_source_text())
 
     def _alloc_const_rom(self, name: str, size: int) -> int:
         """Reserve ``size`` bytes in the const-ROM window for ``name``.
@@ -4332,6 +4534,10 @@ class CodeGenerator:
                 self.generate_user_label(statement)
             elif isinstance(statement, AsmBlock):
                 self.generate_asm_block(statement)
+            elif isinstance(statement, StaticAssert):
+                # Compile-time guard: fold now (all tables are live during
+                # body generation) and emit nothing.
+                self._check_static_assert(statement)
             elif isinstance(statement, FuncCall):
                 if statement.name == 'iret' and getattr(self, '_is_interrupt_handler', False):
                     # Special handling for iret: don't emit normal epilogue.
@@ -5960,7 +6166,7 @@ class CodeGenerator:
             return self._resolve_asm_operand(name)
         return re.sub(r'\{([A-Za-z_][A-Za-z0-9_]*)\}', repl, line)
 
-    def generate_asm_block(self, stmt: AsmBlock):
+    def generate_asm_block(self, stmt: AsmBlock, keep_p0: bool = False):
         """Emit an inline assembly block verbatim.
 
         Each element of stmt.lines is one raw assembly instruction. We
@@ -5980,15 +6186,131 @@ class CodeGenerator:
         syntax; each occurrence is replaced with the variable's codegen
         identity (a register like ``P2`` or a memory reference like
         ``[0x8020]`` / ``[FP-4]``) so the asm can see the exact location
-        the compiler is using for that variable."""
+        the compiler is using for that variable.
+
+        Extended form (``asm("..." : "=r"(out), "r"(in), "+r"(acc), "i"(K))``):
+        each operand is bound before the template runs and ``{k}`` names
+        operand k. See _bind_asm_operands / _store_asm_outputs."""
+        import re
+        bound, outputs = self._bind_asm_operands(stmt)
         self.emit_comment("asm {")
         for line in stmt.lines:
+            if bound:
+                line = re.sub(r'\{(\d+)\}',
+                              lambda m: self._asm_operand_text(m, bound, stmt),
+                              line)
             line = self._substitute_asm_operands(line)
             # Emit each raw instruction indented, verbatim.
             # We do NOT analyze operands, allocate registers, or
             # validate the instruction -- that is the programmer's job.
             self.emit(f"    {line}")
         self.emit_comment("}")
+        if outputs:
+            if keep_p0:
+                # Expression form: P0 is the asm's value; the output
+                # stores use expression temporaries, so preserve it.
+                self.emit("    PUSH P0")
+            self._store_asm_outputs(outputs)
+            if keep_p0:
+                self.emit("    POP P0")
+
+    # Registers handed to "r"/"=r"/"+r" asm operands, in binding order.
+    # P3 is excluded (DIV remainder) as everywhere else; P8/P9 are SP/FP.
+    # P0 comes last so a single-operand asm still leaves P0 -- the value
+    # an asm *expression* yields -- free for the template to set.
+    ASM_OPERAND_REGS = ('P4', 'P5', 'P6', 'P7', 'P1', 'P2', 'P0')
+    # Output values are parked in the tail of the ITOB buffer (ITOB writes
+    # at most 17 bytes, so its last 32 bytes are never touched) between
+    # the template and the stores, so storing output k can never be
+    # clobbered by computing output k+1's destination address.
+    ASM_OUTPUT_SCRATCH_OFFSET = 0xE0
+
+    def _asm_operand_text(self, m, bound, stmt) -> str:
+        idx = int(m.group(1))
+        if idx >= len(bound):
+            raise CodeGenError(
+                f"asm template references {{{idx}}} but only "
+                f"{len(bound)} operand(s) were given")
+        return bound[idx]
+
+    def _bind_asm_operands(self, stmt: AsmBlock):
+        """Materialize the operand list of an extended asm.
+
+        Returns (bound, outputs): bound[k] is the text substituted for
+        {k} (a register name or a constant); outputs lists
+        (register, lvalue-expression) pairs to store after the template.
+
+        Inputs are evaluated left to right and PUSHed, then POPped into
+        their bound registers, so evaluating input k+1 (which may use any
+        expression temporary or even call a function) can never clobber
+        input k's value."""
+        operands = getattr(stmt, 'operands', None) or []
+        if not operands:
+            return [], []
+        reg_ops = [op for op in operands if op.constraint != 'i']
+        if len(reg_ops) > len(self.ASM_OPERAND_REGS):
+            raise CodeGenError(
+                f"asm has {len(reg_ops)} register operands; at most "
+                f"{len(self.ASM_OPERAND_REGS)} are available")
+        bound, outputs, loads = [], [], []
+        next_reg = 0
+        for op in operands:
+            constraint, expr = op.constraint, op.expr
+            if constraint == 'i':
+                val = self._const_eval(expr)
+                if val is None:
+                    raise CodeGenError(
+                        "asm operand with constraint \"i\" must be a "
+                        "compile-time constant")
+                bound.append(str(val))
+                continue
+            reg = self.ASM_OPERAND_REGS[next_reg]
+            next_reg += 1
+            bound.append(reg)
+            if constraint in ('=r', '+r'):
+                if not isinstance(expr, (Identifier, ArrayAccess,
+                                         MemberAccess, Deref)):
+                    raise CodeGenError(
+                        f"asm output operand (\"{constraint}\") must be an "
+                        "assignable lvalue (variable, array element, "
+                        "struct member or *pointer)")
+                outputs.append((reg, expr))
+            if constraint in ('r', '+r'):
+                loads.append((reg, expr))
+        if loads:
+            self.emit_comment("asm operands")
+            for _reg, expr in loads:
+                val = self.generate_expression(expr)
+                self.emit(f"    PUSH {val}")
+                self.free_register()
+            for reg, _expr in reversed(loads):
+                self.emit(f"    POP {reg}")
+        return bound, outputs
+
+    def _store_asm_outputs(self, outputs):
+        """Write each asm output register back to its lvalue.
+
+        The registers are first parked in fixed scratch words, then each
+        destination is assigned `*(int *)scratch_k` through the ordinary
+        assignment machinery -- so every lvalue form (locals, globals,
+        spilled/static locals, array elements, struct members, bit-fields,
+        pointer targets, char truncation, const checks) works unchanged."""
+        base = self.itob_buffer + self.ASM_OUTPUT_SCRATCH_OFFSET
+        self.emit_comment("asm outputs")
+        for k, (reg, _lv) in enumerate(outputs):
+            self.emit(f"    MOV [0x{base + 2 * k:04X}], {reg}")
+        for k, (_reg, lv) in enumerate(outputs):
+            value = Deref(Cast('int', Number(str(base + 2 * k)),
+                               pointer_depth=1))
+            if isinstance(lv, Identifier):
+                store = Assignment(lv.name, value)
+            elif isinstance(lv, ArrayAccess):
+                store = ArrayAssignment(lv, value)
+            elif isinstance(lv, MemberAccess):
+                store = MemberAssignment(lv, value)
+            else:
+                store = DerefAssignment(lv, value)
+            self.generate_block([store])
 
     def _user_label_codegen_name(self, name: str) -> str:
         """Return the assembly-safe label name for a user label.
@@ -6004,7 +6326,7 @@ class CodeGenerator:
             # Inline asm used as an expression: emit the block and return
             # P0 as the result register (the asm is expected to leave its
             # result in P0 per the Astrid ABI).
-            self.generate_asm_block(expr)
+            self.generate_asm_block(expr, keep_p0=True)
             return "P0"
         if isinstance(expr, Number):
             reg = self.get_register()
@@ -6672,6 +6994,12 @@ class CodeGenerator:
         self.emit(f"    MOV {scratch}, 0x{self.itos_buffer:04X}")
         self.emit(f"    MOV {tmp}, {value_reg}")
 
+        # Unique labels per call site: two hex conversions in one program
+        # ((stringh)a + (stringh)b, or two %x conversions in one format)
+        # must not share jump targets -- duplicate labels would bind every
+        # JS/JMP to the LAST definition and cross-wire the register sets.
+        base = self.generate_label('hex')
+
         # Process each nibble from bits 12-15 down to 0-3
         for shift in (12, 8, 4, 0):
             self.emit(f"    MOV {nibble}, {tmp}")
@@ -6680,12 +7008,12 @@ class CodeGenerator:
             self.emit(f"    AND {nibble}, 0x0F")
             # Convert nibble to ASCII: 0-9 -> '0'-'9', 10-15 -> 'A'-'F'
             self.emit(f"    CMP {nibble}, 10")
-            self.emit(f"    JS .hex_digit_{shift}")
+            self.emit(f"    JS {base}_d{shift}")
             self.emit(f"    ADD {nibble}, 55")  # 'A' = 65, 65 - 10 = 55
-            self.emit(f"    JMP .hex_done_{shift}")
-            self.emit_label(f".hex_digit_{shift}")
+            self.emit(f"    JMP {base}_e{shift}")
+            self.emit_label(f"{base}_d{shift}")
             self.emit(f"    ADD {nibble}, 48")  # '0' = 48
-            self.emit_label(f".hex_done_{shift}")
+            self.emit_label(f"{base}_e{shift}")
             # MOV [mem], Psrc writes a 16-bit big-endian word whose high byte
             # (0x00 for ASCII chars) lands at the target address -- it would
             # shove each hex char one byte forward and corrupt the slot.  Route
@@ -6881,7 +7209,11 @@ class CodeGenerator:
             return expr.target_type in ('string', 'stringh', 'binary')
         if isinstance(expr, FuncCall):
             func = self.functions.get(expr.name)
-            return bool(func and func.get('return_type') in ('string', 'binary'))
+            if func:
+                return func.get('return_type') in ('string', 'binary')
+            # Builtins can return strings too (format()).
+            return (self.BUILTIN_RETURN_TYPES.get(expr.name)
+                    in ('string', 'binary'))
         if isinstance(expr, BinaryOp) and self._is_string_concat(expr):
             # "a" + "b" produces a string value (a scratch-buffer address).
             return True
@@ -6905,7 +7237,11 @@ class CodeGenerator:
             return expr.target_type in ('string', 'stringh', 'binary')
         if isinstance(expr, FuncCall):
             func = self.functions.get(expr.name)
-            return bool(func and func.get('return_type') in ('string', 'binary'))
+            if func:
+                return func.get('return_type') in ('string', 'binary')
+            # Builtins can return strings too (format()).
+            return (self.BUILTIN_RETURN_TYPES.get(expr.name)
+                    in ('string', 'binary'))
         if isinstance(expr, BinaryOp) and self._is_string_concat(expr):
             return True
         return False
@@ -7451,8 +7787,203 @@ class CodeGenerator:
         base = getattr(self, 'itos_buffer', 0xA000) - 0x100
         return base
 
+    def _parse_format(self, raw: str, call_name: str):
+        """Split a raw format literal into ordered pieces at compile time.
+
+        Returns (pieces, conversions). pieces are ('lit', raw_text) or
+        (specifier, arg_index) tuples in source order; conversions counts
+        the %d/%x/%s/%c uses (%% consumes no argument). The scan is
+        escape-aware: '\\%' folds to a bare '%' (so DEFSTR never sees a
+        percent escape) while every other backslash pair stays intact for
+        DEFSTR to resolve exactly as it does for ordinary literals.
+        """
+        pieces = []
+        conversions = 0
+        chunk = []
+        i = 0
+        n = len(raw)
+        while i < n:
+            ch = raw[i]
+            if ch == '\\':
+                if i + 1 < n and raw[i + 1] == '%':
+                    chunk.append('%')
+                    i += 2
+                else:
+                    chunk.append(raw[i:i + 2] if i + 1 < n else ch)
+                    i += 2 if i + 1 < n else 1
+                continue
+            if ch != '%':
+                chunk.append(ch)
+                i += 1
+                continue
+            if i + 1 >= n:
+                raise CodeGenError(
+                    f"{call_name}(): format string ends with an "
+                    "incomplete % conversion",
+                    hint="use %% for a literal percent sign",
+                    source_text=self._diag_source_text())
+            spec = raw[i + 1]
+            if spec == '%':
+                chunk.append('%')
+                i += 2
+                continue
+            if spec not in 'dxsc':
+                raise CodeGenError(
+                    f"{call_name}(): unsupported conversion '%{spec}' "
+                    "(supported: %d %x %s %c %%)",
+                    hint="each conversion consumes one argument",
+                    source_text=self._diag_source_text())
+            if chunk:
+                pieces.append(('lit', ''.join(chunk)))
+                chunk = []
+            pieces.append((spec, conversions))
+            conversions += 1
+            i += 2
+        if chunk:
+            pieces.append(('lit', ''.join(chunk)))
+        return pieces, conversions
+
+    def _emit_writef_draw(self, str_reg: str) -> str:
+        """Draw the string whose address sits in str_reg, writef-style.
+
+        Mirrors write_text's argument protocol exactly: color pushed
+        first, string pointer last, then CALL builtin_write_text (which
+        pops ret, string into P1, color into P2). The return value mirrors
+        write_text's too -- whatever TEXT left in R0.
+        """
+        self.emit("    PUSH 0x1F")
+        self.emit(f"    PUSH {str_reg}")
+        label = self.builtin_functions['write_text']
+        self.used_builtins.add(label)
+        self.emit(f"    CALL {label}")
+        self.emit("    ; Args consumed by callee")
+        result_reg = self.get_register()
+        self.emit(f"    MOV {result_reg}, R0")
+        return result_reg
+
+    def _generate_format_call(self, call: FuncCall) -> str:
+        """format(fmt, ...) / writef(fmt, ...) -- compile-time expanded.
+
+        The format must be a literal: its conversions are parsed now and
+        unrolled into ITOS/hex/byte-store + STRCAT code that assembles the
+        result in a concat scratch buffer (same ephemeral-buffer contract
+        as `a + b` concatenation). format() returns the buffer address;
+        writef() then draws it through builtin_write_text with the default
+        color 0x1F, collapsing the write_text(ITOS(x)) boilerplate into
+        one call.
+        """
+        name = call.name
+        if not call.args:
+            raise CodeGenError(
+                f"{name}() requires a format string as its first argument",
+                source_text=self._diag_source_text())
+        fmt = call.args[0]
+        if not isinstance(fmt, StringLiteral):
+            raise CodeGenError(
+                f"{name}() requires a string literal as its first argument",
+                hint=("the format is parsed at compile time; build dynamic "
+                      "text with write_text and string concatenation"),
+                source_text=self._diag_source_text())
+        pieces, conversions = self._parse_format(fmt.value, name)
+        if len(call.args) - 1 != conversions:
+            raise CodeGenError(
+                f"{name}() format expects {conversions} conversion(s), "
+                f"got {len(call.args) - 1}",
+                hint=("each %d/%x/%s/%c consumes one argument; %% consumes "
+                      "none"),
+                source_text=self._diag_source_text())
+
+        if conversions == 0:
+            # The literal IS the result: no copy, no scratch buffer. Use
+            # the PARSED pieces, not fmt.value, so a `%%`-only format
+            # ("100%%") yields "100%" rather than the raw "100%%".
+            result_reg = self.get_register()
+            folded = ''.join(payload for kind, payload in pieces)
+            self.emit(f"    MOV {result_reg}, "
+                      f"{self.get_string_label(folded)}")
+            if name == 'writef':
+                return self._emit_writef_draw(result_reg)
+            return result_reg
+
+        try:
+            buf_addr = self._alloc_concat_buffer()
+        except SyntaxError:
+            raise CodeGenError(
+                f"{name}() ran out of scratch buffers",
+                hint=("format shares the string-concat scratch buffers; "
+                      "split the expression or reduce nesting"),
+                source_text=self._diag_source_text()) from None
+        self.emit_comment(f"format -> scratch 0x{buf_addr:04X}")
+        result_reg = self.get_register()
+        self.emit(f"    MOV {result_reg}, 0x{buf_addr:04X}")
+        first = True
+        arg_i = 0
+        for kind, payload in pieces:
+            if kind == 'lit':
+                src_reg = self.get_register(exclude={result_reg})
+                self.emit(f"    MOV {src_reg}, "
+                          f"{self.get_string_label(payload)}")
+            else:
+                arg = call.args[1 + arg_i]
+                arg_i += 1
+                val_reg = self.generate_expression(arg)
+                if kind == 'd':
+                    src_reg = self.get_register(
+                        exclude={result_reg, val_reg})
+                    source_type = self._cast_source_type(arg)
+                    if source_type == 'unsigned_int':
+                        self.emit_unsigned_to_string(src_reg, val_reg)
+                    elif source_type == 'char':
+                        # A char is 0..255 (always positive): plain ITOS
+                        # renders its decimal code, matching %d semantics.
+                        self.emit(f"    ITOS {src_reg}, {val_reg}")
+                    elif self.memory_layout_name == 'bank-safe':
+                        # No hardware ITOS under bank-safe (scratch cell
+                        # sits in the bank window) -- see generate_cast.
+                        self.emit_signed_to_string(src_reg, val_reg)
+                    else:
+                        self.emit(f"    ITOS {src_reg}, {val_reg}")
+                elif kind == 'x':
+                    src_reg = self.get_register(
+                        exclude={result_reg, val_reg})
+                    self.emit_hex_string(src_reg, val_reg)
+                elif kind == 's':
+                    src_reg = val_reg  # already a string address
+                else:  # 'c'
+                    # One glyph byte at the ITOS cell -- never ITOS: 0x6C
+                    # must render 'l', not "108" (the rule write_text uses
+                    # for char-typed arguments).
+                    self.emit(f"    MOV R0, {val_reg}")
+                    self.emit(f"    MOV [0x{self.itos_buffer:04X}], R0")
+                    self.emit(f"    MOV [0x{self.itos_buffer + 1:04X}], 0")
+                    src_reg = self.get_register(
+                        exclude={result_reg, val_reg})
+                    self.emit(f"    MOV {src_reg}, "
+                              f"0x{self.itos_buffer:04X}")
+                self.free_register()  # val_reg
+            if first:
+                # The first piece seeds the buffer with STRCPY (wiping any
+                # stale contents); every later piece appends with STRCAT --
+                # the same protocol _generate_string_concat uses.
+                self.emit(f"    STRCPY {result_reg}, {src_reg}")
+                first = False
+            else:
+                self.emit(f"    STRCAT {result_reg}, {src_reg}")
+            if kind != 'lit':
+                self.free_register()  # src_reg (non-'s' cases)
+        if name == 'writef':
+            return self._emit_writef_draw(result_reg)
+        return result_reg
+
     def generate_call(self, call: FuncCall) -> str:
         self.emit_comment(f"Call to {call.name}")
+
+        # --- format(fmt, ...) / writef(fmt, ...) ---
+        # Compile-time expanded: the format literal is parsed now and each
+        # conversion unrolls into conversion + STRCAT code (see
+        # _generate_format_call), so neither name ever CALLs a builtin.
+        if call.name in ('format', 'writef'):
+            return self._generate_format_call(call)
 
         # --- float() conversion call ---
         # float(x) is a type-conversion call, routed through the cast
@@ -7665,6 +8196,8 @@ class CodeGenerator:
             'floor', 'ceil', 'round', 'trunc', 'frac', 'intgr', 'int', 'powr',
             'strcpy', 'strcat', 'strcmp', 'strlen',
             'strupr', 'strlwr', 'strrev', 'strfind', 'strfindi',
+            'strchr', 'strrchr', 'strstr', 'strncpy', 'strncat',
+            'atoi',
             'ser_out', 'ser_ctrl',
             'memcpy', 'memset', 'memmove', 'memcmp', 'memtest', 'memswap',
             'peek', 'peek2', 'read_bank',

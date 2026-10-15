@@ -68,6 +68,16 @@ character literals, comments or larger identifiers. Recursive references stop
 expanding; expansion is limited to 64 levels and 1 MiB per expansion. Identical
 redefinitions are allowed; use `#undef` before changing a definition.
 
+Function-like macros work like C's: the `(` must immediately follow the macro
+name for an invocation (`#define F (x)` with a space defines an object-like
+macro whose body is `(x)`), whitespace between the name and `(` at a call site
+is allowed, arguments are pre-expanded before substitution, and a bare macro
+name with no `(` stays an ordinary identifier. Each argument is a
+comma-separated preprocessing-token sequence, so commas inside parentheses or
+string literals do not split arguments. A macro invocation must fit on one
+line, and parameters must be simple identifiers -- variadic parameters
+(`...`, `__VA_ARGS__`) are rejected.
+
 ## File-unit scope (not C textual includes)
 
 Use Astrid's existing `include "file.ast";` and `inherits "base.ast";` syntax.
@@ -82,8 +92,8 @@ Inactive lines and directives retain their line positions. Macro-generated
 tokens point to the invocation column; following tokens retain their original
 columns. Preprocessor errors report the filename, line, column and source snippet.
 
-This is not a full C preprocessor: function-like macros, line continuations,
-stringification, token pasting, `#include`, `#pragma`, ternary conditions, character
-conditions and floating-point conditions are not supported. Quoted multiline
+This is not a full C preprocessor: line continuations, stringification, token
+pasting, `#include`, `#pragma`, ternary conditions, character conditions and
+floating-point conditions are not supported. Quoted multiline
 source text remains literal, not a source of directives. Comments and quoted
 text must remain lexically balanced even around disabled code.

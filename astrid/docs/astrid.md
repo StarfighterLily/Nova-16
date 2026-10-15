@@ -25,6 +25,11 @@ A C language for the Nova-16, built from the ground up.
 21. [Const enforcement and read-only data](#const-enforcement-and-read-only-data)
 22. [Signed and unsigned integers](#signed-and-unsigned-integers)
 23. [Bit-fields](#bit-fields)
+24. [Function-like macros](#function-like-macros)
+25. [Formatted text: format and writef](#formatted-text-format-and-writef)
+26. [Adjacent string literal concatenation](#adjacent-string-literal-concatenation)
+27. [String library additions](#string-library-additions)
+28. [static_assert](#static_assert)
 
 ---
 
@@ -437,12 +442,61 @@ int main() {
 This is the idiomatic way to get a computed value out of inline asm -- assign
 the `asm(...)` expression to a variable or use it directly in arithmetic.
 
+### Extended asm operands
+
+The string forms accept a GCC-style operand list after the template. The
+compiler loads inputs into registers before the template runs and stores
+outputs back afterwards, so hand-written asm cooperates with the compiler
+instead of guessing where values live. Operand `k` (counting from 0 in source
+order) is written `{k}` in the template:
+
+```c
+int mul_add(int a, int b, int c) {
+    int r;
+    asm("MOV {0}, {1}\n"
+        "MUL {0}, {2}\n"
+        "ADD {0}, {3}"
+        : "=r"(r)                    // output
+        : "r"(a), "r"(b), "r"(c));   // inputs
+    return r;
+}
+```
+
+| Constraint | Meaning |
+|------------|---------|
+| `"r"(expr)` | Input. Any expression, evaluated into a 16-bit P register. |
+| `"=r"(lvalue)` | Output. A P register whose final value is stored to the lvalue. |
+| `"+r"(lvalue)` | Read-write. Loaded from the lvalue, stored back afterwards. |
+| `"i"(expr)` | Compile-time constant, substituted as a literal (enums, `sizeof`, arithmetic). |
+
+* The second `:` separating outputs from inputs is optional --
+  `asm("..." : "=r"(r), "r"(a))` is the same list. Adjacent template literals
+  fold, and `\n` or `;` separates instructions.
+* Register operands are bound, in order, to P4, P5, P6, P7, P1, P2, P0 (at
+  most seven). P3 (the DIV remainder), SP and FP are never handed out.
+* Inputs are evaluated left to right and each is preserved on the stack until
+  all are ready, so an input that calls a function never clobbers an earlier
+  one.
+* An output may be any assignable lvalue: a local, global, array element,
+  struct member (including bit-fields) or `*pointer`. Stores go through the
+  normal assignment rules, so writing an output to a `const` object is a
+  compile error.
+* `{varname}` substitution still works alongside `{k}`.
+* In expression context, the asm's value is still P0, and output stores do
+  not disturb it: `int x = asm("MOV P0, {1}\nMOV {0}, 5" : "=r"(z) : "i"(12));`
+  sets `x = 12` and `z = 5`.
+
+Diagnostics cover unknown constraints, a `{k}` with no operand `k`, a
+non-constant `"i"` operand, a non-lvalue output, and more than seven register
+operands.
+
 ### Calling convention
 
 Inline asm may clobber all caller-saved registers (P0--P7, R0, and the flags).
-Until a full constraint system exists, `asm` is treated as a full compiler
-barrier (like `cli`). Hardware registers set via `set_reg()` before an `asm`
-block may be overwritten unless the asm preserves them.
+`asm` remains a full compiler barrier (like `cli`): operands tell the compiler
+where to put values, not which registers the template leaves alone. Hardware
+registers set via `set_reg()` before an `asm` block may be overwritten unless
+the asm preserves them.
 
 ## Interrupt handlers and naked functions
 
@@ -1173,3 +1227,93 @@ bit-field sign-extends on read (`signed int delta : 5` holding -1 reads back
 -1), and its comparisons use the signed jump family. Width 0 and widths
 above 16 are compile errors.
 
+
+
+## Function-like macros
+
+The preprocessor accepts parameterized `#define`s with C semantics:
+
+```c
+#define SQUARE(x)    ((x) * (x))
+#define CLAMP(v, lo, hi)  ((v) < (lo) ? (lo) : ((v) > (hi) ? (hi) : (v)))
+
+int area = SQUARE(side);
+```
+
+The `(` must immediately follow the name in the definition; `#define F (x)`
+with a space is an object-like macro whose body is `(x)`. Arguments are
+pre-expanded before substitution, commas inside parentheses or string literals
+do not split arguments, and a bare macro name without `(` stays an ordinary
+identifier. An invocation must fit on one line. Variadic macros, `#`
+stringification and `##` token pasting are not supported. Full rules are in
+`conditional_compilation.md`.
+
+## Formatted text: format and writef
+
+`format(fmt, ...)` builds a string from a literal format, and `writef(fmt, ...)`
+builds it and draws it exactly as `write_text` would (default color `0x1F`):
+
+```c
+writef("HP %d/%d", hp, max_hp);
+write_text(format("addr %x %c%s", ptr, '>', name), 0x0E);
+```
+
+| Conversion | Output |
+|------------|--------|
+| `%d` | Decimal. Signed for `int`, unsigned for `unsigned int`, the code for `char`. |
+| `%x` | Four uppercase hex digits, zero-padded (`0x2A` gives `002A`). |
+| `%s` | A string. |
+| `%c` | One character. |
+| `%%` | A literal percent sign; consumes no argument. |
+
+The format must be a string literal: it is parsed at compile time and unrolled
+into conversion and `STRCAT` code, so there is no runtime format interpreter.
+The argument count must match the conversions. The result lives in one of the
+string-concat scratch buffers and has the same lifetime as `a + b` string
+concatenation: it is valid until that buffer is reused, so copy it with
+`strcpy` if you need to keep it.
+
+## Adjacent string literal concatenation
+
+Adjacent string literals fold into one at parse time, as in C:
+
+```c
+string banner = "NOVA-16 "
+                "READY";
+```
+
+This also applies to `asm` templates, so a multi-line template can be split
+across source lines.
+
+## String library additions
+
+These complete the C-style string set alongside `strlen`, `strcmp`, `strcpy`,
+`strcat`, `strupr`, `strlwr`, `strrev`, `strfind` and `strfindi`. Each is
+linked only when used.
+
+| Builtin | Result |
+|---------|--------|
+| `strchr(s, c)` | Address of the first `c` in `s`, or 0. |
+| `strrchr(s, c)` | Address of the last `c` in `s`, or 0. |
+| `strstr(hay, needle)` | Address of the first occurrence of `needle`, or 0. An empty needle matches at `hay`. |
+| `strncpy(dst, src, n)` | Copies exactly `n` bytes, zero-padding after the end of `src`, like C. Returns `dst`. |
+| `strncat(dst, src, n)` | Appends at most `n` bytes of `src` and always NUL-terminates. Returns `dst`. |
+| `atoi(s)` | Signed value of the leading decimal run. Skips leading spaces, accepts one `+` or `-`, stops at the first non-digit. |
+
+As with C's `strncpy`, the result is not NUL-terminated when `src` is `n`
+bytes or longer.
+
+## static_assert
+
+`static_assert(cond, "message");` checks a condition at compile time and emits
+no code. It is accepted at file scope and as a statement inside a function:
+
+```c
+struct Scb { int x; int y; int tile; int flags; };
+static_assert(sizeof(struct Scb) * 64 <= 512, "SCB table overflows its page");
+```
+
+The condition may use literals, enum constants, `sizeof(...)` and arithmetic
+over them. A zero result fails with the message. A condition that cannot be
+folded, such as one reading a variable, is also an error, with a hint to use a
+runtime `if` instead. Guards in included and inherited units still fire.

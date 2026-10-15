@@ -76,7 +76,8 @@ class Program(ASTNode):
                  type_aliases: Optional[Dict[str, str]] = None,
                  impl_blocks: Optional[List["ImplBlock"]] = None,
                  struct_bitfields: Optional[Dict[str, Dict[str, int]]] = None,
-                 union_bitfields: Optional[Dict[str, Dict[str, int]]] = None):
+                 union_bitfields: Optional[Dict[str, Dict[str, int]]] = None,
+                 static_asserts: Optional[List["StaticAssert"]] = None):
         self.functions = functions
         # Top-level (global) variable declarations. Empty for sources that
         # only define functions; populated when the source declares variables
@@ -108,6 +109,11 @@ class Program(ASTNode):
             struct_bitfields if struct_bitfields is not None else {})
         self.union_bitfields: Dict[str, Dict[str, int]] = (
             union_bitfields if union_bitfields is not None else {})
+        # File-scope static_assert(cond, "msg") guards. Validated by the
+        # code generator once enums, struct layouts and global arrays are
+        # registered; they emit no code.
+        self.static_asserts: List["StaticAssert"] = (
+            static_asserts if static_asserts is not None else [])
 
 class FunctionDef(ASTNode):
     def __init__(self, return_type: str, name: str, params: List["VarDecl"],
@@ -416,8 +422,34 @@ class AsmBlock(ASTNode):
     The string-form asm("...") parses to the same node type; the
     codegen layer splits on newlines/semicolons and emits each
     resulting line verbatim."""
-    def __init__(self, lines: List[str]):
+    def __init__(self, lines: List[str], operands: Optional[List["AsmOperand"]] = None):
         self.lines = lines
+        # Operand list for extended asm("..." : operands): AsmOperand
+        # nodes in source order; operand k is {k} in the template.
+        self.operands = operands or []
+
+class AsmOperand(ASTNode):
+    """One extended-asm operand: "r"(expr), "=r"(lvalue), "+r"(lvalue)
+    or "i"(constant). A node (not a tuple) so every generic AST walker --
+    callee collection, variable-use scans -- sees the expression."""
+    def __init__(self, constraint: str, expr: "Expression"):
+        self.constraint = constraint
+        self.expr = expr
+
+class StaticAssert(ASTNode):
+    """static_assert(cond, "message") -- a compile-time guard.
+
+    Parsed at file scope and inside function bodies; the code generator
+    folds `cond` with its constant evaluator (literals, enum constants,
+    sizeof(...) and arithmetic over them) and raises a diagnostic when
+    the result is zero or cannot be folded at all. Emits no code."""
+    def __init__(self, cond: "Expression", message: str):
+        self.cond = cond
+        # Already unescaped; the surrounding quotes are stripped.
+        self.message = message
+        # Source position of the `static_assert` token, for diagnostics.
+        self.line = 0
+        self.column = 0
 
 class TypedefDecl(ASTNode):
     """typedef int myint; -- declare a type alias."""
@@ -774,13 +806,24 @@ class Parser:
     def parse(self) -> "Program":
         functions = []
         globals_: List[VarDecl] = []
+        static_asserts: List["StaticAssert"] = []
         while self.current.type != 'EOF':
             # Multi-file directives: include / inherits "file";
             if (self.current.type == 'KEYWORD'
                     and self.current.value in ('include', 'inherits')):
                 mode = self.current.value
-                self._parse_file_directive(mode, functions, globals_)
+                self._parse_file_directive(mode, functions, globals_,
+                                           static_asserts)
                 continue
+            # File-scope compile-time guard: static_assert(cond, "msg");
+            if (self.current.type == 'IDENTIFIER'
+                    and self.current.value == 'static_assert'):
+                nxt = (self.tokens[self.pos + 1]
+                       if self.pos + 1 < len(self.tokens) else None)
+                if (nxt is not None and nxt.type == 'DELIMITER'
+                        and nxt.value == '('):
+                    static_asserts.append(self.parse_static_assert())
+                    continue
             # Enum declarations introduce named integer constants usable
             # anywhere a compile-time number is expected.
             if self.current.type == 'KEYWORD' and self.current.value == 'enum':
@@ -1053,6 +1096,9 @@ class Parser:
                         else:
                             target.methods.append(method)
                     own_impl_keys.add(key)
+            # static_asserts from a base unit are unconditional layout
+            # guards: they were part of the translation unit, so they fire.
+            static_asserts.extend(getattr(unit, 'static_asserts', None) or [])
         # Validate impl blocks reference a defined struct/union type (checked
         # at EOF so impl blocks may legally appear before the type definition
         # in the same compilation unit, and so structs merged from included
@@ -1067,7 +1113,7 @@ class Parser:
         program = Program(functions, globals_, self.enum_constants,
                           self.struct_defs, self.union_defs, self.type_aliases,
                           self.impl_blocks, self.struct_bitfields,
-                          self.union_bitfields)
+                          self.union_bitfields, static_asserts)
         # Carry the source path on the AST so codegen-phase diagnostics can
         # name the file (and render snippets) without extra plumbing.
         program.source_path = self.source_path
@@ -1079,7 +1125,8 @@ class Parser:
 
     def _parse_file_directive(self, mode: str,
                               functions: List["FunctionDef"],
-                              globals_: List["VarDecl"]):
+                              globals_: List["VarDecl"],
+                              static_asserts: Optional[List["StaticAssert"]] = None):
         """Parse `include "file";` / `inherits "file";` and merge the file.
 
         include  -- strict splice: every definition is added; redefining an
@@ -1103,7 +1150,7 @@ class Parser:
         if unit is None:
             return  # duplicate include: already merged elsewhere (pragma-once style)
         if mode == 'include':
-            self._merge_include_unit(unit, functions, globals_)
+            self._merge_include_unit(unit, functions, globals_, static_asserts)
         else:
             self.inherited_units.append(unit)
 
@@ -1153,11 +1200,14 @@ class Parser:
 
     def _merge_include_unit(self, unit: "Program",
                             functions: List["FunctionDef"],
-                            globals_: List["VarDecl"]):
+                            globals_: List["VarDecl"],
+                            static_asserts: Optional[List["StaticAssert"]] = None):
         """Strictly merge an included Program: duplicates are errors.
 
         Enum constants merge too; conflicting values for the same constant
         name are errors (identical values are tolerated)."""
+        if static_asserts is None:
+            static_asserts = []
         existing_fns = {f.name for f in functions}
         existing_gls = {g.name for g in globals_}
         for f in unit.functions:
@@ -1178,6 +1228,9 @@ class Parser:
             globals_.append(g)
         self.included_fn_names |= {f.name for f in unit.functions}
         self.included_gl_names |= {g.name for g in unit.globals}
+        # static_asserts from the included unit are unconditional guards
+        # (a header's layout checks must still fire), so splice them in.
+        static_asserts.extend(getattr(unit, 'static_asserts', None) or [])
         for name, value in unit.enum_constants.items():
             if name in self.enum_constants and \
                     self.enum_constants[name] != value:
@@ -1914,6 +1967,16 @@ class Parser:
         if self.current.type == 'KEYWORD' and self.current.value == 'enum':
             self.parse_enum()
             return []
+        # Compile-time guard: static_assert(cond, "msg"); -- parsed here so
+        # it never masquerades as a (yet undefined) function call. Validated
+        # and erased by the code generator when the body is generated.
+        if (self.current.type == 'IDENTIFIER'
+                and self.current.value == 'static_assert'):
+            nxt = (self.tokens[self.pos + 1]
+                   if self.pos + 1 < len(self.tokens) else None)
+            if (nxt is not None and nxt.type == 'DELIMITER'
+                    and nxt.value == '('):
+                return [self.parse_static_assert()]
         # Storage-qualified local declarations: `const int K = 5;`,
         # `static int calls = 0;`, `volatile int flag;`, and also the
         # aggregate forms `const struct S s;` / `const struct S *p;`.  The
@@ -2255,6 +2318,31 @@ class Parser:
         self.expect('DELIMITER', ';')
         return Return(value)
 
+    def parse_static_assert(self):
+        """Parse `static_assert(cond, "message");` at file scope or as a
+        statement. The condition stays an expression tree: the code
+        generator folds it once enums, struct layouts and global arrays
+        are all registered, and emits nothing either way."""
+        tok = self.current
+        self.advance()  # 'static_assert'
+        self.expect('DELIMITER', '(')
+        # parse_binary_op (not parse_expression) so the comma between the
+        # two arguments separates them instead of folding into a CommaOp.
+        cond = self.parse_binary_op(1)
+        self.expect('DELIMITER', ',')
+        if self.current.type != 'STRING':
+            raise self.error(
+                "static_assert requires a string literal message "
+                f"(got {self._describe_token(self.current)})")
+        message = Parser._unescape_string(self.current.value.strip('"'))
+        self.advance()
+        self.expect('DELIMITER', ')')
+        self.expect('DELIMITER', ';')
+        node = StaticAssert(cond, message)
+        node.line = tok.line
+        node.column = tok.column
+        return node
+
     def parse_if(self):
         self.expect('KEYWORD', 'if')
         self.expect('DELIMITER', '(')
@@ -2388,6 +2476,8 @@ class Parser:
         The returned AsmBlock is emitted verbatim by the code generator."""
         self.expect('KEYWORD', 'asm')
         lines: List[str] = []
+        raw = ''
+        operands: List[AsmOperand] = []
         if self.current.type == 'DELIMITER' and self.current.value == '{':
             # Block form: asm { ... }
             self.expect('DELIMITER', '{')
@@ -2420,32 +2510,103 @@ class Parser:
                     self.advance()
             self.expect('DELIMITER', '}')
         elif self.current.type == 'STRING':
-            # String form: asm "..." (bare string)
-            raw = self.current.value.strip('"')
-            self.advance()
+            # String form: asm "..." (with optional operand list after it)
+            raw = self._take_asm_string()
+            operands = self._parse_asm_operand_list()
         elif self.current.type == 'DELIMITER' and self.current.value == '(':
-            # Parenthesized string form: asm("...")
+            # Parenthesized string form: asm("..." : operands)
             self.advance()  # consume '('
             if self.current.type != 'STRING':
                 raise self.error(
                     "expected string literal inside asm(...) "
                     f"(got {self.current.type} {self.current.value!r}, "
                     f"line {self.current.line})")
-            raw = self.current.value.strip('"')
-            self.advance()
+            raw = self._take_asm_string()
+            operands = self._parse_asm_operand_list()
             self.expect('DELIMITER', ')')
-            # Split on newlines and semicolons
-            import re
-            for frag in re.split(r'[;\n]', raw):
-                frag = frag.strip()
-                if frag and not frag.startswith(';'):
-                    lines.append(frag)
         else:
             raise self.error(
                 "expected '{' or string literal after 'asm' "
                 f"(got {self.current.type} {self.current.value!r}, "
                 f"line {self.current.line})")
-        return AsmBlock(lines)
+        lines.extend(self._split_asm_string(raw))
+        return AsmBlock(lines, operands)
+
+    def _take_asm_string(self) -> str:
+        """Consume the asm template string, folding adjacent literals
+        (`asm("MOV P0, 1\\n" "ADD P0, 2")`) like any other string."""
+        raw = self.current.value.strip('"')
+        self.advance()
+        while self.current.type == 'STRING':
+            raw += self.current.value.strip('"')
+            self.advance()
+        return raw
+
+    @staticmethod
+    def _split_asm_string(raw: str) -> List[str]:
+        """Split an asm template into instructions on newlines (real or the
+        `\\n` escape) and semicolons; blank fragments are dropped."""
+        import re
+        out = []
+        for frag in re.split(r'[;\n]|\\n', raw):
+            frag = frag.strip()
+            if frag:
+                out.append(frag)
+        return out
+
+    def _parse_asm_operand_list(self) -> List[AsmOperand]:
+        """Parse the optional operand expression list after an asm string.
+
+        Accepts GCC-style lists, with one or two colons (the second colon
+        just separates outputs from inputs for readability):
+
+            asm("..." : "=r"(out), "r"(in), "+r"(acc), "i"(K))
+            asm("..." : "=r"(out) : "r"(in))
+
+        Constraints: "r" input, "=r" output, "+r" read-write (all bound to
+        a 16-bit P register), "i" compile-time constant. Returns AsmOperand
+        nodes in source order; operand k is referenced in the template as
+        {k}.
+        """
+        if self.current.type != 'DELIMITER' or self.current.value != ':':
+            return []
+        # Only an operand list when a constraint string (or a second ':')
+        # follows -- otherwise the ':' belongs to an enclosing ternary.
+        nxt = (self.tokens[self.pos + 1]
+               if self.pos + 1 < len(self.tokens) else None)
+        if nxt is None or not (nxt.type == 'STRING'
+                               or (nxt.type == 'DELIMITER' and nxt.value == ':')):
+            return []
+        self.advance()  # consume the ':' after the asm string
+        operands = []
+        while True:
+            # A second ':' marks the start of the input list; anything
+            # after it must still be constraint strings (outputs or inputs).
+            if self.current.type == 'DELIMITER' and self.current.value == ':':
+                self.advance()
+                continue
+            if self.current.type == 'STRING':
+                constraint = self.current.value.strip('"')
+                if constraint not in ('r', '=r', '+r', 'i'):
+                    raise self.error(
+                        f"unsupported asm operand constraint \"{constraint}\" "
+                        "(expected \"r\", \"=r\", \"+r\" or \"i\")")
+                self.advance()
+                self.expect('DELIMITER', '(')
+                # parse_binary_op: a comma here is never a comma operator.
+                expr = self.parse_binary_op(1)
+                self.expect('DELIMITER', ')')
+                operands.append(AsmOperand(constraint, expr))
+                if self.current.type == 'DELIMITER' and self.current.value == ',':
+                    self.advance()
+                    continue
+                if self.current.type == 'DELIMITER' and self.current.value == ':':
+                    continue  # outputs : inputs separator, consumed above
+                break
+            raise self.error(
+                f"expected asm operand constraint string after ':' "
+                f"(got {self._describe_token(self.current)})")
+        return operands
 
     def parse_expression(self):
         # Parse the first assignment-expression (precedence 1 covers all
@@ -2790,33 +2951,21 @@ class Parser:
             # Returns an AsmBlock whose value (in P0) is the expression result.
             self.advance()  # consume 'asm'
             if self.current.type == 'STRING':
-                raw = self.current.value.strip('"')
-                self.advance()
-                import re
-                lines = []
-                for frag in re.split(r'[;\n]', raw):
-                    frag = frag.strip()
-                    if frag and not frag.startswith(';'):
-                        lines.append(frag)
-                return AsmBlock(lines)
+                raw = self._take_asm_string()
+                operands = self._parse_asm_operand_list()
+                return AsmBlock(self._split_asm_string(raw), operands)
             elif self.current.type == 'DELIMITER' and self.current.value == '(':
-                # Parenthesized string form: asm("...")
+                # Parenthesized string form: asm("..." : operands)
                 self.advance()  # consume '('
                 if self.current.type != 'STRING':
                     raise self.error(
                         "expected string literal inside asm(...) in expression "
                         f"(got {self.current.type} {self.current.value!r}, "
                         f"line {self.current.line})")
-                raw = self.current.value.strip('"')
-                self.advance()
+                raw = self._take_asm_string()
+                operands = self._parse_asm_operand_list()
                 self.expect('DELIMITER', ')')
-                import re
-                lines = []
-                for frag in re.split(r'[;\n]', raw):
-                    frag = frag.strip()
-                    if frag and not frag.startswith(';'):
-                        lines.append(frag)
-                return AsmBlock(lines)
+                return AsmBlock(self._split_asm_string(raw), operands)
             elif self.current.type == 'DELIMITER' and self.current.value == '{':
                 # Block form in expression context: asm { MOV P0, 5; }
                 self.advance()  # consume '{'

@@ -62,8 +62,16 @@
 >   `sizeof` reflects the packed size, and widths 0/>16/non-constant are
 >   diagnosed at parse time. Documented in `astrid.md` → *Bit-fields*.
 >   Tests: `tests/astrid/test_astrid_bitfields.py`.
+> * **Items 8–13 (Tier 3 C-parity polish) — IMPLEMENTED.** Function-like
+>   macros, `format`/`writef`, adjacent string literal folding, the
+>   `strchr`/`strrchr`/`strstr`/`strncpy`/`strncat`/`atoi` builtins,
+>   `static_assert`, and extended-asm operands (`"r"`, `"=r"`, `"+r"`, `"i"`
+>   bound to registers and referenced as `{k}`). Documented in `astrid.md`
+>   (sections 24–28 and *Inline assembly → Extended asm operands*) and
+>   `conditional_compilation.md`. Tests: `tests/astrid/test_astrid_tier3_*.py`.
 >
-> The items below are still open, in the recommended order.
+> Every ranked item is now implemented; only the stale-doc note at the end
+> remains partly open.
 
 ### Tier 1 — Confirmed missing, high value
 
@@ -98,18 +106,18 @@ machine, including `signed` sign-extension and `signed` comparisons.
 
 ### Tier 3 — Smaller C-parity polish
 
-__8. Function-like macros in the preprocessor__ — explicitly rejected (`function-like macros are not supported`). Object-like `#define` works, but parameterized macros are the single most-missed preprocessor feature. Given inline functions exist, this is medium value; the preprocessor's token-expander already does the hard part.
+__8. Function-like macros in the preprocessor__ — ✅ **DONE**. C semantics (pre-expanded arguments, paren/string-aware argument splitting, arity diagnostics); variadic, `#` and `##` are not supported. Tests: `test_astrid_tier3_function_macros.py`. Original note: explicitly rejected (`function-like macros are not supported`). Object-like `#define` works, but parameterized macros are the single most-missed preprocessor feature. Given inline functions exist, this is medium value; the preprocessor's token-expander already does the hard part.
 
-__9. Variadic builtins / `printf`-style formatting__ — no `...` support; user variadics are probably not worth it, but a single `format/writef(fmt, ...)` builtin (%d/%x/%s/%c reusing ITOS + the existing concat buffers) would remove a lot of `write_text` + ITOS boilerplate seen in `game.ast`/`rpg.ast`.
+__9. Variadic builtins / `printf`-style formatting__ — ✅ **DONE** as compile-time-expanded `format(fmt, ...)` and `writef(fmt, ...)` with `%d %x %s %c %%`. Tests: `test_astrid_tier3_format.py`. Original note: no `...` support; user variadics are probably not worth it, but a single `format/writef(fmt, ...)` builtin (%d/%x/%s/%c reusing ITOS + the existing concat buffers) would remove a lot of `write_text` + ITOS boilerplate seen in `game.ast`/`rpg.ast`.
 
-__10. Adjacent string literal concatenation__ (`"abc" "def"`) — C/JS/Python all have it; trivial lexer-level fold.
+__10. Adjacent string literal concatenation__ (`"abc" "def"`) — ✅ **DONE**, folded in the parser, including `asm` templates.
 
-__11. String-typed stdlib gaps__ — `strchr`/`strrchr`/`strstr`/`strncpy`/`strncat`/`atoi` are absent (you can fake them with `strfind`/`memcpy`, but the asymmetry with the existing `strlen/strcmp/strcpy/strcat/strupr/strlwr/strrev/strfind/strfindi` set is noticeable). Note: an earlier draft of this list wrongly claimed `strcpy`/`strcat` were missing — both DO exist (`codegen.py:1398`).
+__11. String-typed stdlib gaps__ — ✅ **DONE**: all six are lazily linked asm builtins. Tests: `test_astrid_tier3_string_stdlib.py`. Original note: `strchr`/`strrchr`/`strstr`/`strncpy`/`strncat`/`atoi` are absent (you can fake them with `strfind`/`memcpy`, but the asymmetry with the existing `strlen/strcmp/strcpy/strcat/strupr/strlwr/strrev/strfind/strfindi` set is noticeable). Note: an earlier draft of this list wrongly claimed `strcpy`/`strcat` were missing — both DO exist (`codegen.py:1398`).
 
-__12. `static_assert(cond, msg)`__ — constant folding already exists; this is nearly free and gives compile-time layout guards (e.g., struct sizes vs. the SCB page).
+__12. `static_assert(cond, msg)`__ — ✅ **DONE** at file and statement scope. Tests: `test_astrid_tier3_static_assert.py`. Original note: constant folding already exists; this is nearly free and gives compile-time layout guards (e.g., struct sizes vs. the SCB page).
 
-__13. Extended-asm operands__ — the docs themselves flag it: `asm` is a full compiler barrier with no read/write operand constraints. A minimal `asm("...": out, in...)` would let hand-optimized kernels cooperate with the register allocator instead of fighting it.
+__13. Extended-asm operands__ — ✅ **DONE**: `asm("..." : "=r"(out) : "r"(in), "+r"(acc), "i"(K))` with `{k}` placeholders; outputs may be any lvalue. `asm` stays a full barrier. Tests: `test_astrid_tier3_extended_asm.py`. Original note: the docs themselves flagged it: `asm` is a full compiler barrier with no read/write operand constraints. A minimal `asm("...": out, in...)` would let hand-optimized kernels cooperate with the register allocator instead of fighting it.
 
 ### Stale doc (not a language gap, but worth fixing)
 
-`astrid/docs/astrid.md`'s Table of Contents lists sections 9–15 (*Basic syntax, Types, Memory model, Function calling conventions, Structs and unions, Standard builtins, Common patterns*) that don't exist in the file — `string`/`binary`/`stringh`, the `float` Q8.8 model, and most of the builtin library are __undocumented__, and `docs/features.md` is 0 bytes.
+*Partly addressed:* every feature added from this list is now documented in `astrid.md`, but the gap below still stands. `astrid/docs/astrid.md`'s Table of Contents lists sections 9–15 (*Basic syntax, Types, Memory model, Function calling conventions, Structs and unions, Standard builtins, Common patterns*) that don't exist in the file — `string`/`binary`/`stringh`, the `float` Q8.8 model, and most of the builtin library are __undocumented__, and `docs/features.md` is 0 bytes.

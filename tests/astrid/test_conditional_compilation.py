@@ -116,7 +116,7 @@ def test_comments_directives_multiline_literals_and_locations():
     ('#if 1\n#else extra\n#endif', 'does not accept'),
     ('#if 0\n#elif\n#endif', 'requires a condition'),
     ('#define 123', 'requires a macro'), ('#undef A B', 'one macro'),
-    ('#define F(x) x', 'function-like'), ('#define A 1\\', 'multiline'),
+    ('#define F(...)', 'variadic'), ('#define A 1\\', 'multiline'),
     ('#define A 1\n#define A 2', 'redefined'), ('#include "a"', 'unknown directive'),
     ('#error intentional', 'intentional'), ('#if 1 / 0\n#endif', 'invalid #if'),
     ('#if 1 << -1\n#endif', 'shift count'), ('#if defined()\n#endif', 'defined requires'),
