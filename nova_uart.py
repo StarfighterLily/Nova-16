@@ -403,6 +403,21 @@ class NovaUART:
             value |= self.STATUS_TX_COMPLETE
         return value
 
+    def read_extended_status(self) -> int:
+        """SERFSTAT: bit 2 = framed mode enabled, bit 4 = checksum error.
+
+        The checksum error is latched in ``control`` by the frame parser;
+        reading it here clears the latch, matching nova16.exe's
+        ``read_extended_status`` ("read consumes", like SERIN/KEYIN).
+        """
+        value = 0
+        if self.protocol_mode == self.MODE_FRAMED:
+            value |= self.CONTROL_FRAMED_MODE
+        if self.control & self.STATUS_CHECKSUM_ERROR:
+            value |= self.STATUS_CHECKSUM_ERROR
+        self.control &= ~self.STATUS_CHECKSUM_ERROR & 0xFF
+        return value
+
     def write_control(self, control: int) -> None:
         control = int(control) & 0x7F
         self.control = control & 0x7C

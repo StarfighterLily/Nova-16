@@ -91,6 +91,34 @@ class Compositor:
         self.dirty = [False] * self.NUM_LAYERS
         self._composite_dirty = False
 
+    def write_base_pixel(self, y: int, x: int, value: int):
+        """Write one layer-0 pixel and keep the cached composite exact.
+
+        Layer 0 is the bottom of the stack, so the composited pixel only
+        changes when no visible upper layer covers (x, y). Writing straight
+        into _screen regardless (the old hot path) let SREAD and the display
+        show a layer-0 pixel through an opaque layer above it until something
+        else forced a recomposite -- a divergence from the composite that
+        SREAD is defined to read (and that nova16.exe returns).
+
+        While the composite is clean the upper layers' pixel counts are exact
+        (every upper-layer write marks dirty, and composite() recounts), so a
+        count of zero skips that layer without touching its buffer. When the
+        composite is already dirty the next read recomposites anyway.
+        """
+        self.layers[0][y, x] = value
+        if self._composite_dirty:
+            return
+        if self.mouse_cursor_visible:
+            self.mark_dirty(0)
+            return
+        counts = self._pixel_counts
+        for i in range(1, self.NUM_LAYERS):
+            if counts[i] and self.layer_visibility[i] and self.layers[i][y, x]:
+                return          # covered: the composited pixel is unchanged
+        if self.layer_visibility[0]:
+            self._screen[y, x] = value
+
     # ── Screen access ───────────────────────────────────────────────────
 
     @property

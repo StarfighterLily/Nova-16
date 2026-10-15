@@ -359,7 +359,6 @@ if __name__ == '__main__':
     pytest.main([__file__, '-v'])
 
 def _screen_pixels(gfx):
-    screen = getattr(gfx._compositor, '_screen', None)
-    if screen is None:
-        screen = gfx.screen
-    return int((screen != 0).sum())
+    # The public composite: recomposites when a layer is dirty. The private
+    # _compositor._screen cache is only current after that recomposite.
+    return int((gfx.screen != 0).sum())

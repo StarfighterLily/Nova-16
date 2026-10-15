@@ -816,7 +816,7 @@ def compile_and_run_with_gfx(source, max_cycles=2000000):
 
 def _screen_pixels(gfx):
     """Count non-zero pixels on the composed screen buffer."""
-    return int((gfx._compositor._screen != 0).sum())
+    return int((gfx.screen != 0).sum())
 
 
 def test_write_text_char_index_codegen_no_itos():
@@ -1007,7 +1007,7 @@ void main() {
 """
     proc, cycles, mem, gfx, asm_text = compile_and_run_with_gfx(source)
     assert 'ITOS' not in asm_text
-    screen = gfx._compositor._screen
+    screen = gfx.screen
     ys, xs = (screen != 0).nonzero()
     assert len(xs) > 0, "Expected a drawn glyph"
     max_x = max(int(x) for x in xs)

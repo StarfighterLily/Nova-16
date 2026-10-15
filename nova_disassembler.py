@@ -1937,6 +1937,7 @@ def analyze_performance(bytecode, segments, opcode_map, register_map, reverse_sy
         'SERIN': 3,
         'SEROUT': 3,
         'SERSTAT': 2,
+        'SERFSTAT': 2,
         'SERCTRL': 3,
         'MOUSECTRL': 3,
         'TEXT': 2,

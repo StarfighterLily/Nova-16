@@ -52,14 +52,14 @@ class Timer:
         if self._cycle_count < self._divisor:
             return
 
-        # Divisor threshold crossed — advance counter
-        increments = self._cycle_count // self._divisor
-        self._cycle_count %= self._divisor
-
-        # Cap increments to avoid overflow noise
-        increments = min(increments, 255)
-
-        self.regs[0] = (self.regs[0] + increments) & 0xFF
+        # Divisor threshold crossed — advance the counter by exactly one and
+        # restart the period. Ticks arrive one per instruction, so this only
+        # differs from "advance by every elapsed period" when TS is lowered
+        # mid-period; nova16.exe (the Star port, NOTES.md "Known
+        # simplifications") caps catch-up at +1 the same way. TT wraps mod
+        # 256; it does not saturate.
+        self._cycle_count = 0
+        self.regs[0] = (self.regs[0] + 1) & 0xFF
 
         # Check modulo threshold
         if self._interrupt_enabled and self.regs[1] > 0 and self.regs[0] >= self.regs[1]:

@@ -30,11 +30,11 @@ REGISTER_NAMES = {
 # Opcodes that have observable side effects beyond register writes (IO/memory)
 SIDE_EFFECT_OPCODES = {
     # Graphics / text
-    'SREAD', 'SWRITE', 'SPLAY', 'TEXT', 'CHAR', 'SBLEND', 'SROL', 'SROT', 'SSHFT',
+    'SREAD', 'SWRITE', 'SPLAY', 'TEXT', 'CHAR', 'SBLEND', 'SALPHA', 'SROL', 'SROT', 'SSHFT',
     'SFLIP', 'SBLIT', 'SFILL', 'SLINE', 'SRECT', 'SCIRC', 'SINV', 'VREAD', 'VWRITE',
     'VBLIT', 'SPBLIT', 'SPBLITALL',
     # Serial IO
-    'SEROUT', 'SERCTRL', 'SERIN', 'SERSTAT',
+    'SEROUT', 'SERCTRL', 'SERIN', 'SERSTAT', 'SERFSTAT',
     # Input / stack
     'KEYIN', 'KEYSTAT', 'PUSH', 'POP',
     # Randomness (order-sensitive PRNG state)
@@ -337,7 +337,7 @@ class LiveRangeScheduler:
             add_use(operands[0])
         
         # Load/Store
-        elif opcode in ['PUSH', 'SREAD', 'KEYIN', 'KEYSTAT', 'SERIN', 'SERSTAT']:
+        elif opcode in ['PUSH', 'SREAD', 'KEYIN', 'KEYSTAT', 'SERIN', 'SERSTAT', 'SERFSTAT']:
             if operands:
                 add_define(operands[0])
         elif opcode in ['POP', 'SWRITE', 'SPLAY', 'SEROUT', 'SERCTRL']:

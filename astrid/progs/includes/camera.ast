@@ -23,10 +23,16 @@
 //   * '>>' is a LOGICAL shift on Nova-16. Magnitudes are made positive
 //     before shifting (cam_qmul) or routed through cam_asr4/cam_asr5, which
 //     shift the magnitude and re-apply the sign.
+//   * Wide products use MUL + MULH (low and high word of the 32-bit product)
+//     and a shift-subtract divide. DIVH is deliberately avoided: the Python
+//     reference divides P3:dest while nova16.exe divides dest << 16, so the
+//     two emulators disagree on it.
 //
 // Units
 //   world             whole units; keep |world - camera| under about 500 per
-//                     axis so the 16-bit rotation products cannot overflow
+//                     axis so the 16-bit rotation products cannot overflow,
+//                     and keep single segments under ~1000 units long so the
+//                     clip interpolations stay inside cam_muldiv's divisor
 //   cam_xq/yq/zq      camera position in 1/8-world units (smooth motion)
 //   struct CamPt      view space, world * 32 (1/32-unit precision)
 //   cam_yaw/sin/cos   Q8.8 radians (256 == 1.0 raw, so 402 is ~90 degrees)
@@ -34,21 +40,74 @@
 // Screen is 256x256, +y is up (screen_y = cam_cy - offset), the camera looks
 // along +z when yaw == 0, and +x is to the right when looking down +z.
 //
+// Projection is exact to about half a pixel and never clamped: a point at
+// the near plane can land a couple of thousand pixels off screen, and the
+// 2D clipper (cam_draw_clipped) cuts the segment at the screen edge with an
+// exact interpolation, so a line that leaves the screen keeps its true slope
+// and segments that share a vertex share its pixel.
+//
+// Frames (cam_frame_begin / cam_frame_end)
+//   The scene is drawn on CAM_WORK (layer 0) and copied in one LCOPY to
+//   CAM_SHOW (layer 1), which sits on top and is filled edge to edge with
+//   the opaque black CAM_BG, so the viewer never sees a cleared or half-drawn
+//   frame. cam_frame_end then paces to CAM_FPS (default 30) with a busy-wait
+//   calibrated for nova16.exe at 16 MHz and trimmed once a second against the
+//   RTC (the only time source both emulators agree on -- the TT timer
+//   saturates on nova16.exe but wraps in the Python reference).
+//   Defines: -DCAM_FPS=n changes the target, -DCAM_NOPACE disables pacing
+//   (headless tests), -DCAM_TRACE prints every drawn primitive over the
+//   serial port for cross-emulator diffs (and disables pacing).
+//
 // Usage:
 //   include "includes/camera.ast";
 //   cam_set(0, -40, -160, 0);                        // eye height, facing +z
-//   cam_line(-192, -80, 192, 192, -80, 192, 0x1F);   // one wall edge
+//   cam_frame_begin();
+//   cam_line(-192, -80, 192, 192, -80, 192, 0x0F);   // one wall edge
+//   cam_frame_end();
 //   cam_rotate(12);                                  // ~2.7 degrees to the left
 //   cam_forward(48);                                 // walk 6 world units
 //=============================================================================
 
+#ifndef CAM_FPS
+#define CAM_FPS 30
+#endif
+
+#ifdef CAM_TRACE
+#define CAM_NOPACE 1
+#endif
+
+#ifdef CAM_FPSLOG
+#define CAM_SERIAL 1
+#endif
+#ifdef CAM_TRACE
+#define CAM_SERIAL 1
+#endif
+
 // Focal length in pixels. 112 px across a 256 px screen is roughly a 100 deg
 // field of view (2 * atan(128 / 112)); a larger focal narrows it (more zoom).
+// cam_recip requires CAM_FOCAL * 8 < CAM_NEAR32 (see there).
 const int CAM_FOCAL = 112;
 const int CAM_CX = 128;        // screen center x
 const int CAM_CY = 128;        // screen center y
 const int CAM_NEAR = 32;       // near clip plane, world units
 const int CAM_NEAR32 = 1024;   // CAM_NEAR * 32, in view units
+
+// Double buffering: draw on CAM_WORK, show on CAM_SHOW. Palette 0x10 is
+// black like 0x00 but nonzero, so a CAM_SHOW frame is fully opaque and hides
+// the work layer underneath it.
+const int CAM_WORK = 0;
+const int CAM_SHOW = 1;
+const int CAM_BG = 0x10;
+
+// Pacing. One wait unit is 32 trips of a DEC/JNZ loop (~148 cycles).
+// CAM_UPS100 is the measured number of units per second on nova16.exe at
+// 16 MHz, divided by 100 (108,250 measured against the RTC). CAM_BUDGET is
+// the units in one frame of an empty scene, ordered so every intermediate
+// stays inside 16 bits (3600 at 30 fps, 1800 at 60).
+#ifndef CAM_UPS100
+#define CAM_UPS100 1082
+#endif
+#define CAM_BUDGET (((CAM_UPS100 * 10) / CAM_FPS) * 10)
 
 // Camera position in 1/8-world units, so cam_forward(1) nudges the eye by
 // 1/8 of a world unit and slow motion needs no fractional type.
@@ -61,9 +120,16 @@ signed int cam_yaw = 0;
 signed int cam_sin = 0;
 signed int cam_cos = 256;
 
-// Last single-point projection in screen pixels (set by cam_project).
+// Last single-point projection in screen pixels (set by cam_proj /
+// cam_project).
 signed int cam_px = 0;
 signed int cam_py = 0;
+
+// Pacing state (see cam_frame_end).
+signed int cam_pad = 0;        // busy-wait per frame, in wait units
+unsigned int cam_sec = 0;      // RTC second the frame counter belongs to
+signed int cam_frames = 0;     // frames finished during cam_sec
+signed int cam_seen = 0;       // 2 once cam_frames covers a whole second
 
 // A view-space point in world * 32 units (before the /32 at projection).
 struct CamPt { signed int x; signed int y; signed int z; };
@@ -74,8 +140,7 @@ struct CamPt { signed int x; signed int y; signed int z; };
 // The CPU's SHR is logical, so shifting a negative value would smear zero
 // bits through the top. These helpers shift the magnitude and re-apply the
 // sign, which truncates toward zero -- the same rounding C's integer
-// division uses, and worth at most 1/32 of a world unit (well under a pixel
-// once projected).
+// division uses.
 //-----------------------------------------------------------------------------
 signed int cam_asr4(signed int v) {
     if (v < 0) {
@@ -120,15 +185,123 @@ signed int cam_qmul(signed int a, signed int cq) {
 }
 
 //-----------------------------------------------------------------------------
+// cam_muldiv: round(a * b / c), all unsigned.
+//
+// Requires 1 <= c <= 32767 and a * b / c < 65536 (true whenever a <= c or
+// b <= c, which is how every caller here uses it). MUL/MULH form the exact
+// 32-bit product; a 16-step shift-subtract divide brings the low word in one
+// bit at a time. The remainder stays below c <= 32767, so doubling it never
+// overflows, and the final remainder rounds the quotient to nearest.
+//
+// Non-void on purpose (here and in every helper with asm labels): the
+// inliner only copies void functions, and a copied label would collide.
+//-----------------------------------------------------------------------------
+int cam_muldiv(int a, int b, int c) {
+    int q = 0;
+    asm("MOV P1, {1}\n"
+        "MULH P1, {2}\n"
+        "MOV P2, {1}\n"
+        "MUL P2, {2}\n"
+        "MOV {0}, 0\n"
+        "MOV P0, 16\n"
+        "cam_md_loop:\n"
+        "SHL P1, 1\n"
+        "CMP P2, 0x8000\n"
+        "JC cam_md_bit0\n"
+        "INC P1\n"
+        "cam_md_bit0:\n"
+        "SHL P2, 1\n"
+        "SHL {0}, 1\n"
+        "CMP P1, {3}\n"
+        "JC cam_md_skip\n"
+        "SUB P1, {3}\n"
+        "INC {0}\n"
+        "cam_md_skip:\n"
+        "DEC P0\n"
+        "JNZ cam_md_loop\n"
+        "SHL P1, 1\n"
+        "CMP P1, {3}\n"
+        "JC cam_md_done\n"
+        "INC {0}\n"
+        "cam_md_done:"
+        : "=r"(q), "r"(a), "r"(b), "r"(c));
+    return q;
+}
+
+// cam_smuldiv: round(a * b / c) for signed a, with 0 <= b <= c <= 32767.
+// Rounds half away from zero, so mirrored inputs give mirrored outputs.
+signed int cam_smuldiv(signed int a, signed int b, signed int c) {
+    if (a < 0) {
+        return 0 - cam_muldiv(0 - a, b, c);
+    }
+    return cam_muldiv(a, b, c);
+}
+
+//-----------------------------------------------------------------------------
+// cam_recip: round(CAM_FOCAL * 65536 / z) for CAM_NEAR32 <= z <= 32767.
+//
+// The dividend FOCAL << 16 has nothing but zero bits below bit 16, so the
+// long division starts from its top bits (FOCAL << 3 = 896, already below z
+// because FOCAL * 8 < CAM_NEAR32) and needs only 13 shift-subtract steps.
+// The result is at most FOCAL * 64 = 7168 (z on the near plane).
+//-----------------------------------------------------------------------------
+int cam_recip(int z) {
+    int q = 0;
+    asm("MOV P1, 896\n"
+        "MOV {0}, 0\n"
+        "MOV P0, 13\n"
+        "cam_rc_loop:\n"
+        "SHL P1, 1\n"
+        "SHL {0}, 1\n"
+        "CMP P1, {1}\n"
+        "JC cam_rc_skip\n"
+        "SUB P1, {1}\n"
+        "INC {0}\n"
+        "cam_rc_skip:\n"
+        "DEC P0\n"
+        "JNZ cam_rc_loop\n"
+        "SHL P1, 1\n"
+        "CMP P1, {1}\n"
+        "JC cam_rc_done\n"
+        "INC {0}\n"
+        "cam_rc_done:"
+        : "=r"(q), "r"(z));
+    return q;
+}
+
+//-----------------------------------------------------------------------------
+// cam_scale: round(v * inv / 65536) for signed v and a cam_recip result.
+// One MUL/MULH pair; the dropped low word rounds half up on the magnitude,
+// so +v and -v land symmetrically about the screen center.
+//-----------------------------------------------------------------------------
+signed int cam_scale(signed int v, int inv) {
+    int m = v;
+    if (v < 0) {
+        m = 0 - v;
+    }
+    int t = 0;
+    asm("MOV {0}, {1}\n"
+        "MULH {0}, {2}\n"
+        "MOV P1, {1}\n"
+        "MUL P1, {2}\n"
+        "CMP P1, 0x8000\n"
+        "JC cam_sc_done\n"
+        "INC {0}\n"
+        "cam_sc_done:"
+        : "=r"(t), "r"(m), "r"(inv));
+    if (v < 0) {
+        return 0 - t;
+    }
+    return t;
+}
+
+//-----------------------------------------------------------------------------
 // cam_wrap: renormalize a Q8.8 angle into +/-16085 (10 whole turns).
 // Keeps an accumulating heading (cam_rotate adds every frame) inside a range
 // where the 16-bit angle never wraps through a point where sin(v / 256) would
 // jump. 16085 is 10 exact turns (10 * 2 * pi * 256 = 16084.95), so adding or
 // subtracting it preserves the heading modulo a full turn to 0.05/256 rad --
-// about a thousand wraps before a pixel of drift. The old step (16088) was
-// NOT a whole number of turns and rotated the heading ~0.7 degrees per wrap.
-// Returns the wrapped angle; the caller may also pick it up again from
-// the returned value.
+// about a thousand wraps before a pixel of drift.
 //-----------------------------------------------------------------------------
 signed int cam_wrap(signed int qangle) {
     while (qangle > 16085) {
@@ -144,6 +317,8 @@ signed int cam_wrap(signed int qangle) {
 // cam_sin_of / cam_cos_of: Q8.8 sine and cosine of a Q8.8 angle.
 // Same in-place SIN/COS trick as cam_calc_trig, for callers that need trig on
 // an angle other than the camera heading (orbit positions, spin tables).
+// SIN/COS were checked bit-identical between the Python reference and
+// nova16.exe for every angle in -1608..3216.
 //-----------------------------------------------------------------------------
 signed int cam_sin_of(signed int qangle) {
     signed int t = cam_wrap(qangle);
@@ -216,149 +391,142 @@ void cam_strafe(signed int step8) {
 }
 
 //-----------------------------------------------------------------------------
-// cam_transform: world point -> view space, rotation only (no perspective).
+// cam_transform8 / cam_transform: world point -> view space, rotation only.
 //   v.x =  dx * cos - dz * sin
 //   v.y =  dy                     (height is not rotated; yaw only)
 //   v.z =  dx * sin + dz * cos    (depth; clipped against CAM_NEAR32)
 //
-// dx/dy/dz are (world - camera) in world * 32 units: the world term shifts
-// up by 5 and the camera (1/8 units) by 2. Requires |world - camera| under
-// about 500 per axis so cam_qmul's split multiply stays in range.
+// dx/dy/dz are (point - camera) in world * 32 units. cam_transform8 takes the
+// point in 1/8-world units like the camera itself (both shift up by 2), which
+// lets animated objects move smoothly between whole units; cam_transform is
+// the whole-unit form. Requires |point - camera| under about 500 world units
+// per axis so cam_qmul's split multiply stays in range.
 //-----------------------------------------------------------------------------
-struct CamPt cam_transform(signed int wx, signed int wy, signed int wz) {
+struct CamPt cam_transform8(signed int x8, signed int y8, signed int z8) {
     struct CamPt v;
-    signed int dx = (wx << 5) - (cam_xq << 2);
-    signed int dy = (wy << 5) - (cam_yq << 2);
-    signed int dz = (wz << 5) - (cam_zq << 2);
+    signed int dx = (x8 - cam_xq) << 2;
+    signed int dy = (y8 - cam_yq) << 2;
+    signed int dz = (z8 - cam_zq) << 2;
     v.x = cam_qmul(dx, cam_cos) - cam_qmul(dz, cam_sin);
     v.y = dy;
     v.z = cam_qmul(dx, cam_sin) + cam_qmul(dz, cam_cos);
     return v;
 }
 
-//-----------------------------------------------------------------------------
-// cam_offset: one axis of the perspective divide.
-//   inv   = (focal * 128 + vzw / 2) / vzw   rounded Q7 reciprocal
-//   limit = 32767 / inv
-//   m     = min(|vxw|, limit)
-//   out   = (m * inv) / 128                 (sign re-applied at the end)
-//
-// The clamp is what keeps the single 16-bit multiply safe: limit is the
-// largest world-unit offset whose product with inv still fits in 16 bits, so
-// |out| is capped at 255 px -- always off screen (center is 128) and capped
-// exactly rather than wrapped, so a line that re-enters the screen keeps its
-// correct slope to well under a pixel.
-//-----------------------------------------------------------------------------
-signed int cam_offset(signed int vxw, signed int vzw) {
-    if (vzw < CAM_NEAR) {
-        vzw = CAM_NEAR;
-    }
-    signed int inv = ((CAM_FOCAL << 7) + (vzw >> 1)) / vzw;
-    if (inv < 1) {
-        inv = 1;
-    }
-    signed int limit = 32767 / inv;
-    signed int neg = 0;
-    signed int m = vxw;
-    if (m < 0) {
-        neg = 1;
-        m = -m;
-    }
-    if (m > limit) {
-        m = limit;
-    }
-    signed int t = (m * inv) >> 7;
-    if (neg != 0) {
-        t = -t;
-    }
-    return t;
+struct CamPt cam_transform(signed int wx, signed int wy, signed int wz) {
+    struct CamPt v = cam_transform8(wx << 3, wy << 3, wz << 3);
+    return v;
 }
 
-
+//-----------------------------------------------------------------------------
+// cam_proj: perspective-project a view-space point (world * 32 units) whose
+// z is at least CAM_NEAR32 into cam_px / cam_py.
+//
+// One reciprocal per point serves both axes. The result is never clamped:
+// |offset| <= |v| * FOCAL / NEAR32, under ~2500 px for any in-range point,
+// so off-screen points stay exact and cam_draw_clipped can cut the segment
+// at the true screen-edge crossing.
+//-----------------------------------------------------------------------------
+void cam_proj(signed int x, signed int y, signed int z) {
+    int inv = cam_recip(z);
+    cam_px = CAM_CX + cam_scale(x, inv);
+    cam_py = CAM_CY - cam_scale(y, inv);
+}
 
 //-----------------------------------------------------------------------------
 // cam_depth: view depth of a world point, in whole world units.
-// Returns 0 when the point is at or behind the near plane, which is exactly
+// Returns 0 when the point is in front of the near plane, which is exactly
 // the visibility test cam_line uses -- handy for depth-sorting or for faking
-// perspective size (an object R units wide spans cam_offset(R, depth) px).
+// perspective size (an object R units wide spans R * CAM_FOCAL / depth px).
 //-----------------------------------------------------------------------------
 signed int cam_depth(signed int wx, signed int wy, signed int wz) {
     struct CamPt v = cam_transform(wx, wy, wz);
-    signed int dz = cam_asr5(v.z);
-    if (dz < CAM_NEAR) {
+    if (v.z < CAM_NEAR32) {
         return 0;
     }
-    return dz;
+    return cam_asr5(v.z);
 }
 
 //-----------------------------------------------------------------------------
 // cam_project: perspective-project one view-space point.
 // Returns 0 and leaves cam_px / cam_py untouched when the point sits closer
 // than the near plane (it has no finite projection); otherwise returns 1 and
-// stores the screen pixel in cam_px / cam_py.
+// stores the screen pixel in cam_px / cam_py. The pixel may lie off screen.
 //-----------------------------------------------------------------------------
 signed int cam_project(struct CamPt v) {
     if (v.z < CAM_NEAR32) {
         return 0;
     }
-    signed int z = cam_asr5(v.z);      // >= CAM_NEAR, so z is positive
-    cam_px = CAM_CX + cam_offset(cam_asr5(v.x), z);
-    cam_py = CAM_CY - cam_offset(cam_asr5(v.y), z);
+    cam_proj(v.x, v.y, v.z);
     return 1;
 }
 
 //-----------------------------------------------------------------------------
-// cam_clip_frac: Q8.8 fraction num / den for near-plane clipping.
-//   num, den  integers with 0 <= num < den <= ~1024 (den > 0)
-//   result    floor(num * 256 / den), in 0..255
-//
-// A direct (num << 8) / den would overflow 16 bits for num > 127, so this
-// does eight shift-subtract long-division steps instead: the running
-// remainder always stays below den, which keeps every intermediate in range.
-// The exact fraction is what lets the clipped endpoint land on the near
-// plane without rotating the visible part of the segment.
+// Serial diagnostics, all hex words:
+//   -DCAM_TRACE: every drawn primitive as one text line, so the Python
+//   reference and nova16.exe can be diffed line for line.
+//     L x1 y1 x2 y2 color     a clipped line as handed to SLINE
+//     C x y r color           a filled circle as handed to SCIRC
+//     F                       end of frame
+//   -DCAM_FPSLOG: once per RTC second, with pacing still active,
+//     S frames pad            frames finished in the last second, wait units
 //-----------------------------------------------------------------------------
-signed int cam_clip_frac(signed int num, signed int den) {
-    signed int rem = num;
-    signed int f = 0;
-    signed int i = 0;
-    while (i < 8) {
-        rem = rem << 1;
-        f = f << 1;
-        if (rem >= den) {
-            rem = rem - den;
-            f = f + 1;
+#ifdef CAM_SERIAL
+int cam_hex(int v) {
+    ser_out(32);
+    for (int i = 0; i < 4; i++) {
+        int d = (v >> 12) & 15;
+        if (d < 10) {
+            ser_out(48 + d);
+        } else {
+            ser_out(55 + d);
         }
-        i = i + 1;
+        v = v << 4;
     }
-    return f;
+    return v;
 }
 
-//-----------------------------------------------------------------------------
-// cam_clip_axis: one signed division step shared by the screen clipper below.
-// Returns floor(num * 256 / den) as a Q8.8 fraction in 0..256. num is the
-// distance from the inside endpoint to the screen edge, den the full signed
-// span of the segment along that axis. den == 0 means the segment runs
-// parallel to the edge (the caller checks the inside test first, so 0 is the
-// safe answer). den < 0 means the endpoints were passed outside-first; the
-// magnitudes are folded so the fraction stays positive. num <= 0 means the
-// inside point already sits on the edge. num >= |den| caps at 1.0 so the
-// clipped point can never overshoot the far endpoint.
-//-----------------------------------------------------------------------------
-signed int cam_clip_axis(signed int num, signed int den) {
-    if (den < 0) {
-        den = -den;
+int cam_trace(int tag, int a, int b, int c, int d, int e) {
+    ser_out(tag);
+    cam_hex(a);
+    cam_hex(b);
+    cam_hex(c);
+    cam_hex(d);
+    if (tag == 76) {
+        cam_hex(e);
     }
-    if (den <= 0) {
+    ser_out(10);
+    return tag;
+}
+#endif
+
+//-----------------------------------------------------------------------------
+// cam_circle: draw a filled disc of radius r centered on a screen pixel.
+// The center must be on screen (VX/VY are 8-bit latches, so 256 would wrap
+// to 0); the disc itself may cross the edge -- SCIRC clips per pixel, and
+// that clipping was checked identical between the two emulators.
+// Returns 1 when drawn, 0 when the center was off screen.
+//-----------------------------------------------------------------------------
+signed int cam_circle(signed int x, signed int y, signed int r, signed int color) {
+    if (x < 0) {
         return 0;
     }
-    if (num <= 0) {
+    if (x > 255) {
         return 0;
     }
-    if (num >= den) {
-        return 256;
+    if (y < 0) {
+        return 0;
     }
-    return cam_clip_frac(num, den);
+    if (y > 255) {
+        return 0;
+    }
+#ifdef CAM_TRACE
+    cam_trace(67, x, y, r, color, 0);
+#endif
+    set_pos(x, y);
+    set_color(color);
+    draw_circle(r, 1);
+    return 1;
 }
 
 //-----------------------------------------------------------------------------
@@ -385,23 +553,25 @@ signed int cam_code(signed int sx, signed int sy) {
 }
 
 //-----------------------------------------------------------------------------
-// cam_draw_clipped: draw one projected segment with 2D screen clipping.
+// cam_draw_clipped: draw one projected segment with exact 2D screen clipping.
 //
 // The GPU's VX/VY position latch is 8 bits, so a projected endpoint of -1
-// arrives as 255 and 256 arrives as 0: an off-screen endpoint silently
-// re-enters on the opposite edge and the line rasterizes as a free-floating
-// streak that shares no endpoint with its neighbors. The near-plane clip
-// above guarantees finite projections, but a wall seen edge-on (or a grid
-// line receding past the eye) still projects far outside 0..255. Clipping
-// the segment to the screen rectangle in signed 16-bit space before touching
-// set_pos/draw_line keeps every shared vertex pixel-exact: both segments
-// clip the same mathematical point against the same edge, so connected edges
-// stay connected.
+// arrives as 255 and 256 arrives as 0: an off-screen endpoint would re-enter
+// on the opposite edge as a free-floating streak. (The Python reference also
+// walks SLINE's raw 16-bit endpoint, so -5 would be 65531 there -- another
+// reason no off-screen coordinate may reach the GPU.)
 //
-// Standard Cohen-Sutherland loop: at most 4 edge clips (left/right/top/
-// bottom), each an exact interpolation x1 + (x2 - x1) * f / 256 with the
-// fraction from cam_clip_axis. Returns 1 when something was drawn, 0 when
-// the segment missed the screen entirely.
+// Standard Cohen-Sutherland: each pass moves the endpoint P that is outside
+// some edge onto that edge, anchored at the other endpoint Q -- which is on
+// the inside of that same edge, since the two outcodes share no bit. For the
+// right edge that is
+//     t  = (255 - Qx) / (Px - Qx)        0 <= t <= 1
+//     Py = Qy + (Py - Qy) * t            via cam_smuldiv, rounded
+//     Px = 255
+// and likewise for the other three. The crossing is exact to half a pixel
+// and never moves past either endpoint, and an on-screen endpoint is never
+// touched, so segments that share a visible vertex share its pixel.
+// Returns 1 when something was drawn, 0 when the segment missed the screen.
 //-----------------------------------------------------------------------------
 signed int cam_draw_clipped(signed int x1, signed int y1,
                             signed int x2, signed int y2,
@@ -409,92 +579,83 @@ signed int cam_draw_clipped(signed int x1, signed int y1,
     signed int c1 = cam_code(x1, y1);
     signed int c2 = cam_code(x2, y2);
     signed int guard = 0;
-    while ((c1 + c2) != 0) {
+    while ((c1 | c2) != 0) {
         if ((c1 & c2) != 0) {
-            return 0;                   // trivially outside one shared edge
+            return 0;                   // wholly outside one shared edge
         }
-        signed int cx = x1;
-        signed int cy = y1;
+        // P: the endpoint being moved. Q: the anchor.
+        signed int px = x1;
+        signed int py = y1;
+        signed int qx = x2;
+        signed int qy = y2;
         signed int cc = c1;
         if (c1 == 0) {
-            cx = x2;
-            cy = y2;
+            px = x2;
+            py = y2;
+            qx = x1;
+            qy = y1;
             cc = c2;
         }
-        signed int f = 0;
         if ((cc & 1) != 0) {            // left: x = 0
-            f = cam_clip_axis(0 - cx, x2 - x1);
-            cx = 0;
-            cy = y1 + cam_qmul(y2 - y1, f);
+            py = qy + cam_smuldiv(py - qy, qx, qx - px);
+            px = 0;
         } else if ((cc & 2) != 0) {     // right: x = 255
-            f = cam_clip_axis(255 - cx, x2 - x1);
-            cx = 255;
-            cy = y1 + cam_qmul(y2 - y1, f);
+            py = qy + cam_smuldiv(py - qy, 255 - qx, px - qx);
+            px = 255;
         } else if ((cc & 4) != 0) {     // top: y = 0
-            f = cam_clip_axis(0 - cy, y2 - y1);
-            cy = 0;
-            cx = x1 + cam_qmul(x2 - x1, f);
+            px = qx + cam_smuldiv(px - qx, qy, qy - py);
+            py = 0;
         } else {                        // bottom: y = 255
-            f = cam_clip_axis(255 - cy, y2 - y1);
-            cy = 255;
-            cx = x1 + cam_qmul(x2 - x1, f);
+            px = qx + cam_smuldiv(px - qx, 255 - qy, py - qy);
+            py = 255;
         }
         if (c1 == 0) {
-            x2 = cx;
-            y2 = cy;
+            x2 = px;
+            y2 = py;
             c2 = cam_code(x2, y2);
         } else {
-            x1 = cx;
-            y1 = cy;
+            x1 = px;
+            y1 = py;
             c1 = cam_code(x1, y1);
         }
         guard = guard + 1;
         if (guard > 4) {
-            return 0;                   // defensive: edges are finite by now
+            return 0;                   // defensive: 4 clips always suffice
         }
     }
+#ifdef CAM_TRACE
+    cam_trace(76, x1, y1, x2, y2, color);
+#endif
     set_pos(x1, y1);
     set_color(color);
     draw_line(x2, y2);
     return 1;
 }
 
-
 //-----------------------------------------------------------------------------
-// cam_line: draw a world-space 3D segment with near-plane clipping.
+// cam_line_v: draw a segment between two view-space points (world * 32
+// units, as cam_transform returns them) with near-plane clipping.
 //
-// Both endpoints are rotated into view space, clipped against CAM_NEAR, then
-// projected and emitted as one set_pos/set_color/draw_line. A straight
-// segment stays straight in view space, so interpolating the offending
-// endpoint to the near plane is exact apart from the 8-bit fraction.
+// Callers that draw a mesh transform each shared vertex once and pass the
+// view coordinates here, instead of re-transforming it for every edge.
 //
-// The final 2D emit goes through cam_draw_clipped: projected endpoints
-// routinely land outside 0..255 (a wall filling the screen, a grid line
-// receding past the eye), and the 8-bit VX/VY latch would wrap those to the
-// opposite edge as free-floating streaks. Clipping in signed space first
-// keeps shared vertices pixel-exact so connected edges stay connected.
+// A straight segment stays straight in view space, so sliding the endpoint
+// behind the near plane forward to z = CAM_NEAR32 is an exact interpolation:
+//     t = (az - NEAR32) / (az - bz)      0 <= t < 1
+//     b = a + (b - a) * t
+// done in full view precision by cam_smuldiv (|b - a| <= 32 * segment
+// length, which must stay under ~1000 world units).
 //
 // Clobbers the drawing position (VX/VY), the drawing color (VC) and the
 // active layer's pixels; scratch lives in locals only.
 //-----------------------------------------------------------------------------
-void cam_line(signed int x1, signed int y1, signed int z1,
-              signed int x2, signed int y2, signed int z2, signed int color) {
-    struct CamPt a = cam_transform(x1, y1, z1);
-    struct CamPt b = cam_transform(x2, y2, z2);
-
-    if (a.z < CAM_NEAR32 && b.z < CAM_NEAR32) {
-        return;                       // wholly behind the near plane
-    }
-
-    // Projection works in whole world units, so pre-shift the view coords.
-    signed int ax = cam_asr5(a.x);
-    signed int ay = cam_asr5(a.y);
-    signed int az = cam_asr5(a.z);
-    signed int bx = cam_asr5(b.x);
-    signed int by = cam_asr5(b.y);
-    signed int bz = cam_asr5(b.z);
-
-    if (a.z < CAM_NEAR32) {
+void cam_line_v(signed int ax, signed int ay, signed int az,
+                signed int bx, signed int by, signed int bz,
+                signed int color) {
+    if (az < CAM_NEAR32) {
+        if (bz < CAM_NEAR32) {
+            return;                     // wholly behind the near plane
+        }
         // Swap so that a is the endpoint in front of the near plane.
         signed int t = ax;
         ax = bx;
@@ -506,32 +667,118 @@ void cam_line(signed int x1, signed int y1, signed int z1,
         az = bz;
         bz = t;
     }
-
-    if (bz < CAM_NEAR) {
-        // Slide b along the segment to where it crosses the near plane:
-        //   f = (az - NEAR) / (az - bz)   as an exact Q8.8 fraction
-        //   clipped = a + (b - a) * f / 256
-        // num < den holds by construction (a passed the near test), so f stays
-        // inside 0..255 and the clipped point never overshoots a. cam_qmul
-        // then handles the signed delta: |b - a| is at most a few hundred and
-        // it folds both operands to magnitudes before shifting.
-        signed int num = az - CAM_NEAR;      // >= 0
-        signed int den = az - bz;            // > 0
-        signed int f = cam_clip_frac(num, den);
-        bx = ax + cam_qmul(bx - ax, f);
-        by = ay + cam_qmul(by - ay, f);
-        bz = CAM_NEAR;
+    if (bz < CAM_NEAR32) {
+        signed int num = az - CAM_NEAR32;   // >= 0
+        signed int den = az - bz;           // > num
+        bx = ax + cam_smuldiv(bx - ax, num, den);
+        by = ay + cam_smuldiv(by - ay, num, den);
+        bz = CAM_NEAR32;
     }
-
-    if (az < CAM_NEAR) {
-        az = CAM_NEAR;                    // defensive: rounding on the plane
-    }
-
-    signed int sx1 = CAM_CX + cam_offset(ax, az);
-    signed int sy1 = CAM_CY - cam_offset(ay, az);
-    signed int sx2 = CAM_CX + cam_offset(bx, bz);
-    signed int sy2 = CAM_CY - cam_offset(by, bz);
-
-    cam_draw_clipped(sx1, sy1, sx2, sy2, color);
+    cam_proj(ax, ay, az);
+    signed int sx1 = cam_px;
+    signed int sy1 = cam_py;
+    cam_proj(bx, by, bz);
+    cam_draw_clipped(sx1, sy1, cam_px, cam_py, color);
 }
 
+//-----------------------------------------------------------------------------
+// cam_line: draw a world-space 3D segment (whole world units).
+//-----------------------------------------------------------------------------
+void cam_line(signed int x1, signed int y1, signed int z1,
+              signed int x2, signed int y2, signed int z2, signed int color) {
+    struct CamPt a = cam_transform(x1, y1, z1);
+    struct CamPt b = cam_transform(x2, y2, z2);
+    cam_line_v(a.x, a.y, a.z, b.x, b.y, b.z, color);
+}
+
+//-----------------------------------------------------------------------------
+// cam_wait: busy-wait `units` wait units (32 DEC/JNZ trips each).
+//-----------------------------------------------------------------------------
+int cam_wait(int units) {
+    asm("MOV P1, {0}\n"
+        "CMP P1, 0\n"
+        "JZ cam_wt_done\n"
+        "cam_wt_outer:\n"
+        "MOV P2, 32\n"
+        "cam_wt_inner:\n"
+        "DEC P2\n"
+        "JNZ cam_wt_inner\n"
+        "DEC P1\n"
+        "JNZ cam_wt_outer\n"
+        "cam_wt_done:"
+        : "r"(units));
+    return units;
+}
+
+//-----------------------------------------------------------------------------
+// cam_pace_init: seed the per-frame wait from an estimate of the scene's own
+// drawing cost (in wait units), so the first seconds already run near
+// CAM_FPS before the RTC trim in cam_frame_end has measured anything.
+//-----------------------------------------------------------------------------
+void cam_pace_init(signed int draw_units) {
+    cam_pad = CAM_BUDGET - draw_units;
+    if (cam_pad < 0) {
+        cam_pad = 0;
+    }
+}
+
+//-----------------------------------------------------------------------------
+// cam_frame_begin / cam_frame_end: bracket one frame.
+//
+// begin selects the hidden work layer and clears it to CAM_BG. end copies
+// the finished frame to the visible layer in one LCOPY, then waits out the
+// rest of the frame's time slot.
+//
+// Pacing: each frame waits cam_pad units. At every RTC second boundary the
+// frames counted in the previous whole second (n) correct the pad by half
+// of the error in frame time,
+//     pad += (BUDGET / n) * (n - FPS) / 2
+// which converges on CAM_FPS whatever the scene costs, and on a host too slow
+// to reach it (the Python reference) settles at no wait at all. A count off
+// by one is left alone: where a frame falls against the 1-second boundary
+// moves n by one even at a perfect rate, and chasing that only adds jitter.
+//-----------------------------------------------------------------------------
+void cam_frame_begin() {
+#ifdef CAM_SERIAL
+    ser_ctrl(1);
+#endif
+    set_layer(CAM_WORK);
+    screen_fill(CAM_BG);
+}
+
+void cam_frame_end() {
+    layer_copy(CAM_SHOW);
+#ifdef CAM_TRACE
+    ser_out(70);
+    ser_out(10);
+#endif
+#ifndef CAM_NOPACE
+    unsigned int s = get_rtc(1);
+    if (s != cam_sec) {
+#ifdef CAM_FPSLOG
+        cam_trace(83, cam_frames, cam_pad, cam_seen, 0, 0);
+#endif
+        signed int err = cam_frames - CAM_FPS;
+        if (err == 1 || err == -1) {
+            err = 0;                    // boundary jitter, not drift
+        }
+        if (cam_seen == 2 && err != 0) {
+            signed int n = cam_frames;
+            cam_pad = cam_pad + ((CAM_BUDGET / n) * err) / 2;
+            if (cam_pad < 0) {
+                cam_pad = 0;
+            }
+            if (cam_pad > CAM_BUDGET) {
+                cam_pad = CAM_BUDGET;
+            }
+        }
+        if (cam_seen < 2) {
+            cam_seen = cam_seen + 1;
+        }
+        cam_sec = s;
+        cam_frames = 0;
+    }
+    cam_frames = cam_frames + 1;
+    cam_wait(cam_pad);
+#endif
+}

@@ -54,7 +54,7 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
   - Side Effects: dest = dest * src, sets Z, C, S, O flags
 - **DIV** (0x0A): 2 operands - Division
   - Operands: dest, src
-  - Side Effects: dest = dest / src, sets Z, C, S, O flags
+  - Side Effects: dest = dest / src, P3 = remainder, sets Z, C, S, O flags. Division by zero prints a diagnostic and leaves dest, P3 and the flags unchanged (no fault)
 - **INC** (0x0B): 1 operand - Increment
   - Operands: dest
   - Side Effects: dest += 1, sets Z, C, S, O flags
@@ -63,7 +63,7 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
   - Side Effects: dest -= 1, sets Z, C, S, O flags
 - **MOD** (0x0D): 2 operands - Modulo
   - Operands: dest, src
-  - Side Effects: dest = dest % src, sets Z, C, S, O flags
+  - Side Effects: dest = dest % src, sets Z, C, S, O flags. Modulo by zero prints a diagnostic and leaves dest and the flags unchanged
 - **NEG** (0x0E): 1 operand - Negation
   - Operands: dest
   - Side Effects: dest = -dest, sets Z, C, S, O flags
@@ -81,7 +81,7 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
   - Side Effects: dest = (dest * src) >> 8, sets Z, C, S, O flags
 - **FDIV** (0xAD): 2 operands - Fixed-point division
   - Operands: dest, src
-  - Side Effects: dest = (dest << 8) / src, sets Z, C, S, O flags
+  - Side Effects: dest = (dest << 8) / src, sets Z, C, S, O flags. Division by zero prints a diagnostic and leaves dest and the flags unchanged
 - **FTOI** (0xAE): 1 operand - Fixed to integer
   - Operands: dest
   - Side Effects: dest = dest >> 8, sets Z, C, S, O flags
@@ -98,7 +98,7 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
   - Side Effects: dest = (dest * src) >> 16, sets Z, C, S, O flags
 - **DIVH** (0x8A): 2 operands - Divide high
   - Operands: dest, src
-  - Side Effects: dest = (dest << 16) / src, sets Z, C, S, O flags
+  - Side Effects: 32-by-16 divide of (dest << 16 | P3) by src: dest = low 16 bits of the quotient, then P3 = remainder; sets Z, C, S, O flags from the 16-bit quotient. P3 is the low word of the dividend, so clear it first for a plain (dest << 16) / src. Division by zero prints a diagnostic and leaves dest, P3 and the flags unchanged
 - **MIN** (0x8B): 2 operands - Minimum
   - Operands: dest, src
   - Side Effects: dest = min(dest, src), sets Z, C, S, O flags
@@ -123,11 +123,15 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
   - Operands: value
   - Side Effects: Writes value to serial port
 - **SERSTAT** (0xA4): 1 operand - Check serial status
+- **SERFSTAT** (0xB5): 1 operand - Check extended serial status
+  - Operands: dest
+  - Side Effects: dest = bit 2 framed mode enabled | bit 4 checksum error since last read; clears the checksum-error latch
   - Operands: dest
   - Side Effects: Sets dest to serial status
 - **SERCTRL** (0xA5): 1 operand - Serial control
   - Operands: value
-  - Side Effects: Sets serial control flags
+  - Side Effects: Sets serial control flags (bit 0: IRQ enable, bit 2:
+    framed-mode enable)
 
 ## Hardware Debugging Operations
 - **SETBP** (0xA6): 2 operands - Set hardware breakpoint
@@ -332,7 +336,10 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 ## Graphics Operations
 - **SBLEND** (0x31): 1 operand - Set blend mode
   - Operands: mode (0-4)
-  - Side Effects: Sets graphics blend mode
+  - Side Effects: Sets graphics blend mode (clamped to 0-4): 0 normal (alpha toward the new value), 1 additive, 2 subtractive, 3 multiply, 4 screen. Applies to SWRITE, SLINE, SRECT, SCIRC, SFILL, CHAR and TEXT; not to sprites, blits or layer ops. Mode 0 with alpha 255 is a plain overwrite
+- **SALPHA** (0xB4): 1 operand - Set blend alpha
+  - Operands: alpha (0-255, clamped)
+  - Side Effects: Sets the blend intensity used by every SBLEND mode
 - **SREAD** (0x32): 1 operand - Read screen pixel
   - Operands: dest
   - Side Effects: Reads pixel at VX,VY to dest
@@ -348,8 +355,8 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 - **SSHFT** (0x36): 2 operands - Shift screen by axis, amount
   - Operands: axis, amount
   - Side Effects: Shifts screen
-- **SFLIP** (0x37): 2 operands - Flip screen by axis, amount
-  - Operands: axis, amount
+- **SFLIP** (0x37): 1 operand - Flip screen by axis
+  - Operands: axis
   - Side Effects: Flips screen
 - **SLINE** (0x38): 2 operands - Line end x, end y
   - Operands: end_x, end_y
@@ -397,8 +404,8 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 - **KEYCOUNT** (0x45): 1 operand - Get key count
   - Operands: dest
   - Side Effects: Sets dest to buffer count
-- **KEYCLEAR** (0x46): 1 operand - Clear keyboard buffer
-  - Operands: None (operand ignored?)
+- **KEYCLEAR** (0x46): 0 operands - Clear keyboard buffer
+  - Operands: None
   - Side Effects: Clears buffer
 - **KEYCTRL** (0x47): 1 operand - Keyboard control
   - Operands: control
@@ -482,23 +489,23 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
   - Side Effects: Converts string to int
 
 ## BCD Operations
-- **SED** (0x4B): 1 operand - Set decimal flag
-  - Operands: None (operand ignored?)
+- **SED** (0x4B): 0 operands - Set decimal flag
+  - Operands: None
   - Side Effects: Sets decimal mode
-- **CLD** (0x4C): 1 operand - Clear decimal flag
+- **CLD** (0x4C): 0 operands - Clear decimal flag
   - Operands: None
   - Side Effects: Clears decimal mode
-- **CLA** (0x4D): 1 operand - Clear auxiliary carry
+- **CLA** (0x4D): 0 operands - Clear auxiliary carry
   - Operands: None
   - Side Effects: Clears auxiliary carry
-- **BCDA** (0x4E): 1 operand - BCD add with carry
-  - Operands: value
+- **BCDA** (0x4E): 2 operands - BCD add with carry
+  - Operands: dest, src
   - Side Effects: BCD add, sets flags
-- **BCDS** (0x4F): 1 operand - BCD subtract with carry
-  - Operands: value
+- **BCDS** (0x4F): 2 operands - BCD subtract with carry
+  - Operands: dest, src
   - Side Effects: BCD subtract, sets flags
-- **BCDCMP** (0x50): 1 operand - BCD compare
-  - Operands: value
+- **BCDCMP** (0x50): 2 operands - BCD compare
+  - Operands: op1, op2
   - Side Effects: BCD compare, sets flags
 - **BCD2BIN** (0x51): 1 operand - BCD to binary
   - Operands: value
@@ -506,11 +513,11 @@ This document provides a compact reference for the Nova-16 instruction set. Inst
 - **BIN2BCD** (0x52): 1 operand - Binary to BCD
   - Operands: value
   - Side Effects: Converts binary to BCD
-- **BCDADD** (0x53): 1 operand - BCD add immediate
-  - Operands: value
+- **BCDADD** (0x53): 2 operands - BCD add immediate
+  - Operands: dest, src
   - Side Effects: BCD add immediate
-- **BCDSUB** (0x54): 1 operand - BCD subtract immediate
-  - Operands: value
+- **BCDSUB** (0x54): 2 operands - BCD subtract immediate
+  - Operands: dest, src
   - Side Effects: BCD subtract immediate
 
 ## Math Functions

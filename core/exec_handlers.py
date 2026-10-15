@@ -11,6 +11,7 @@ instructions that manage pc directly).  Writeback and flag-setting are
 handled by the Instruction.execute wrapper.
 """
 
+import sys
 import math
 
 from core.fetch import calculate_memory_address
@@ -193,10 +194,23 @@ def _mul(cpu, values) -> int:
     return result
 
 
+def _divide_by_zero(name, values) -> int:
+    """Shared DIV/MOD/DIVH/FDIV divide-by-zero policy.
+
+    Matches nova16.exe (the Star port; its NOTES.md "Known simplifications"):
+    print a diagnostic and leave the destination, P3 and the flags untouched,
+    rather than faulting -- a buggy program keeps running with a readable
+    message instead of the whole emulator aborting. The message goes to
+    stderr because stdout carries the MCP server's JSON-RPC stream.
+    """
+    print(f"[nova16] {name} by zero -- ignored", file=sys.stderr)
+    return values[0]
+
+
 def _div(cpu, values) -> int:
     """DIV: dst / src, remainder stored in P3."""
     if values[1] == 0:
-        raise RuntimeError("Division by zero")
+        return _divide_by_zero("DIV", values)
     quotient = values[0] // values[1]
     remainder = values[0] % values[1]
     _write_result(cpu, 0, quotient)
@@ -209,7 +223,7 @@ def _div(cpu, values) -> int:
 def _mod(cpu, values) -> int:
     """MOD: dst % src."""
     if values[1] == 0:
-        raise RuntimeError("Modulo by zero")
+        return _divide_by_zero("MOD", values)
     result = values[0] % values[1]
     _write_result(cpu, 0, result)
     width = _operand_width(cpu)
@@ -298,7 +312,7 @@ def _mulh(cpu, values) -> int:
 def _divh(cpu, values) -> int:
     """DIVH: 32-bit divide using dest as high word and P3 as low word."""
     if values[1] == 0:
-        raise RuntimeError("Division by zero")
+        return _divide_by_zero("DIVH", values)
     dividend = (values[0] << 16) | (cpu.regfile.get('P', 3) & 0xFFFF)
     quotient = dividend // values[1]
     remainder = dividend % values[1]
@@ -1218,7 +1232,7 @@ def _fmul(cpu, values) -> int:
 def _fdiv(cpu, values) -> int:
     """FDIV: Q8.8 fixed-point divide."""
     if values[1] == 0:
-        raise RuntimeError("Division by zero")
+        return _divide_by_zero("FDIV", values)
     dest_signed = _to_signed_16(values[0])
     src_signed = _to_signed_16(values[1])
     result_signed = (dest_signed << 8) // src_signed
@@ -1999,6 +2013,18 @@ def _serout(cpu, values) -> int:
 def _serstat(cpu, values) -> int:
     """SERSTAT: read serial status."""
     status = cpu.uart.read_status_flags()
+    _write_result(cpu, 0, status)
+    return status
+
+
+def _serfstat(cpu, values) -> int:
+    """SERFSTAT: read extended serial status (framed mode, checksum error).
+
+    Same opcode (0xB5) and bit layout as nova16.exe: bit 2 = framed mode
+    enabled, bit 4 = checksum error latched since the last read. Reading
+    clears the latched error.
+    """
+    status = cpu.uart.read_extended_status()
     _write_result(cpu, 0, status)
     return status
 

@@ -158,8 +158,7 @@ class Blitter:
             if vl == 0:
                 # Layer 0 is always composited unconditionally, so its pixel
                 # count is never consulted — skip tracking it (measured hot path).
-                compositor.layers[0][y, x] = value
-                compositor._screen[y, x] = value
+                compositor.write_base_pixel(y, x, value)
             elif 1 <= vl <= 4:
                 old_val = compositor.layers[vl][y, x]
                 compositor.layers[vl][y, x] = value
@@ -176,8 +175,7 @@ class Blitter:
         if vl == 0:
             existing = compositor.layers[0][y, x]
             blended = self.blend_pixel(existing, value)
-            compositor.layers[0][y, x] = blended
-            compositor._screen[y, x] = blended
+            compositor.write_base_pixel(y, x, blended)
         elif 1 <= vl <= 4:
             old_val = compositor.layers[vl][y, x]
             existing = old_val

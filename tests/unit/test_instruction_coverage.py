@@ -45,15 +45,17 @@ class TestArithmeticCoverage:
         run_cpu_cycles(cpu, 4)
         assert cpu.Rregisters[0] == 2
 
-    def test_mod_by_zero_raises(self, cpu, memory):
+    def test_mod_by_zero_is_ignored(self, cpu, memory):
+        """MOD by zero leaves the destination alone and keeps running, like
+        nova16.exe (Star port NOTES.md "Known simplifications")."""
         program = enc('MOV', ('reg', 'R0'), ('imm8', 17)) + \
             enc('MOV', ('reg', 'R1'), ('imm8', 0)) + \
             enc('MOD', ('reg', 'R0'), ('reg', 'R1')) + \
             enc('HLT')
         memory.load_program(program)
-        run_cpu_cycles(cpu, 2)
-        with pytest.raises(RuntimeError, match="Modulo by zero"):
-            cpu.step()
+        run_cpu_cycles(cpu, 4)
+        assert cpu.Rregisters[0] == 17
+        assert cpu.halted
 
     def test_neg_basic(self, cpu, memory):
         program = enc('MOV', ('reg', 'P0'), ('imm16', 5)) + \
@@ -507,15 +509,17 @@ class TestFixedPointCoverage:
         run_cpu_cycles(cpu, 3)
         assert cpu.Pregisters[0] == 0x0200
 
-    def test_fdiv_by_zero_raises(self, cpu, memory):
+    def test_fdiv_by_zero_is_ignored(self, cpu, memory):
+        """FDIV by zero leaves the destination alone and keeps running, like
+        nova16.exe."""
         program = enc('MOV', ('reg', 'P0'), ('imm16', 0x0600)) + \
             enc('MOV', ('reg', 'P1'), ('imm16', 0)) + \
             enc('FDIV', ('reg', 'P0'), ('reg', 'P1')) + \
             enc('HLT')
         memory.load_program(program)
-        run_cpu_cycles(cpu, 2)
-        with pytest.raises(RuntimeError, match="Division by zero"):
-            cpu.step()
+        run_cpu_cycles(cpu, 4)
+        assert cpu.Pregisters[0] == 0x0600
+        assert cpu.halted
 
 
 class TestBcdArithmetic:

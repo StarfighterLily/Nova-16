@@ -194,17 +194,56 @@ class TestGraphicsLayer0FastPath:
     """Verify layer-0 pixel writes skip pixel count tracking but keep dual-buffer write."""
 
     def test_set_pixel_layer0_writes_both_buffers(self):
-        """Layer 0 writes both layers[0] and _screen."""
+        """With a clean composite, a layer-0 write updates layers[0] and the
+        cached _screen in place (no full recomposite needed)."""
         gfx = GFX()
         gfx.Vregisters[0] = 10
         gfx.Vregisters[1] = 20
         gfx.Vregisters[2] = 0  # coordinate mode
         gfx.VL = 0
+        _ = gfx.screen          # composite once so the cache is clean
 
         gfx.set_screen_val(0x42)
 
         assert gfx._compositor.layers[0][20, 10] == 0x42
         assert gfx._compositor._screen[20, 10] == 0x42
+        assert gfx._compositor._composite_dirty is False
+
+    def test_set_pixel_layer0_under_opaque_layer_keeps_composite(self):
+        """A layer-0 write beneath an opaque upper-layer pixel must not show
+        through: SREAD (the composite) keeps returning the upper pixel. The
+        old fast path wrote _screen unconditionally and returned the layer-0
+        value -- a divergence from nova16.exe."""
+        gfx = GFX()
+        gfx.Vregisters[0] = 10
+        gfx.Vregisters[1] = 10
+        gfx.Vregisters[2] = 0
+        gfx.VL = 1
+        gfx.set_screen_val(5)
+        gfx.VL = 0
+        _ = gfx.screen          # clean composite: (10,10) shows layer 1's 5
+
+        gfx.set_screen_val(7)
+
+        assert gfx._compositor.layers[0][10, 10] == 7
+        assert gfx.get_screen_val() == 5
+        gfx.Vregisters[0] = 11  # uncovered neighbour shows layer 0 directly
+        gfx.set_screen_val(9)
+        assert gfx.get_screen_val() == 9
+
+    def test_set_pixel_layer0_while_dirty_defers_to_recomposite(self):
+        """While the composite is dirty the write lands in layers[0] only; the
+        next screen read recomposites and picks it up."""
+        gfx = GFX()
+        gfx.Vregisters[0] = 3
+        gfx.Vregisters[1] = 4
+        gfx.Vregisters[2] = 0
+        gfx.VL = 0
+        assert gfx._compositor._composite_dirty is True
+
+        gfx.set_screen_val(0x42)
+
+        assert gfx.screen[4, 3] == 0x42
 
     def test_set_pixel_layer0_skips_pixel_count_update(self):
         """Layer 0 pixel writes should NOT update pixel counts."""

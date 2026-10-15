@@ -56,7 +56,7 @@ from core.exec_handlers import (
     _lswap, _lmove, _lcopy,
     _splay, _sstop, _strig,
     _keyin, _keystat, _keycount, _keyclear, _keyctrl,
-    _serin, _serout, _serstat, _serctrl,
+    _serin, _serout, _serstat, _serfstat, _serctrl,
     _mousectrl,
     _setbp, _clrbp, _enabrk, _disbrk, _enatrap, _disatrap,
     _sa, _sf, _sv, _sw, _vm, _vl, _tt, _tm, _tc, _ts, _vx, _vy,
@@ -697,6 +697,9 @@ HANDLER_INSTRUCTIONS: Dict[int, Instruction] = {
 
     # Blend alpha (1 operand)
     0xB4: Instruction('SALPHA', 0xB4, num_operands=1, handler=_salpha),
+
+    # Extended serial status (1 operand): framed mode / checksum error
+    0xB5: Instruction('SERFSTAT', 0xB5, num_operands=1, handler=_serfstat),
 
     # Sound (1 operand)
     0x59: Instruction('STRIG', 0x59, num_operands=1, handler=_strig),

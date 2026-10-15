@@ -263,6 +263,7 @@ opcodes = [
     ("MOUSECTRL",          "0xB3", 1), # Enable or disable host mouse input and interrupts # implemented
 
     ("SALPHA",              "0xB4", 1), # Set alpha blending mode
+    ("SERFSTAT",           "0xB5", 1), # Extended serial status: bit 2 framed mode, bit 4 checksum error (read-clears)
 
     ("BANK",               "0xC2", 1), # Bank select (0-15) for 0x8000-0xBFFF windowed memory expansion
     ("C0",                 "0xC3", 1), # RTC seconds low word (epoch 2018-07-17 UTC)

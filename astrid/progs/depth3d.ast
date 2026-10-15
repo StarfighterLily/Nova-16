@@ -3,118 +3,145 @@
 //
 // The companion demo to cube3d.ast. Where cube3d orbits the camera around a
 // fixed object, this one keeps the camera fixed and spins the object: 16
-// lights on a wheel circle the origin, and each point is drawn as a disc
-// whose radius is depth -- near points swell, far points shrink. That is the
-// divide-by-depth twice over: once for position, once for size.
+// lights on a wheel circle the origin above a floor ring, and each light is
+// drawn as a disc whose radius divides by its depth -- near lights swell, far
+// lights shrink. That is the divide-by-depth twice over: once for position,
+// once for size.
 //
-// Trace: 144 frames of rotation (a full turn is 2*pi in Q8.8, ~1608 ticks,
-// so the wheel advances 11 per frame), then HLT. No input, layer 0.
+// Discs are solid, so draw order is depth order: every frame the 16 lights
+// are sorted far to near (painter's algorithm) and a near disc always covers
+// the one behind it.
 //
-// Camera.h explains the units and the integer projection; this file only
-// supplies the scene.
+// Trace: 144 frames of one full rotation (frame f is at wheel angle
+// f * 1608 / 144 = f * 67 / 6 in Q8.8), then HLT. No input.
+//
+// Screen is 256x256; camera.ast double-buffers (draws on layer 0, shows
+// layer 1) and paces to CAM_FPS. camera.ast explains the units and the
+// integer projection; this file only supplies the scene.
 //=============================================================================
 include "includes/camera.ast";
 
 const int FRAMES = 144;       // one full rotation
-const int TURN = 11;          // wheel increments per frame (Q8.8 radians)
+const int LIGHTS = 16;
 const int WHEEL_R = 110;      // wheel radius, world units
-const int WHEEL_R8 = 880;     // WHEEL_R * 8, the 1/8-unit form cam_qmul eats
-const int SIZE_F = 960;       // disc size factor: radius = SIZE_F / depth
+const int WHEEL_R8 = 880;     // WHEEL_R in 1/8 units, for smooth light motion
+const int RING_Y = -60;       // floor ring height, world units
+const int RING = 0x05;        // floor ring color: dim gray
+const int SIZE_F = 960;       // disc radius = SIZE_F / depth (world units)
 const int SIZE_MIN = 1;       // discs never vanish entirely
 const int SIZE_MAX = 8;       // discs never cover the whole screen
+const int DRAW_UNITS = 900;   // drawing cost per frame on nova16.exe (wait units)
+
+// Floor ring anchors (world units, fixed) and per-frame light state.
+signed int gx[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+signed int gz[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+signed int lx[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+signed int ly[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+signed int lz[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+signed int order[16] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+
+// Q8.8 angle of wheel slot i: i * 2pi / 16, spaced from a full turn of 1608
+// so the 16th gap is as wide as the others.
+signed int slot_angle(signed int i) {
+    return (i * 1608) / 16;
+}
 
 //-----------------------------------------------------------------------------
-// disc: draw one wheel light as a filled circle of depth-scaled radius.
-//
-// The wheel point rotates with the frame angle stored in cam_sin / cam_cos
-// (loaded through cam_set with the origin as position, the same trick
-// cube3d.ast uses). Its depth shades the color from the shade ramp below,
-// and its screen size divides by the same depth, so near lights loom.
-// The center is skipped when it projects outside 0..255: VX/VY wrap those
-// to the opposite edge as stray dots with no wheel position behind them.
+// shade: depth (world units) -> palette index on the gray ramp 0x01..0x0F.
+// The wheel's depth runs from 150 (front) to 370 (back).
 //-----------------------------------------------------------------------------
-void disc(signed int px, signed int pz, signed int color) {
-    struct CamPt v = cam_transform(px, 0, pz);
-    if (cam_project(v) == 0) {
-        return;                     // behind the near plane: skip it
+signed int shade(signed int d) {
+    if (d < 190) {
+        return 0x0F;              // nearest: white
     }
-    if (cam_px < 0 || cam_px > 255 || cam_py < 0 || cam_py > 255) {
-        return;                     // off screen: keep it off, not wrapped
+    if (d < 230) {
+        return 0x0D;
     }
-    signed int az = cam_asr5(v.z);
-    signed int r = SIZE_F / az;
+    if (d < 270) {
+        return 0x0B;
+    }
+    if (d < 310) {
+        return 0x09;
+    }
+    return 0x07;                  // farthest: mid gray
+}
+
+//-----------------------------------------------------------------------------
+// disc: draw light k (already in view space) as a depth-sized filled circle.
+//-----------------------------------------------------------------------------
+void disc(signed int k) {
+    if (lz[k] < CAM_NEAR32) {
+        return;                     // behind the near plane: no projection
+    }
+    cam_proj(lx[k], ly[k], lz[k]);
+    signed int depth = cam_asr5(lz[k]);
+    signed int r = SIZE_F / depth;
     if (r < SIZE_MIN) {
         r = SIZE_MIN;
     }
     if (r > SIZE_MAX) {
         r = SIZE_MAX;
     }
-    set_pos(cam_px, cam_py);
-    set_color(color);
-    draw_circle(r, 1);
-}
-
-// Depth -> palette index. Same ramp idea as the cube edges: nearer lights
-// burn bright, distant ones sink into the floor glow.
-signed int shade(signed int d) {
-    if (d < 0) {
-        return 0x1F;
-    }
-    if (d < 110) {
-        return 0x1F;
-    }
-    if (d < 160) {
-        return 0x17;
-    }
-    if (d < 220) {
-        return 0x15;
-    }
-    if (d < 290) {
-        return 0x13;
-    }
-    if (d < 360) {
-        return 0x12;
-    }
-    return 0x11;
+    cam_circle(cam_px, cam_py, r, shade(depth));
 }
 
 void main() {
-    set_layer(0);
-    screen_fill(0);
-    cam_set(0, -20, -260, 0);           // fixed camera, eye above the floor
+    cam_pace_init(DRAW_UNITS);
+    // Fixed eye 50 units above the wheel plane (the camera has yaw only, no
+    // pitch, so the wheel sits below the horizon and reads as a ring; an eye
+    // level with it would see the wheel edge-on as a row of dots).
+    cam_set(0, 50, -260, 0);
+
+    // The floor ring never moves: compute its 16 anchors once.
+    for (signed int i = 0; i < LIGHTS; i++) {
+        signed int t = slot_angle(i);
+        gx[i] = cam_qmul(WHEEL_R, cam_sin_of(t));
+        gz[i] = cam_qmul(WHEEL_R, cam_cos_of(t));
+    }
 
     for (signed int f = 0; f < FRAMES; f++) {
-        screen_fill(0);
+        cam_frame_begin();
+        signed int a = (f * 67) / 6;
 
-        // Load this frame's wheel angle into cam_sin / cam_cos.
-        signed int a = f * TURN;
-        cam_set(0, 0, 0, a);
-        signed int wx = cam_sin;
-        signed int wz = cam_cos;
-
-        // Restore the fixed eye (cam_set above clobbered the position).
-        cam_set(0, -20, -260, 0);
-
-        // Floor reference so the spin reads as 3D: a faint ellipse of the
-        // same 16 anchors, drawn at y = -60 while the lights ride at y = 0.
-        for (signed int i = 0; i < 16; i++) {
-            signed int t = i * 100;     // i * 2pi / 16 in Q8.8
-            cam_set(0, 0, 0, t);
-            signed int gx = cam_qmul(WHEEL_R8, cam_sin);
-            signed int gz = cam_qmul(WHEEL_R8, cam_cos);
-            cam_set(0, -20, -260, 0);
-            cam_line(gx, -60, gz, gx, -60, gz + 1, 0x11);
+        // Floor ring: 16 segments joining neighboring anchors into a closed
+        // loop under the wheel, so the spin reads as 3D.
+        for (signed int i = 0; i < LIGHTS; i++) {
+            signed int j = (i + 1) & 15;
+            cam_line(gx[i], RING_Y, gz[i], gx[j], RING_Y, gz[j], RING);
         }
 
-        // The 16 lights, each at wheel angle t + a.
-        for (signed int i = 0; i < 16; i++) {
-            signed int t = i * 100 + a;
-            cam_set(0, 0, 0, t);
-            signed int px = cam_qmul(WHEEL_R8, cam_sin);
-            signed int pz = cam_qmul(WHEEL_R8, cam_cos);
-            cam_set(0, -20, -260, 0);
-            disc(px, pz, shade(cam_depth(px, 0, pz)));
+        // The 16 lights at wheel angle slot + a, in 1/8 units for smooth
+        // motion, straight into view space.
+        for (signed int i = 0; i < LIGHTS; i++) {
+            signed int t = slot_angle(i) + a;
+            struct CamPt v = cam_transform8(cam_qmul(WHEEL_R8, cam_sin_of(t)), 0,
+                                            cam_qmul(WHEEL_R8, cam_cos_of(t)));
+            lx[i] = v.x;
+            ly[i] = v.y;
+            lz[i] = v.z;
         }
+
+        // Painter's order: insertion sort, deepest first.
+        for (signed int i = 0; i < LIGHTS; i++) {
+            signed int j = i;
+            signed int moving = 1;
+            while (moving != 0) {
+                moving = 0;
+                if (j > 0) {
+                    if (lz[order[j - 1]] < lz[i]) {
+                        order[j] = order[j - 1];
+                        j = j - 1;
+                        moving = 1;
+                    }
+                }
+            }
+            order[j] = i;
+        }
+        for (signed int n = 0; n < LIGHTS; n++) {
+            disc(order[n]);
+        }
+
+        cam_frame_end();
     }
 
     halt();

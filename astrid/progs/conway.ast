@@ -31,7 +31,7 @@
 // and BOARD_HI+1, so edge cells read dead neighbours instead of wrapping.
 // The animated demo uses the full screen; headless tests shrink it for speed.
 #ifndef BOARD_HI
-#define BOARD_HI 32
+#define BOARD_HI 48
 #endif
 
 // Seed a random Life "soup" across the live region. ~1/3 density evolves
@@ -40,7 +40,7 @@ void seed_random() {
     for (int y = 1; y <= BOARD_HI; y++) {
         for (int x = 1; x <= BOARD_HI; x++) {
             set_pos(x, y);
-            if (random_range(0, 5) == 0) {
+            if (random_range(0, 2) == 0) {
                 write_screen(ALIVE);
             } else {
                 write_screen(DEAD);

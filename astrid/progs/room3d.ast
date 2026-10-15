@@ -7,12 +7,13 @@
 // of moves and turns: up to the door, through the gap, back around, and off
 // toward the cube for a wide closing view.
 //
-// Trace: 200 scripted frames, then HLT. No input, layer 0. Some frames put
-// walls right against the eye, which is the point: the fixed sequence walks
-// every near-plane clip path while staying exactly checkable.
+// Trace: 200 scripted frames, then HLT. No input. Some frames put walls
+// right against the eye, which is the point: the fixed sequence walks every
+// near-plane and screen-edge clip path while staying exactly checkable.
 //
-// Camera.h explains the units and the integer projection; this file only
-// supplies the room and the script.
+// Screen is 256x256; camera.ast double-buffers (draws on layer 0, shows
+// layer 1) and paces to CAM_FPS. camera.ast explains the units and the
+// integer projection; this file only supplies the room and the script.
 //=============================================================================
 include "includes/camera.ast";
 
@@ -24,6 +25,7 @@ const int FLOOR = -80;        // floor height, world units
 const int CEIL = 112;         // ceiling height, world units
 const int DOOR = 48;          // half-width of the north-wall door gap
 const int EYE = -40;          // eye height while walking
+const int DRAW_UNITS = 1300;  // drawing cost per frame on nova16.exe (wait units)
 
 //-----------------------------------------------------------------------------
 // wall_run: one horizontal wall edge at height h along the wall at depth z.
@@ -39,8 +41,8 @@ void wall_run(signed int h, signed int z, signed int color) {
 // perspective readable when one wall fills the screen.
 //-----------------------------------------------------------------------------
 void room() {
-    signed int wall = 0x13;
-    signed int trim = 0x17;
+    signed int wall = 0x09;             // gray ramp: 0x01 dim .. 0x0F white
+    signed int trim = 0x0C;
 
     // South wall (z = -WALL): solid, three heights.
     wall_run(FLOOR, 0 - WALL, wall);
@@ -78,8 +80,8 @@ void room() {
 //-----------------------------------------------------------------------------
 void beams() {
     for (signed int k = -1; k <= 1; k++) {
-        cam_line(k * 96, FLOOR, 0 - WALL, k * 96, FLOOR, WALL, 0x11);
-        cam_line(k * 96, CEIL, 0 - WALL, k * 96, CEIL, WALL, 0x11);
+        cam_line(k * 96, FLOOR, 0 - WALL, k * 96, FLOOR, WALL, 0x05);
+        cam_line(k * 96, CEIL, 0 - WALL, k * 96, CEIL, WALL, 0x05);
     }
 }
 
@@ -88,7 +90,7 @@ void beams() {
 //-----------------------------------------------------------------------------
 void marker() {
     signed int mh = 24;
-    signed int mc = 0x1F;
+    signed int mc = 0x0F;
     cam_line(96 - mh, 0 - mh, 96 - mh, 96 + mh, 0 - mh, 96 - mh, mc);
     cam_line(96 - mh, 0 + mh, 96 - mh, 96 + mh, 0 + mh, 96 - mh, mc);
     cam_line(96 - mh, 0 - mh, 96 + mh, 96 + mh, 0 - mh, 96 + mh, mc);
@@ -153,15 +155,15 @@ void step(signed int op) {
         }
     }
 
-    screen_fill(0);
+    cam_frame_begin();
     room();
     beams();
     marker();
+    cam_frame_end();
 }
 
 void main() {
-    set_layer(0);
-    screen_fill(0);
+    cam_pace_init(DRAW_UNITS);
     cam_set(0, EYE, -96, 0);
 
     for (signed int f = 0; f < FRAMES; f++) {

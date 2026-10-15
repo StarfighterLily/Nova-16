@@ -170,7 +170,7 @@ void main() {
     result = read_cstring(mem, 0xA000)
     assert result == "DEAD", f"Expected 'DEAD', got '{result}'"
     # Verify pixels were drawn
-    screen = gfx._compositor._screen
+    screen = gfx.screen
     non_zero_pixels = (screen != 0).sum()
     assert non_zero_pixels > 0, "write_text with stringh should draw pixels"
 
@@ -187,7 +187,7 @@ void main() {
     proc, cycles, mem, gfx = compile_and_run(source)
     result = read_cstring(mem, 0xA000)
     assert result == "00BE", f"Expected '00BE', got '{result}'"
-    screen = gfx._compositor._screen
+    screen = gfx.screen
     non_zero_pixels = (screen != 0).sum()
     assert non_zero_pixels > 0, "write_text with stringh should draw pixels"
 

@@ -202,63 +202,309 @@ MOV R0, P1
 MOV SP, FP
 POP FP
 RET
+; Function: cam_muldiv
+func_cam_muldiv:
+ENTER 2
+; var q = ...
+MOV P5, 0
+MOV [0xC180], P5
+; asm operands
+MOV P6, [FP+4]
+PUSH P6
+MOV P7, [FP+6]
+PUSH P7
+MOV P0, [FP+8]
+PUSH P0
+POP P7
+POP P6
+POP P5
+; asm {
+MOV P1, P5
+MULH P1, P6
+MOV P2, P5
+MUL P2, P6
+MOV P4, 0
+MOV P0, 16
+cam_md_loop:
+SHL P1, 1
+CMP P2, 0x8000
+JC cam_md_bit0
+INC P1
+cam_md_bit0:
+SHL P2, 1
+SHL P4, 1
+CMP P1, P7
+JC cam_md_skip
+SUB P1, P7
+INC P4
+cam_md_skip:
+DEC P0
+JNZ cam_md_loop
+SHL P1, 1
+CMP P1, P7
+JC cam_md_done
+INC P4
+cam_md_done:
+; }
+; asm outputs
+MOV [0xA1E0], P4
+; Assignment to q
+MOV P1, 41440
+MOV P1, [P1]
+MOV [0xC180], P1
+; Function return
+MOV P2, [0xC180]
+MOV P0, P2
+MOV R0, P2
+MOV SP, FP
+POP FP
+RET
+; Function: cam_smuldiv
+func_cam_smuldiv:
+ENTER 0
+; If statement
+MOV P4, [FP+4]
+PUSH P4
+MOV P5, 0
+POP P4
+; Signed comparison (two's complement)
+CMP P4, P5
+JLT cmp_true_18
+MOV P4, 0
+JMP cmp_end_19
+cmp_true_18:
+MOV P4, 1
+cmp_end_19:
+CMP P4, 0
+JZ if_end_16
+; Function return
+MOV P6, 0
+PUSH P6
+; Call to cam_muldiv
+MOV P7, [FP+8]
+PUSH P7
+MOV P0, [FP+6]
+PUSH P0
+MOV P1, 0
+PUSH P1
+MOV P2, [FP+4]
+POP P1
+SUB P1, P2
+PUSH P1
+CALL func_cam_muldiv
+ADD SP, 6 ; Caller cleans up args
+MOV P4, P0
+POP P6
+SUB P6, P4
+MOV P0, P6
+MOV R0, P6
+MOV SP, FP
+POP FP
+RET
+if_end_16:
+; Function return
+; Call to cam_muldiv
+MOV P5, [FP+8]
+PUSH P5
+MOV P6, [FP+6]
+PUSH P6
+MOV P7, [FP+4]
+PUSH P7
+CALL func_cam_muldiv
+ADD SP, 6 ; Caller cleans up args
+MOV R0, P0
+MOV SP, FP
+POP FP
+RET
+; Function: cam_recip
+func_cam_recip:
+ENTER 2
+; var q = ...
+MOV P1, 0
+MOV [0xC280], P1
+; asm operands
+MOV P2, [FP+4]
+PUSH P2
+POP P5
+; asm {
+MOV P1, 896
+MOV P4, 0
+MOV P0, 13
+cam_rc_loop:
+SHL P1, 1
+SHL P4, 1
+CMP P1, P5
+JC cam_rc_skip
+SUB P1, P5
+INC P4
+cam_rc_skip:
+DEC P0
+JNZ cam_rc_loop
+SHL P1, 1
+CMP P1, P5
+JC cam_rc_done
+INC P4
+cam_rc_done:
+; }
+; asm outputs
+MOV [0xA1E0], P4
+; Assignment to q
+MOV P4, 41440
+MOV P4, [P4]
+MOV [0xC280], P4
+; Function return
+MOV P5, [0xC280]
+MOV P0, P5
+MOV R0, P5
+MOV SP, FP
+POP FP
+RET
+; Function: cam_scale
+func_cam_scale:
+ENTER 4
+; var m = ...
+MOV P6, [FP+4]
+MOV [0xC300], P6
+; If statement
+MOV P7, [FP+4]
+PUSH P7
+MOV P0, 0
+POP P7
+; Signed comparison (two's complement)
+CMP P7, P0
+JLT cmp_true_22
+MOV P7, 0
+JMP cmp_end_23
+cmp_true_22:
+MOV P7, 1
+cmp_end_23:
+CMP P7, 0
+JZ if_end_20
+; Assignment to m
+MOV P1, 0
+PUSH P1
+MOV P2, [FP+4]
+POP P1
+SUB P1, P2
+MOV [0xC300], P1
+if_end_20:
+; var t = ...
+MOV P4, 0
+MOV [0xC302], P4
+; asm operands
+MOV P5, [0xC300]
+PUSH P5
+MOV P6, [FP+6]
+PUSH P6
+POP P6
+POP P5
+; asm {
+MOV P4, P5
+MULH P4, P6
+MOV P1, P5
+MUL P1, P6
+CMP P1, 0x8000
+JC cam_sc_done
+INC P4
+cam_sc_done:
+; }
+; asm outputs
+MOV [0xA1E0], P4
+; Assignment to t
+MOV P7, 41440
+MOV P7, [P7]
+MOV [0xC302], P7
+; If statement
+MOV P0, [FP+4]
+PUSH P0
+MOV P1, 0
+POP P0
+; Signed comparison (two's complement)
+CMP P0, P1
+JLT cmp_true_26
+MOV P0, 0
+JMP cmp_end_27
+cmp_true_26:
+MOV P0, 1
+cmp_end_27:
+CMP P0, 0
+JZ if_end_24
+; Function return
+MOV P2, 0
+PUSH P2
+MOV P4, [0xC302]
+POP P2
+SUB P2, P4
+MOV P0, P2
+MOV R0, P2
+MOV SP, FP
+POP FP
+RET
+if_end_24:
+; Function return
+MOV P5, [0xC302]
+MOV P0, P5
+MOV R0, P5
+MOV SP, FP
+POP FP
+RET
 ; Function: cam_wrap
 func_cam_wrap:
 ENTER 0
 ; While loop
-while_start_16:
+while_start_28:
+MOV P6, [FP+4]
+PUSH P6
+MOV P7, 16085
+POP P6
+; Signed comparison (two's complement)
+CMP P6, P7
+JGT cmp_true_30
+MOV P6, 0
+JMP cmp_end_31
+cmp_true_30:
+MOV P6, 1
+cmp_end_31:
+CMP P6, 0
+JZ while_end_29
+; Assignment to qangle
+MOV P0, [FP+4]
+PUSH P0
+MOV P1, 16085
+POP P0
+SUB P0, P1
+MOV [FP+4], P0
+JMP while_start_28
+while_end_29:
+; While loop
+while_start_32:
+MOV P2, [FP+4]
+PUSH P2
+MOV P4, -16085
+POP P2
+; Signed comparison (two's complement)
+CMP P2, P4
+JLT cmp_true_34
+MOV P2, 0
+JMP cmp_end_35
+cmp_true_34:
+MOV P2, 1
+cmp_end_35:
+CMP P2, 0
+JZ while_end_33
+; Assignment to qangle
 MOV P5, [FP+4]
 PUSH P5
 MOV P6, 16085
 POP P5
-; Signed comparison (two's complement)
-CMP P5, P6
-JGT cmp_true_18
-MOV P5, 0
-JMP cmp_end_19
-cmp_true_18:
-MOV P5, 1
-cmp_end_19:
-CMP P5, 0
-JZ while_end_17
-; Assignment to qangle
-MOV P7, [FP+4]
-PUSH P7
-MOV P0, 16085
-POP P7
-SUB P7, P0
-MOV [FP+4], P7
-JMP while_start_16
-while_end_17:
-; While loop
-while_start_20:
-MOV P1, [FP+4]
-PUSH P1
-MOV P2, -16085
-POP P1
-; Signed comparison (two's complement)
-CMP P1, P2
-JLT cmp_true_22
-MOV P1, 0
-JMP cmp_end_23
-cmp_true_22:
-MOV P1, 1
-cmp_end_23:
-CMP P1, 0
-JZ while_end_21
-; Assignment to qangle
-MOV P4, [FP+4]
-PUSH P4
-MOV P5, 16085
-POP P4
-ADD P4, P5
-MOV [FP+4], P4
-JMP while_start_20
-while_end_21:
+ADD P5, P6
+MOV [FP+4], P5
+JMP while_start_32
+while_end_33:
 ; Function return
-MOV P6, [FP+4]
-MOV P0, P6
-MOV R0, P6
+MOV P7, [FP+4]
+MOV P0, P7
+MOV R0, P7
 MOV SP, FP
 POP FP
 RET
@@ -267,18 +513,19 @@ func_cam_sin_of:
 ENTER 2
 ; var t = ...
 ; Call to cam_wrap
-MOV P7, [FP+4]
-PUSH P7
+MOV P0, [FP+4]
+PUSH P0
 CALL func_cam_wrap
 ADD SP, 2 ; Caller cleans up args
-MOV [0xC200], P0
+MOV P1, P0
+MOV [0xC400], P1
 ; asm {
-SIN [0xC200]
+SIN [0xC400]
 ; }
 ; Function return
-MOV P1, [0xC200]
-MOV P0, P1
-MOV R0, P1
+MOV P2, [0xC400]
+MOV P0, P2
+MOV R0, P2
 MOV SP, FP
 POP FP
 RET
@@ -287,19 +534,19 @@ func_cam_cos_of:
 ENTER 2
 ; var t = ...
 ; Call to cam_wrap
-MOV P2, [FP+4]
-PUSH P2
+MOV P4, [FP+4]
+PUSH P4
 CALL func_cam_wrap
 ADD SP, 2 ; Caller cleans up args
-MOV P4, P0
-MOV [0xC280], P4
+MOV P5, P0
+MOV [0xC480], P5
 ; asm {
-COS [0xC280]
+COS [0xC480]
 ; }
 ; Function return
-MOV P5, [0xC280]
-MOV P0, P5
-MOV R0, P5
+MOV P6, [0xC480]
+MOV P0, P6
+MOV R0, P6
 MOV SP, FP
 POP FP
 RET
@@ -308,30 +555,29 @@ func_cam_calc_trig:
 ENTER 2
 ; Assignment to cam_yaw
 ; Call to cam_wrap
-MOV P6, [0x8006]
-PUSH P6
+MOV P7, [0x8006]
+PUSH P7
 CALL func_cam_wrap
 ADD SP, 2 ; Caller cleans up args
-MOV P7, P0
-MOV [0x8006], P7
+MOV [0x8006], P0
 ; var t = ...
-MOV P0, [0x8006]
-MOV [0xC300], P0
+MOV P1, [0x8006]
+MOV [0xC500], P1
 ; asm {
-SIN [0xC300]
+SIN [0xC500]
 ; }
 ; Assignment to cam_sin
-MOV P1, [0xC300]
-MOV [0x8008], P1
+MOV P2, [0xC500]
+MOV [0x8008], P2
 ; Assignment to t
-MOV P2, [0x8006]
-MOV [0xC300], P2
+MOV P4, [0x8006]
+MOV [0xC500], P4
 ; asm {
-COS [0xC300]
+COS [0xC500]
 ; }
 ; Assignment to cam_cos
-MOV P4, [0xC300]
-MOV [0x800A], P4
+MOV P5, [0xC500]
+MOV [0x800A], P5
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -340,20 +586,20 @@ RET
 func_cam_set8:
 ENTER 0
 ; Assignment to cam_xq
-MOV P5, [FP+4]
-MOV [0x8000], P5
+MOV P6, [FP+4]
+MOV [0x8000], P6
 ; Assignment to cam_yq
-MOV P6, [FP+6]
-MOV [0x8002], P6
+MOV P7, [FP+6]
+MOV [0x8002], P7
 ; Assignment to cam_zq
-MOV P7, [FP+8]
-MOV [0x8004], P7
+MOV P0, [FP+8]
+MOV [0x8004], P0
 ; Assignment to cam_yaw
-MOV P0, [FP+10]
-MOV [0x8006], P0
+MOV P1, [FP+10]
+MOV [0x8006], P1
 ; Call to cam_calc_trig
 CALL func_cam_calc_trig
-MOV P1, P0
+MOV P2, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -362,29 +608,28 @@ RET
 func_cam_set:
 ENTER 0
 ; Call to cam_set8
-MOV P2, [FP+10]
-PUSH P2
-MOV P4, [FP+8]
-; Unrolled shift SHL by 3
-SHL P4, 1
-SHL P4, 1
-SHL P4, 1
+MOV P4, [FP+10]
 PUSH P4
-MOV P5, [FP+6]
+MOV P5, [FP+8]
 ; Unrolled shift SHL by 3
 SHL P5, 1
 SHL P5, 1
 SHL P5, 1
 PUSH P5
-MOV P6, [FP+4]
+MOV P6, [FP+6]
 ; Unrolled shift SHL by 3
 SHL P6, 1
 SHL P6, 1
 SHL P6, 1
 PUSH P6
+MOV P7, [FP+4]
+; Unrolled shift SHL by 3
+SHL P7, 1
+SHL P7, 1
+SHL P7, 1
+PUSH P7
 CALL func_cam_set8
 ADD SP, 8 ; Caller cleans up args
-MOV P7, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -393,15 +638,15 @@ RET
 func_cam_rotate:
 ENTER 0
 ; Assignment to cam_yaw
-MOV P0, [0x8006]
-PUSH P0
-MOV P1, [FP+4]
-POP P0
-ADD P0, P1
-MOV [0x8006], P0
+MOV P1, [0x8006]
+PUSH P1
+MOV P2, [FP+4]
+POP P1
+ADD P1, P2
+MOV [0x8006], P1
 ; Call to cam_calc_trig
 CALL func_cam_calc_trig
-MOV P2, P0
+MOV P4, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -410,45 +655,10 @@ RET
 func_cam_forward:
 ENTER 0
 ; Assignment to cam_xq
-MOV P4, [0x8000]
-PUSH P4
-; Call to cam_qmul
-MOV P5, [0x8008]
-PUSH P5
-MOV P6, [FP+4]
-PUSH P6
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-MOV P7, P0
-POP P4
-ADD P4, P7
-MOV [0x8000], P4
-; Assignment to cam_zq
-MOV P0, [0x8004]
-PUSH P0
-; Call to cam_qmul
-MOV P1, [0x800A]
-PUSH P1
-MOV P2, [FP+4]
-PUSH P2
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-MOV P4, P0
-POP P0
-ADD P0, P4
-MOV [0x8004], P0
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: cam_strafe
-func_cam_strafe:
-ENTER 0
-; Assignment to cam_xq
 MOV P5, [0x8000]
 PUSH P5
 ; Call to cam_qmul
-MOV P6, [0x800A]
+MOV P6, [0x8008]
 PUSH P6
 MOV P7, [FP+4]
 PUSH P7
@@ -461,7 +671,7 @@ MOV [0x8000], P5
 MOV P1, [0x8004]
 PUSH P1
 ; Call to cam_qmul
-MOV P2, [0x8008]
+MOV P2, [0x800A]
 PUSH P2
 MOV P4, [FP+4]
 PUSH P4
@@ -469,254 +679,310 @@ CALL func_cam_qmul
 ADD SP, 4 ; Caller cleans up args
 MOV P5, P0
 POP P1
-SUB P1, P5
+ADD P1, P5
 MOV [0x8004], P1
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-; Function: cam_transform
-func_cam_transform:
-ENTER 12
-; var dx = ...
-MOV P6, [FP+6]
-; Unrolled shift SHL by 5
-SHL P6, 1
-SHL P6, 1
-SHL P6, 1
-SHL P6, 1
-SHL P6, 1
+; Function: cam_strafe
+func_cam_strafe:
+ENTER 0
+; Assignment to cam_xq
+MOV P6, [0x8000]
 PUSH P6
-MOV P7, [0x8000]
-; Unrolled shift SHL by 2
-SHL P7, 1
-SHL P7, 1
+; Call to cam_qmul
+MOV P7, [0x800A]
+PUSH P7
+MOV P0, [FP+4]
+PUSH P0
+CALL func_cam_qmul
+ADD SP, 4 ; Caller cleans up args
+MOV P1, P0
 POP P6
-SUB P6, P7
-MOV [0xC602], P6
-; var dy = ...
-MOV P0, [FP+8]
-; Unrolled shift SHL by 5
-SHL P0, 1
-SHL P0, 1
-SHL P0, 1
-SHL P0, 1
-SHL P0, 1
-PUSH P0
-MOV P1, [0x8002]
-; Unrolled shift SHL by 2
-SHL P1, 1
-SHL P1, 1
-POP P0
-SUB P0, P1
-MOV [0xC604], P0
-; var dz = ...
-MOV P2, [FP+10]
-; Unrolled shift SHL by 5
-SHL P2, 1
-SHL P2, 1
-SHL P2, 1
-SHL P2, 1
-SHL P2, 1
-PUSH P2
-MOV P4, [0x8004]
-; Unrolled shift SHL by 2
-SHL P4, 1
-SHL P4, 1
-POP P2
-SUB P2, P4
-MOV [0xC606], P2
-; Member assignment to ...x
-MOV P5, FP
-SUB P5, 6
-PUSH P5
-; Call to cam_qmul
-MOV P6, [0x800A]
-PUSH P6
-MOV P7, [0xC602]
-PUSH P7
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-PUSH P0
-; Call to cam_qmul
-MOV P1, [0x8008]
-PUSH P1
-MOV P2, [0xC606]
-PUSH P2
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-MOV P4, P0
-POP P0
-SUB P0, P4
-POP P5
-MOV [P5], P0
-; Member assignment to ...y
-MOV P5, FP
-SUB P5, 4
-PUSH P5
-MOV P6, [0xC604]
-POP P5
-MOV [P5], P6
-; Member assignment to ...z
-MOV P7, FP
-SUB P7, 2
-PUSH P7
-; Call to cam_qmul
-MOV P0, [0x8008]
-PUSH P0
-MOV P1, [0xC602]
-PUSH P1
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-MOV P2, P0
+ADD P6, P1
+MOV [0x8000], P6
+; Assignment to cam_zq
+MOV P2, [0x8004]
 PUSH P2
 ; Call to cam_qmul
-MOV P4, [0x800A]
+MOV P4, [0x8008]
 PUSH P4
-MOV P5, [0xC606]
+MOV P5, [FP+4]
 PUSH P5
 CALL func_cam_qmul
 ADD SP, 4 ; Caller cleans up args
 MOV P6, P0
 POP P2
-ADD P2, P6
-POP P7
-MOV [P7], P2
-; Function return
-MOV P7, FP
-SUB P7, 6
-MOV P0, [FP+4] ; sret destination
-MOV P1, [P7]
-MOV [P0], P1
-MOV P1, [P7+2]
-MOV [P0+2], P1
-MOV P1, [P7+4]
-MOV [P0+4], P1
-MOV R0, P0
+SUB P2, P6
+MOV [0x8004], P2
+; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-; Function: cam_offset
-func_cam_offset:
-ENTER 10
-; If statement
-MOV P2, [FP+6]
+; Function: cam_transform8
+func_cam_transform8:
+ENTER 12
+; var dx = ...
+MOV P7, [FP+6]
+PUSH P7
+MOV P0, [0x8000]
+POP P7
+SUB P7, P0
+; Unrolled shift SHL by 2
+SHL P7, 1
+SHL P7, 1
+MOV [0xC802], P7
+; var dy = ...
+MOV P1, [FP+8]
+PUSH P1
+MOV P2, [0x8002]
+POP P1
+SUB P1, P2
+; Unrolled shift SHL by 2
+SHL P1, 1
+SHL P1, 1
+MOV [0xC804], P1
+; var dz = ...
+MOV P4, [FP+10]
+PUSH P4
+MOV P5, [0x8004]
+POP P4
+SUB P4, P5
+; Unrolled shift SHL by 2
+SHL P4, 1
+SHL P4, 1
+MOV [0xC806], P4
+; Member assignment to ...x
+MOV P6, FP
+SUB P6, 6
+PUSH P6
+; Call to cam_qmul
+MOV P7, [0x800A]
+PUSH P7
+MOV P0, [0xC802]
+PUSH P0
+CALL func_cam_qmul
+ADD SP, 4 ; Caller cleans up args
+MOV P1, P0
+PUSH P1
+; Call to cam_qmul
+MOV P2, [0x8008]
 PUSH P2
-MOV P4, [0x0126]
-POP P2
-; Signed comparison (two's complement)
-CMP P2, P4
-JLT cmp_true_26
-MOV P2, 0
-JMP cmp_end_27
-cmp_true_26:
-MOV P2, 1
-cmp_end_27:
-CMP P2, 0
-JZ if_end_24
-; Assignment to vzw
-MOV P5, [0x0126]
-MOV [FP+6], P5
-if_end_24:
+MOV P4, [0xC806]
+PUSH P4
+CALL func_cam_qmul
+ADD SP, 4 ; Caller cleans up args
+MOV P5, P0
+POP P1
+SUB P1, P5
+POP P6
+MOV [P6], P1
+; Member assignment to ...y
+MOV P6, FP
+SUB P6, 4
+PUSH P6
+MOV P7, [0xC804]
+POP P6
+MOV [P6], P7
+; Member assignment to ...z
+MOV P0, FP
+SUB P0, 2
+PUSH P0
+; Call to cam_qmul
+MOV P1, [0x8008]
+PUSH P1
+MOV P2, [0xC802]
+PUSH P2
+CALL func_cam_qmul
+ADD SP, 4 ; Caller cleans up args
+MOV P4, P0
+PUSH P4
+; Call to cam_qmul
+MOV P5, [0x800A]
+PUSH P5
+MOV P6, [0xC806]
+PUSH P6
+CALL func_cam_qmul
+ADD SP, 4 ; Caller cleans up args
+MOV P7, P0
+POP P4
+ADD P4, P7
+POP P0
+MOV [P0], P4
+; Function return
+MOV P0, FP
+SUB P0, 6
+MOV P1, [FP+4] ; sret destination
+MOV P2, [P0]
+MOV [P1], P2
+MOV P2, [P0+2]
+MOV [P1+2], P2
+MOV P2, [P0+4]
+MOV [P1+4], P2
+MOV P0, P1
+MOV R0, P1
+MOV SP, FP
+POP FP
+RET
+; Function: cam_transform
+func_cam_transform:
+ENTER 6
+; var v = ...
+; Call to cam_transform8
+MOV P4, [FP+10]
+; Unrolled shift SHL by 3
+SHL P4, 1
+SHL P4, 1
+SHL P4, 1
+PUSH P4
+MOV P5, [FP+8]
+; Unrolled shift SHL by 3
+SHL P5, 1
+SHL P5, 1
+SHL P5, 1
+PUSH P5
+MOV P6, [FP+6]
+; Unrolled shift SHL by 3
+SHL P6, 1
+SHL P6, 1
+SHL P6, 1
+PUSH P6
+; sret dest := &v
+MOV P0, FP
+SUB P0, 6
+MOV P7, P0
+PUSH P7 ; sret destination
+CALL func_cam_transform8
+ADD SP, 8 ; Caller cleans up args
+MOV P1, P0
+; Function return
+MOV P2, FP
+SUB P2, 6
+MOV P4, [FP+4] ; sret destination
+MOV P5, [P2]
+MOV [P4], P5
+MOV P5, [P2+2]
+MOV [P4+2], P5
+MOV P5, [P2+4]
+MOV [P4+4], P5
+MOV P0, P4
+MOV R0, P4
+MOV SP, FP
+POP FP
+RET
+; Function: cam_proj
+func_cam_proj:
+ENTER 2
 ; var inv = ...
-MOV P6, [0x0120]
-; Unrolled shift SHL by 7
-SHL P6, 1
-SHL P6, 1
-SHL P6, 1
-SHL P6, 1
-SHL P6, 1
-SHL P6, 1
-SHL P6, 1
+; Call to cam_recip
+MOV P6, [FP+8]
+PUSH P6
+CALL func_cam_recip
+ADD SP, 2 ; Caller cleans up args
+MOV P7, P0
+MOV [0xC900], P7
+; Assignment to cam_px
+; Call to cam_scale
+MOV P0, [0xC900]
+PUSH P0
+MOV P1, [FP+4]
+PUSH P1
+CALL func_cam_scale
+ADD SP, 4 ; Caller cleans up args
+MOV P2, P0
+PUSH P2
+MOV P4, [0x0122]
+POP P2
+ADD P2, P4
+MOV [0x800C], P2
+; Assignment to cam_py
+MOV P5, [0x0124]
+PUSH P5
+; Call to cam_scale
+MOV P6, [0xC900]
 PUSH P6
 MOV P7, [FP+6]
-; Unrolled shift SHR by 1
-SHR P7, 1
-POP P6
-ADD P6, P7
-PUSH P6
-MOV P0, [FP+6]
-POP P6
-CMP P6, 0
-JGE sdiv_pos_28
-NEG P6
-CMP P0, 0
-JGE sdiv_np_29
-NEG P0
-DIV P6, P0
-JMP sdiv_done_31
-sdiv_np_29:
-DIV P6, P0
-NEG P6
-JMP sdiv_done_31
-sdiv_pos_28:
-CMP P0, 0
-JGE sdiv_pp_30
-NEG P0
-DIV P6, P0
-NEG P6
-JMP sdiv_done_31
-sdiv_pp_30:
-DIV P6, P0
-sdiv_done_31:
-MOV [0xC682], P6
-; If statement
-MOV P1, [0xC682]
+PUSH P7
+CALL func_cam_scale
+ADD SP, 4 ; Caller cleans up args
+POP P5
+SUB P5, P0
+MOV [0x800E], P5
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cam_depth
+func_cam_depth:
+ENTER 6
+; var v = ...
+; Call to cam_transform
+MOV P1, [FP+8]
 PUSH P1
-MOV P2, 1
+MOV P2, [FP+6]
+PUSH P2
+MOV P4, [FP+4]
+PUSH P4
+; sret dest := &v
+MOV P6, FP
+SUB P6, 6
+MOV P5, P6
+PUSH P5 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P7, P0
+; If statement
+; Member read (z)
+MOV P0, FP
+SUB P0, 2
+MOV P1, [P0]
+PUSH P1
+MOV P2, [0x0128]
 POP P1
 ; Signed comparison (two's complement)
 CMP P1, P2
-JLT cmp_true_34
+JLT cmp_true_38
 MOV P1, 0
-JMP cmp_end_35
-cmp_true_34:
+JMP cmp_end_39
+cmp_true_38:
 MOV P1, 1
-cmp_end_35:
+cmp_end_39:
 CMP P1, 0
-JZ if_end_32
-; Assignment to inv
-MOV P4, 1
-MOV [0xC682], P4
-if_end_32:
-; var limit = ...
-MOV P5, 32767
-PUSH P5
-MOV P6, [0xC682]
-POP P5
-CMP P5, 0
-JGE sdiv_pos_36
-NEG P5
-CMP P6, 0
-JGE sdiv_np_37
-NEG P6
-DIV P5, P6
-JMP sdiv_done_39
-sdiv_np_37:
-DIV P5, P6
-NEG P5
-JMP sdiv_done_39
-sdiv_pos_36:
-CMP P6, 0
-JGE sdiv_pp_38
-NEG P6
-DIV P5, P6
-NEG P5
-JMP sdiv_done_39
-sdiv_pp_38:
-DIV P5, P6
-sdiv_done_39:
-MOV [0xC684], P5
-; var neg = ...
-MOV P7, 0
-MOV [0xC686], P7
-; var m = ...
-MOV P0, [FP+4]
-MOV [0xC688], P0
+JZ if_end_36
+; Function return
+MOV P4, 0
+MOV P0, P4
+MOV R0, P4
+MOV SP, FP
+POP FP
+RET
+if_end_36:
+; Function return
+; Call to cam_asr5
+; Member read (z)
+MOV P5, FP
+SUB P5, 2
+MOV P6, [P5]
+PUSH P6
+CALL func_cam_asr5
+ADD SP, 2 ; Caller cleans up args
+MOV P7, P0
+MOV P0, P7
+MOV R0, P7
+MOV SP, FP
+POP FP
+RET
+; Function: cam_project
+func_cam_project:
+ENTER 0
 ; If statement
-MOV P1, [0xC688]
+; Member read (z)
+MOV P0, FP
+ADD P0, 8
+MOV P1, [P0]
 PUSH P1
-MOV P2, 0
+MOV P2, [0x0128]
 POP P1
 ; Signed comparison (two's complement)
 CMP P1, P2
@@ -728,22 +994,51 @@ MOV P1, 1
 cmp_end_43:
 CMP P1, 0
 JZ if_end_40
-; Assignment to neg
-MOV P4, 1
-MOV [0xC686], P4
-; Assignment to m
-MOV P5, [0xC688]
-NEG P5
-MOV [0xC688], P5
+; Function return
+MOV P4, 0
+MOV P0, P4
+MOV R0, P4
+MOV SP, FP
+POP FP
+RET
 if_end_40:
-; If statement
-MOV P6, [0xC688]
+; Call to cam_proj
+; Member read (z)
+MOV P5, FP
+ADD P5, 8
+MOV P6, [P5]
 PUSH P6
-MOV P7, [0xC684]
+; Member read (y)
+MOV P7, FP
+ADD P7, 6
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+ADD P1, 4
+MOV P2, [P1]
+PUSH P2
+CALL func_cam_proj
+ADD SP, 6 ; Caller cleans up args
+MOV P4, P0
+; Function return
+MOV P5, 1
+MOV P0, P5
+MOV R0, P5
+MOV SP, FP
+POP FP
+RET
+; Function: cam_circle
+func_cam_circle:
+ENTER 0
+; If statement
+MOV P6, [FP+4]
+PUSH P6
+MOV P7, 0
 POP P6
 ; Signed comparison (two's complement)
 CMP P6, P7
-JGT cmp_true_46
+JLT cmp_true_46
 MOV P6, 0
 JMP cmp_end_47
 cmp_true_46:
@@ -751,125 +1046,67 @@ MOV P6, 1
 cmp_end_47:
 CMP P6, 0
 JZ if_end_44
-; Assignment to m
-MOV P0, [0xC684]
-MOV [0xC688], P0
+; Function return
+MOV P0, 0
+MOV R0, P0
+MOV SP, FP
+POP FP
+RET
 if_end_44:
-; var t = ...
-MOV P1, [0xC682]
-PUSH P1
-MOV P2, [0xC688]
-POP P1
-MUL P1, P2
-; Unrolled shift SHR by 7
-SHR P1, 1
-SHR P1, 1
-SHR P1, 1
-SHR P1, 1
-SHR P1, 1
-SHR P1, 1
-SHR P1, 1
-MOV [0xC680], P1
 ; If statement
-MOV P4, 0
-PUSH P4
-MOV P5, [0xC686]
-POP P4
-CMP P4, P5
-JNZ cmp_true_50
-MOV P4, 0
+MOV P1, [FP+4]
+PUSH P1
+MOV P2, 255
+POP P1
+; Signed comparison (two's complement)
+CMP P1, P2
+JGT cmp_true_50
+MOV P1, 0
 JMP cmp_end_51
 cmp_true_50:
-MOV P4, 1
+MOV P1, 1
 cmp_end_51:
-CMP P4, 0
+CMP P1, 0
 JZ if_end_48
-; Assignment to t
-MOV P6, [0xC680]
-NEG P6
-MOV [0xC680], P6
-if_end_48:
 ; Function return
-MOV P7, [0xC680]
+MOV P4, 0
+MOV P0, P4
+MOV R0, P4
+MOV SP, FP
+POP FP
+RET
+if_end_48:
+; If statement
+MOV P5, [FP+6]
+PUSH P5
+MOV P6, 0
+POP P5
+; Signed comparison (two's complement)
+CMP P5, P6
+JLT cmp_true_54
+MOV P5, 0
+JMP cmp_end_55
+cmp_true_54:
+MOV P5, 1
+cmp_end_55:
+CMP P5, 0
+JZ if_end_52
+; Function return
+MOV P7, 0
 MOV P0, P7
 MOV R0, P7
 MOV SP, FP
 POP FP
 RET
-; Function: cam_depth
-func_cam_depth:
-ENTER 8
-; var v = ...
-; Call to cam_transform
-MOV P0, [FP+8]
-PUSH P0
-MOV P1, [FP+6]
-PUSH P1
-MOV P2, [FP+4]
-PUSH P2
-; sret dest := &v
-MOV P5, FP
-SUB P5, 6
-MOV P4, P5
-PUSH P4 ; sret destination
-CALL func_cam_transform
-ADD SP, 8 ; Caller cleans up args
-MOV P6, P0
-; var dz = ...
-; Call to cam_asr5
-; Member read (z)
-MOV P7, FP
-SUB P7, 2
-MOV P0, [P7]
-PUSH P0
-CALL func_cam_asr5
-ADD SP, 2 ; Caller cleans up args
-MOV P1, P0
-MOV [0xC700], P1
-; If statement
-MOV P2, [0xC700]
-PUSH P2
-MOV P4, [0x0126]
-POP P2
-; Signed comparison (two's complement)
-CMP P2, P4
-JLT cmp_true_54
-MOV P2, 0
-JMP cmp_end_55
-cmp_true_54:
-MOV P2, 1
-cmp_end_55:
-CMP P2, 0
-JZ if_end_52
-; Function return
-MOV P5, 0
-MOV P0, P5
-MOV R0, P5
-MOV SP, FP
-POP FP
-RET
 if_end_52:
-; Function return
-MOV P6, [0xC700]
-MOV P0, P6
-MOV R0, P6
-MOV SP, FP
-POP FP
-RET
-; Function: cam_project
-func_cam_project:
-ENTER 2
 ; If statement
-; Member read (z)
-MOV P7, FP
-ADD P7, 8
-MOV P0, [P7]
+MOV P0, [FP+6]
 PUSH P0
-MOV P1, [0x0128]
+MOV P1, 255
 POP P0
 ; Signed comparison (two's complement)
 CMP P0, P1
-JLT cmp_true_58
+JGT cmp_true_58
 MOV P0, 0
 JMP cmp_end_59
 cmp_true_58:
@@ -885,61 +1122,28 @@ MOV SP, FP
 POP FP
 RET
 if_end_56:
-; var z = ...
-; Call to cam_asr5
-; Member read (z)
-MOV P4, FP
-ADD P4, 8
-MOV P5, [P4]
-PUSH P5
-CALL func_cam_asr5
-ADD SP, 2 ; Caller cleans up args
-MOV P6, P0
-MOV [0xC780], P6
-; Assignment to cam_px
-; Call to cam_offset
-MOV P7, [0xC780]
-PUSH P7
-; Call to cam_asr5
-; Member read (x)
-MOV P0, FP
-ADD P0, 4
-MOV P1, [P0]
-PUSH P1
-CALL func_cam_asr5
-ADD SP, 2 ; Caller cleans up args
-MOV P2, P0
-PUSH P2
-CALL func_cam_offset
-ADD SP, 4 ; Caller cleans up args
-MOV P4, P0
+; Call to set_pos
+MOV P4, [FP+6]
 PUSH P4
-MOV P5, [0x0122]
-POP P4
-ADD P4, P5
-MOV [0x800C], P4
-; Assignment to cam_py
-MOV P6, [0x0124]
-PUSH P6
-; Call to cam_offset
-MOV P7, [0xC780]
+MOV P5, [FP+4]
+PUSH P5
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P6, R0
+; Call to set_color
+MOV P7, [FP+10]
 PUSH P7
-; Call to cam_asr5
-; Member read (y)
-MOV P0, FP
-ADD P0, 6
-MOV P1, [P0]
+CALL builtin_set_color
+; Args consumed by callee
+MOV P0, R0
+; Call to draw_circle
+MOV P1, 1
 PUSH P1
-CALL func_cam_asr5
-ADD SP, 2 ; Caller cleans up args
-MOV P2, P0
+MOV P2, [FP+8]
 PUSH P2
-CALL func_cam_offset
-ADD SP, 4 ; Caller cleans up args
-MOV P4, P0
-POP P6
-SUB P6, P4
-MOV [0x800E], P6
+CALL builtin_draw_circle
+; Args consumed by callee
+MOV P4, R0
 ; Function return
 MOV P5, 1
 MOV P0, P5
@@ -947,93 +1151,58 @@ MOV R0, P5
 MOV SP, FP
 POP FP
 RET
-; Function: cam_clip_frac
-func_cam_clip_frac:
-ENTER 6
-; var rem = ...
-MOV P6, [FP+4]
-MOV [0xC800], P6
-; var f = ...
-MOV P7, 0
-MOV [0xC802], P7
-; var i = ...
+; Function: cam_code
+func_cam_code:
+ENTER 2
+; var c = ...
+MOV P6, 0
+MOV [0xCB00], P6
+; If statement
+MOV P7, [FP+4]
+PUSH P7
 MOV P0, 0
-MOV [0xC804], P0
-; While loop
-while_start_60:
-MOV P1, [0xC804]
-PUSH P1
-MOV P2, 8
-POP P1
+POP P7
 ; Signed comparison (two's complement)
-CMP P1, P2
+CMP P7, P0
 JLT cmp_true_62
-MOV P1, 0
+MOV P7, 0
 JMP cmp_end_63
 cmp_true_62:
-MOV P1, 1
+MOV P7, 1
 cmp_end_63:
-CMP P1, 0
-JZ while_end_61
-; Assignment to rem
-MOV P4, [0xC800]
-; Unrolled shift SHL by 1
-SHL P4, 1
-MOV [0xC800], P4
-; Assignment to f
-MOV P5, [0xC802]
-; Unrolled shift SHL by 1
-SHL P5, 1
-MOV [0xC802], P5
+CMP P7, 0
+JZ if_end_60
+; Assignment to c
+MOV P1, [0xCB00]
+PUSH P1
+MOV P2, 1
+POP P1
+ADD P1, P2
+MOV [0xCB00], P1
+if_end_60:
 ; If statement
-MOV P6, [0xC800]
-PUSH P6
-MOV P7, [FP+6]
-POP P6
+MOV P4, [FP+4]
+PUSH P4
+MOV P5, 255
+POP P4
 ; Signed comparison (two's complement)
-CMP P6, P7
-JGE cmp_true_66
-MOV P6, 0
+CMP P4, P5
+JGT cmp_true_66
+MOV P4, 0
 JMP cmp_end_67
 cmp_true_66:
-MOV P6, 1
-cmp_end_67:
-CMP P6, 0
-JZ if_end_64
-; Assignment to rem
-MOV P0, [0xC800]
-PUSH P0
-MOV P1, [FP+6]
-POP P0
-SUB P0, P1
-MOV [0xC800], P0
-; Assignment to f
-MOV P2, [0xC802]
-PUSH P2
 MOV P4, 1
-POP P2
-ADD P2, P4
-MOV [0xC802], P2
+cmp_end_67:
+CMP P4, 0
+JZ if_end_64
+; Assignment to c
+MOV P6, [0xCB00]
+PUSH P6
+MOV P7, 2
+POP P6
+ADD P6, P7
+MOV [0xCB00], P6
 if_end_64:
-; Assignment to i
-MOV P5, [0xC804]
-PUSH P5
-MOV P6, 1
-POP P5
-ADD P5, P6
-MOV [0xC804], P5
-JMP while_start_60
-while_end_61:
-; Function return
-MOV P7, [0xC802]
-MOV P0, P7
-MOV R0, P7
-MOV SP, FP
-POP FP
-RET
-; Function: cam_clip_axis
-func_cam_clip_axis:
-ENTER 0
 ; If statement
 MOV P0, [FP+6]
 PUSH P0
@@ -1049,49 +1218,106 @@ MOV P0, 1
 cmp_end_71:
 CMP P0, 0
 JZ if_end_68
-; Assignment to den
-MOV P2, [FP+6]
-NEG P2
-MOV [FP+6], P2
+; Assignment to c
+MOV P2, [0xCB00]
+PUSH P2
+MOV P4, 4
+POP P2
+ADD P2, P4
+MOV [0xCB00], P2
 if_end_68:
 ; If statement
-MOV P4, [FP+6]
-PUSH P4
-MOV P5, 0
-POP P4
+MOV P5, [FP+6]
+PUSH P5
+MOV P6, 255
+POP P5
 ; Signed comparison (two's complement)
-CMP P4, P5
-JLE cmp_true_74
-MOV P4, 0
+CMP P5, P6
+JGT cmp_true_74
+MOV P5, 0
 JMP cmp_end_75
 cmp_true_74:
-MOV P4, 1
+MOV P5, 1
 cmp_end_75:
-CMP P4, 0
+CMP P5, 0
 JZ if_end_72
+; Assignment to c
+MOV P7, [0xCB00]
+PUSH P7
+MOV P0, 8
+POP P7
+ADD P7, P0
+MOV [0xCB00], P7
+if_end_72:
 ; Function return
-MOV P6, 0
-MOV P0, P6
-MOV R0, P6
+MOV P1, [0xCB00]
+MOV P0, P1
+MOV R0, P1
 MOV SP, FP
 POP FP
 RET
-if_end_72:
-; If statement
-MOV P7, [FP+4]
+; Function: cam_draw_clipped
+func_cam_draw_clipped:
+ENTER 16
+; var c1 = ...
+; Call to cam_code
+MOV P2, [FP+6]
+PUSH P2
+MOV P4, [FP+4]
+PUSH P4
+CALL func_cam_code
+ADD SP, 4 ; Caller cleans up args
+MOV P5, P0
+MOV [0xCB80], P5
+; var c2 = ...
+; Call to cam_code
+MOV P6, [FP+10]
+PUSH P6
+MOV P7, [FP+8]
 PUSH P7
-MOV P0, 0
-POP P7
-; Signed comparison (two's complement)
-CMP P7, P0
-JLE cmp_true_78
-MOV P7, 0
+CALL func_cam_code
+ADD SP, 4 ; Caller cleans up args
+MOV [0xCB82], P0
+; var guard = ...
+MOV P1, 0
+MOV [0xCB84], P1
+; While loop
+while_start_76:
+MOV P2, [0xCB80]
+PUSH P2
+MOV P4, [0xCB82]
+POP P2
+OR P2, P4
+PUSH P2
+MOV P5, 0
+POP P2
+CMP P2, P5
+JNZ cmp_true_78
+MOV P2, 0
 JMP cmp_end_79
 cmp_true_78:
-MOV P7, 1
+MOV P2, 1
 cmp_end_79:
-CMP P7, 0
-JZ if_end_76
+CMP P2, 0
+JZ while_end_77
+; If statement
+MOV P6, [0xCB80]
+PUSH P6
+MOV P7, [0xCB82]
+POP P6
+AND P6, P7
+PUSH P6
+MOV P0, 0
+POP P6
+CMP P6, P0
+JNZ cmp_true_82
+MOV P6, 0
+JMP cmp_end_83
+cmp_true_82:
+MOV P6, 1
+cmp_end_83:
+CMP P6, 0
+JZ if_end_80
 ; Function return
 MOV P1, 0
 MOV P0, P1
@@ -1099,202 +1325,294 @@ MOV R0, P1
 MOV SP, FP
 POP FP
 RET
-if_end_76:
-; If statement
-MOV P2, [FP+4]
-PUSH P2
-MOV P4, [FP+6]
-POP P2
-; Signed comparison (two's complement)
-CMP P2, P4
-JGE cmp_true_82
-MOV P2, 0
-JMP cmp_end_83
-cmp_true_82:
-MOV P2, 1
-cmp_end_83:
-CMP P2, 0
-JZ if_end_80
-; Function return
-MOV P5, 256
-MOV P0, P5
-MOV R0, P5
-MOV SP, FP
-POP FP
-RET
 if_end_80:
-; Function return
-; Call to cam_clip_frac
-MOV P6, [FP+6]
-PUSH P6
-MOV P7, [FP+4]
-PUSH P7
-CALL func_cam_clip_frac
-ADD SP, 4 ; Caller cleans up args
-MOV R0, P0
-MOV SP, FP
-POP FP
-RET
-; Function: cam_code
-func_cam_code:
-ENTER 2
-; var c = ...
-MOV P1, 0
-MOV [0xC900], P1
-; If statement
+; var px = ...
 MOV P2, [FP+4]
-PUSH P2
-MOV P4, 0
-POP P2
-; Signed comparison (two's complement)
-CMP P2, P4
-JLT cmp_true_86
-MOV P2, 0
+MOV [0xCB86], P2
+; var py = ...
+MOV P4, [FP+6]
+MOV [0xCB88], P4
+; var qx = ...
+MOV P5, [FP+8]
+MOV [0xCB8A], P5
+; var qy = ...
+MOV P6, [FP+10]
+MOV [0xCB8C], P6
+; var cc = ...
+MOV P7, [0xCB80]
+MOV [0xCB8E], P7
+; If statement
+MOV P0, 0
+PUSH P0
+MOV P1, [0xCB80]
+POP P0
+CMP P0, P1
+JZ cmp_true_86
+MOV P0, 0
 JMP cmp_end_87
 cmp_true_86:
-MOV P2, 1
+MOV P0, 1
 cmp_end_87:
-CMP P2, 0
+CMP P0, 0
 JZ if_end_84
-; Assignment to c
-MOV P5, [0xC900]
-PUSH P5
-MOV P6, 1
-POP P5
-ADD P5, P6
-MOV [0xC900], P5
+; Assignment to px
+MOV P2, [FP+8]
+MOV [0xCB86], P2
+; Assignment to py
+MOV P4, [FP+10]
+MOV [0xCB88], P4
+; Assignment to qx
+MOV P5, [FP+4]
+MOV [0xCB8A], P5
+; Assignment to qy
+MOV P6, [FP+6]
+MOV [0xCB8C], P6
+; Assignment to cc
+MOV P7, [0xCB82]
+MOV [0xCB8E], P7
 if_end_84:
 ; If statement
-MOV P7, [FP+4]
-PUSH P7
-MOV P0, 255
-POP P7
-; Signed comparison (two's complement)
-CMP P7, P0
-JGT cmp_true_90
-MOV P7, 0
+MOV P0, 1
+PUSH P0
+MOV P1, [0xCB8E]
+POP P0
+AND P0, P1
+PUSH P0
+MOV P2, 0
+POP P0
+CMP P0, P2
+JNZ cmp_true_90
+MOV P0, 0
 JMP cmp_end_91
 cmp_true_90:
-MOV P7, 1
+MOV P0, 1
 cmp_end_91:
-CMP P7, 0
-JZ if_end_88
-; Assignment to c
-MOV P1, [0xC900]
+CMP P0, 0
+JZ if_else_89
+; Assignment to py
+; Call to cam_smuldiv
+MOV P4, [0xCB8A]
+PUSH P4
+MOV P5, [0xCB86]
+POP P4
+SUB P4, P5
+PUSH P4
+MOV P6, [0xCB8A]
+PUSH P6
+MOV P7, [0xCB88]
+PUSH P7
+MOV P0, [0xCB8C]
+POP P7
+SUB P7, P0
+PUSH P7
+CALL func_cam_smuldiv
+ADD SP, 6 ; Caller cleans up args
+MOV P1, P0
 PUSH P1
-MOV P2, 2
+MOV P2, [0xCB8C]
 POP P1
 ADD P1, P2
-MOV [0xC900], P1
-if_end_88:
-; If statement
-MOV P4, [FP+6]
-PUSH P4
-MOV P5, 0
-POP P4
-; Signed comparison (two's complement)
-CMP P4, P5
-JLT cmp_true_94
+MOV [0xCB88], P1
+; Assignment to px
 MOV P4, 0
+MOV [0xCB86], P4
+JMP if_end_88
+if_else_89:
+; If statement
+MOV P5, 2
+PUSH P5
+MOV P6, [0xCB8E]
+POP P5
+AND P5, P6
+PUSH P5
+MOV P7, 0
+POP P5
+CMP P5, P7
+JNZ cmp_true_94
+MOV P5, 0
 JMP cmp_end_95
 cmp_true_94:
-MOV P4, 1
+MOV P5, 1
 cmp_end_95:
-CMP P4, 0
-JZ if_end_92
-; Assignment to c
-MOV P6, [0xC900]
-PUSH P6
-MOV P7, 4
-POP P6
-ADD P6, P7
-MOV [0xC900], P6
-if_end_92:
-; If statement
-MOV P0, [FP+6]
+CMP P5, 0
+JZ if_else_93
+; Assignment to py
+; Call to cam_smuldiv
+MOV P0, [0xCB86]
 PUSH P0
-MOV P1, 255
+MOV P1, [0xCB8A]
 POP P0
-; Signed comparison (two's complement)
-CMP P0, P1
-JGT cmp_true_98
-MOV P0, 0
+SUB P0, P1
+PUSH P0
+MOV P2, 255
+PUSH P2
+MOV P4, [0xCB8A]
+POP P2
+SUB P2, P4
+PUSH P2
+MOV P5, [0xCB88]
+PUSH P5
+MOV P6, [0xCB8C]
+POP P5
+SUB P5, P6
+PUSH P5
+CALL func_cam_smuldiv
+ADD SP, 6 ; Caller cleans up args
+MOV P7, P0
+PUSH P7
+MOV P0, [0xCB8C]
+POP P7
+ADD P7, P0
+MOV [0xCB88], P7
+; Assignment to px
+MOV P1, 255
+MOV [0xCB86], P1
+JMP if_end_92
+if_else_93:
+; If statement
+MOV P2, 4
+PUSH P2
+MOV P4, [0xCB8E]
+POP P2
+AND P2, P4
+PUSH P2
+MOV P5, 0
+POP P2
+CMP P2, P5
+JNZ cmp_true_98
+MOV P2, 0
 JMP cmp_end_99
 cmp_true_98:
-MOV P0, 1
+MOV P2, 1
 cmp_end_99:
-CMP P0, 0
-JZ if_end_96
-; Assignment to c
-MOV P2, [0xC900]
-PUSH P2
-MOV P4, 8
-POP P2
-ADD P2, P4
-MOV [0xC900], P2
-if_end_96:
-; Function return
-MOV P5, [0xC900]
-MOV P0, P5
-MOV R0, P5
-MOV SP, FP
-POP FP
-RET
-; Function: cam_draw_clipped
-func_cam_draw_clipped:
-ENTER 14
-; var c1 = ...
-; Call to cam_code
-MOV P6, [FP+6]
+CMP P2, 0
+JZ if_else_97
+; Assignment to px
+; Call to cam_smuldiv
+MOV P6, [0xCB8C]
 PUSH P6
-MOV P7, [FP+4]
+MOV P7, [0xCB88]
+POP P6
+SUB P6, P7
+PUSH P6
+MOV P0, [0xCB8C]
+PUSH P0
+MOV P1, [0xCB86]
+PUSH P1
+MOV P2, [0xCB8A]
+POP P1
+SUB P1, P2
+PUSH P1
+CALL func_cam_smuldiv
+ADD SP, 6 ; Caller cleans up args
+MOV P4, P0
+PUSH P4
+MOV P5, [0xCB8A]
+POP P4
+ADD P4, P5
+MOV [0xCB86], P4
+; Assignment to py
+MOV P6, 0
+MOV [0xCB88], P6
+JMP if_end_96
+if_else_97:
+; Assignment to px
+; Call to cam_smuldiv
+MOV P7, [0xCB88]
+PUSH P7
+MOV P0, [0xCB8C]
+POP P7
+SUB P7, P0
+PUSH P7
+MOV P1, 255
+PUSH P1
+MOV P2, [0xCB8C]
+POP P1
+SUB P1, P2
+PUSH P1
+MOV P4, [0xCB86]
+PUSH P4
+MOV P5, [0xCB8A]
+POP P4
+SUB P4, P5
+PUSH P4
+CALL func_cam_smuldiv
+ADD SP, 6 ; Caller cleans up args
+MOV P6, P0
+PUSH P6
+MOV P7, [0xCB8A]
+POP P6
+ADD P6, P7
+MOV [0xCB86], P6
+; Assignment to py
+MOV P0, 255
+MOV [0xCB88], P0
+if_end_96:
+if_end_92:
+if_end_88:
+; If statement
+MOV P1, 0
+PUSH P1
+MOV P2, [0xCB80]
+POP P1
+CMP P1, P2
+JZ cmp_true_102
+MOV P1, 0
+JMP cmp_end_103
+cmp_true_102:
+MOV P1, 1
+cmp_end_103:
+CMP P1, 0
+JZ if_else_101
+; Assignment to x2
+MOV P4, [0xCB86]
+MOV [FP+8], P4
+; Assignment to y2
+MOV P5, [0xCB88]
+MOV [FP+10], P5
+; Assignment to c2
+; Call to cam_code
+MOV P6, [FP+10]
+PUSH P6
+MOV P7, [FP+8]
 PUSH P7
 CALL func_cam_code
 ADD SP, 4 ; Caller cleans up args
-MOV [0xC982], P0
-; var c2 = ...
+MOV [0xCB82], P0
+JMP if_end_100
+if_else_101:
+; Assignment to x1
+MOV P1, [0xCB86]
+MOV [FP+4], P1
+; Assignment to y1
+MOV P2, [0xCB88]
+MOV [FP+6], P2
+; Assignment to c1
 ; Call to cam_code
-MOV P1, [FP+10]
-PUSH P1
-MOV P2, [FP+8]
-PUSH P2
+MOV P4, [FP+6]
+PUSH P4
+MOV P5, [FP+4]
+PUSH P5
 CALL func_cam_code
 ADD SP, 4 ; Caller cleans up args
-MOV P4, P0
-MOV [0xC984], P4
-; var guard = ...
-MOV P5, 0
-MOV [0xC986], P5
-; While loop
-while_start_100:
-MOV P6, [0xC982]
-PUSH P6
-MOV P7, [0xC984]
-POP P6
-ADD P6, P7
-PUSH P6
-MOV P0, 0
-POP P6
-CMP P6, P0
-JNZ cmp_true_102
-MOV P6, 0
-JMP cmp_end_103
-cmp_true_102:
-MOV P6, 1
-cmp_end_103:
-CMP P6, 0
-JZ while_end_101
+MOV P6, P0
+MOV [0xCB80], P6
+if_end_100:
+; Assignment to guard
+MOV P7, [0xCB84]
+PUSH P7
+MOV P0, 1
+POP P7
+ADD P7, P0
+MOV [0xCB84], P7
 ; If statement
-MOV P1, [0xC982]
+MOV P1, [0xCB84]
 PUSH P1
-MOV P2, [0xC984]
+MOV P2, 4
 POP P1
-AND P1, P2
-PUSH P1
-MOV P4, 0
-POP P1
-CMP P1, P4
-JNZ cmp_true_106
+; Signed comparison (two's complement)
+CMP P1, P2
+JGT cmp_true_106
 MOV P1, 0
 JMP cmp_end_107
 cmp_true_106:
@@ -1303,750 +1621,636 @@ cmp_end_107:
 CMP P1, 0
 JZ if_end_104
 ; Function return
-MOV P5, 0
+MOV P4, 0
+MOV P0, P4
+MOV R0, P4
+MOV SP, FP
+POP FP
+RET
+if_end_104:
+JMP while_start_76
+while_end_77:
+; Call to set_pos
+MOV P5, [FP+6]
+PUSH P5
+MOV P6, [FP+4]
+PUSH P6
+CALL builtin_set_pos
+; Args consumed by callee
+MOV P7, R0
+; Call to set_color
+MOV P0, [FP+12]
+PUSH P0
+CALL builtin_set_color
+; Args consumed by callee
+MOV P1, R0
+; Call to draw_line
+MOV P2, [FP+10]
+PUSH P2
+MOV P4, [FP+8]
+PUSH P4
+CALL builtin_draw_line
+; Args consumed by callee
+MOV P5, R0
+; Function return
+MOV P6, 1
+MOV P0, P6
+MOV R0, P6
+MOV SP, FP
+POP FP
+RET
+; Function: cam_line_v
+func_cam_line_v:
+ENTER 10
+; If statement
+MOV P7, [FP+8]
+PUSH P7
+MOV P0, [0x0128]
+POP P7
+; Signed comparison (two's complement)
+CMP P7, P0
+JLT cmp_true_110
+MOV P7, 0
+JMP cmp_end_111
+cmp_true_110:
+MOV P7, 1
+cmp_end_111:
+CMP P7, 0
+JZ if_end_108
+; If statement
+MOV P1, [FP+14]
+PUSH P1
+MOV P2, [0x0128]
+POP P1
+; Signed comparison (two's complement)
+CMP P1, P2
+JLT cmp_true_114
+MOV P1, 0
+JMP cmp_end_115
+cmp_true_114:
+MOV P1, 1
+cmp_end_115:
+CMP P1, 0
+JZ if_end_112
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_112:
+; var t = ...
+MOV P4, [FP+4]
+MOV [0xCC00], P4
+; Assignment to ax
+MOV P5, [FP+10]
+MOV [FP+4], P5
+; Assignment to bx
+MOV P6, [0xCC00]
+MOV [FP+10], P6
+; Assignment to t
+MOV P7, [FP+6]
+MOV [0xCC00], P7
+; Assignment to ay
+MOV P0, [FP+12]
+MOV [FP+6], P0
+; Assignment to by
+MOV P1, [0xCC00]
+MOV [FP+12], P1
+; Assignment to t
+MOV P2, [FP+8]
+MOV [0xCC00], P2
+; Assignment to az
+MOV P4, [FP+14]
+MOV [FP+8], P4
+; Assignment to bz
+MOV P5, [0xCC00]
+MOV [FP+14], P5
+if_end_108:
+; If statement
+MOV P6, [FP+14]
+PUSH P6
+MOV P7, [0x0128]
+POP P6
+; Signed comparison (two's complement)
+CMP P6, P7
+JLT cmp_true_118
+MOV P6, 0
+JMP cmp_end_119
+cmp_true_118:
+MOV P6, 1
+cmp_end_119:
+CMP P6, 0
+JZ if_end_116
+; var num = ...
+MOV P0, [FP+8]
+PUSH P0
+MOV P1, [0x0128]
+POP P0
+SUB P0, P1
+MOV [0xCC02], P0
+; var den = ...
+MOV P2, [FP+8]
+PUSH P2
+MOV P4, [FP+14]
+POP P2
+SUB P2, P4
+MOV [0xCC04], P2
+; Assignment to bx
+; Call to cam_smuldiv
+MOV P5, [0xCC04]
+PUSH P5
+MOV P6, [0xCC02]
+PUSH P6
+MOV P7, [FP+10]
+PUSH P7
+MOV P0, [FP+4]
+POP P7
+SUB P7, P0
+PUSH P7
+CALL func_cam_smuldiv
+ADD SP, 6 ; Caller cleans up args
+MOV P1, P0
+PUSH P1
+MOV P2, [FP+4]
+POP P1
+ADD P1, P2
+MOV [FP+10], P1
+; Assignment to by
+; Call to cam_smuldiv
+MOV P4, [0xCC04]
+PUSH P4
+MOV P5, [0xCC02]
+PUSH P5
+MOV P6, [FP+12]
+PUSH P6
+MOV P7, [FP+6]
+POP P6
+SUB P6, P7
+PUSH P6
+CALL func_cam_smuldiv
+ADD SP, 6 ; Caller cleans up args
+PUSH P0
+MOV P1, [FP+6]
+POP P0
+ADD P0, P1
+MOV [FP+12], P0
+; Assignment to bz
+MOV P2, [0x0128]
+MOV [FP+14], P2
+if_end_116:
+; Call to cam_proj
+MOV P4, [FP+8]
+PUSH P4
+MOV P5, [FP+6]
+PUSH P5
+MOV P6, [FP+4]
+PUSH P6
+CALL func_cam_proj
+ADD SP, 6 ; Caller cleans up args
+MOV P7, P0
+; var sx1 = ...
+MOV P0, [0x800C]
+MOV [0xCC06], P0
+; var sy1 = ...
+MOV P1, [0x800E]
+MOV [0xCC08], P1
+; Call to cam_proj
+MOV P2, [FP+14]
+PUSH P2
+MOV P4, [FP+12]
+PUSH P4
+MOV P5, [FP+10]
+PUSH P5
+CALL func_cam_proj
+ADD SP, 6 ; Caller cleans up args
+MOV P6, P0
+; Call to cam_draw_clipped
+MOV P7, [FP+16]
+PUSH P7
+MOV P0, [0x800E]
+PUSH P0
+MOV P1, [0x800C]
+PUSH P1
+MOV P2, [0xCC08]
+PUSH P2
+MOV P4, [0xCC06]
+PUSH P4
+CALL func_cam_draw_clipped
+ADD SP, 10 ; Caller cleans up args
+MOV P5, P0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cam_line
+func_cam_line:
+ENTER 12
+; var a = ...
+; Call to cam_transform
+MOV P6, [FP+8]
+PUSH P6
+MOV P7, [FP+6]
+PUSH P7
+MOV P0, [FP+4]
+PUSH P0
+; sret dest := &a
+MOV P2, FP
+SUB P2, 6
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, [FP+14]
+PUSH P5
+MOV P6, [FP+12]
+PUSH P6
+MOV P7, [FP+10]
+PUSH P7
+; sret dest := &b
+MOV P1, FP
+SUB P1, 12
+MOV P0, P1
+PUSH P0 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P2, P0
+; Call to cam_line_v
+MOV P4, [FP+16]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 8
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 10
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 12
+MOV P2, [P1]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 2
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 4
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 6
+MOV P1, [P0]
+PUSH P1
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P2, P0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cam_wait
+func_cam_wait:
+ENTER 0
+; asm operands
+MOV P4, [FP+4]
+PUSH P4
+POP P4
+; asm {
+MOV P1, P4
+CMP P1, 0
+JZ cam_wt_done
+cam_wt_outer:
+MOV P2, 32
+cam_wt_inner:
+DEC P2
+JNZ cam_wt_inner
+DEC P1
+JNZ cam_wt_outer
+cam_wt_done:
+; }
+; Function return
+MOV P5, [FP+4]
 MOV P0, P5
 MOV R0, P5
 MOV SP, FP
 POP FP
 RET
-if_end_104:
-; var cx = ...
-MOV P6, [FP+4]
-MOV [0xC988], P6
-; var cy = ...
-MOV P7, [FP+6]
-MOV [0xC98A], P7
-; var cc = ...
-MOV P0, [0xC982]
-MOV [0xC98C], P0
-; If statement
-MOV P1, 0
-PUSH P1
-MOV P2, [0xC982]
-POP P1
-CMP P1, P2
-JZ cmp_true_110
-MOV P1, 0
-JMP cmp_end_111
-cmp_true_110:
-MOV P1, 1
-cmp_end_111:
-CMP P1, 0
-JZ if_end_108
-; Assignment to cx
-MOV P4, [FP+8]
-MOV [0xC988], P4
-; Assignment to cy
-MOV P5, [FP+10]
-MOV [0xC98A], P5
-; Assignment to cc
-MOV P6, [0xC984]
-MOV [0xC98C], P6
-if_end_108:
-; var f = ...
-MOV P7, 0
-MOV [0xC980], P7
-; If statement
-MOV P0, 1
-PUSH P0
-MOV P1, [0xC98C]
-POP P0
-AND P0, P1
-PUSH P0
-MOV P2, 0
-POP P0
-CMP P0, P2
-JNZ cmp_true_114
-MOV P0, 0
-JMP cmp_end_115
-cmp_true_114:
-MOV P0, 1
-cmp_end_115:
-CMP P0, 0
-JZ if_else_113
-; Assignment to f
-; Call to cam_clip_axis
-MOV P4, [FP+8]
-PUSH P4
-MOV P5, [FP+4]
-POP P4
-SUB P4, P5
-PUSH P4
-MOV P6, 0
+; Function: cam_pace_init
+func_cam_pace_init:
+ENTER 0
+; Assignment to cam_pad
+MOV P6, 3600
 PUSH P6
-MOV P7, [0xC988]
+MOV P7, [FP+4]
 POP P6
 SUB P6, P7
-PUSH P6
-CALL func_cam_clip_axis
-ADD SP, 4 ; Caller cleans up args
-MOV [0xC980], P0
-; Assignment to cx
+MOV [0x8010], P6
+; If statement
+MOV P0, [0x8010]
+PUSH P0
 MOV P1, 0
-MOV [0xC988], P1
-; Assignment to cy
-; Call to cam_qmul
-MOV P2, [0xC980]
-PUSH P2
-MOV P4, [FP+10]
-PUSH P4
-MOV P5, [FP+6]
-POP P4
-SUB P4, P5
-PUSH P4
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-MOV P6, P0
-PUSH P6
-MOV P7, [FP+6]
-POP P6
-ADD P6, P7
-MOV [0xC98A], P6
-JMP if_end_112
-if_else_113:
-; If statement
-MOV P0, 2
-PUSH P0
-MOV P1, [0xC98C]
 POP P0
-AND P0, P1
-PUSH P0
-MOV P2, 0
-POP P0
-CMP P0, P2
-JNZ cmp_true_118
-MOV P0, 0
-JMP cmp_end_119
-cmp_true_118:
-MOV P0, 1
-cmp_end_119:
-CMP P0, 0
-JZ if_else_117
-; Assignment to f
-; Call to cam_clip_axis
-MOV P4, [FP+8]
-PUSH P4
-MOV P5, [FP+4]
-POP P4
-SUB P4, P5
-PUSH P4
-MOV P6, 255
-PUSH P6
-MOV P7, [0xC988]
-POP P6
-SUB P6, P7
-PUSH P6
-CALL func_cam_clip_axis
-ADD SP, 4 ; Caller cleans up args
-MOV [0xC980], P0
-; Assignment to cx
-MOV P1, 255
-MOV [0xC988], P1
-; Assignment to cy
-; Call to cam_qmul
-MOV P2, [0xC980]
-PUSH P2
-MOV P4, [FP+10]
-PUSH P4
-MOV P5, [FP+6]
-POP P4
-SUB P4, P5
-PUSH P4
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-MOV P6, P0
-PUSH P6
-MOV P7, [FP+6]
-POP P6
-ADD P6, P7
-MOV [0xC98A], P6
-JMP if_end_116
-if_else_117:
-; If statement
-MOV P0, 4
-PUSH P0
-MOV P1, [0xC98C]
-POP P0
-AND P0, P1
-PUSH P0
-MOV P2, 0
-POP P0
-CMP P0, P2
-JNZ cmp_true_122
+; Signed comparison (two's complement)
+CMP P0, P1
+JLT cmp_true_122
 MOV P0, 0
 JMP cmp_end_123
 cmp_true_122:
 MOV P0, 1
 cmp_end_123:
 CMP P0, 0
-JZ if_else_121
-; Assignment to f
-; Call to cam_clip_axis
-MOV P4, [FP+10]
-PUSH P4
-MOV P5, [FP+6]
-POP P4
-SUB P4, P5
-PUSH P4
-MOV P6, 0
-PUSH P6
-MOV P7, [0xC98A]
-POP P6
-SUB P6, P7
-PUSH P6
-CALL func_cam_clip_axis
-ADD SP, 4 ; Caller cleans up args
-MOV [0xC980], P0
-; Assignment to cy
-MOV P1, 0
-MOV [0xC98A], P1
-; Assignment to cx
-; Call to cam_qmul
-MOV P2, [0xC980]
-PUSH P2
-MOV P4, [FP+8]
-PUSH P4
-MOV P5, [FP+4]
-POP P4
-SUB P4, P5
-PUSH P4
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-MOV P6, P0
-PUSH P6
-MOV P7, [FP+4]
-POP P6
-ADD P6, P7
-MOV [0xC988], P6
-JMP if_end_120
-if_else_121:
-; Assignment to f
-; Call to cam_clip_axis
-MOV P0, [FP+10]
-PUSH P0
-MOV P1, [FP+6]
-POP P0
-SUB P0, P1
-PUSH P0
-MOV P2, 255
-PUSH P2
-MOV P4, [0xC98A]
-POP P2
-SUB P2, P4
-PUSH P2
-CALL func_cam_clip_axis
-ADD SP, 4 ; Caller cleans up args
-MOV P5, P0
-MOV [0xC980], P5
-; Assignment to cy
-MOV P6, 255
-MOV [0xC98A], P6
-; Assignment to cx
-; Call to cam_qmul
-MOV P7, [0xC980]
-PUSH P7
-MOV P0, [FP+8]
-PUSH P0
-MOV P1, [FP+4]
-POP P0
-SUB P0, P1
-PUSH P0
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-MOV P2, P0
-PUSH P2
-MOV P4, [FP+4]
-POP P2
-ADD P2, P4
-MOV [0xC988], P2
+JZ if_end_120
+; Assignment to cam_pad
+MOV P2, 0
+MOV [0x8010], P2
 if_end_120:
-if_end_116:
-if_end_112:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cam_frame_begin
+func_cam_frame_begin:
+ENTER 0
+; Call to set_layer
+MOV P4, [0x012A]
+PUSH P4
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P5, R0
+; Call to screen_fill
+MOV P6, [0x012E]
+PUSH P6
+CALL builtin_screen_fill
+; Args consumed by callee
+MOV P7, R0
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cam_frame_end
+func_cam_frame_end:
+ENTER 6
+; Call to layer_copy
+MOV P0, [0x012C]
+PUSH P0
+CALL builtin_layer_copy
+; Args consumed by callee
+MOV P1, R0
+; var s = ...
+; Call to get_rtc
+MOV P2, 1
+PUSH P2
+CALL builtin_get_rtc
+; Args consumed by callee
+MOV P4, P0
+MOV [0xCE80], P4
 ; If statement
-MOV P5, 0
+MOV P5, [0x8012]
 PUSH P5
-MOV P6, [0xC982]
+MOV P6, [0xCE80]
 POP P5
 CMP P5, P6
-JZ cmp_true_126
+JNZ cmp_true_126
 MOV P5, 0
 JMP cmp_end_127
 cmp_true_126:
 MOV P5, 1
 cmp_end_127:
 CMP P5, 0
-JZ if_else_125
-; Assignment to x2
-MOV P7, [0xC988]
-MOV [FP+8], P7
-; Assignment to y2
-MOV P0, [0xC98A]
-MOV [FP+10], P0
-; Assignment to c2
-; Call to cam_code
-MOV P1, [FP+10]
-PUSH P1
-MOV P2, [FP+8]
-PUSH P2
-CALL func_cam_code
-ADD SP, 4 ; Caller cleans up args
-MOV P4, P0
-MOV [0xC984], P4
-JMP if_end_124
-if_else_125:
-; Assignment to x1
-MOV P5, [0xC988]
-MOV [FP+4], P5
-; Assignment to y1
-MOV P6, [0xC98A]
-MOV [FP+6], P6
-; Assignment to c1
-; Call to cam_code
-MOV P7, [FP+6]
+JZ if_end_124
+; var err = ...
+MOV P7, [0x8014]
 PUSH P7
-MOV P0, [FP+4]
-PUSH P0
-CALL func_cam_code
-ADD SP, 4 ; Caller cleans up args
-MOV P1, P0
-MOV [0xC982], P1
-if_end_124:
-; Assignment to guard
-MOV P2, [0xC986]
-PUSH P2
-MOV P4, 1
-POP P2
-ADD P2, P4
-MOV [0xC986], P2
+MOV P0, 30
+POP P7
+SUB P7, P0
+MOV [0xCE82], P7
 ; If statement
-MOV P5, [0xC986]
-PUSH P5
-MOV P6, 4
-POP P5
-; Signed comparison (two's complement)
-CMP P5, P6
-JGT cmp_true_130
-MOV P5, 0
+MOV P1, -1
+PUSH P1
+MOV P2, [0xCE82]
+POP P1
+CMP P1, P2
+JZ cmp_true_130
+MOV P1, 0
 JMP cmp_end_131
 cmp_true_130:
-MOV P5, 1
-cmp_end_131:
-CMP P5, 0
-JZ if_end_128
-; Function return
-MOV P7, 0
-MOV P0, P7
-MOV R0, P7
-MOV SP, FP
-POP FP
-RET
-if_end_128:
-JMP while_start_100
-while_end_101:
-; Call to set_pos
-MOV P0, [FP+6]
-PUSH P0
-MOV P1, [FP+4]
-PUSH P1
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P2, R0
-; Call to set_color
-MOV P4, [FP+12]
-PUSH P4
-CALL builtin_set_color
-; Args consumed by callee
-MOV P5, R0
-; Call to draw_line
-MOV P6, [FP+10]
-PUSH P6
-MOV P7, [FP+8]
-PUSH P7
-CALL builtin_draw_line
-; Args consumed by callee
-MOV P0, R0
-; Function return
 MOV P1, 1
-MOV P0, P1
-MOV R0, P1
-MOV SP, FP
-POP FP
-RET
-; Function: cam_line
-func_cam_line:
-ENTER 40
-; var a = ...
-; Call to cam_transform
-MOV P2, [FP+8]
-PUSH P2
-MOV P4, [FP+6]
+cmp_end_131:
+CMP P1, 0
+JNZ sc_true_133
+MOV P4, 1
 PUSH P4
-MOV P5, [FP+4]
-PUSH P5
-; sret dest := &a
-MOV P7, FP
-SUB P7, 6
-MOV P6, P7
-PUSH P6 ; sret destination
-CALL func_cam_transform
-ADD SP, 8 ; Caller cleans up args
-; var b = ...
-; Call to cam_transform
-MOV P1, [FP+14]
-PUSH P1
-MOV P2, [FP+12]
-PUSH P2
-MOV P4, [FP+10]
-PUSH P4
-; sret dest := &b
-MOV P6, FP
-SUB P6, 12
-MOV P5, P6
-PUSH P5 ; sret destination
-CALL func_cam_transform
-ADD SP, 8 ; Caller cleans up args
-MOV P7, P0
+MOV P5, [0xCE82]
+POP P4
+CMP P4, P5
+JZ cmp_true_134
+MOV P4, 0
+JMP cmp_end_135
+cmp_true_134:
+MOV P4, 1
+cmp_end_135:
+CMP P4, 0
+JNZ sc_true_133
+MOV P1, 0
+JMP sc_end_132
+sc_true_133:
+MOV P1, 1
+sc_end_132:
+CMP P1, 0
+JZ if_end_128
+; Assignment to err
+MOV P6, 0
+MOV [0xCE82], P6
+if_end_128:
 ; If statement
-; Member read (z)
-MOV P0, FP
-SUB P0, 8
-MOV P1, [P0]
+MOV P7, 0
+PUSH P7
+MOV P0, [0xCE82]
+POP P7
+CMP P7, P0
+JNZ cmp_true_138
+MOV P7, 0
+JMP cmp_end_139
+cmp_true_138:
+MOV P7, 1
+cmp_end_139:
+CMP P7, 0
+JZ sc_false_141
+MOV P1, 2
 PUSH P1
-MOV P2, [0x0128]
+MOV P2, [0x8016]
+POP P1
+CMP P1, P2
+JZ cmp_true_142
+MOV P1, 0
+JMP cmp_end_143
+cmp_true_142:
+MOV P1, 1
+cmp_end_143:
+CMP P1, 0
+JZ sc_false_141
+MOV P7, 1
+JMP sc_end_140
+sc_false_141:
+MOV P7, 0
+sc_end_140:
+CMP P7, 0
+JZ if_end_136
+; var n = ...
+MOV P4, [0x8014]
+MOV [0xCE84], P4
+; Assignment to cam_pad
+MOV P5, [0x8010]
+PUSH P5
+MOV P6, 3600
+PUSH P6
+MOV P7, [0xCE84]
+POP P6
+CMP P6, 0
+JGE sdiv_pos_144
+NEG P6
+CMP P7, 0
+JGE sdiv_np_145
+NEG P7
+DIV P6, P7
+JMP sdiv_done_147
+sdiv_np_145:
+DIV P6, P7
+NEG P6
+JMP sdiv_done_147
+sdiv_pos_144:
+CMP P7, 0
+JGE sdiv_pp_146
+NEG P7
+DIV P6, P7
+NEG P6
+JMP sdiv_done_147
+sdiv_pp_146:
+DIV P6, P7
+sdiv_done_147:
+PUSH P6
+MOV P0, [0xCE82]
+POP P6
+MUL P6, P0
+PUSH P6
+MOV P1, 2
+POP P6
+CMP P6, 0
+JGE sdiv_pos_148
+NEG P6
+CMP P1, 0
+JGE sdiv_np_149
+NEG P1
+DIV P6, P1
+JMP sdiv_done_151
+sdiv_np_149:
+DIV P6, P1
+NEG P6
+JMP sdiv_done_151
+sdiv_pos_148:
+CMP P1, 0
+JGE sdiv_pp_150
+NEG P1
+DIV P6, P1
+NEG P6
+JMP sdiv_done_151
+sdiv_pp_150:
+DIV P6, P1
+sdiv_done_151:
+POP P5
+ADD P5, P6
+MOV [0x8010], P5
+; If statement
+MOV P2, [0x8010]
+PUSH P2
+MOV P4, 0
+POP P2
+; Signed comparison (two's complement)
+CMP P2, P4
+JLT cmp_true_154
+MOV P2, 0
+JMP cmp_end_155
+cmp_true_154:
+MOV P2, 1
+cmp_end_155:
+CMP P2, 0
+JZ if_end_152
+; Assignment to cam_pad
+MOV P5, 0
+MOV [0x8010], P5
+if_end_152:
+; If statement
+MOV P6, [0x8010]
+PUSH P6
+MOV P7, 3600
+POP P6
+; Signed comparison (two's complement)
+CMP P6, P7
+JGT cmp_true_158
+MOV P6, 0
+JMP cmp_end_159
+cmp_true_158:
+MOV P6, 1
+cmp_end_159:
+CMP P6, 0
+JZ if_end_156
+; Assignment to cam_pad
+MOV P0, 3600
+MOV [0x8010], P0
+if_end_156:
+if_end_136:
+; If statement
+MOV P1, [0x8016]
+PUSH P1
+MOV P2, 2
 POP P1
 ; Signed comparison (two's complement)
 CMP P1, P2
-JLT cmp_true_134
+JLT cmp_true_162
 MOV P1, 0
-JMP cmp_end_135
-cmp_true_134:
+JMP cmp_end_163
+cmp_true_162:
 MOV P1, 1
-cmp_end_135:
-PUSH P1
-; Member read (z)
-MOV P4, FP
-SUB P4, 2
-MOV P5, [P4]
-PUSH P5
-MOV P6, [0x0128]
-POP P5
-; Signed comparison (two's complement)
-CMP P5, P6
-JLT cmp_true_136
-MOV P5, 0
-JMP cmp_end_137
-cmp_true_136:
-MOV P5, 1
-cmp_end_137:
-POP P1
+cmp_end_163:
 CMP P1, 0
-JZ sc_false_138
-; Member read (z)
-MOV P7, FP
-SUB P7, 2
-MOV P0, [P7]
+JZ if_end_160
+; Assignment to cam_seen
+MOV P4, [0x8016]
+PUSH P4
+MOV P5, 1
+POP P4
+ADD P4, P5
+MOV [0x8016], P4
+if_end_160:
+; Assignment to cam_sec
+MOV P6, [0xCE80]
+MOV [0x8012], P6
+; Assignment to cam_frames
+MOV P7, 0
+MOV [0x8014], P7
+if_end_124:
+; Assignment to cam_frames
+MOV P0, [0x8014]
 PUSH P0
-MOV P1, [0x0128]
-POP P0
-; Signed comparison (two's complement)
-CMP P0, P1
-JLT cmp_true_140
-MOV P0, 0
-JMP cmp_end_141
-cmp_true_140:
-MOV P0, 1
-cmp_end_141:
-CMP P0, 0
-JZ sc_false_138
 MOV P1, 1
-JMP sc_end_139
-sc_false_138:
-MOV P1, 0
-sc_end_139:
-CMP P1, 0
-JZ if_end_132
-; Function return
-MOV SP, FP
-POP FP
-RET
-if_end_132:
-; var ax = ...
-; Call to cam_asr5
-; Member read (x)
-MOV P2, FP
-SUB P2, 6
-MOV P4, [P2]
-PUSH P4
-CALL func_cam_asr5
-ADD SP, 2 ; Caller cleans up args
-MOV P5, P0
-MOV [0xCA08], P5
-; var ay = ...
-; Call to cam_asr5
-; Member read (y)
-MOV P6, FP
-SUB P6, 4
-MOV P7, [P6]
-PUSH P7
-CALL func_cam_asr5
-ADD SP, 2 ; Caller cleans up args
-MOV [0xCA0A], P0
-; var az = ...
-; Call to cam_asr5
-; Member read (z)
-MOV P1, FP
-SUB P1, 2
-MOV P2, [P1]
-PUSH P2
-CALL func_cam_asr5
-ADD SP, 2 ; Caller cleans up args
-MOV P4, P0
-MOV [0xCA0C], P4
-; var bx = ...
-; Call to cam_asr5
-; Member read (x)
-MOV P5, FP
-SUB P5, 12
-MOV P6, [P5]
-PUSH P6
-CALL func_cam_asr5
-ADD SP, 2 ; Caller cleans up args
-MOV P7, P0
-MOV [0xCA0E], P7
-; var by = ...
-; Call to cam_asr5
-; Member read (y)
-MOV P0, FP
-SUB P0, 10
-MOV P1, [P0]
-PUSH P1
-CALL func_cam_asr5
-ADD SP, 2 ; Caller cleans up args
-MOV P2, P0
-MOV [0xCA10], P2
-; var bz = ...
-; Call to cam_asr5
-; Member read (z)
-MOV P4, FP
-SUB P4, 8
-MOV P5, [P4]
-PUSH P5
-CALL func_cam_asr5
-ADD SP, 2 ; Caller cleans up args
-MOV P6, P0
-MOV [0xCA12], P6
-; If statement
-; Member read (z)
-MOV P7, FP
-SUB P7, 2
-MOV P0, [P7]
-PUSH P0
-MOV P1, [0x0128]
-POP P0
-; Signed comparison (two's complement)
-CMP P0, P1
-JLT cmp_true_144
-MOV P0, 0
-JMP cmp_end_145
-cmp_true_144:
-MOV P0, 1
-cmp_end_145:
-CMP P0, 0
-JZ if_end_142
-; var t = ...
-MOV P2, [0xCA08]
-MOV [0xCA02], P2
-; Assignment to ax
-MOV P4, [0xCA0E]
-MOV [0xCA08], P4
-; Assignment to bx
-MOV P5, [0xCA02]
-MOV [0xCA0E], P5
-; Assignment to t
-MOV P6, [0xCA0A]
-MOV [0xCA02], P6
-; Assignment to ay
-MOV P7, [0xCA10]
-MOV [0xCA0A], P7
-; Assignment to by
-MOV P0, [0xCA02]
-MOV [0xCA10], P0
-; Assignment to t
-MOV P1, [0xCA0C]
-MOV [0xCA02], P1
-; Assignment to az
-MOV P2, [0xCA12]
-MOV [0xCA0C], P2
-; Assignment to bz
-MOV P4, [0xCA02]
-MOV [0xCA12], P4
-if_end_142:
-; If statement
-MOV P5, [0xCA12]
-PUSH P5
-MOV P6, [0x0126]
-POP P5
-; Signed comparison (two's complement)
-CMP P5, P6
-JLT cmp_true_148
-MOV P5, 0
-JMP cmp_end_149
-cmp_true_148:
-MOV P5, 1
-cmp_end_149:
-CMP P5, 0
-JZ if_end_146
-; var num = ...
-MOV P7, [0xCA0C]
-PUSH P7
-MOV P0, [0x0126]
-POP P7
-SUB P7, P0
-MOV [0xCA06], P7
-; var den = ...
-MOV P1, [0xCA0C]
-PUSH P1
-MOV P2, [0xCA12]
-POP P1
-SUB P1, P2
-MOV [0xCA04], P1
-; var f = ...
-; Call to cam_clip_frac
-MOV P4, [0xCA04]
-PUSH P4
-MOV P5, [0xCA06]
-PUSH P5
-CALL func_cam_clip_frac
-ADD SP, 4 ; Caller cleans up args
-MOV P6, P0
-MOV [0xCA00], P6
-; Assignment to bx
-; Call to cam_qmul
-MOV P7, [0xCA00]
-PUSH P7
-MOV P0, [0xCA0E]
-PUSH P0
-MOV P1, [0xCA08]
-POP P0
-SUB P0, P1
-PUSH P0
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-MOV P2, P0
-PUSH P2
-MOV P4, [0xCA08]
-POP P2
-ADD P2, P4
-MOV [0xCA0E], P2
-; Assignment to by
-; Call to cam_qmul
-MOV P5, [0xCA00]
-PUSH P5
-MOV P6, [0xCA10]
-PUSH P6
-MOV P7, [0xCA0A]
-POP P6
-SUB P6, P7
-PUSH P6
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-PUSH P0
-MOV P1, [0xCA0A]
 POP P0
 ADD P0, P1
-MOV [0xCA10], P0
-; Assignment to bz
-MOV P2, [0x0126]
-MOV [0xCA12], P2
-if_end_146:
-; If statement
-MOV P4, [0xCA0C]
-PUSH P4
-MOV P5, [0x0126]
-POP P4
-; Signed comparison (two's complement)
-CMP P4, P5
-JLT cmp_true_152
-MOV P4, 0
-JMP cmp_end_153
-cmp_true_152:
-MOV P4, 1
-cmp_end_153:
-CMP P4, 0
-JZ if_end_150
-; Assignment to az
-MOV P6, [0x0126]
-MOV [0xCA0C], P6
-if_end_150:
-; var sx1 = ...
-; Call to cam_offset
-MOV P7, [0xCA0C]
-PUSH P7
-MOV P0, [0xCA08]
-PUSH P0
-CALL func_cam_offset
-ADD SP, 4 ; Caller cleans up args
-MOV P1, P0
-PUSH P1
-MOV P2, [0x0122]
-POP P1
-ADD P1, P2
-MOV [0xCA14], P1
-; var sy1 = ...
-MOV P4, [0x0124]
-PUSH P4
-; Call to cam_offset
-MOV P5, [0xCA0C]
-PUSH P5
-MOV P6, [0xCA0A]
-PUSH P6
-CALL func_cam_offset
-ADD SP, 4 ; Caller cleans up args
-MOV P7, P0
-POP P4
-SUB P4, P7
-MOV [0xCA16], P4
-; var sx2 = ...
-; Call to cam_offset
-MOV P0, [0xCA12]
-PUSH P0
-MOV P1, [0xCA0E]
-PUSH P1
-CALL func_cam_offset
-ADD SP, 4 ; Caller cleans up args
-MOV P2, P0
+MOV [0x8014], P0
+; Call to cam_wait
+MOV P2, [0x8010]
 PUSH P2
-MOV P4, [0x0122]
-POP P2
-ADD P2, P4
-MOV [0xCA18], P2
-; var sy2 = ...
-MOV P5, [0x0124]
-PUSH P5
-; Call to cam_offset
-MOV P6, [0xCA12]
-PUSH P6
-MOV P7, [0xCA10]
-PUSH P7
-CALL func_cam_offset
-ADD SP, 4 ; Caller cleans up args
-POP P5
-SUB P5, P0
-MOV [0xCA1A], P5
-; Call to cam_draw_clipped
-MOV P1, [FP+16]
-PUSH P1
-MOV P2, [0xCA1A]
-PUSH P2
-MOV P4, [0xCA18]
-PUSH P4
-MOV P5, [0xCA16]
-PUSH P5
-MOV P6, [0xCA14]
-PUSH P6
-CALL func_cam_draw_clipped
-ADD SP, 10 ; Caller cleans up args
-MOV P7, P0
+CALL func_cam_wait
+ADD SP, 2 ; Caller cleans up args
+MOV P4, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -2055,260 +2259,266 @@ RET
 func_wall_run:
 ENTER 0
 ; Call to cam_line
-MOV P0, [FP+8]
+MOV P5, [FP+8]
+PUSH P5
+MOV P6, [FP+6]
+PUSH P6
+MOV P7, [FP+4]
+PUSH P7
+MOV P0, [0x0136]
 PUSH P0
 MOV P1, [FP+6]
 PUSH P1
 MOV P2, [FP+4]
 PUSH P2
-MOV P4, [0x0130]
+MOV P4, [0x0136]
+NEG P4
 PUSH P4
-MOV P5, [FP+6]
-PUSH P5
-MOV P6, [FP+4]
-PUSH P6
-MOV P7, [0x0130]
-NEG P7
-PUSH P7
 CALL func_cam_line
 ADD SP, 14 ; Caller cleans up args
+MOV P5, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
 ; Function: room
 func_room:
-ENTER 4
+ENTER 208
 ; var wall = ...
-MOV P1, 19
-MOV [0xCB00], P1
+MOV P6, 9
+MOV [0xCF80], P6
 ; var trim = ...
-MOV P2, 23
-MOV [0xCB02], P2
+MOV P7, 12
+MOV [0xCF82], P7
 ; Call to cam_line
-MOV P4, [0xCB00]
-PUSH P4
-MOV P5, 0
-PUSH P5
-MOV P6, [0x0130]
-POP P5
-SUB P5, P6
-PUSH P5
-MOV P7, [0x0132]
-PUSH P7
-MOV P0, [0x0130]
+MOV P0, [0xCF80]
 PUSH P0
 MOV P1, 0
 PUSH P1
-MOV P2, [0x0130]
+MOV P2, [0x0136]
 POP P1
 SUB P1, P2
 PUSH P1
-MOV P4, [0x0132]
+MOV P4, [0x0138]
 PUSH P4
-MOV P5, [0x0130]
+MOV P5, [0x0136]
+PUSH P5
+MOV P6, 0
+PUSH P6
+MOV P7, [0x0136]
+POP P6
+SUB P6, P7
+PUSH P6
+MOV P0, [0x0138]
+PUSH P0
+MOV P1, [0x0136]
+NEG P1
+PUSH P1
+CALL func_cam_line
+ADD SP, 14 ; Caller cleans up args
+MOV P2, P0
+; Call to cam_line
+MOV P4, [0xCF82]
+PUSH P4
+MOV P5, 0
+PUSH P5
+MOV P6, [0x0136]
+POP P5
+SUB P5, P6
+PUSH P5
+MOV P7, 16
+PUSH P7
+MOV P0, [0x0136]
+PUSH P0
+MOV P1, 0
+PUSH P1
+MOV P2, [0x0136]
+POP P1
+SUB P1, P2
+PUSH P1
+MOV P4, 16
+PUSH P4
+MOV P5, [0x0136]
 NEG P5
 PUSH P5
 CALL func_cam_line
 ADD SP, 14 ; Caller cleans up args
 MOV P6, P0
 ; Call to cam_line
-MOV P7, [0xCB02]
+MOV P7, [0xCF80]
 PUSH P7
 MOV P0, 0
 PUSH P0
-MOV P1, [0x0130]
+MOV P1, [0x0136]
 POP P0
 SUB P0, P1
 PUSH P0
-MOV P2, 16
+MOV P2, [0x013A]
 PUSH P2
-MOV P4, [0x0130]
+MOV P4, [0x0136]
 PUSH P4
 MOV P5, 0
 PUSH P5
-MOV P6, [0x0130]
+MOV P6, [0x0136]
 POP P5
 SUB P5, P6
 PUSH P5
-MOV P7, 16
-PUSH P7
-MOV P0, [0x0130]
-NEG P0
-PUSH P0
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P1, P0
-; Call to cam_line
-MOV P2, [0xCB00]
-PUSH P2
-MOV P4, 0
-PUSH P4
-MOV P5, [0x0130]
-POP P4
-SUB P4, P5
-PUSH P4
-MOV P6, [0x0134]
-PUSH P6
-MOV P7, [0x0130]
-PUSH P7
-MOV P0, 0
-PUSH P0
-MOV P1, [0x0130]
-POP P0
-SUB P0, P1
-PUSH P0
-MOV P2, [0x0134]
-PUSH P2
-MOV P4, [0x0130]
-NEG P4
-PUSH P4
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P5, P0
-; Call to cam_line
-MOV P6, [0xCB00]
-PUSH P6
-MOV P7, [0x0130]
-PUSH P7
-MOV P0, [0x0132]
-PUSH P0
-MOV P1, 0
-PUSH P1
-MOV P2, [0x0136]
-POP P1
-SUB P1, P2
-PUSH P1
-MOV P4, [0x0130]
-PUSH P4
-MOV P5, [0x0132]
-PUSH P5
-MOV P6, 0
-PUSH P6
-MOV P7, [0x0130]
-POP P6
-SUB P6, P7
-PUSH P6
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-; Call to cam_line
-MOV P1, [0xCB00]
-PUSH P1
-MOV P2, [0x0130]
-PUSH P2
-MOV P4, [0x0132]
-PUSH P4
-MOV P5, [0x0130]
-PUSH P5
-MOV P6, [0x0130]
-PUSH P6
-MOV P7, [0x0132]
+MOV P7, [0x013A]
 PUSH P7
 MOV P0, [0x0136]
-PUSH P0
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P1, P0
-; Call to cam_line
-MOV P2, [0xCB02]
-PUSH P2
-MOV P4, [0x0130]
-PUSH P4
-MOV P5, 16
-PUSH P5
-MOV P6, 0
-PUSH P6
-MOV P7, [0x0136]
-POP P6
-SUB P6, P7
-PUSH P6
-MOV P0, [0x0130]
-PUSH P0
-MOV P1, 16
-PUSH P1
-MOV P2, 0
-PUSH P2
-MOV P4, [0x0130]
-POP P2
-SUB P2, P4
-PUSH P2
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P5, P0
-; Call to cam_line
-MOV P6, [0xCB02]
-PUSH P6
-MOV P7, [0x0130]
-PUSH P7
-MOV P0, 16
-PUSH P0
-MOV P1, [0x0130]
-PUSH P1
-MOV P2, [0x0130]
-PUSH P2
-MOV P4, 16
-PUSH P4
-MOV P5, [0x0136]
-PUSH P5
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P6, P0
-; Call to cam_line
-MOV P7, [0xCB02]
-PUSH P7
-MOV P0, [0x0130]
-PUSH P0
-MOV P1, 64
-PUSH P1
-MOV P2, [0x0136]
-PUSH P2
-MOV P4, [0x0130]
-PUSH P4
-MOV P5, 64
-PUSH P5
-MOV P6, 0
-PUSH P6
-MOV P7, [0x0136]
-POP P6
-SUB P6, P7
-PUSH P6
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-; Call to cam_line
-MOV P1, [0xCB00]
-PUSH P1
-MOV P2, [0x0130]
-PUSH P2
-MOV P4, [0x0134]
-PUSH P4
-MOV P5, [0x0130]
-PUSH P5
-MOV P6, [0x0130]
-PUSH P6
-MOV P7, [0x0134]
-PUSH P7
-MOV P0, [0x0130]
 NEG P0
 PUSH P0
 CALL func_cam_line
 ADD SP, 14 ; Caller cleans up args
 MOV P1, P0
-; Call to cam_line
-MOV P2, [0xCB02]
+; var a = ...
+; Call to cam_transform
+MOV P2, [0x0136]
 PUSH P2
-MOV P4, [0x0130]
+MOV P4, [0x0138]
 PUSH P4
-MOV P5, 64
+MOV P5, 0
 PUSH P5
-MOV P6, 0
+MOV P6, [0x0136]
+POP P5
+SUB P5, P6
+PUSH P5
+; sret dest := &a
+MOV P0, FP
+SUB P0, 202
+MOV P7, P0
+PUSH P7 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P1, P0
+; var b = ...
+; Call to cam_transform
+MOV P2, [0x0136]
+PUSH P2
+MOV P4, [0x0138]
+PUSH P4
+MOV P5, 0
+PUSH P5
+MOV P6, [0x013C]
+POP P5
+SUB P5, P6
+PUSH P5
+; sret dest := &b
+MOV P0, FP
+SUB P0, 208
+MOV P7, P0
+PUSH P7 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P1, P0
+; Call to cam_line_v
+MOV P2, [0xCF80]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 204
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 206
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 208
+MOV P1, [P0]
+PUSH P1
+; Member read (z)
+MOV P2, FP
+SUB P2, 198
+MOV P4, [P2]
+PUSH P4
+; Member read (y)
+MOV P5, FP
+SUB P5, 200
+MOV P6, [P5]
 PUSH P6
-MOV P7, [0x0136]
-POP P6
-SUB P6, P7
-PUSH P6
-MOV P0, [0x0130]
+; Member read (x)
+MOV P7, FP
+SUB P7, 202
+MOV P0, [P7]
 PUSH P0
-MOV P1, [0x0132]
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P1, P0
+; var a = ...
+; Call to cam_transform
+MOV P2, [0x0136]
+PUSH P2
+MOV P4, [0x0138]
+PUSH P4
+MOV P5, [0x013C]
+PUSH P5
+; sret dest := &a
+MOV P7, FP
+SUB P7, 202
+MOV P6, P7
+PUSH P6 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+; var b = ...
+; Call to cam_transform
+MOV P1, [0x0136]
+PUSH P1
+MOV P2, [0x0138]
+PUSH P2
+MOV P4, [0x0136]
+PUSH P4
+; sret dest := &b
+MOV P6, FP
+SUB P6, 208
+MOV P5, P6
+PUSH P5 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P7, P0
+; Call to cam_line_v
+MOV P0, [0xCF80]
+PUSH P0
+; Member read (z)
+MOV P1, FP
+SUB P1, 204
+MOV P2, [P1]
+PUSH P2
+; Member read (y)
+MOV P4, FP
+SUB P4, 206
+MOV P5, [P4]
+PUSH P5
+; Member read (x)
+MOV P6, FP
+SUB P6, 208
+MOV P7, [P6]
+PUSH P7
+; Member read (z)
+MOV P0, FP
+SUB P0, 198
+MOV P1, [P0]
+PUSH P1
+; Member read (y)
+MOV P2, FP
+SUB P2, 200
+MOV P4, [P2]
+PUSH P4
+; Member read (x)
+MOV P5, FP
+SUB P5, 202
+MOV P6, [P5]
+PUSH P6
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P7, P0
+; var a = ...
+; Call to cam_transform
+MOV P0, [0x0136]
+PUSH P0
+MOV P1, 16
 PUSH P1
 MOV P2, 0
 PUSH P2
@@ -2316,95 +2526,530 @@ MOV P4, [0x0136]
 POP P2
 SUB P2, P4
 PUSH P2
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P5, P0
-; Call to cam_line
-MOV P6, [0xCB02]
-PUSH P6
-MOV P7, [0x0130]
-PUSH P7
-MOV P0, 64
+; sret dest := &a
+MOV P6, FP
+SUB P6, 202
+MOV P5, P6
+PUSH P5 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P7, P0
+; var b = ...
+; Call to cam_transform
+MOV P0, [0x0136]
 PUSH P0
-MOV P1, [0x0136]
-PUSH P1
-MOV P2, [0x0130]
-PUSH P2
-MOV P4, [0x0132]
-PUSH P4
-MOV P5, [0x0136]
-PUSH P5
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P6, P0
-; Call to cam_line
-MOV P7, [0xCB00]
-PUSH P7
-MOV P0, [0x0130]
-PUSH P0
-MOV P1, [0x0132]
+MOV P1, 16
 PUSH P1
 MOV P2, 0
 PUSH P2
-MOV P4, [0x0130]
+MOV P4, [0x013C]
 POP P2
 SUB P2, P4
 PUSH P2
-MOV P5, 0
-PUSH P5
-MOV P6, [0x0130]
-POP P5
-SUB P5, P6
-PUSH P5
-MOV P7, [0x0132]
-PUSH P7
-MOV P0, 0
+; sret dest := &b
+MOV P6, FP
+SUB P6, 208
+MOV P5, P6
+PUSH P5 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P7, P0
+; Call to cam_line_v
+MOV P0, [0xCF82]
 PUSH P0
-MOV P1, [0x0130]
-POP P0
-SUB P0, P1
-PUSH P0
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P2, P0
-; Call to cam_line
-MOV P4, [0xCB00]
-PUSH P4
-MOV P5, [0x0130]
-PUSH P5
-MOV P6, [0x0132]
-PUSH P6
-MOV P7, [0x0130]
-PUSH P7
-MOV P0, 0
-PUSH P0
-MOV P1, [0x0130]
-POP P0
-SUB P0, P1
-PUSH P0
-MOV P2, [0x0132]
+; Member read (z)
+MOV P1, FP
+SUB P1, 204
+MOV P2, [P1]
 PUSH P2
-MOV P4, [0x0130]
+; Member read (y)
+MOV P4, FP
+SUB P4, 206
+MOV P5, [P4]
+PUSH P5
+; Member read (x)
+MOV P6, FP
+SUB P6, 208
+MOV P7, [P6]
+PUSH P7
+; Member read (z)
+MOV P0, FP
+SUB P0, 198
+MOV P1, [P0]
+PUSH P1
+; Member read (y)
+MOV P2, FP
+SUB P2, 200
+MOV P4, [P2]
+PUSH P4
+; Member read (x)
+MOV P5, FP
+SUB P5, 202
+MOV P6, [P5]
+PUSH P6
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P7, P0
+; var a = ...
+; Call to cam_transform
+MOV P0, [0x0136]
+PUSH P0
+MOV P1, 16
+PUSH P1
+MOV P2, [0x013C]
+PUSH P2
+; sret dest := &a
+MOV P5, FP
+SUB P5, 202
+MOV P4, P5
+PUSH P4 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P6, P0
+; var b = ...
+; Call to cam_transform
+MOV P7, [0x0136]
+PUSH P7
+MOV P0, 16
+PUSH P0
+MOV P1, [0x0136]
+PUSH P1
+; sret dest := &b
+MOV P4, FP
+SUB P4, 208
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; Call to cam_line_v
+MOV P6, [0xCF82]
+PUSH P6
+; Member read (z)
+MOV P7, FP
+SUB P7, 204
+MOV P0, [P7]
+PUSH P0
+; Member read (y)
+MOV P1, FP
+SUB P1, 206
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, FP
+SUB P4, 208
+MOV P5, [P4]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 198
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 200
+MOV P1, [P0]
+PUSH P1
+; Member read (x)
+MOV P2, FP
+SUB P2, 202
+MOV P4, [P2]
+PUSH P4
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P5, P0
+; var a = ...
+; Call to cam_transform
+MOV P6, [0x0136]
+PUSH P6
+MOV P7, 64
+PUSH P7
+MOV P0, 0
+PUSH P0
+MOV P1, [0x013C]
+POP P0
+SUB P0, P1
+PUSH P0
+; sret dest := &a
+MOV P4, FP
+SUB P4, 202
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; var b = ...
+; Call to cam_transform
+MOV P6, [0x0136]
+PUSH P6
+MOV P7, 64
+PUSH P7
+MOV P0, [0x013C]
+PUSH P0
+; sret dest := &b
+MOV P2, FP
+SUB P2, 208
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; Call to cam_line_v
+MOV P5, [0xCF82]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 204
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 206
+MOV P1, [P0]
+PUSH P1
+; Member read (x)
+MOV P2, FP
+SUB P2, 208
+MOV P4, [P2]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 198
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 200
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 202
+MOV P2, [P1]
+PUSH P2
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P4, P0
+; Call to cam_line
+MOV P5, [0xCF80]
+PUSH P5
+MOV P6, [0x0136]
+PUSH P6
+MOV P7, [0x013A]
+PUSH P7
+MOV P0, [0x0136]
+PUSH P0
+MOV P1, [0x0136]
+PUSH P1
+MOV P2, [0x013A]
+PUSH P2
+MOV P4, [0x0136]
+NEG P4
 PUSH P4
 CALL func_cam_line
 ADD SP, 14 ; Caller cleans up args
 MOV P5, P0
-; Call to cam_line
-MOV P6, [0xCB02]
+; var a = ...
+; Call to cam_transform
+MOV P6, [0x0136]
 PUSH P6
-MOV P7, [0x0130]
+MOV P7, [0x0138]
 PUSH P7
-MOV P0, 16
+MOV P0, 0
 PUSH P0
-MOV P1, 0
+MOV P1, [0x013C]
+POP P0
+SUB P0, P1
+PUSH P0
+; sret dest := &a
+MOV P4, FP
+SUB P4, 202
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; var b = ...
+; Call to cam_transform
+MOV P6, [0x0136]
+PUSH P6
+MOV P7, 64
+PUSH P7
+MOV P0, 0
+PUSH P0
+MOV P1, [0x013C]
+POP P0
+SUB P0, P1
+PUSH P0
+; sret dest := &b
+MOV P4, FP
+SUB P4, 208
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; Call to cam_line_v
+MOV P6, [0xCF82]
+PUSH P6
+; Member read (z)
+MOV P7, FP
+SUB P7, 204
+MOV P0, [P7]
+PUSH P0
+; Member read (y)
+MOV P1, FP
+SUB P1, 206
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, FP
+SUB P4, 208
+MOV P5, [P4]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 198
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 200
+MOV P1, [P0]
 PUSH P1
-MOV P2, [0x0130]
-POP P1
-SUB P1, P2
+; Member read (x)
+MOV P2, FP
+SUB P2, 202
+MOV P4, [P2]
+PUSH P4
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P5, P0
+; var a = ...
+; Call to cam_transform
+MOV P6, [0x0136]
+PUSH P6
+MOV P7, [0x0138]
+PUSH P7
+MOV P0, [0x013C]
+PUSH P0
+; sret dest := &a
+MOV P2, FP
+SUB P2, 202
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, [0x0136]
+PUSH P5
+MOV P6, 64
+PUSH P6
+MOV P7, [0x013C]
+PUSH P7
+; sret dest := &b
+MOV P1, FP
+SUB P1, 208
+MOV P0, P1
+PUSH P0 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P2, P0
+; Call to cam_line_v
+MOV P4, [0xCF82]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 204
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 206
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 208
+MOV P2, [P1]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 198
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 200
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 202
+MOV P1, [P0]
 PUSH P1
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P2, P0
+; var a = ...
+; Call to cam_transform
 MOV P4, 0
 PUSH P4
-MOV P5, [0x0130]
+MOV P5, [0x0136]
+POP P4
+SUB P4, P5
+PUSH P4
+MOV P6, [0x0138]
+PUSH P6
+MOV P7, 0
+PUSH P7
+MOV P0, [0x0136]
+POP P7
+SUB P7, P0
+PUSH P7
+; sret dest := &a
+MOV P2, FP
+SUB P2, 202
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, [0x0136]
+PUSH P5
+MOV P6, [0x0138]
+PUSH P6
+MOV P7, 0
+PUSH P7
+MOV P0, [0x0136]
+POP P7
+SUB P7, P0
+PUSH P7
+; sret dest := &b
+MOV P2, FP
+SUB P2, 208
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; Call to cam_line_v
+MOV P5, [0xCF80]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 204
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 206
+MOV P1, [P0]
+PUSH P1
+; Member read (x)
+MOV P2, FP
+SUB P2, 208
+MOV P4, [P2]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 198
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 200
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 202
+MOV P2, [P1]
+PUSH P2
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P4, P0
+; var a = ...
+; Call to cam_transform
+MOV P5, 0
+PUSH P5
+MOV P6, [0x0136]
+POP P5
+SUB P5, P6
+PUSH P5
+MOV P7, [0x0138]
+PUSH P7
+MOV P0, [0x0136]
+PUSH P0
+; sret dest := &a
+MOV P2, FP
+SUB P2, 202
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, [0x0136]
+PUSH P5
+MOV P6, [0x0138]
+PUSH P6
+MOV P7, [0x0136]
+PUSH P7
+; sret dest := &b
+MOV P1, FP
+SUB P1, 208
+MOV P0, P1
+PUSH P0 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P2, P0
+; Call to cam_line_v
+MOV P4, [0xCF80]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 204
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 206
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 208
+MOV P2, [P1]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 198
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 200
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 202
+MOV P1, [P0]
+PUSH P1
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P2, P0
+; var a = ...
+; Call to cam_transform
+MOV P4, 0
+PUSH P4
+MOV P5, [0x0136]
 POP P4
 SUB P4, P5
 PUSH P4
@@ -2412,188 +3057,602 @@ MOV P6, 16
 PUSH P6
 MOV P7, 0
 PUSH P7
-MOV P0, [0x0130]
+MOV P0, [0x0136]
 POP P7
 SUB P7, P0
 PUSH P7
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P1, P0
-; Call to cam_line
-MOV P2, [0xCB02]
-PUSH P2
-MOV P4, [0x0130]
-PUSH P4
-MOV P5, 16
+; sret dest := &a
+MOV P2, FP
+SUB P2, 202
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, [0x0136]
 PUSH P5
-MOV P6, [0x0130]
+MOV P6, 16
 PUSH P6
 MOV P7, 0
 PUSH P7
-MOV P0, [0x0130]
+MOV P0, [0x0136]
 POP P7
 SUB P7, P0
 PUSH P7
-MOV P1, 16
+; sret dest := &b
+MOV P2, FP
+SUB P2, 208
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; Call to cam_line_v
+MOV P5, [0xCF82]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 204
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 206
+MOV P1, [P0]
 PUSH P1
-MOV P2, [0x0130]
+; Member read (x)
+MOV P2, FP
+SUB P2, 208
+MOV P4, [P2]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 198
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 200
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 202
+MOV P2, [P1]
 PUSH P2
-CALL func_cam_line
+CALL func_cam_line_v
 ADD SP, 14 ; Caller cleans up args
 MOV P4, P0
-; Call to cam_line
-MOV P5, [0xCB00]
+; var a = ...
+; Call to cam_transform
+MOV P5, 0
 PUSH P5
-MOV P6, [0x0130]
-PUSH P6
-MOV P7, [0x0134]
+MOV P6, [0x0136]
+POP P5
+SUB P5, P6
+PUSH P5
+MOV P7, 16
 PUSH P7
-MOV P0, 0
+MOV P0, [0x0136]
 PUSH P0
-MOV P1, [0x0130]
-POP P0
-SUB P0, P1
-PUSH P0
-MOV P2, 0
-PUSH P2
-MOV P4, [0x0130]
-POP P2
-SUB P2, P4
-PUSH P2
-MOV P5, [0x0134]
+; sret dest := &a
+MOV P2, FP
+SUB P2, 202
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, [0x0136]
 PUSH P5
-MOV P6, 0
+MOV P6, 16
 PUSH P6
-MOV P7, [0x0130]
-POP P6
-SUB P6, P7
-PUSH P6
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-; Call to cam_line
-MOV P1, [0xCB00]
-PUSH P1
-MOV P2, [0x0130]
-PUSH P2
-MOV P4, [0x0134]
+MOV P7, [0x0136]
+PUSH P7
+; sret dest := &b
+MOV P1, FP
+SUB P1, 208
+MOV P0, P1
+PUSH P0 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P2, P0
+; Call to cam_line_v
+MOV P4, [0xCF82]
 PUSH P4
-MOV P5, [0x0130]
-PUSH P5
-MOV P6, 0
+; Member read (z)
+MOV P5, FP
+SUB P5, 204
+MOV P6, [P5]
 PUSH P6
-MOV P7, [0x0130]
-POP P6
-SUB P6, P7
-PUSH P6
-MOV P0, [0x0134]
+; Member read (y)
+MOV P7, FP
+SUB P7, 206
+MOV P0, [P7]
 PUSH P0
-MOV P1, [0x0130]
+; Member read (x)
+MOV P1, FP
+SUB P1, 208
+MOV P2, [P1]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 198
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 200
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 202
+MOV P1, [P0]
 PUSH P1
-CALL func_cam_line
+CALL func_cam_line_v
 ADD SP, 14 ; Caller cleans up args
 MOV P2, P0
-; Call to cam_line
-MOV P4, [0xCB02]
+; var a = ...
+; Call to cam_transform
+MOV P4, 0
 PUSH P4
-MOV P5, 0
-PUSH P5
-MOV P6, [0x0130]
-POP P5
-SUB P5, P6
-PUSH P5
-MOV P7, [0x0134]
-PUSH P7
-MOV P0, 0
-PUSH P0
-MOV P1, [0x0130]
-POP P0
-SUB P0, P1
-PUSH P0
-MOV P2, 0
-PUSH P2
-MOV P4, [0x0130]
-POP P2
-SUB P2, P4
-PUSH P2
-MOV P5, [0x0132]
-PUSH P5
-MOV P6, 0
-PUSH P6
-MOV P7, [0x0130]
-POP P6
-SUB P6, P7
-PUSH P6
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-; Call to cam_line
-MOV P1, [0xCB02]
-PUSH P1
-MOV P2, 0
-PUSH P2
-MOV P4, [0x0130]
-POP P2
-SUB P2, P4
-PUSH P2
-MOV P5, [0x0134]
-PUSH P5
-MOV P6, [0x0130]
+MOV P5, [0x0136]
+POP P4
+SUB P4, P5
+PUSH P4
+MOV P6, [0x013A]
 PUSH P6
 MOV P7, 0
 PUSH P7
-MOV P0, [0x0130]
+MOV P0, [0x0136]
 POP P7
 SUB P7, P0
 PUSH P7
-MOV P1, [0x0132]
+; sret dest := &a
+MOV P2, FP
+SUB P2, 202
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, [0x0136]
+PUSH P5
+MOV P6, [0x013A]
+PUSH P6
+MOV P7, 0
+PUSH P7
+MOV P0, [0x0136]
+POP P7
+SUB P7, P0
+PUSH P7
+; sret dest := &b
+MOV P2, FP
+SUB P2, 208
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; Call to cam_line_v
+MOV P5, [0xCF80]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 204
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 206
+MOV P1, [P0]
 PUSH P1
-MOV P2, [0x0130]
+; Member read (x)
+MOV P2, FP
+SUB P2, 208
+MOV P4, [P2]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 198
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 200
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 202
+MOV P2, [P1]
 PUSH P2
-CALL func_cam_line
+CALL func_cam_line_v
 ADD SP, 14 ; Caller cleans up args
 MOV P4, P0
-; Call to cam_line
-MOV P5, [0xCB02]
-PUSH P5
-MOV P6, [0x0130]
-PUSH P6
-MOV P7, [0x0134]
-PUSH P7
-MOV P0, 0
-PUSH P0
-MOV P1, [0x0130]
-POP P0
-SUB P0, P1
-PUSH P0
-MOV P2, [0x0130]
-PUSH P2
-MOV P4, [0x0132]
-PUSH P4
+; var a = ...
+; Call to cam_transform
 MOV P5, 0
 PUSH P5
-MOV P6, [0x0130]
+MOV P6, [0x0136]
 POP P5
 SUB P5, P6
 PUSH P5
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P7, P0
-; Call to cam_line
-MOV P0, [0xCB02]
-PUSH P0
-MOV P1, [0x0130]
-PUSH P1
-MOV P2, [0x0134]
-PUSH P2
-MOV P4, [0x0130]
-PUSH P4
-MOV P5, [0x0130]
-PUSH P5
-MOV P6, [0x0132]
-PUSH P6
-MOV P7, [0x0130]
+MOV P7, [0x013A]
 PUSH P7
-CALL func_cam_line
+MOV P0, [0x0136]
+PUSH P0
+; sret dest := &a
+MOV P2, FP
+SUB P2, 202
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, [0x0136]
+PUSH P5
+MOV P6, [0x013A]
+PUSH P6
+MOV P7, [0x0136]
+PUSH P7
+; sret dest := &b
+MOV P1, FP
+SUB P1, 208
+MOV P0, P1
+PUSH P0 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P2, P0
+; Call to cam_line_v
+MOV P4, [0xCF80]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 204
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 206
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 208
+MOV P2, [P1]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 198
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 200
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 202
+MOV P1, [P0]
+PUSH P1
+CALL func_cam_line_v
 ADD SP, 14 ; Caller cleans up args
+MOV P2, P0
+; var a = ...
+; Call to cam_transform
+MOV P4, 0
+PUSH P4
+MOV P5, [0x0136]
+POP P4
+SUB P4, P5
+PUSH P4
+MOV P6, [0x0138]
+PUSH P6
+MOV P7, 0
+PUSH P7
+MOV P0, [0x0136]
+POP P7
+SUB P7, P0
+PUSH P7
+; sret dest := &a
+MOV P2, FP
+SUB P2, 202
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, 0
+PUSH P5
+MOV P6, [0x0136]
+POP P5
+SUB P5, P6
+PUSH P5
+MOV P7, [0x013A]
+PUSH P7
+MOV P0, 0
+PUSH P0
+MOV P1, [0x0136]
+POP P0
+SUB P0, P1
+PUSH P0
+; sret dest := &b
+MOV P4, FP
+SUB P4, 208
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; Call to cam_line_v
+MOV P6, [0xCF82]
+PUSH P6
+; Member read (z)
+MOV P7, FP
+SUB P7, 204
+MOV P0, [P7]
+PUSH P0
+; Member read (y)
+MOV P1, FP
+SUB P1, 206
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, FP
+SUB P4, 208
+MOV P5, [P4]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 198
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 200
+MOV P1, [P0]
+PUSH P1
+; Member read (x)
+MOV P2, FP
+SUB P2, 202
+MOV P4, [P2]
+PUSH P4
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P5, P0
+; var a = ...
+; Call to cam_transform
+MOV P6, 0
+PUSH P6
+MOV P7, [0x0136]
+POP P6
+SUB P6, P7
+PUSH P6
+MOV P0, [0x0138]
+PUSH P0
+MOV P1, [0x0136]
+PUSH P1
+; sret dest := &a
+MOV P4, FP
+SUB P4, 202
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; var b = ...
+; Call to cam_transform
+MOV P6, 0
+PUSH P6
+MOV P7, [0x0136]
+POP P6
+SUB P6, P7
+PUSH P6
+MOV P0, [0x013A]
+PUSH P0
+MOV P1, [0x0136]
+PUSH P1
+; sret dest := &b
+MOV P4, FP
+SUB P4, 208
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; Call to cam_line_v
+MOV P6, [0xCF82]
+PUSH P6
+; Member read (z)
+MOV P7, FP
+SUB P7, 204
+MOV P0, [P7]
+PUSH P0
+; Member read (y)
+MOV P1, FP
+SUB P1, 206
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, FP
+SUB P4, 208
+MOV P5, [P4]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 198
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 200
+MOV P1, [P0]
+PUSH P1
+; Member read (x)
+MOV P2, FP
+SUB P2, 202
+MOV P4, [P2]
+PUSH P4
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P5, P0
+; var a = ...
+; Call to cam_transform
+MOV P6, [0x0136]
+PUSH P6
+MOV P7, [0x0138]
+PUSH P7
+MOV P0, 0
+PUSH P0
+MOV P1, [0x0136]
+POP P0
+SUB P0, P1
+PUSH P0
+; sret dest := &a
+MOV P4, FP
+SUB P4, 202
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; var b = ...
+; Call to cam_transform
+MOV P6, [0x0136]
+PUSH P6
+MOV P7, [0x013A]
+PUSH P7
+MOV P0, 0
+PUSH P0
+MOV P1, [0x0136]
+POP P0
+SUB P0, P1
+PUSH P0
+; sret dest := &b
+MOV P4, FP
+SUB P4, 208
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; Call to cam_line_v
+MOV P6, [0xCF82]
+PUSH P6
+; Member read (z)
+MOV P7, FP
+SUB P7, 204
+MOV P0, [P7]
+PUSH P0
+; Member read (y)
+MOV P1, FP
+SUB P1, 206
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, FP
+SUB P4, 208
+MOV P5, [P4]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 198
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 200
+MOV P1, [P0]
+PUSH P1
+; Member read (x)
+MOV P2, FP
+SUB P2, 202
+MOV P4, [P2]
+PUSH P4
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P5, P0
+; var a = ...
+; Call to cam_transform
+MOV P6, [0x0136]
+PUSH P6
+MOV P7, [0x0138]
+PUSH P7
+MOV P0, [0x0136]
+PUSH P0
+; sret dest := &a
+MOV P2, FP
+SUB P2, 202
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, [0x0136]
+PUSH P5
+MOV P6, [0x013A]
+PUSH P6
+MOV P7, [0x0136]
+PUSH P7
+; sret dest := &b
+MOV P1, FP
+SUB P1, 208
+MOV P0, P1
+PUSH P0 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P2, P0
+; Call to cam_line_v
+MOV P4, [0xCF82]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 204
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 206
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 208
+MOV P2, [P1]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 198
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 200
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 202
+MOV P1, [P0]
+PUSH P1
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P2, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -2603,805 +3662,1344 @@ func_beams:
 ENTER 2
 ; For loop
 ; var k = ...
-MOV P1, -1
-MOV [0xCB80], P1
-for_start_154:
-MOV P2, [0xCB80]
-PUSH P2
-MOV P4, 1
-POP P2
-; Signed comparison (two's complement)
-CMP P2, P4
-JLE cmp_true_157
-MOV P2, 0
-JMP cmp_end_158
-cmp_true_157:
-MOV P2, 1
-cmp_end_158:
-CMP P2, 0
-JZ for_end_155
-; Call to cam_line
-MOV P5, 17
+MOV P4, -1
+MOV [0xD000], P4
+for_start_164:
+MOV P5, [0xD000]
 PUSH P5
-MOV P6, [0x0130]
-PUSH P6
-MOV P7, [0x0132]
-PUSH P7
-MOV P0, 96
-PUSH P0
-MOV P1, [0xCB80]
-POP P0
-MUL P0, P1
-PUSH P0
-MOV P2, 0
-PUSH P2
-MOV P4, [0x0130]
-POP P2
-SUB P2, P4
-PUSH P2
-MOV P5, [0x0132]
-PUSH P5
-MOV P6, 96
-PUSH P6
-MOV P7, [0xCB80]
-POP P6
-MUL P6, P7
-PUSH P6
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-; Call to cam_line
-MOV P1, 17
-PUSH P1
-MOV P2, [0x0130]
-PUSH P2
-MOV P4, [0x0134]
-PUSH P4
-MOV P5, 96
-PUSH P5
-MOV P6, [0xCB80]
+MOV P6, 1
 POP P5
-MUL P5, P6
-PUSH P5
-MOV P7, 0
+; Signed comparison (two's complement)
+CMP P5, P6
+JLE cmp_true_167
+MOV P5, 0
+JMP cmp_end_168
+cmp_true_167:
+MOV P5, 1
+cmp_end_168:
+CMP P5, 0
+JZ for_end_165
+; Call to cam_line
+MOV P7, 5
 PUSH P7
-MOV P0, [0x0130]
-POP P7
-SUB P7, P0
-PUSH P7
-MOV P1, [0x0134]
+MOV P0, [0x0136]
+PUSH P0
+MOV P1, [0x0138]
 PUSH P1
 MOV P2, 96
 PUSH P2
-MOV P4, [0xCB80]
+MOV P4, [0xD000]
 POP P2
 MUL P2, P4
 PUSH P2
+MOV P5, 0
+PUSH P5
+MOV P6, [0x0136]
+POP P5
+SUB P5, P6
+PUSH P5
+MOV P7, [0x0138]
+PUSH P7
+MOV P0, 96
+PUSH P0
+MOV P1, [0xD000]
+POP P0
+MUL P0, P1
+PUSH P0
 CALL func_cam_line
 ADD SP, 14 ; Caller cleans up args
-MOV P5, P0
-for_continue_156:
-; Wrap-check: save k before update
-MOV P6, [0xCB80]
+MOV P2, P0
+; Call to cam_line
+MOV P4, 5
+PUSH P4
+MOV P5, [0x0136]
+PUSH P5
+MOV P6, [0x013A]
 PUSH P6
-MOV P7, [0xCB80]
-MOV P0, P7
-INC P7
-MOV [0xCB80], P7
-; Wrap-check: compare k new vs old
+MOV P7, 96
+PUSH P7
+MOV P0, [0xD000]
+POP P7
+MUL P7, P0
+PUSH P7
+MOV P1, 0
+PUSH P1
+MOV P2, [0x0136]
 POP P1
-MOV P2, [0xCB80]
-CMP P2, P1
-JC for_end_155
-JMP for_start_154
-for_end_155:
+SUB P1, P2
+PUSH P1
+MOV P4, [0x013A]
+PUSH P4
+MOV P5, 96
+PUSH P5
+MOV P6, [0xD000]
+POP P5
+MUL P5, P6
+PUSH P5
+CALL func_cam_line
+ADD SP, 14 ; Caller cleans up args
+MOV P7, P0
+for_continue_166:
+; Wrap-check: save k before update
+MOV P0, [0xD000]
+PUSH P0
+MOV P1, [0xD000]
+MOV P2, P1
+INC P1
+MOV [0xD000], P1
+; Wrap-check: compare k new vs old
+POP P4
+MOV P5, [0xD000]
+CMP P5, P4
+JLT for_end_165
+JMP for_start_164
+for_end_165:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
 ; Function: marker
 func_marker:
-ENTER 4
+ENTER 148
 ; var mh = ...
-MOV P4, 24
-MOV [0xCC00], P4
+MOV P6, 24
+MOV [0xD080], P6
 ; var mc = ...
-MOV P5, 31
-MOV [0xCC02], P5
-; Call to cam_line
-MOV P6, [0xCC02]
-PUSH P6
+MOV P7, 15
+MOV [0xD082], P7
+; var a = ...
+; Call to cam_transform
+MOV P0, 96
+PUSH P0
+MOV P1, [0xD080]
+POP P0
+SUB P0, P1
+PUSH P0
+MOV P2, 0
+PUSH P2
+MOV P4, [0xD080]
+POP P2
+SUB P2, P4
+PUSH P2
+MOV P5, 96
+PUSH P5
+MOV P6, [0xD080]
+POP P5
+SUB P5, P6
+PUSH P5
+; sret dest := &a
+MOV P0, FP
+SUB P0, 142
+MOV P7, P0
+PUSH P7 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P1, P0
+; var b = ...
+; Call to cam_transform
+MOV P2, 96
+PUSH P2
+MOV P4, [0xD080]
+POP P2
+SUB P2, P4
+PUSH P2
+MOV P5, 0
+PUSH P5
+MOV P6, [0xD080]
+POP P5
+SUB P5, P6
+PUSH P5
 MOV P7, 96
 PUSH P7
-MOV P0, [0xCC00]
+MOV P0, [0xD080]
 POP P7
-SUB P7, P0
+ADD P7, P0
+PUSH P7
+; sret dest := &b
+MOV P2, FP
+SUB P2, 148
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; Call to cam_line_v
+MOV P5, [0xD082]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 144
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 146
+MOV P1, [P0]
+PUSH P1
+; Member read (x)
+MOV P2, FP
+SUB P2, 148
+MOV P4, [P2]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 138
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 140
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 142
+MOV P2, [P1]
+PUSH P2
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P4, P0
+; var a = ...
+; Call to cam_transform
+MOV P5, 96
+PUSH P5
+MOV P6, [0xD080]
+POP P5
+SUB P5, P6
+PUSH P5
+MOV P7, [0xD080]
+PUSH P7
+MOV P0, 96
+PUSH P0
+MOV P1, [0xD080]
+POP P0
+SUB P0, P1
+PUSH P0
+; sret dest := &a
+MOV P4, FP
+SUB P4, 142
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; var b = ...
+; Call to cam_transform
+MOV P6, 96
+PUSH P6
+MOV P7, [0xD080]
+POP P6
+SUB P6, P7
+PUSH P6
+MOV P0, [0xD080]
+PUSH P0
+MOV P1, 96
+PUSH P1
+MOV P2, [0xD080]
+POP P1
+ADD P1, P2
+PUSH P1
+; sret dest := &b
+MOV P5, FP
+SUB P5, 148
+MOV P4, P5
+PUSH P4 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P6, P0
+; Call to cam_line_v
+MOV P7, [0xD082]
+PUSH P7
+; Member read (z)
+MOV P0, FP
+SUB P0, 144
+MOV P1, [P0]
+PUSH P1
+; Member read (y)
+MOV P2, FP
+SUB P2, 146
+MOV P4, [P2]
+PUSH P4
+; Member read (x)
+MOV P5, FP
+SUB P5, 148
+MOV P6, [P5]
+PUSH P6
+; Member read (z)
+MOV P7, FP
+SUB P7, 138
+MOV P0, [P7]
+PUSH P0
+; Member read (y)
+MOV P1, FP
+SUB P1, 140
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, FP
+SUB P4, 142
+MOV P5, [P4]
+PUSH P5
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P6, P0
+; var a = ...
+; Call to cam_transform
+MOV P7, 96
+PUSH P7
+MOV P0, [0xD080]
+POP P7
+ADD P7, P0
 PUSH P7
 MOV P1, 0
 PUSH P1
-MOV P2, [0xCC00]
+MOV P2, [0xD080]
 POP P1
 SUB P1, P2
 PUSH P1
 MOV P4, 96
 PUSH P4
-MOV P5, [0xCC00]
+MOV P5, [0xD080]
 POP P4
-ADD P4, P5
+SUB P4, P5
+PUSH P4
+; sret dest := &a
+MOV P7, FP
+SUB P7, 142
+MOV P6, P7
+PUSH P6 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+; var b = ...
+; Call to cam_transform
+MOV P1, 96
+PUSH P1
+MOV P2, [0xD080]
+POP P1
+ADD P1, P2
+PUSH P1
+MOV P4, 0
+PUSH P4
+MOV P5, [0xD080]
+POP P4
+SUB P4, P5
 PUSH P4
 MOV P6, 96
 PUSH P6
-MOV P7, [0xCC00]
+MOV P7, [0xD080]
+POP P6
+ADD P6, P7
+PUSH P6
+; sret dest := &b
+MOV P1, FP
+SUB P1, 148
+MOV P0, P1
+PUSH P0 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P2, P0
+; Call to cam_line_v
+MOV P4, [0xD082]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 144
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 146
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 148
+MOV P2, [P1]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 138
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 140
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 142
+MOV P1, [P0]
+PUSH P1
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P2, P0
+; var a = ...
+; Call to cam_transform
+MOV P4, 96
+PUSH P4
+MOV P5, [0xD080]
+POP P4
+ADD P4, P5
+PUSH P4
+MOV P6, [0xD080]
+PUSH P6
+MOV P7, 96
+PUSH P7
+MOV P0, [0xD080]
+POP P7
+SUB P7, P0
+PUSH P7
+; sret dest := &a
+MOV P2, FP
+SUB P2, 142
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, 96
+PUSH P5
+MOV P6, [0xD080]
+POP P5
+ADD P5, P6
+PUSH P5
+MOV P7, [0xD080]
+PUSH P7
+MOV P0, 96
+PUSH P0
+MOV P1, [0xD080]
+POP P0
+ADD P0, P1
+PUSH P0
+; sret dest := &b
+MOV P4, FP
+SUB P4, 148
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; Call to cam_line_v
+MOV P6, [0xD082]
+PUSH P6
+; Member read (z)
+MOV P7, FP
+SUB P7, 144
+MOV P0, [P7]
+PUSH P0
+; Member read (y)
+MOV P1, FP
+SUB P1, 146
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, FP
+SUB P4, 148
+MOV P5, [P4]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 138
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 140
+MOV P1, [P0]
+PUSH P1
+; Member read (x)
+MOV P2, FP
+SUB P2, 142
+MOV P4, [P2]
+PUSH P4
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P5, P0
+; var a = ...
+; Call to cam_transform
+MOV P6, 96
+PUSH P6
+MOV P7, [0xD080]
 POP P6
 SUB P6, P7
 PUSH P6
 MOV P0, 0
 PUSH P0
-MOV P1, [0xCC00]
+MOV P1, [0xD080]
 POP P0
 SUB P0, P1
 PUSH P0
 MOV P2, 96
 PUSH P2
-MOV P4, [0xCC00]
+MOV P4, [0xD080]
 POP P2
 SUB P2, P4
 PUSH P2
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P5, P0
-; Call to cam_line
-MOV P6, [0xCC02]
-PUSH P6
-MOV P7, 96
-PUSH P7
-MOV P0, [0xCC00]
-POP P7
-SUB P7, P0
-PUSH P7
-MOV P1, [0xCC00]
-PUSH P1
-MOV P2, 96
-PUSH P2
-MOV P4, [0xCC00]
-POP P2
-ADD P2, P4
-PUSH P2
-MOV P5, 96
-PUSH P5
-MOV P6, [0xCC00]
-POP P5
-SUB P5, P6
-PUSH P5
-MOV P7, [0xCC00]
-PUSH P7
+; sret dest := &a
+MOV P6, FP
+SUB P6, 142
+MOV P5, P6
+PUSH P5 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P7, P0
+; var b = ...
+; Call to cam_transform
 MOV P0, 96
 PUSH P0
-MOV P1, [0xCC00]
-POP P0
-SUB P0, P1
-PUSH P0
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P2, P0
-; Call to cam_line
-MOV P4, [0xCC02]
-PUSH P4
-MOV P5, 96
-PUSH P5
-MOV P6, [0xCC00]
-POP P5
-ADD P5, P6
-PUSH P5
-MOV P7, 0
-PUSH P7
-MOV P0, [0xCC00]
-POP P7
-SUB P7, P0
-PUSH P7
-MOV P1, 96
-PUSH P1
-MOV P2, [0xCC00]
-POP P1
-ADD P1, P2
-PUSH P1
-MOV P4, 96
-PUSH P4
-MOV P5, [0xCC00]
-POP P4
-ADD P4, P5
-PUSH P4
-MOV P6, 0
-PUSH P6
-MOV P7, [0xCC00]
-POP P6
-SUB P6, P7
-PUSH P6
-MOV P0, 96
-PUSH P0
-MOV P1, [0xCC00]
-POP P0
-SUB P0, P1
-PUSH P0
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P2, P0
-; Call to cam_line
-MOV P4, [0xCC02]
-PUSH P4
-MOV P5, 96
-PUSH P5
-MOV P6, [0xCC00]
-POP P5
-ADD P5, P6
-PUSH P5
-MOV P7, [0xCC00]
-PUSH P7
-MOV P0, 96
-PUSH P0
-MOV P1, [0xCC00]
-POP P0
-ADD P0, P1
-PUSH P0
-MOV P2, 96
-PUSH P2
-MOV P4, [0xCC00]
-POP P2
-ADD P2, P4
-PUSH P2
-MOV P5, [0xCC00]
-PUSH P5
-MOV P6, 96
-PUSH P6
-MOV P7, [0xCC00]
-POP P6
-SUB P6, P7
-PUSH P6
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-; Call to cam_line
-MOV P1, [0xCC02]
-PUSH P1
-MOV P2, 96
-PUSH P2
-MOV P4, [0xCC00]
-POP P2
-ADD P2, P4
-PUSH P2
-MOV P5, 0
-PUSH P5
-MOV P6, [0xCC00]
-POP P5
-SUB P5, P6
-PUSH P5
-MOV P7, 96
-PUSH P7
-MOV P0, [0xCC00]
-POP P7
-SUB P7, P0
-PUSH P7
-MOV P1, 96
-PUSH P1
-MOV P2, [0xCC00]
-POP P1
-SUB P1, P2
-PUSH P1
-MOV P4, 0
-PUSH P4
-MOV P5, [0xCC00]
-POP P4
-SUB P4, P5
-PUSH P4
-MOV P6, 96
-PUSH P6
-MOV P7, [0xCC00]
-POP P6
-SUB P6, P7
-PUSH P6
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-; Call to cam_line
-MOV P1, [0xCC02]
-PUSH P1
-MOV P2, 96
-PUSH P2
-MOV P4, [0xCC00]
-POP P2
-ADD P2, P4
-PUSH P2
-MOV P5, 0
-PUSH P5
-MOV P6, [0xCC00]
-POP P5
-SUB P5, P6
-PUSH P5
-MOV P7, 96
-PUSH P7
-MOV P0, [0xCC00]
-POP P7
-ADD P7, P0
-PUSH P7
-MOV P1, 96
-PUSH P1
-MOV P2, [0xCC00]
-POP P1
-SUB P1, P2
-PUSH P1
-MOV P4, 0
-PUSH P4
-MOV P5, [0xCC00]
-POP P4
-SUB P4, P5
-PUSH P4
-MOV P6, 96
-PUSH P6
-MOV P7, [0xCC00]
-POP P6
-ADD P6, P7
-PUSH P6
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-; Call to cam_line
-MOV P1, [0xCC02]
-PUSH P1
-MOV P2, 96
-PUSH P2
-MOV P4, [0xCC00]
-POP P2
-ADD P2, P4
-PUSH P2
-MOV P5, [0xCC00]
-PUSH P5
-MOV P6, 96
-PUSH P6
-MOV P7, [0xCC00]
-POP P6
-SUB P6, P7
-PUSH P6
-MOV P0, 96
-PUSH P0
-MOV P1, [0xCC00]
-POP P0
-SUB P0, P1
-PUSH P0
-MOV P2, [0xCC00]
-PUSH P2
-MOV P4, 96
-PUSH P4
-MOV P5, [0xCC00]
-POP P4
-SUB P4, P5
-PUSH P4
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P6, P0
-; Call to cam_line
-MOV P7, [0xCC02]
-PUSH P7
-MOV P0, 96
-PUSH P0
-MOV P1, [0xCC00]
-POP P0
-ADD P0, P1
-PUSH P0
-MOV P2, [0xCC00]
-PUSH P2
-MOV P4, 96
-PUSH P4
-MOV P5, [0xCC00]
-POP P4
-ADD P4, P5
-PUSH P4
-MOV P6, 96
-PUSH P6
-MOV P7, [0xCC00]
-POP P6
-SUB P6, P7
-PUSH P6
-MOV P0, [0xCC00]
-PUSH P0
-MOV P1, 96
-PUSH P1
-MOV P2, [0xCC00]
-POP P1
-ADD P1, P2
-PUSH P1
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P4, P0
-; Call to cam_line
-MOV P5, [0xCC02]
-PUSH P5
-MOV P6, 96
-PUSH P6
-MOV P7, [0xCC00]
-POP P6
-SUB P6, P7
-PUSH P6
-MOV P0, [0xCC00]
-PUSH P0
-MOV P1, 96
-PUSH P1
-MOV P2, [0xCC00]
-POP P1
-SUB P1, P2
-PUSH P1
-MOV P4, 96
-PUSH P4
-MOV P5, [0xCC00]
-POP P4
-SUB P4, P5
-PUSH P4
-MOV P6, 0
-PUSH P6
-MOV P7, [0xCC00]
-POP P6
-SUB P6, P7
-PUSH P6
-MOV P0, 96
-PUSH P0
-MOV P1, [0xCC00]
-POP P0
-SUB P0, P1
-PUSH P0
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P2, P0
-; Call to cam_line
-MOV P4, [0xCC02]
-PUSH P4
-MOV P5, 96
-PUSH P5
-MOV P6, [0xCC00]
-POP P5
-SUB P5, P6
-PUSH P5
-MOV P7, [0xCC00]
-PUSH P7
-MOV P0, 96
-PUSH P0
-MOV P1, [0xCC00]
-POP P0
-ADD P0, P1
-PUSH P0
-MOV P2, 96
-PUSH P2
-MOV P4, [0xCC00]
-POP P2
-SUB P2, P4
-PUSH P2
-MOV P5, 0
-PUSH P5
-MOV P6, [0xCC00]
-POP P5
-SUB P5, P6
-PUSH P5
-MOV P7, 96
-PUSH P7
-MOV P0, [0xCC00]
-POP P7
-ADD P7, P0
-PUSH P7
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-MOV P1, P0
-; Call to cam_line
-MOV P2, [0xCC02]
-PUSH P2
-MOV P4, 96
-PUSH P4
-MOV P5, [0xCC00]
-POP P4
-ADD P4, P5
-PUSH P4
-MOV P6, [0xCC00]
-PUSH P6
-MOV P7, 96
-PUSH P7
-MOV P0, [0xCC00]
-POP P7
-SUB P7, P0
-PUSH P7
-MOV P1, 96
-PUSH P1
-MOV P2, [0xCC00]
-POP P1
-ADD P1, P2
-PUSH P1
-MOV P4, 0
-PUSH P4
-MOV P5, [0xCC00]
-POP P4
-SUB P4, P5
-PUSH P4
-MOV P6, 96
-PUSH P6
-MOV P7, [0xCC00]
-POP P6
-SUB P6, P7
-PUSH P6
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-; Call to cam_line
-MOV P1, [0xCC02]
-PUSH P1
-MOV P2, 96
-PUSH P2
-MOV P4, [0xCC00]
-POP P2
-ADD P2, P4
-PUSH P2
-MOV P5, [0xCC00]
-PUSH P5
-MOV P6, 96
-PUSH P6
-MOV P7, [0xCC00]
-POP P6
-ADD P6, P7
-PUSH P6
-MOV P0, 96
-PUSH P0
-MOV P1, [0xCC00]
+MOV P1, [0xD080]
 POP P0
 ADD P0, P1
 PUSH P0
 MOV P2, 0
 PUSH P2
-MOV P4, [0xCC00]
+MOV P4, [0xD080]
 POP P2
 SUB P2, P4
 PUSH P2
 MOV P5, 96
 PUSH P5
-MOV P6, [0xCC00]
+MOV P6, [0xD080]
+POP P5
+SUB P5, P6
+PUSH P5
+; sret dest := &b
+MOV P0, FP
+SUB P0, 148
+MOV P7, P0
+PUSH P7 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P1, P0
+; Call to cam_line_v
+MOV P2, [0xD082]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 144
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 146
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 148
+MOV P1, [P0]
+PUSH P1
+; Member read (z)
+MOV P2, FP
+SUB P2, 138
+MOV P4, [P2]
+PUSH P4
+; Member read (y)
+MOV P5, FP
+SUB P5, 140
+MOV P6, [P5]
+PUSH P6
+; Member read (x)
+MOV P7, FP
+SUB P7, 142
+MOV P0, [P7]
+PUSH P0
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P1, P0
+; var a = ...
+; Call to cam_transform
+MOV P2, 96
+PUSH P2
+MOV P4, [0xD080]
+POP P2
+SUB P2, P4
+PUSH P2
+MOV P5, 0
+PUSH P5
+MOV P6, [0xD080]
+POP P5
+SUB P5, P6
+PUSH P5
+MOV P7, 96
+PUSH P7
+MOV P0, [0xD080]
+POP P7
+ADD P7, P0
+PUSH P7
+; sret dest := &a
+MOV P2, FP
+SUB P2, 142
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, 96
+PUSH P5
+MOV P6, [0xD080]
 POP P5
 ADD P5, P6
 PUSH P5
-CALL func_cam_line
+MOV P7, 0
+PUSH P7
+MOV P0, [0xD080]
+POP P7
+SUB P7, P0
+PUSH P7
+MOV P1, 96
+PUSH P1
+MOV P2, [0xD080]
+POP P1
+ADD P1, P2
+PUSH P1
+; sret dest := &b
+MOV P5, FP
+SUB P5, 148
+MOV P4, P5
+PUSH P4 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P6, P0
+; Call to cam_line_v
+MOV P7, [0xD082]
+PUSH P7
+; Member read (z)
+MOV P0, FP
+SUB P0, 144
+MOV P1, [P0]
+PUSH P1
+; Member read (y)
+MOV P2, FP
+SUB P2, 146
+MOV P4, [P2]
+PUSH P4
+; Member read (x)
+MOV P5, FP
+SUB P5, 148
+MOV P6, [P5]
+PUSH P6
+; Member read (z)
+MOV P7, FP
+SUB P7, 138
+MOV P0, [P7]
+PUSH P0
+; Member read (y)
+MOV P1, FP
+SUB P1, 140
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, FP
+SUB P4, 142
+MOV P5, [P4]
+PUSH P5
+CALL func_cam_line_v
 ADD SP, 14 ; Caller cleans up args
+MOV P6, P0
+; var a = ...
+; Call to cam_transform
+MOV P7, 96
+PUSH P7
+MOV P0, [0xD080]
+POP P7
+SUB P7, P0
+PUSH P7
+MOV P1, [0xD080]
+PUSH P1
+MOV P2, 96
+PUSH P2
+MOV P4, [0xD080]
+POP P2
+SUB P2, P4
+PUSH P2
+; sret dest := &a
+MOV P6, FP
+SUB P6, 142
+MOV P5, P6
+PUSH P5 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
 MOV P7, P0
+; var b = ...
+; Call to cam_transform
+MOV P0, 96
+PUSH P0
+MOV P1, [0xD080]
+POP P0
+ADD P0, P1
+PUSH P0
+MOV P2, [0xD080]
+PUSH P2
+MOV P4, 96
+PUSH P4
+MOV P5, [0xD080]
+POP P4
+SUB P4, P5
+PUSH P4
+; sret dest := &b
+MOV P7, FP
+SUB P7, 148
+MOV P6, P7
+PUSH P6 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+; Call to cam_line_v
+MOV P1, [0xD082]
+PUSH P1
+; Member read (z)
+MOV P2, FP
+SUB P2, 144
+MOV P4, [P2]
+PUSH P4
+; Member read (y)
+MOV P5, FP
+SUB P5, 146
+MOV P6, [P5]
+PUSH P6
+; Member read (x)
+MOV P7, FP
+SUB P7, 148
+MOV P0, [P7]
+PUSH P0
+; Member read (z)
+MOV P1, FP
+SUB P1, 138
+MOV P2, [P1]
+PUSH P2
+; Member read (y)
+MOV P4, FP
+SUB P4, 140
+MOV P5, [P4]
+PUSH P5
+; Member read (x)
+MOV P6, FP
+SUB P6, 142
+MOV P7, [P6]
+PUSH P7
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+; var a = ...
+; Call to cam_transform
+MOV P1, 96
+PUSH P1
+MOV P2, [0xD080]
+POP P1
+SUB P1, P2
+PUSH P1
+MOV P4, [0xD080]
+PUSH P4
+MOV P5, 96
+PUSH P5
+MOV P6, [0xD080]
+POP P5
+ADD P5, P6
+PUSH P5
+; sret dest := &a
+MOV P0, FP
+SUB P0, 142
+MOV P7, P0
+PUSH P7 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P1, P0
+; var b = ...
+; Call to cam_transform
+MOV P2, 96
+PUSH P2
+MOV P4, [0xD080]
+POP P2
+ADD P2, P4
+PUSH P2
+MOV P5, [0xD080]
+PUSH P5
+MOV P6, 96
+PUSH P6
+MOV P7, [0xD080]
+POP P6
+ADD P6, P7
+PUSH P6
+; sret dest := &b
+MOV P1, FP
+SUB P1, 148
+MOV P0, P1
+PUSH P0 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P2, P0
+; Call to cam_line_v
+MOV P4, [0xD082]
+PUSH P4
+; Member read (z)
+MOV P5, FP
+SUB P5, 144
+MOV P6, [P5]
+PUSH P6
+; Member read (y)
+MOV P7, FP
+SUB P7, 146
+MOV P0, [P7]
+PUSH P0
+; Member read (x)
+MOV P1, FP
+SUB P1, 148
+MOV P2, [P1]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 138
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 140
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 142
+MOV P1, [P0]
+PUSH P1
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P2, P0
+; var a = ...
+; Call to cam_transform
+MOV P4, 96
+PUSH P4
+MOV P5, [0xD080]
+POP P4
+SUB P4, P5
+PUSH P4
+MOV P6, 0
+PUSH P6
+MOV P7, [0xD080]
+POP P6
+SUB P6, P7
+PUSH P6
+MOV P0, 96
+PUSH P0
+MOV P1, [0xD080]
+POP P0
+SUB P0, P1
+PUSH P0
+; sret dest := &a
+MOV P4, FP
+SUB P4, 142
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; var b = ...
+; Call to cam_transform
+MOV P6, 96
+PUSH P6
+MOV P7, [0xD080]
+POP P6
+SUB P6, P7
+PUSH P6
+MOV P0, [0xD080]
+PUSH P0
+MOV P1, 96
+PUSH P1
+MOV P2, [0xD080]
+POP P1
+SUB P1, P2
+PUSH P1
+; sret dest := &b
+MOV P5, FP
+SUB P5, 148
+MOV P4, P5
+PUSH P4 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P6, P0
+; Call to cam_line_v
+MOV P7, [0xD082]
+PUSH P7
+; Member read (z)
+MOV P0, FP
+SUB P0, 144
+MOV P1, [P0]
+PUSH P1
+; Member read (y)
+MOV P2, FP
+SUB P2, 146
+MOV P4, [P2]
+PUSH P4
+; Member read (x)
+MOV P5, FP
+SUB P5, 148
+MOV P6, [P5]
+PUSH P6
+; Member read (z)
+MOV P7, FP
+SUB P7, 138
+MOV P0, [P7]
+PUSH P0
+; Member read (y)
+MOV P1, FP
+SUB P1, 140
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, FP
+SUB P4, 142
+MOV P5, [P4]
+PUSH P5
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P6, P0
+; var a = ...
+; Call to cam_transform
+MOV P7, 96
+PUSH P7
+MOV P0, [0xD080]
+POP P7
+SUB P7, P0
+PUSH P7
+MOV P1, 0
+PUSH P1
+MOV P2, [0xD080]
+POP P1
+SUB P1, P2
+PUSH P1
+MOV P4, 96
+PUSH P4
+MOV P5, [0xD080]
+POP P4
+ADD P4, P5
+PUSH P4
+; sret dest := &a
+MOV P7, FP
+SUB P7, 142
+MOV P6, P7
+PUSH P6 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+; var b = ...
+; Call to cam_transform
+MOV P1, 96
+PUSH P1
+MOV P2, [0xD080]
+POP P1
+SUB P1, P2
+PUSH P1
+MOV P4, [0xD080]
+PUSH P4
+MOV P5, 96
+PUSH P5
+MOV P6, [0xD080]
+POP P5
+ADD P5, P6
+PUSH P5
+; sret dest := &b
+MOV P0, FP
+SUB P0, 148
+MOV P7, P0
+PUSH P7 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P1, P0
+; Call to cam_line_v
+MOV P2, [0xD082]
+PUSH P2
+; Member read (z)
+MOV P4, FP
+SUB P4, 144
+MOV P5, [P4]
+PUSH P5
+; Member read (y)
+MOV P6, FP
+SUB P6, 146
+MOV P7, [P6]
+PUSH P7
+; Member read (x)
+MOV P0, FP
+SUB P0, 148
+MOV P1, [P0]
+PUSH P1
+; Member read (z)
+MOV P2, FP
+SUB P2, 138
+MOV P4, [P2]
+PUSH P4
+; Member read (y)
+MOV P5, FP
+SUB P5, 140
+MOV P6, [P5]
+PUSH P6
+; Member read (x)
+MOV P7, FP
+SUB P7, 142
+MOV P0, [P7]
+PUSH P0
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P1, P0
+; var a = ...
+; Call to cam_transform
+MOV P2, 96
+PUSH P2
+MOV P4, [0xD080]
+POP P2
+ADD P2, P4
+PUSH P2
+MOV P5, 0
+PUSH P5
+MOV P6, [0xD080]
+POP P5
+SUB P5, P6
+PUSH P5
+MOV P7, 96
+PUSH P7
+MOV P0, [0xD080]
+POP P7
+SUB P7, P0
+PUSH P7
+; sret dest := &a
+MOV P2, FP
+SUB P2, 142
+MOV P1, P2
+PUSH P1 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P4, P0
+; var b = ...
+; Call to cam_transform
+MOV P5, 96
+PUSH P5
+MOV P6, [0xD080]
+POP P5
+ADD P5, P6
+PUSH P5
+MOV P7, [0xD080]
+PUSH P7
+MOV P0, 96
+PUSH P0
+MOV P1, [0xD080]
+POP P0
+SUB P0, P1
+PUSH P0
+; sret dest := &b
+MOV P4, FP
+SUB P4, 148
+MOV P2, P4
+PUSH P2 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P5, P0
+; Call to cam_line_v
+MOV P6, [0xD082]
+PUSH P6
+; Member read (z)
+MOV P7, FP
+SUB P7, 144
+MOV P0, [P7]
+PUSH P0
+; Member read (y)
+MOV P1, FP
+SUB P1, 146
+MOV P2, [P1]
+PUSH P2
+; Member read (x)
+MOV P4, FP
+SUB P4, 148
+MOV P5, [P4]
+PUSH P5
+; Member read (z)
+MOV P6, FP
+SUB P6, 138
+MOV P7, [P6]
+PUSH P7
+; Member read (y)
+MOV P0, FP
+SUB P0, 140
+MOV P1, [P0]
+PUSH P1
+; Member read (x)
+MOV P2, FP
+SUB P2, 142
+MOV P4, [P2]
+PUSH P4
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
+MOV P5, P0
+; var a = ...
+; Call to cam_transform
+MOV P6, 96
+PUSH P6
+MOV P7, [0xD080]
+POP P6
+ADD P6, P7
+PUSH P6
+MOV P0, 0
+PUSH P0
+MOV P1, [0xD080]
+POP P0
+SUB P0, P1
+PUSH P0
+MOV P2, 96
+PUSH P2
+MOV P4, [0xD080]
+POP P2
+ADD P2, P4
+PUSH P2
+; sret dest := &a
+MOV P6, FP
+SUB P6, 142
+MOV P5, P6
+PUSH P5 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+MOV P7, P0
+; var b = ...
+; Call to cam_transform
+MOV P0, 96
+PUSH P0
+MOV P1, [0xD080]
+POP P0
+ADD P0, P1
+PUSH P0
+MOV P2, [0xD080]
+PUSH P2
+MOV P4, 96
+PUSH P4
+MOV P5, [0xD080]
+POP P4
+ADD P4, P5
+PUSH P4
+; sret dest := &b
+MOV P7, FP
+SUB P7, 148
+MOV P6, P7
+PUSH P6 ; sret destination
+CALL func_cam_transform
+ADD SP, 8 ; Caller cleans up args
+; Call to cam_line_v
+MOV P1, [0xD082]
+PUSH P1
+; Member read (z)
+MOV P2, FP
+SUB P2, 144
+MOV P4, [P2]
+PUSH P4
+; Member read (y)
+MOV P5, FP
+SUB P5, 146
+MOV P6, [P5]
+PUSH P6
+; Member read (x)
+MOV P7, FP
+SUB P7, 148
+MOV P0, [P7]
+PUSH P0
+; Member read (z)
+MOV P1, FP
+SUB P1, 138
+MOV P2, [P1]
+PUSH P2
+; Member read (y)
+MOV P4, FP
+SUB P4, 140
+MOV P5, [P4]
+PUSH P5
+; Member read (x)
+MOV P6, FP
+SUB P6, 142
+MOV P7, [P6]
+PUSH P7
+CALL func_cam_line_v
+ADD SP, 14 ; Caller cleans up args
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
 ; Function: step
 func_step:
-ENTER 4
+ENTER 10
 ; If statement
-MOV P0, 0
-PUSH P0
-MOV P1, [FP+4]
-POP P0
-CMP P0, P1
-JZ cmp_true_161
-MOV P0, 0
-JMP cmp_end_162
-cmp_true_161:
-MOV P0, 1
-cmp_end_162:
-CMP P0, 0
-JZ if_end_159
+MOV P1, 0
+PUSH P1
+MOV P2, [FP+4]
+POP P1
+CMP P1, P2
+JZ cmp_true_171
+MOV P1, 0
+JMP cmp_end_172
+cmp_true_171:
+MOV P1, 1
+cmp_end_172:
+CMP P1, 0
+JZ if_end_169
 ; Assignment to cam_xq
-MOV P2, [0x8000]
-PUSH P2
-; Call to cam_qmul
-MOV P4, [0x8008]
+MOV P4, [0x8000]
 PUSH P4
-MOV P5, [0x012E]
+; Call to cam_qmul
+MOV P5, [0x8008]
 PUSH P5
+MOV P6, [0x0134]
+PUSH P6
 CALL func_cam_qmul
 ADD SP, 4 ; Caller cleans up args
-MOV P6, P0
-POP P2
-ADD P2, P6
-MOV [0x8000], P2
+MOV P7, P0
+POP P4
+ADD P4, P7
+MOV [0x8000], P4
 ; Assignment to cam_zq
-MOV P7, [0x8004]
+MOV P0, [0x8004]
+PUSH P0
+; Call to cam_qmul
+MOV P1, [0x800A]
+PUSH P1
+MOV P2, [0x0134]
+PUSH P2
+CALL func_cam_qmul
+ADD SP, 4 ; Caller cleans up args
+MOV P4, P0
+POP P0
+ADD P0, P4
+MOV [0x8004], P0
+if_end_169:
+; If statement
+MOV P5, 1
+PUSH P5
+MOV P6, [FP+4]
+POP P5
+CMP P5, P6
+JZ cmp_true_175
+MOV P5, 0
+JMP cmp_end_176
+cmp_true_175:
+MOV P5, 1
+cmp_end_176:
+CMP P5, 0
+JZ if_end_173
+; Assignment to cam_xq
+MOV P7, [0x8000]
 PUSH P7
 ; Call to cam_qmul
 MOV P0, [0x800A]
 PUSH P0
-MOV P1, [0x012E]
+MOV P1, [0x0134]
 PUSH P1
 CALL func_cam_qmul
 ADD SP, 4 ; Caller cleans up args
 MOV P2, P0
 POP P7
 ADD P7, P2
-MOV [0x8004], P7
-if_end_159:
-; If statement
-MOV P4, 1
-PUSH P4
-MOV P5, [FP+4]
-POP P4
-CMP P4, P5
-JZ cmp_true_165
-MOV P4, 0
-JMP cmp_end_166
-cmp_true_165:
-MOV P4, 1
-cmp_end_166:
-CMP P4, 0
-JZ if_end_163
-; Assignment to cam_xq
-MOV P6, [0x8000]
-PUSH P6
-; Call to cam_qmul
-MOV P7, [0x800A]
-PUSH P7
-MOV P0, [0x012E]
-PUSH P0
-CALL func_cam_qmul
-ADD SP, 4 ; Caller cleans up args
-MOV P1, P0
-POP P6
-ADD P6, P1
-MOV [0x8000], P6
+MOV [0x8000], P7
 ; Assignment to cam_zq
-MOV P2, [0x8004]
-PUSH P2
-; Call to cam_qmul
-MOV P4, [0x8008]
+MOV P4, [0x8004]
 PUSH P4
-MOV P5, [0x012E]
+; Call to cam_qmul
+MOV P5, [0x8008]
 PUSH P5
+MOV P6, [0x0134]
+PUSH P6
 CALL func_cam_qmul
 ADD SP, 4 ; Caller cleans up args
-MOV P6, P0
-POP P2
-SUB P2, P6
-MOV [0x8004], P2
-if_end_163:
+MOV P7, P0
+POP P4
+SUB P4, P7
+MOV [0x8004], P4
+if_end_173:
 ; If statement
-MOV P7, 2
-PUSH P7
-MOV P0, [FP+4]
-POP P7
-CMP P7, P0
-JZ cmp_true_169
-MOV P7, 0
-JMP cmp_end_170
-cmp_true_169:
-MOV P7, 1
-cmp_end_170:
-CMP P7, 0
-JZ if_end_167
+MOV P0, 2
+PUSH P0
+MOV P1, [FP+4]
+POP P0
+CMP P0, P1
+JZ cmp_true_179
+MOV P0, 0
+JMP cmp_end_180
+cmp_true_179:
+MOV P0, 1
+cmp_end_180:
+CMP P0, 0
+JZ if_end_177
 ; Assignment to cam_yaw
-MOV P1, [0x8006]
+MOV P2, [0x8006]
+PUSH P2
+MOV P4, [0x0132]
+POP P2
+ADD P2, P4
+MOV [0x8006], P2
+; Call to cam_calc_trig
+CALL func_cam_calc_trig
+MOV P5, P0
+if_end_177:
+; If statement
+MOV P6, 3
+PUSH P6
+MOV P7, [FP+4]
+POP P6
+CMP P6, P7
+JZ cmp_true_183
+MOV P6, 0
+JMP cmp_end_184
+cmp_true_183:
+MOV P6, 1
+cmp_end_184:
+CMP P6, 0
+JZ if_end_181
+; Assignment to cam_yaw
+MOV P0, [0x8006]
+PUSH P0
+MOV P1, 0
 PUSH P1
-MOV P2, [0x012C]
+MOV P2, [0x0132]
 POP P1
-ADD P1, P2
-MOV [0x8006], P1
+SUB P1, P2
+POP P0
+ADD P0, P1
+MOV [0x8006], P0
 ; Call to cam_calc_trig
 CALL func_cam_calc_trig
 MOV P4, P0
-if_end_167:
-; If statement
-MOV P5, 3
-PUSH P5
-MOV P6, [FP+4]
-POP P5
-CMP P5, P6
-JZ cmp_true_173
-MOV P5, 0
-JMP cmp_end_174
-cmp_true_173:
-MOV P5, 1
-cmp_end_174:
-CMP P5, 0
-JZ if_end_171
-; Assignment to cam_yaw
-MOV P7, [0x8006]
-PUSH P7
-MOV P0, 0
-PUSH P0
-MOV P1, [0x012C]
-POP P0
-SUB P0, P1
-POP P7
-ADD P7, P0
-MOV [0x8006], P7
-; Call to cam_calc_trig
-CALL func_cam_calc_trig
-MOV P2, P0
-if_end_171:
+if_end_181:
 ; var pocket = ...
-MOV P4, 0
-MOV [0xCC82], P4
-; If statement
-MOV P5, [0x8004]
-PUSH P5
-MOV P6, 1408
-POP P5
-; Signed comparison (two's complement)
-CMP P5, P6
-JGT cmp_true_177
 MOV P5, 0
-JMP cmp_end_178
-cmp_true_177:
-MOV P5, 1
-cmp_end_178:
-CMP P5, 0
-JZ if_end_175
+MOV [0xD108], P5
 ; If statement
-MOV P7, [0x8000]
-PUSH P7
-MOV P0, 320
-POP P7
+MOV P6, [0x8004]
+PUSH P6
+MOV P7, 1408
+POP P6
 ; Signed comparison (two's complement)
-CMP P7, P0
-JLT cmp_true_181
-MOV P7, 0
-JMP cmp_end_182
-cmp_true_181:
-MOV P7, 1
-cmp_end_182:
-PUSH P7
-MOV P1, [0x8000]
-PUSH P1
-MOV P2, -320
-POP P1
-; Signed comparison (two's complement)
-CMP P1, P2
-JGT cmp_true_183
-MOV P1, 0
-JMP cmp_end_184
-cmp_true_183:
-MOV P1, 1
-cmp_end_184:
-POP P7
-CMP P7, 0
-JZ sc_false_185
-MOV P4, [0x8000]
-PUSH P4
-MOV P5, -320
-POP P4
-; Signed comparison (two's complement)
-CMP P4, P5
+CMP P6, P7
 JGT cmp_true_187
-MOV P4, 0
+MOV P6, 0
 JMP cmp_end_188
 cmp_true_187:
-MOV P4, 1
-cmp_end_188:
-CMP P4, 0
-JZ sc_false_185
-MOV P7, 1
-JMP sc_end_186
-sc_false_185:
-MOV P7, 0
-sc_end_186:
-CMP P7, 0
-JZ if_end_179
-; Assignment to pocket
 MOV P6, 1
-MOV [0xCC82], P6
-if_end_179:
-if_end_175:
+cmp_end_188:
+CMP P6, 0
+JZ if_end_185
 ; If statement
-MOV P7, [0x8000]
-PUSH P7
-MOV P0, -1408
-POP P7
+MOV P0, [0x8000]
+PUSH P0
+MOV P1, 320
+POP P0
 ; Signed comparison (two's complement)
-CMP P7, P0
+CMP P0, P1
 JLT cmp_true_191
-MOV P7, 0
+MOV P0, 0
 JMP cmp_end_192
 cmp_true_191:
-MOV P7, 1
+MOV P0, 1
 cmp_end_192:
-CMP P7, 0
-JZ if_end_189
-; Assignment to cam_xq
-MOV P1, -1408
-MOV [0x8000], P1
-if_end_189:
-; If statement
+CMP P0, 0
+JZ sc_false_194
 MOV P2, [0x8000]
 PUSH P2
-MOV P4, 1408
+MOV P4, -320
 POP P2
 ; Signed comparison (two's complement)
 CMP P2, P4
@@ -3412,73 +5010,79 @@ cmp_true_195:
 MOV P2, 1
 cmp_end_196:
 CMP P2, 0
-JZ if_end_193
-; Assignment to cam_xq
-MOV P5, 1408
-MOV [0x8000], P5
-if_end_193:
+JZ sc_false_194
+MOV P0, 1
+JMP sc_end_193
+sc_false_194:
+MOV P0, 0
+sc_end_193:
+CMP P0, 0
+JZ if_end_189
+; Assignment to pocket
+MOV P5, 1
+MOV [0xD108], P5
+if_end_189:
+if_end_185:
 ; If statement
-MOV P6, 0
+MOV P6, [0x8000]
 PUSH P6
-MOV P7, [0xCC82]
+MOV P7, -1408
 POP P6
+; Signed comparison (two's complement)
 CMP P6, P7
-JZ cmp_true_199
+JLT cmp_true_199
 MOV P6, 0
 JMP cmp_end_200
 cmp_true_199:
 MOV P6, 1
 cmp_end_200:
 CMP P6, 0
-JZ if_else_198
+JZ if_end_197
+; Assignment to cam_xq
+MOV P0, -1408
+MOV [0x8000], P0
+if_end_197:
 ; If statement
-MOV P0, [0x8004]
-PUSH P0
-MOV P1, -1408
-POP P0
+MOV P1, [0x8000]
+PUSH P1
+MOV P2, 1408
+POP P1
 ; Signed comparison (two's complement)
-CMP P0, P1
-JLT cmp_true_203
-MOV P0, 0
+CMP P1, P2
+JGT cmp_true_203
+MOV P1, 0
 JMP cmp_end_204
 cmp_true_203:
-MOV P0, 1
+MOV P1, 1
 cmp_end_204:
-CMP P0, 0
+CMP P1, 0
 JZ if_end_201
-; Assignment to cam_zq
-MOV P2, -1408
-MOV [0x8004], P2
+; Assignment to cam_xq
+MOV P4, 1408
+MOV [0x8000], P4
 if_end_201:
 ; If statement
-MOV P4, [0x8004]
-PUSH P4
-MOV P5, 1408
-POP P4
-; Signed comparison (two's complement)
-CMP P4, P5
-JGT cmp_true_207
-MOV P4, 0
+MOV P5, 0
+PUSH P5
+MOV P6, [0xD108]
+POP P5
+CMP P5, P6
+JZ cmp_true_207
+MOV P5, 0
 JMP cmp_end_208
 cmp_true_207:
-MOV P4, 1
+MOV P5, 1
 cmp_end_208:
-CMP P4, 0
-JZ if_end_205
-; Assignment to cam_zq
-MOV P6, 1408
-MOV [0x8004], P6
-if_end_205:
-JMP if_end_197
-if_else_198:
+CMP P5, 0
+JZ if_else_206
 ; If statement
 MOV P7, [0x8004]
 PUSH P7
-MOV P0, 2304
+MOV P0, -1408
 POP P7
 ; Signed comparison (two's complement)
 CMP P7, P0
-JGT cmp_true_211
+JLT cmp_true_211
 MOV P7, 0
 JMP cmp_end_212
 cmp_true_211:
@@ -3487,17 +5091,17 @@ cmp_end_212:
 CMP P7, 0
 JZ if_end_209
 ; Assignment to cam_zq
-MOV P1, 2304
+MOV P1, -1408
 MOV [0x8004], P1
 if_end_209:
 ; If statement
 MOV P2, [0x8004]
 PUSH P2
-MOV P4, -1408
+MOV P4, 1408
 POP P2
 ; Signed comparison (two's complement)
 CMP P2, P4
-JLT cmp_true_215
+JGT cmp_true_215
 MOV P2, 0
 JMP cmp_end_216
 cmp_true_215:
@@ -3506,114 +5110,415 @@ cmp_end_216:
 CMP P2, 0
 JZ if_end_213
 ; Assignment to cam_zq
-MOV P5, -1408
+MOV P5, 1408
 MOV [0x8004], P5
 if_end_213:
-if_end_197:
-; Call to screen_fill
-MOV P6, 0
+JMP if_end_205
+if_else_206:
+; If statement
+MOV P6, [0x8004]
 PUSH P6
+MOV P7, 2304
+POP P6
+; Signed comparison (two's complement)
+CMP P6, P7
+JGT cmp_true_219
+MOV P6, 0
+JMP cmp_end_220
+cmp_true_219:
+MOV P6, 1
+cmp_end_220:
+CMP P6, 0
+JZ if_end_217
+; Assignment to cam_zq
+MOV P0, 2304
+MOV [0x8004], P0
+if_end_217:
+; If statement
+MOV P1, [0x8004]
+PUSH P1
+MOV P2, -1408
+POP P1
+; Signed comparison (two's complement)
+CMP P1, P2
+JLT cmp_true_223
+MOV P1, 0
+JMP cmp_end_224
+cmp_true_223:
+MOV P1, 1
+cmp_end_224:
+CMP P1, 0
+JZ if_end_221
+; Assignment to cam_zq
+MOV P4, -1408
+MOV [0x8004], P4
+if_end_221:
+if_end_205:
+; Call to set_layer
+MOV P5, [0x012A]
+PUSH P5
+CALL builtin_set_layer
+; Args consumed by callee
+MOV P6, R0
+; Call to screen_fill
+MOV P7, [0x012E]
+PUSH P7
 CALL builtin_screen_fill
 ; Args consumed by callee
-MOV P7, R0
+MOV P0, R0
 ; Call to room
 CALL func_room
+MOV P1, P0
 ; For loop
 ; var k = ...
-MOV P1, -1
-MOV [0xCC80], P1
-for_start_217:
-MOV P2, [0xCC80]
-PUSH P2
-MOV P4, 1
-POP P2
+MOV P2, -1
+MOV [0xD100], P2
+for_start_225:
+MOV P4, [0xD100]
+PUSH P4
+MOV P5, 1
+POP P4
 ; Signed comparison (two's complement)
-CMP P2, P4
-JLE cmp_true_220
-MOV P2, 0
-JMP cmp_end_221
-cmp_true_220:
-MOV P2, 1
-cmp_end_221:
-CMP P2, 0
-JZ for_end_218
+CMP P4, P5
+JLE cmp_true_228
+MOV P4, 0
+JMP cmp_end_229
+cmp_true_228:
+MOV P4, 1
+cmp_end_229:
+CMP P4, 0
+JZ for_end_226
 ; Call to cam_line
-MOV P5, 17
-PUSH P5
-MOV P6, [0x0130]
+MOV P6, 5
 PUSH P6
-MOV P7, [0x0132]
+MOV P7, [0x0136]
 PUSH P7
-MOV P0, 96
+MOV P0, [0x0138]
 PUSH P0
-MOV P1, [0xCC80]
-POP P0
-MUL P0, P1
-PUSH P0
-MOV P2, 0
+MOV P1, 96
+PUSH P1
+MOV P2, [0xD100]
+POP P1
+MUL P1, P2
+PUSH P1
+MOV P4, 0
+PUSH P4
+MOV P5, [0x0136]
+POP P4
+SUB P4, P5
+PUSH P4
+MOV P6, [0x0138]
+PUSH P6
+MOV P7, 96
+PUSH P7
+MOV P0, [0xD100]
+POP P7
+MUL P7, P0
+PUSH P7
+CALL func_cam_line
+ADD SP, 14 ; Caller cleans up args
+MOV P1, P0
+; Call to cam_line
+MOV P2, 5
 PUSH P2
-MOV P4, [0x0130]
-POP P2
-SUB P2, P4
-PUSH P2
-MOV P5, [0x0132]
+MOV P4, [0x0136]
+PUSH P4
+MOV P5, [0x013A]
 PUSH P5
 MOV P6, 96
 PUSH P6
-MOV P7, [0xCC80]
+MOV P7, [0xD100]
 POP P6
 MUL P6, P7
 PUSH P6
-CALL func_cam_line
-ADD SP, 14 ; Caller cleans up args
-; Call to cam_line
-MOV P1, 17
-PUSH P1
-MOV P2, [0x0130]
+MOV P0, 0
+PUSH P0
+MOV P1, [0x0136]
+POP P0
+SUB P0, P1
+PUSH P0
+MOV P2, [0x013A]
 PUSH P2
-MOV P4, [0x0134]
+MOV P4, 96
 PUSH P4
-MOV P5, 96
-PUSH P5
-MOV P6, [0xCC80]
-POP P5
-MUL P5, P6
-PUSH P5
-MOV P7, 0
-PUSH P7
-MOV P0, [0x0130]
-POP P7
-SUB P7, P0
-PUSH P7
-MOV P1, [0x0134]
-PUSH P1
-MOV P2, 96
-PUSH P2
-MOV P4, [0xCC80]
-POP P2
-MUL P2, P4
-PUSH P2
+MOV P5, [0xD100]
+POP P4
+MUL P4, P5
+PUSH P4
 CALL func_cam_line
 ADD SP, 14 ; Caller cleans up args
-MOV P5, P0
-for_continue_219:
+MOV P6, P0
+for_continue_227:
 ; Wrap-check: save k before update
-MOV P6, [0xCC80]
-PUSH P6
-MOV P7, [0xCC80]
-MOV P0, P7
-INC P7
-MOV [0xCC80], P7
+MOV P7, [0xD100]
+PUSH P7
+MOV P0, [0xD100]
+MOV P1, P0
+INC P0
+MOV [0xD100], P0
 ; Wrap-check: compare k new vs old
-POP P1
-MOV P2, [0xCC80]
-CMP P2, P1
-JC for_end_218
-JMP for_start_217
-for_end_218:
+POP P2
+MOV P4, [0xD100]
+CMP P4, P2
+JLT for_end_226
+JMP for_start_225
+for_end_226:
 ; Call to marker
 CALL func_marker
-MOV P4, P0
+MOV P5, P0
+; Call to layer_copy
+MOV P6, [0x012C]
+PUSH P6
+CALL builtin_layer_copy
+; Args consumed by callee
+MOV P7, R0
+; var s = ...
+; Call to get_rtc
+MOV P0, 1
+PUSH P0
+CALL builtin_get_rtc
+; Args consumed by callee
+MOV P1, P0
+MOV [0xD104], P1
+; If statement
+MOV P2, [0x8012]
+PUSH P2
+MOV P4, [0xD104]
+POP P2
+CMP P2, P4
+JNZ cmp_true_232
+MOV P2, 0
+JMP cmp_end_233
+cmp_true_232:
+MOV P2, 1
+cmp_end_233:
+CMP P2, 0
+JZ if_end_230
+; var err = ...
+MOV P5, [0x8014]
+PUSH P5
+MOV P6, 30
+POP P5
+SUB P5, P6
+MOV [0xD102], P5
+; If statement
+MOV P7, -1
+PUSH P7
+MOV P0, [0xD102]
+POP P7
+CMP P7, P0
+JZ cmp_true_236
+MOV P7, 0
+JMP cmp_end_237
+cmp_true_236:
+MOV P7, 1
+cmp_end_237:
+CMP P7, 0
+JNZ sc_true_239
+MOV P1, 1
+PUSH P1
+MOV P2, [0xD102]
+POP P1
+CMP P1, P2
+JZ cmp_true_240
+MOV P1, 0
+JMP cmp_end_241
+cmp_true_240:
+MOV P1, 1
+cmp_end_241:
+CMP P1, 0
+JNZ sc_true_239
+MOV P7, 0
+JMP sc_end_238
+sc_true_239:
+MOV P7, 1
+sc_end_238:
+CMP P7, 0
+JZ if_end_234
+; Assignment to err
+MOV P4, 0
+MOV [0xD102], P4
+if_end_234:
+; If statement
+MOV P5, 0
+PUSH P5
+MOV P6, [0xD102]
+POP P5
+CMP P5, P6
+JNZ cmp_true_244
+MOV P5, 0
+JMP cmp_end_245
+cmp_true_244:
+MOV P5, 1
+cmp_end_245:
+CMP P5, 0
+JZ sc_false_247
+MOV P7, 2
+PUSH P7
+MOV P0, [0x8016]
+POP P7
+CMP P7, P0
+JZ cmp_true_248
+MOV P7, 0
+JMP cmp_end_249
+cmp_true_248:
+MOV P7, 1
+cmp_end_249:
+CMP P7, 0
+JZ sc_false_247
+MOV P5, 1
+JMP sc_end_246
+sc_false_247:
+MOV P5, 0
+sc_end_246:
+CMP P5, 0
+JZ if_end_242
+; var n = ...
+MOV P1, [0x8014]
+MOV [0xD106], P1
+; Assignment to cam_pad
+MOV P2, [0x8010]
+PUSH P2
+MOV P4, 3600
+PUSH P4
+MOV P5, [0xD106]
+POP P4
+CMP P4, 0
+JGE sdiv_pos_250
+NEG P4
+CMP P5, 0
+JGE sdiv_np_251
+NEG P5
+DIV P4, P5
+JMP sdiv_done_253
+sdiv_np_251:
+DIV P4, P5
+NEG P4
+JMP sdiv_done_253
+sdiv_pos_250:
+CMP P5, 0
+JGE sdiv_pp_252
+NEG P5
+DIV P4, P5
+NEG P4
+JMP sdiv_done_253
+sdiv_pp_252:
+DIV P4, P5
+sdiv_done_253:
+PUSH P4
+MOV P6, [0xD102]
+POP P4
+MUL P4, P6
+PUSH P4
+MOV P7, 2
+POP P4
+CMP P4, 0
+JGE sdiv_pos_254
+NEG P4
+CMP P7, 0
+JGE sdiv_np_255
+NEG P7
+DIV P4, P7
+JMP sdiv_done_257
+sdiv_np_255:
+DIV P4, P7
+NEG P4
+JMP sdiv_done_257
+sdiv_pos_254:
+CMP P7, 0
+JGE sdiv_pp_256
+NEG P7
+DIV P4, P7
+NEG P4
+JMP sdiv_done_257
+sdiv_pp_256:
+DIV P4, P7
+sdiv_done_257:
+POP P2
+ADD P2, P4
+MOV [0x8010], P2
+; If statement
+MOV P0, [0x8010]
+PUSH P0
+MOV P1, 0
+POP P0
+; Signed comparison (two's complement)
+CMP P0, P1
+JLT cmp_true_260
+MOV P0, 0
+JMP cmp_end_261
+cmp_true_260:
+MOV P0, 1
+cmp_end_261:
+CMP P0, 0
+JZ if_end_258
+; Assignment to cam_pad
+MOV P2, 0
+MOV [0x8010], P2
+if_end_258:
+; If statement
+MOV P4, [0x8010]
+PUSH P4
+MOV P5, 3600
+POP P4
+; Signed comparison (two's complement)
+CMP P4, P5
+JGT cmp_true_264
+MOV P4, 0
+JMP cmp_end_265
+cmp_true_264:
+MOV P4, 1
+cmp_end_265:
+CMP P4, 0
+JZ if_end_262
+; Assignment to cam_pad
+MOV P6, 3600
+MOV [0x8010], P6
+if_end_262:
+if_end_242:
+; If statement
+MOV P7, [0x8016]
+PUSH P7
+MOV P0, 2
+POP P7
+; Signed comparison (two's complement)
+CMP P7, P0
+JLT cmp_true_268
+MOV P7, 0
+JMP cmp_end_269
+cmp_true_268:
+MOV P7, 1
+cmp_end_269:
+CMP P7, 0
+JZ if_end_266
+; Assignment to cam_seen
+MOV P1, [0x8016]
+PUSH P1
+MOV P2, 1
+POP P1
+ADD P1, P2
+MOV [0x8016], P1
+if_end_266:
+; Assignment to cam_sec
+MOV P4, [0xD104]
+MOV [0x8012], P4
+; Assignment to cam_frames
+MOV P5, 0
+MOV [0x8014], P5
+if_end_230:
+; Assignment to cam_frames
+MOV P6, [0x8014]
+PUSH P6
+MOV P7, 1
+POP P6
+ADD P6, P7
+MOV [0x8014], P6
+; Call to cam_wait
+MOV P0, [0x8010]
+PUSH P0
+CALL func_cam_wait
+ADD SP, 2 ; Caller cleans up args
+MOV P1, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -3621,245 +5526,239 @@ RET
 ; Function: main
 func_main:
 ENTER 4
-; Call to set_layer
-MOV P5, 0
-PUSH P5
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P6, R0
-; Call to screen_fill
-MOV P7, 0
-PUSH P7
-CALL builtin_screen_fill
-; Args consumed by callee
-MOV P0, R0
-; Call to cam_set
-MOV P1, 0
-PUSH P1
-MOV P2, -96
+; Call to cam_pace_init
+MOV P2, [0x0140]
 PUSH P2
-MOV P4, [0x0138]
-PUSH P4
+CALL func_cam_pace_init
+ADD SP, 2 ; Caller cleans up args
+MOV P4, P0
+; Call to cam_set
 MOV P5, 0
 PUSH P5
+MOV P6, -96
+PUSH P6
+MOV P7, [0x013E]
+PUSH P7
+MOV P0, 0
+PUSH P0
 CALL func_cam_set
 ADD SP, 8 ; Caller cleans up args
-MOV P6, P0
+MOV P1, P0
 ; For loop
 ; var f = ...
-MOV P7, 0
-MOV [0xCD00], P7
-for_start_222:
-MOV P0, [0xCD00]
-PUSH P0
-MOV P1, [0x012A]
-POP P0
-; Signed comparison (two's complement)
-CMP P0, P1
-JLT cmp_true_225
-MOV P0, 0
-JMP cmp_end_226
-cmp_true_225:
-MOV P0, 1
-cmp_end_226:
-CMP P0, 0
-JZ for_end_223
-; var op = ...
 MOV P2, 0
-MOV [0xCD02], P2
-; If statement
-MOV P4, [0xCD00]
+MOV [0xD182], P2
+for_start_270:
+MOV P4, [0xD182]
 PUSH P4
-MOV P5, 30
+MOV P5, [0x0130]
 POP P4
 ; Signed comparison (two's complement)
 CMP P4, P5
-JLT cmp_true_229
+JLT cmp_true_273
 MOV P4, 0
-JMP cmp_end_230
-cmp_true_229:
+JMP cmp_end_274
+cmp_true_273:
 MOV P4, 1
-cmp_end_230:
+cmp_end_274:
 CMP P4, 0
-JZ if_else_228
-; Assignment to op
+JZ for_end_271
+; var op = ...
 MOV P6, 0
-MOV [0xCD02], P6
-JMP if_end_227
-if_else_228:
+MOV [0xD180], P6
 ; If statement
-MOV P7, [0xCD00]
+MOV P7, [0xD182]
 PUSH P7
-MOV P0, 40
+MOV P0, 30
 POP P7
 ; Signed comparison (two's complement)
 CMP P7, P0
-JLT cmp_true_233
+JLT cmp_true_277
 MOV P7, 0
-JMP cmp_end_234
-cmp_true_233:
+JMP cmp_end_278
+cmp_true_277:
 MOV P7, 1
-cmp_end_234:
+cmp_end_278:
 CMP P7, 0
-JZ if_else_232
+JZ if_else_276
 ; Assignment to op
-MOV P1, 1
-MOV [0xCD02], P1
-JMP if_end_231
-if_else_232:
+MOV P1, 0
+MOV [0xD180], P1
+JMP if_end_275
+if_else_276:
 ; If statement
-MOV P2, [0xCD00]
+MOV P2, [0xD182]
 PUSH P2
-MOV P4, 70
+MOV P4, 40
 POP P2
 ; Signed comparison (two's complement)
 CMP P2, P4
-JLT cmp_true_237
+JLT cmp_true_281
 MOV P2, 0
-JMP cmp_end_238
-cmp_true_237:
+JMP cmp_end_282
+cmp_true_281:
 MOV P2, 1
-cmp_end_238:
+cmp_end_282:
 CMP P2, 0
-JZ if_else_236
+JZ if_else_280
 ; Assignment to op
-MOV P5, 0
-MOV [0xCD02], P5
-JMP if_end_235
-if_else_236:
+MOV P5, 1
+MOV [0xD180], P5
+JMP if_end_279
+if_else_280:
 ; If statement
-MOV P6, [0xCD00]
+MOV P6, [0xD182]
 PUSH P6
-MOV P7, 100
+MOV P7, 70
 POP P6
 ; Signed comparison (two's complement)
 CMP P6, P7
-JLT cmp_true_241
+JLT cmp_true_285
 MOV P6, 0
-JMP cmp_end_242
-cmp_true_241:
+JMP cmp_end_286
+cmp_true_285:
 MOV P6, 1
-cmp_end_242:
+cmp_end_286:
 CMP P6, 0
-JZ if_else_240
+JZ if_else_284
 ; Assignment to op
-MOV P0, 2
-MOV [0xCD02], P0
-JMP if_end_239
-if_else_240:
+MOV P0, 0
+MOV [0xD180], P0
+JMP if_end_283
+if_else_284:
 ; If statement
-MOV P1, [0xCD00]
+MOV P1, [0xD182]
 PUSH P1
-MOV P2, 130
+MOV P2, 100
 POP P1
 ; Signed comparison (two's complement)
 CMP P1, P2
-JLT cmp_true_245
+JLT cmp_true_289
 MOV P1, 0
-JMP cmp_end_246
-cmp_true_245:
+JMP cmp_end_290
+cmp_true_289:
 MOV P1, 1
-cmp_end_246:
+cmp_end_290:
 CMP P1, 0
-JZ if_else_244
+JZ if_else_288
 ; Assignment to op
-MOV P4, 0
-MOV [0xCD02], P4
-JMP if_end_243
-if_else_244:
+MOV P4, 2
+MOV [0xD180], P4
+JMP if_end_287
+if_else_288:
 ; If statement
-MOV P5, [0xCD00]
+MOV P5, [0xD182]
 PUSH P5
-MOV P6, 150
+MOV P6, 130
 POP P5
 ; Signed comparison (two's complement)
 CMP P5, P6
-JLT cmp_true_249
+JLT cmp_true_293
 MOV P5, 0
-JMP cmp_end_250
-cmp_true_249:
+JMP cmp_end_294
+cmp_true_293:
 MOV P5, 1
-cmp_end_250:
+cmp_end_294:
 CMP P5, 0
-JZ if_else_248
+JZ if_else_292
 ; Assignment to op
-MOV P7, 1
-MOV [0xCD02], P7
-JMP if_end_247
-if_else_248:
+MOV P7, 0
+MOV [0xD180], P7
+JMP if_end_291
+if_else_292:
 ; If statement
-MOV P0, [0xCD00]
+MOV P0, [0xD182]
 PUSH P0
-MOV P1, 170
+MOV P1, 150
 POP P0
 ; Signed comparison (two's complement)
 CMP P0, P1
-JLT cmp_true_253
+JLT cmp_true_297
 MOV P0, 0
-JMP cmp_end_254
-cmp_true_253:
+JMP cmp_end_298
+cmp_true_297:
 MOV P0, 1
-cmp_end_254:
+cmp_end_298:
 CMP P0, 0
-JZ if_else_252
+JZ if_else_296
 ; Assignment to op
-MOV P2, 3
-MOV [0xCD02], P2
-JMP if_end_251
-if_else_252:
-; Assignment to op
-MOV P4, 0
-MOV [0xCD02], P4
+MOV P2, 1
+MOV [0xD180], P2
+JMP if_end_295
+if_else_296:
 ; If statement
-MOV P5, [0xCD00]
-PUSH P5
-MOV P6, 185
-POP P5
+MOV P4, [0xD182]
+PUSH P4
+MOV P5, 170
+POP P4
 ; Signed comparison (two's complement)
-CMP P5, P6
-JGE cmp_true_257
-MOV P5, 0
-JMP cmp_end_258
-cmp_true_257:
-MOV P5, 1
-cmp_end_258:
-CMP P5, 0
-JZ if_end_255
+CMP P4, P5
+JLT cmp_true_301
+MOV P4, 0
+JMP cmp_end_302
+cmp_true_301:
+MOV P4, 1
+cmp_end_302:
+CMP P4, 0
+JZ if_else_300
 ; Assignment to op
-MOV P7, 2
-MOV [0xCD02], P7
-if_end_255:
-if_end_251:
-if_end_247:
-if_end_243:
-if_end_239:
-if_end_235:
-if_end_231:
-if_end_227:
-; Call to step
-MOV P0, [0xCD02]
+MOV P6, 3
+MOV [0xD180], P6
+JMP if_end_299
+if_else_300:
+; Assignment to op
+MOV P7, 0
+MOV [0xD180], P7
+; If statement
+MOV P0, [0xD182]
 PUSH P0
+MOV P1, 185
+POP P0
+; Signed comparison (two's complement)
+CMP P0, P1
+JGE cmp_true_305
+MOV P0, 0
+JMP cmp_end_306
+cmp_true_305:
+MOV P0, 1
+cmp_end_306:
+CMP P0, 0
+JZ if_end_303
+; Assignment to op
+MOV P2, 2
+MOV [0xD180], P2
+if_end_303:
+if_end_299:
+if_end_295:
+if_end_291:
+if_end_287:
+if_end_283:
+if_end_279:
+if_end_275:
+; Call to step
+MOV P4, [0xD180]
+PUSH P4
 CALL func_step
 ADD SP, 2 ; Caller cleans up args
-MOV P1, P0
-for_continue_224:
+MOV P5, P0
+for_continue_272:
 ; Wrap-check: save f before update
-MOV P2, [0xCD00]
-PUSH P2
-MOV P4, [0xCD00]
-MOV P5, P4
-INC P4
-MOV [0xCD00], P4
+MOV P6, [0xD182]
+PUSH P6
+MOV P7, [0xD182]
+MOV P0, P7
+INC P7
+MOV [0xD182], P7
 ; Wrap-check: compare f new vs old
-POP P6
-MOV P7, [0xCD00]
-CMP P7, P6
-JC for_end_223
-JMP for_start_222
-for_end_223:
+POP P1
+MOV P2, [0xD182]
+CMP P2, P1
+JLT for_end_271
+JMP for_start_270
+for_end_271:
 ; Call to halt
 CALL builtin_halt
-MOV P0, R0
+MOV P4, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -3900,8 +5799,37 @@ POP P2
 SLINE P1, P2
 PUSH P0
 RET
+builtin_draw_circle:
+; Args: radius, filled
+POP P0
+POP P1
+POP P2
+SCIRC P1, P2
+PUSH P0
+RET
+builtin_layer_copy:
+POP P0
+POP P1
+LCOPY P1
+PUSH P0
+RET
 builtin_halt:
 HLT
+builtin_get_rtc:
+; RTC chunk readout: get_rtc(chunk) returns one 16-bit word of
+; the 32-bit seconds-since-epoch counter. chunk 0 = HIGH word
+; (C1), chunk 1 = LOW word (C0). C0/C1 are read-only, so the
+; call never disturbs its own result (same POP-P3/POP-P1 axis
+; pattern as builtin_mouse_pos).
+POP P3
+POP P1
+MOV P0, C1
+CMP P1, 0
+JZ .get_rtc_done
+MOV P0, C0
+.get_rtc_done:
+PUSH P3
+RET
 ; Const data -- read-only program image
 ORG 0x0120
 ; const global 'CAM_FOCAL'
@@ -3924,37 +5852,53 @@ ORG 0x0128
 gvar_CAM_NEAR32:
 DW 1024
 ORG 0x012A
+; const global 'CAM_WORK'
+gvar_CAM_WORK:
+DW 0
+ORG 0x012C
+; const global 'CAM_SHOW'
+gvar_CAM_SHOW:
+DW 1
+ORG 0x012E
+; const global 'CAM_BG'
+gvar_CAM_BG:
+DW 16
+ORG 0x0130
 ; const global 'FRAMES'
 gvar_FRAMES:
 DW 200
-ORG 0x012C
+ORG 0x0132
 ; const global 'TURN_STEP'
 gvar_TURN_STEP:
 DW 12
-ORG 0x012E
+ORG 0x0134
 ; const global 'WALK'
 gvar_WALK:
 DW 32
-ORG 0x0130
+ORG 0x0136
 ; const global 'WALL'
 gvar_WALL:
 DW 192
-ORG 0x0132
+ORG 0x0138
 ; const global 'FLOOR'
 gvar_FLOOR:
 DW 65456
-ORG 0x0134
+ORG 0x013A
 ; const global 'CEIL'
 gvar_CEIL:
 DW 112
-ORG 0x0136
+ORG 0x013C
 ; const global 'DOOR'
 gvar_DOOR:
 DW 48
-ORG 0x0138
+ORG 0x013E
 ; const global 'EYE'
 gvar_EYE:
 DW 65496
+ORG 0x0140
+; const global 'DRAW_UNITS'
+gvar_DRAW_UNITS:
+DW 1300
 ORG 0x8000
 ; Global Variables
 gvar_cam_xq:
@@ -3972,4 +5916,12 @@ DW 256
 gvar_cam_px:
 DW 0
 gvar_cam_py:
+DW 0
+gvar_cam_pad:
+DW 0
+gvar_cam_sec:
+DW 0
+gvar_cam_frames:
+DW 0
+gvar_cam_seen:
 DW 0

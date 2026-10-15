@@ -746,10 +746,12 @@ class GFX:
             target_buffer = self._compositor.layers[0]
         if not self._write_char_bitmap(target_buffer, char_matrix, x, y, color, background):
             return
-        if self.VL != 0:
-            self._compositor.mark_dirty(self.VL)
-        else:
-            self._write_char_bitmap(self._compositor._screen, char_matrix, x, y, color, background)
+        # Mark the layer dirty for every VL, including 0. Layer 0 used to have
+        # the glyph written straight into the cached composite as well, which
+        # painted it over any opaque upper layer (SREAD and the display then
+        # disagreed with the real composite) and, with SBLEND active, blended
+        # it against composite pixels instead of layer 0's own.
+        self._compositor.mark_dirty(self.VL)
 
     def draw_string(self, text, x, y, color=0xFF, background=None, char_spacing=8):
         current_x = x

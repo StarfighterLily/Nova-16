@@ -5891,6 +5891,12 @@ class CodeGenerator:
                     if isinstance(value, BinaryOp) and isinstance(value.left, Identifier) \
                             and value.left.name == var_name:
                         return var_name
+                    # The ExpressionSimplifier canonicalizes commutative ops
+                    # constant-first, so "p += 32" arrives as p = 32 + p.
+                    if isinstance(value, BinaryOp) and value.op == '+' \
+                            and isinstance(value.right, Identifier) \
+                            and value.right.name == var_name:
+                        return var_name
 
             # Case 2: Postfix operator — var++ or var--
             elif isinstance(update, PostfixOp):
@@ -5898,6 +5904,41 @@ class CodeGenerator:
                     return var_name
 
         return None
+
+    def _wrap_step_direction(self, update, var_name: str) -> Optional[int]:
+        """Direction a for-loop update moves its variable: +1, -1, or None.
+
+        The wrap check must know which way the variable travels: an
+        incrementing variable has wrapped when new < old, a decrementing one
+        when new > old. Testing new < old for every loop made each
+        decrementing loop (i--, i -= n) exit after its first pass.
+
+        A constant step whose top bit is set (p += -4, i -= -1) reverses the
+        direction. A non-constant step is assumed positive, which is the
+        historical behavior for p += stride.
+        """
+        if isinstance(update, PostfixOp):
+            return 1 if update.op == '++' else -1 if update.op == '--' else None
+        if not isinstance(update, Assignment) or not isinstance(update.value, BinaryOp):
+            return None
+        value = update.value
+        if value.op == '+':
+            step = value.right if (isinstance(value.left, Identifier)
+                                   and value.left.name == var_name) else value.left
+            direction = 1
+        elif value.op == '-' and isinstance(value.left, Identifier) \
+                and value.left.name == var_name:
+            step = value.right
+            direction = -1
+        else:
+            return None
+        step_val = self._const_eval(step)
+        if step_val is not None:
+            if (step_val & 0xFFFF) == 0:
+                return None
+            if step_val & 0x8000:
+                direction = -direction
+        return direction
 
     def generate_for(self, for_stmt: For):
         self.emit_comment("For loop")
@@ -5940,9 +5981,23 @@ class CodeGenerator:
         # This check is suppressed in 'timer_interrupt' because that function
         # uses SP-relative locals (no ENTER/FP) and PUSH/POP would shift the
         # SP base, corrupting SP-relative addresses for all local variables.
+        #
+        # The check follows the loop's own arithmetic. Direction comes from
+        # the update (++/+= vs --/-=), and signedness from the condition: a
+        # loop whose condition compares signed (signed int counter, negative
+        # bound) runs in signed space, where crossing -1 -> 0 is ordinary
+        # counting and only a 32767 -> -32768 overflow is a wrap. An unsigned
+        # test there stopped every signed loop at -1.
         loop_var = self._detect_wrap_prone_var(for_stmt)
+        wrap_dir = None
+        wrap_signed = False
+        if loop_var is not None:
+            wrap_dir = self._wrap_step_direction(for_stmt.update, loop_var)
+            wrap_signed = self._use_signed_comparison(for_stmt.cond.left,
+                                                      for_stmt.cond.right)
         need_wrap_check = (
             loop_var is not None
+            and wrap_dir is not None
             and not self._is_interrupt_handler
         )
 
@@ -5985,19 +6040,26 @@ class CodeGenerator:
 
         if need_wrap_check:
             # Restore pre-update value and compare with new value to detect
-            # unsigned wrap-around.
-            # CMP new, old computes new - old.  If new < old (unsigned),
-            # the carry/borrow flag is set, indicating the variable wrapped
-            # from a high value back to a low value.
+            # wrap-around. CMP new, old computes new - old:
+            #   unsigned, up:   new < old  -> JC  (borrow)
+            #   unsigned, down: old < new  -> CMP old, new; JC
+            #   signed, up:     new < old  -> JLT (overflow past 32767)
+            #   signed, down:   new > old  -> JGT (overflow past -32768)
             self.emit_comment(f"Wrap-check: compare {loop_var} new vs old")
             old_reg = self.get_register()
             self.emit(f"    POP {old_reg}")
             new_reg = self.get_register()
             self._emit_local_load(new_reg, loop_var)
-            self.emit(f"    CMP {new_reg}, {old_reg}")
+            if wrap_signed:
+                self.emit(f"    CMP {new_reg}, {old_reg}")
+                self.emit(f"    {'JLT' if wrap_dir > 0 else 'JGT'} {end_label}")
+            elif wrap_dir > 0:
+                self.emit(f"    CMP {new_reg}, {old_reg}")
+                self.emit(f"    JC {end_label}")
+            else:
+                self.emit(f"    CMP {old_reg}, {new_reg}")
+                self.emit(f"    JC {end_label}")
             self.free_register()
-            # JC = jump if carry (borrow) → new < old → wrapped → exit
-            self.emit(f"    JC {end_label}")
 
         # Jump back to condition check
         self.emit(f"    JMP {start_label}")
@@ -6539,6 +6601,14 @@ class CodeGenerator:
                 return left_reg
 
             left_reg = self.generate_expression(expr.left)
+            # && and || must branch BEFORE the right operand is evaluated.
+            # They used to fall through the eager evaluation below and then
+            # evaluate the right side a second time inside the short-circuit,
+            # so every right operand ran unconditionally (a null guard like
+            # p != 0 && p->x dereferenced anyway, side effects doubled, and
+            # an n-term chain grew exponentially in code size).
+            if expr.op in ('&&', '||'):
+                return self._emit_short_circuit(expr, left_reg)
             # Preserve the left operand across right-hand evaluation:
             # expression temporaries are round-robin reused, and a deep RHS
             # (each array element read alone consumes two temporaries) would
@@ -6643,38 +6713,6 @@ class CodeGenerator:
                 self.emit(f"    MOV {left_reg}, 1")
                 self.emit_label(end_label)
 
-            elif op == '&&':
-                # Short-circuit AND: if left is 0, result is 0 (skip right)
-                false_label = self.generate_label("sc_false")
-                end_label = self.generate_label("sc_end")
-                self.emit(f"    CMP {left_reg}, 0")
-                self.emit(f"    JZ {false_label}")
-                right_reg = self.generate_expression(expr.right)
-                self.emit(f"    CMP {right_reg}, 0")
-                self.emit(f"    JZ {false_label}")
-                self.emit(f"    MOV {left_reg}, 1")
-                self.emit(f"    JMP {end_label}")
-                self.emit_label(false_label)
-                self.emit(f"    MOV {left_reg}, 0")
-                self.emit_label(end_label)
-                self.free_register()
-                return left_reg
-            elif op == '||':
-                # Short-circuit OR: if left is non-zero, result is 1 (skip right)
-                true_label = self.generate_label("sc_true")
-                end_label = self.generate_label("sc_end")
-                self.emit(f"    CMP {left_reg}, 0")
-                self.emit(f"    JNZ {true_label}")
-                right_reg = self.generate_expression(expr.right)
-                self.emit(f"    CMP {right_reg}, 0")
-                self.emit(f"    JNZ {true_label}")
-                self.emit(f"    MOV {left_reg}, 0")
-                self.emit(f"    JMP {end_label}")
-                self.emit_label(true_label)
-                self.emit(f"    MOV {left_reg}, 1")
-                self.emit_label(end_label)
-                self.free_register()
-                return left_reg
             elif op == '&': self.emit(f"    AND {left_reg}, {right_reg}")
             elif op == '|': self.emit(f"    OR {left_reg}, {right_reg}")
             elif op == '^': self.emit(f"    XOR {left_reg}, {right_reg}")
@@ -7490,6 +7528,42 @@ class CodeGenerator:
                 return 'signed_int'
             return 'int'
         return None
+
+    def _emit_short_circuit(self, expr: BinaryOp, left_reg: str) -> str:
+        """Emit && / || with the left operand already in left_reg.
+
+        The right operand is evaluated only on the path that needs it:
+        && skips it when the left is 0, || when the left is nonzero. The
+        result is a normalized 0/1 in left_reg. left_reg's value is dead
+        once it has been tested, so the right-hand evaluation may reuse it
+        freely; it is only written again with the final 0/1."""
+        right_reg = None
+        end_label = self.generate_label("sc_end")
+        if expr.op == '&&':
+            false_label = self.generate_label("sc_false")
+            self.emit(f"    CMP {left_reg}, 0")
+            self.emit(f"    JZ {false_label}")
+            right_reg = self.generate_expression(expr.right)
+            self.emit(f"    CMP {right_reg}, 0")
+            self.emit(f"    JZ {false_label}")
+            self.emit(f"    MOV {left_reg}, 1")
+            self.emit(f"    JMP {end_label}")
+            self.emit_label(false_label)
+            self.emit(f"    MOV {left_reg}, 0")
+        else:
+            true_label = self.generate_label("sc_true")
+            self.emit(f"    CMP {left_reg}, 0")
+            self.emit(f"    JNZ {true_label}")
+            right_reg = self.generate_expression(expr.right)
+            self.emit(f"    CMP {right_reg}, 0")
+            self.emit(f"    JNZ {true_label}")
+            self.emit(f"    MOV {left_reg}, 0")
+            self.emit(f"    JMP {end_label}")
+            self.emit_label(true_label)
+            self.emit(f"    MOV {left_reg}, 1")
+        self.emit_label(end_label)
+        self.free_register()
+        return left_reg
 
     def _use_signed_comparison(self, left: Expression,
                                right: Expression) -> bool:
