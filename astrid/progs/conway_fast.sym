@@ -1,0 +1,32 @@
+# Symbol table
+# Format: <symbol> <value>
+start 0x1000
+func_clear_board 0x100F
+func_seed_random 0x1021
+cws_row 0x102D
+cws_word 0x1031
+func_set_cell 0x1064
+shift_loop_1 0x10E4
+shift_end_0 0x10EF
+func_draw_board 0x1124
+cwd_row 0x1134
+cwd_word 0x113C
+cwd_bit 0x1148
+cwd_next 0x1166
+func_update_board 0x1185
+cwp_word 0x11A1
+cwu_row 0x1227
+cwu_word 0x1234
+cwu_next 0x12FE
+cwu_draw 0x1332
+cwu_birth 0x1346
+cwu_deaths 0x1364
+cwu_death 0x136C
+cwu_done 0x138E
+func_main 0x1396
+while_start_2 0x13CF
+while_end_3 0x13E7
+builtin_set_layer 0x13EF
+builtin_screen_fill 0x13FD
+builtin_peek2 0x140A
+builtin_poke2 0x1418

@@ -1,0 +1,347 @@
+// Conway's Game of Life for Nova-16 -- fast, full-screen version
+//
+// Simulates the whole 256x256 screen every generation. Cells off the edge of
+// the screen count as dead.
+//
+// conway.ast is the small, readable reference. It reads all 8 neighbours
+// through set_pos/read_screen for every cell, which costs a few hundred
+// instructions per cell. That is fine for a 32x32 board but takes tens of
+// millions of steps per generation at full screen. This version keeps the
+// rules and gets the cost down to about 220K steps per generation:
+//
+// 1. Bit-packed board in RAM. One bit per cell, 16 cells per word, so the
+//    board is 256 rows x 16 words. Bit 15 of a word is its leftmost cell.
+//    Each row has a zero pad word after it, and there is a zero pad row above
+//    row 0 and below row 255. Edge cells therefore read dead neighbours with
+//    no bounds checks.
+//
+// 2. Bit-sliced neighbour counting. The kernel works on a whole word at a
+//    time, so all 16 cells in it are counted in parallel with AND/OR/XOR.
+//    No cell is ever looked at on its own. For each row it computes:
+//        L, R    the row shifted one cell left/right (with bits carried in
+//                from the neighbouring words)
+//        M       L + R            (2-bit sum, 0..2: left + right neighbour)
+//        H       L + C + R        (2-bit sum, 0..3: a 3-cell horizontal run)
+//    A cell's neighbour count is then H(row above) + M(this row) +
+//    H(row below), added with bit-sliced adders. Each row's H and M are
+//    computed once and reused by the rows above and below it (a 3-row rolling
+//    window), so each word costs about 50 instructions.
+//
+// 3. Diff-only drawing. Each new word is XORed with the old one. Pixels are
+//    drawn only where that XOR has a bit set, using CTZ to jump straight to
+//    each changed cell. In a settled soup only a few percent of cells change
+//    per generation, so drawing is a small part of the cost.
+//
+// 4. Updated in place. Row r's new state overwrites row r right after
+//    being computed. That is safe because the rolling window already holds
+//    everything from row r that later rows need.
+//
+// Every Nova-16 instruction takes one emulator step, whatever its operands,
+// so memory operands like [P6-128] are as cheap as registers here. The kernel
+// uses them for the planes instead of trying to keep values in registers.
+//
+// Build the animated demo (random soup, runs forever):
+//     py -3.13 astrid/astrid_compiler.py astrid/progs/conway_fast.ast
+//     py -3.13 nova_assembler.py astrid/progs/conway_fast.asm
+// Deterministic headless run of N generations (fixed test pattern, then
+// halts):
+//     py -3.13 astrid/astrid_compiler.py astrid/progs/conway_fast.ast -DCONWAY_TEST=5
+
+#define ALIVE 0x0F
+#define DEAD  0x00
+
+// Extra spin iterations between generations (0 = run flat out).
+#ifndef GEN_DELAY
+#define GEN_DELAY 0
+#endif
+
+// ---- Memory map --------------------------------------------------------
+// The program image ends well below 0x5000. Globals start at 0x8000, so
+// 0x5000-0x7FFF is free for the board and planes.
+//
+// Board: 258 rows of 34 bytes (16 data words + 1 zero pad word).
+//   row -1  (zero pad)  BOARD .. BOARD+33
+//   row r   (0..255)    ROW0 + 34*r
+//   row 256 (zero pad)  ROW0 + 34*256
+#define BOARD      0x5000
+#define ROW_BYTES  34
+#define ROW0       0x5022
+#define BOARD_LEN  8772
+
+// Rolling-window planes. Each plane is 16 words (32 bytes), one word per
+// column word k. The kernel walks one pointer Q = QBASE + 2k and reaches
+// every plane it touches inside the signed 8-bit offset range:
+//   T0/T1   Q-128 / Q-96   H of the row above        (bit 0 / bit 1)
+//   M0/M1   Q-64  / Q-32   M of the current row
+//   B0/B1   Q+0   / Q+32   H of the row below        (written this row)
+//   N0/N1   Q+64  / Q+96   M of the row below        (written this row)
+//   C0/C1   CPLANE         H of the current row      (only touched by MEMCPY)
+// At the end of each row the window rolls with three 64-byte MEMCPYs:
+//   T <- C,  C <- B,  M <- N.
+#define PLANES     0x7300
+#define PLANES_LEN 320
+#define TPLANE     0x7300
+#define MPLANE     0x7340
+#define QBASE      0x7380
+#define NPLANE     0x73C0
+#define CPLANE     0x7400
+
+void clear_board() {
+    asm("MEMSET {0}, 0, {1}" : : "i"(BOARD), "i"(BOARD_LEN));
+}
+
+// Fill the board with a random soup at 37.5% density (a & (b | c)).
+void seed_random() {
+    asm("MOV P4, {0}\n"
+        "MOV R3, 0\n"
+        "cws_row:\n"
+        "MOV R2, 16\n"
+        "cws_word:\n"
+        "RND P0\n"
+        "RND P1\n"
+        "RND P2\n"
+        "OR P1, P2\n"
+        "AND P0, P1\n"
+        "MOV [P4], P0\n"
+        "ADD P4, 2\n"
+        "DEC R2\n"
+        "JNZ cws_word\n"
+        "ADD P4, 2\n"                 // skip the row's pad word
+        "INC R3\n"
+        "JNZ cws_row"
+        : : "i"(ROW0));
+}
+
+// Set one cell in the board (no screen write; draw_board() paints it).
+void set_cell(int x, int y) {
+    int addr = ROW0 + y * ROW_BYTES + (x >> 4) * 2;
+    poke2(addr, peek2(addr) | (1 << (15 - (x & 15))));
+}
+
+// Paint every live cell in the board onto a screen already filled with DEAD.
+void draw_board() {
+    asm("MOV VM, 0\n"
+        "MOV P4, {0}\n"
+        "MOV R3, 0\n"
+        "cwd_row:\n"
+        "MOV VY, R3\n"
+        "MOV R2, 15\n"              // R2 = x of the word's rightmost cell
+        "cwd_word:\n"
+        "MOV P1, [P4]\n"
+        "CMP P1, 0\n"
+        "JZ cwd_next\n"
+        "cwd_bit:\n"
+        "MOV P5, P1\n"
+        "CTZ P5\n"                    // lowest live bit -> x = R2 - bit
+        "MOV VX, R2\n"
+        "SUB VX, P5\n"
+        "SWRITE {1}\n"
+        "BCLR P1, P5\n"
+        "CMP P1, 0\n"
+        "JNZ cwd_bit\n"
+        "cwd_next:\n"
+        "ADD P4, 2\n"
+        "ADD R2, 16\n"                // carries out after the 16th word
+        "JNC cwd_word\n"
+        "ADD P4, 2\n"
+        "INC R3\n"                    // row counter; INC VY doesn't wrap in
+        "JNZ cwd_row"                 // the Python emulator
+        : : "i"(ROW0), "i"(ALIVE));
+}
+
+// Advance the whole board one generation and redraw the cells that changed.
+//
+// Register use: P4 = board word (row r+1, column word k), P6 = Q (planes),
+// R2 = x of the rightmost cell of word k, R3 = VY = r. P0-P3 and P5 are
+// scratch. (The row counter is R3 rather than VY itself because the Python
+// emulator's INC VY does not wrap 255 -> 0 and set Z the way INC R3 does.)
+void update_board() {
+    asm(
+        "MOV VM, 0\n"
+        "MEMSET {2}, 0, {3}\n"          // T = C = 0: the row above row 0 is dead
+
+        // Prime the window: compute H/M of row 0 into B/N, then roll so that
+        // T = H(-1) = 0, C = H(0), M = M(0).
+        "MOV P4, {0}\n"
+        "MOV P6, {5}\n"
+        "MOV R1, 16\n"
+        "cwp_word:\n"
+        "MOV P0, [P4]\n"     // L = (C >> 1) | (Cleft << 15)
+        "SHR P0, 1\n"
+        "MOV P1, [P4-2]\n"
+        "SHL P1, 15\n"
+        "OR P0, P1\n"
+        "MOV P1, [P4]\n"     // R = (C << 1) | (Cright >> 15)
+        "SHL P1, 1\n"
+        "MOV P2, [P4+2]\n"
+        "SHR P2, 15\n"
+        "OR P1, P2\n"
+        "MOV P2, P0\n"       // m0 = L ^ R
+        "XOR P2, P1\n"
+        "AND P0, P1\n"       // m1 = L & R
+        "MOV [P6+64], P2\n"
+        "MOV [P6+96], P0\n"
+        "MOV P1, P2\n"       // h0 = m0 ^ C
+        "XOR P1, [P4]\n"
+        "AND P2, [P4]\n"     // h1 = m1 | (m0 & C)
+        "OR P2, P0\n"
+        "MOV [P6], P1\n"
+        "MOV [P6+32], P2\n"
+        "ADD P4, 2\n"
+        "ADD P6, 2\n"
+        "DEC R1\n"
+        "JNZ cwp_word\n"
+        "MEMCPY {6}, {8}, 64\n"         // T <- C
+        "MEMCPY {8}, {5}, 64\n"         // C <- B
+        "MEMCPY {7}, {9}, 64\n"         // M <- N
+
+        // Main pass: for each row r, compute H/M of row r+1 (the row under P4)
+        // and combine them with T and M to get row r's next generation.
+        "MOV P4, {1}\n"
+        "MOV R3, 0\n"
+        "cwu_row:\n"
+        "MOV VY, R3\n"
+        "MOV P6, {5}\n"
+        "MOV R2, 15\n"
+        "cwu_word:\n"
+        // -- H and M of row r+1 (same as the priming loop) --
+        "MOV P0, [P4]\n"
+        "SHR P0, 1\n"
+        "MOV P1, [P4-2]\n"
+        "SHL P1, 15\n"
+        "OR P0, P1\n"
+        "MOV P1, [P4]\n"
+        "SHL P1, 1\n"
+        "MOV P2, [P4+2]\n"
+        "SHR P2, 15\n"
+        "OR P1, P2\n"
+        "MOV P2, P0\n"
+        "XOR P2, P1\n"
+        "AND P0, P1\n"
+        "MOV [P6+64], P2\n"
+        "MOV [P6+96], P0\n"
+        "MOV P1, P2\n"
+        "XOR P1, [P4]\n"
+        "AND P2, [P4]\n"
+        "OR P2, P0\n"
+        "MOV [P6], P1\n"                // P1 = b0, P2 = b1 stay live below
+        "MOV [P6+32], P2\n"
+        // -- neighbour count n = T + B + M, bit-sliced --
+        // (s1:s0) = T + B, with c1 = the 4s carry
+        "MOV P0, [P6-128]\n"
+        "XOR P0, P1\n"                  // s0 = t0 ^ b0
+        "AND P1, [P6-128]\n"            // c0 = t0 & b0
+        "MOV P3, [P6-96]\n"
+        "XOR P3, P2\n"                  // x1 = t1 ^ b1
+        "AND P2, [P6-96]\n"             // t1 & b1
+        "MOV P5, P3\n"
+        "XOR P5, P1\n"                  // s1 = x1 ^ c0
+        "AND P3, P1\n"
+        "OR P2, P3\n"                   // c1 = (t1 & b1) | (x1 & c0)
+        // (u1:u0) = (s1:s0) + M; any carry into the 4s means n >= 4
+        "MOV P1, P0\n"
+        "XOR P1, [P6-64]\n"             // u0 = s0 ^ m0
+        "AND P0, [P6-64]\n"             // k0 = s0 & m0
+        "MOV P3, P5\n"
+        "XOR P3, [P6-32]\n"
+        "XOR P3, P0\n"                  // u1 = s1 ^ m1 ^ k0
+        "AND P5, [P6-32]\n"             // s1 & m1
+        // The other half of that carry, k0 & (s1 ^ m1), forces u1 = 0
+        // anyway, so it can be left out of the n >= 4 mask.
+        "OR P2, P5\n"
+        "NOT P2\n"                      // ~(n >= 4)
+        "AND P3, P2\n"
+        // next = (n == 3) | (alive & n == 2) = u1 & (n < 4) & (u0 | alive)
+        "MOV P0, [P4-34]\n"             // old row r word
+        "OR P1, P0\n"
+        "AND P3, P1\n"
+        "MOV [P4-34], P3\n"
+        "XOR P0, P3\n"                  // changed cells
+        "JNZ cwu_draw\n"
+        "cwu_next:\n"
+        "ADD P4, 2\n"
+        "ADD P6, 2\n"
+        "ADD R2, 16\n"
+        "JNC cwu_word\n"
+        "ADD P4, 2\n"                   // skip the pad word
+        "MEMCPY {6}, {8}, 64\n"         // T <- C
+        "MEMCPY {8}, {5}, 64\n"         // C <- B
+        "MEMCPY {7}, {9}, 64\n"         // M <- N
+        "INC R3\n"
+        "JNZ cwu_row\n"
+        "JMP cwu_done\n"
+
+        // Redraw changed cells: births = diff & new, deaths = diff ^ births.
+        "cwu_draw:\n"
+        "MOV P1, P0\n"
+        "AND P1, P3\n"
+        "XOR P0, P1\n"
+        "CMP P1, 0\n"
+        "JZ cwu_deaths\n"
+        "cwu_birth:\n"
+        "MOV P5, P1\n"
+        "CTZ P5\n"
+        "MOV VX, R2\n"
+        "SUB VX, P5\n"
+        "SWRITE {10}\n"
+        "BCLR P1, P5\n"
+        "CMP P1, 0\n"
+        "JNZ cwu_birth\n"
+        "cwu_deaths:\n"
+        "CMP P0, 0\n"
+        "JZ cwu_next\n"
+        "cwu_death:\n"
+        "MOV P5, P0\n"
+        "CTZ P5\n"
+        "MOV VX, R2\n"
+        "SUB VX, P5\n"
+        "SWRITE {11}\n"
+        "BCLR P0, P5\n"
+        "CMP P0, 0\n"
+        "JNZ cwu_death\n"
+        "JMP cwu_next\n"
+        "cwu_done:"
+        : : "i"(ROW0), "i"(ROW0 + ROW_BYTES), "i"(PLANES), "i"(PLANES_LEN),
+            "i"(0), "i"(QBASE), "i"(TPLANE), "i"(MPLANE), "i"(CPLANE),
+            "i"(NPLANE), "i"(ALIVE), "i"(DEAD));
+}
+
+void main() {
+    set_layer(0);
+    screen_fill(DEAD);
+    clear_board();
+
+#ifdef CONWAY_TEST
+    // Deterministic pattern for headless checks; it exercises the screen
+    // edges, the word boundaries and the rolling window. CONWAY_TEST is the
+    // number of generations to run.
+    // Glider in the top-left corner (rows 0-2 touch the dead top edge).
+    set_cell(1, 0); set_cell(2, 1); set_cell(0, 2); set_cell(1, 2); set_cell(2, 2);
+    // Horizontal blinker straddling the word boundary at x = 15|16.
+    set_cell(15, 40); set_cell(16, 40); set_cell(17, 40);
+    // Vertical blinker on the right edge (x = 255).
+    set_cell(255, 100); set_cell(255, 101); set_cell(255, 102);
+    // R-pentomino near the middle, across the x = 127|128 boundary.
+    set_cell(128, 127); set_cell(129, 127); set_cell(127, 128); set_cell(128, 128);
+    set_cell(128, 129);
+    // Glider heading into the bottom-right corner.
+    set_cell(253, 252); set_cell(254, 253); set_cell(252, 254); set_cell(253, 254);
+    set_cell(254, 254);
+    // Block on the bottom edge across x = 31|32 (a still life).
+    set_cell(31, 254); set_cell(32, 254); set_cell(31, 255); set_cell(32, 255);
+    draw_board();
+    for (int g = 0; g < CONWAY_TEST; g++) {
+        update_board();
+    }
+#else
+    seed_random();
+    draw_board();
+    while (1) {
+        update_board();
+#if GEN_DELAY > 0
+        for (int d = 0; d < GEN_DELAY; d++) {
+        }
+#endif
+    }
+#endif
+}

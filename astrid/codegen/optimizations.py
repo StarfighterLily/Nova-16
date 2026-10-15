@@ -598,8 +598,22 @@ class FunctionInliner:
         callees = self._collect_callees(func)
         if func.name in callees:
             return False
+        # Inline asm is copied verbatim, so any labels it defines would be
+        # emitted once per inlined call site plus once in the (still emitted)
+        # out-of-line body -- duplicate labels the assembler silently accepts.
+        if self._contains_asm(func.body):
+            return False
         # simple control flow check
         return True
+
+    def _contains_asm(self, node) -> bool:
+        if isinstance(node, AsmBlock):
+            return True
+        if isinstance(node, list):
+            return any(self._contains_asm(n) for n in node)
+        if hasattr(node, '__dict__'):
+            return any(self._contains_asm(v) for v in vars(node).values())
+        return False
 
     def inline_functions(self, functions: List[FunctionDef], inlineable_names: Optional[Set[str]] = None) -> List[FunctionDef]:
         """Return a copy of the function list with a conservative set of calls inlined.
