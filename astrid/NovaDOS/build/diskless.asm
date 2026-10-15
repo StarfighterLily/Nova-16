@@ -7,282 +7,135 @@ CALL func_main
 HLT
 ORG 0x0100
 DW func_timer_isr  ; vector 0
+DS 14
+DW func_sys_isr  ; vector 4
 ORG 0x1100
-; Function: mem_init
-func_mem_init:
-ENTER 0
-; Assignment to mem_heap_next
-MOV P0, [0x4200]
-MOV [0x4202], P0
-; Assignment to mem_heap_used
-MOV P1, 0
-MOV [0x4206], P1
-; Assignment to mem_initialized
-MOV P2, 1
-MOV [0x4208], P2
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: kmalloc
-func_kmalloc:
-ENTER 4
-; If statement
-MOV P4, 0
-PUSH P4
-MOV P5, [0x4208]
-POP P4
-CMP P4, P5
-JZ cmp_true_2
-MOV P4, 0
-JMP cmp_end_3
-cmp_true_2:
-MOV P4, 1
-cmp_end_3:
-CMP P4, 0
-JZ if_end_0
-; Call to mem_init
-CALL func_mem_init
-MOV P6, P0
-if_end_0:
-; Assignment to aligned
-MOV P7, [FP+4]
-MOV [0xC880], P7
-; If statement
-MOV P0, 1
-PUSH P0
-MOV P1, [0xC880]
-POP P0
-AND P0, P1
-CMP P0, 0
-JZ if_end_4
-; Assignment to aligned
-MOV P2, [0xC880]
-PUSH P2
-MOV P4, 1
-POP P2
-ADD P2, P4
-MOV [0xC880], P2
-if_end_4:
-; If statement
-MOV P5, [0xC880]
-PUSH P5
-MOV P6, [0x4202]
-POP P5
-ADD P5, P6
-PUSH P5
-MOV P7, [0x4204]
-POP P5
-CMP P7, P5
-JC cmp_true_8
-MOV P5, 0
-JMP cmp_end_9
-cmp_true_8:
-MOV P5, 1
-cmp_end_9:
-CMP P5, 0
-JZ if_end_6
-; Function return
-MOV P0, 0
-MOV R0, P0
-MOV SP, FP
-POP FP
-RET
-if_end_6:
-; Assignment to addr
-MOV P1, [0x4202]
-MOV [0xC882], P1
-; Assignment to mem_heap_next
-MOV P2, [0x4202]
-PUSH P2
-MOV P4, [0xC880]
-POP P2
-ADD P2, P4
-MOV [0x4202], P2
-; Assignment to mem_heap_used
-MOV P5, [0x4206]
-PUSH P5
-MOV P6, [0xC880]
-POP P5
-ADD P5, P6
-MOV [0x4206], P5
-; Function return
-MOV P7, [0xC882]
-MOV P0, P7
-MOV R0, P7
-MOV SP, FP
-POP FP
-RET
-; Function: kfree
-func_kfree:
-ENTER 0
-; If statement
-MOV P0, 0
-PUSH P0
-MOV P1, [FP+4]
-POP P0
-CMP P0, P1
-JZ cmp_true_12
-MOV P0, 0
-JMP cmp_end_13
-cmp_true_12:
-MOV P0, 1
-cmp_end_13:
-CMP P0, 0
-JZ if_end_10
-; Function return
-MOV SP, FP
-POP FP
-RET
-if_end_10:
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
 ; Function: kmalloc_free
 func_kmalloc_free:
 ENTER 0
-; If statement
-MOV P2, 0
-PUSH P2
-MOV P4, [0x4208]
-POP P2
-CMP P2, P4
-JZ cmp_true_16
-MOV P2, 0
-JMP cmp_end_17
-cmp_true_16:
-MOV P2, 1
-cmp_end_17:
-CMP P2, 0
-JZ if_end_14
 ; Function return
-MOV P5, [0x4204]
-PUSH P5
+MOV P5, 22528
 MOV P6, [0x4200]
-POP P5
 SUB P5, P6
 MOV P0, P5
 MOV R0, P5
 MOV SP, FP
 POP FP
 RET
-if_end_14:
-; Function return
-MOV P7, [0x4204]
-PUSH P7
-MOV P0, [0x4202]
-POP P7
-SUB P7, P0
-MOV P0, P7
-MOV R0, P7
-MOV SP, FP
-POP FP
-RET
-; Function: wake_sleepers
-func_wake_sleepers:
-ENTER 2
-; For loop
-; Assignment to i
-MOV P1, 0
-MOV [0xCA00], P1
-for_start_18:
-MOV P2, [0xCA00]
-PUSH P2
-MOV P4, 16
-POP P2
-CMP P2, P4
-JC cmp_true_21
-MOV P2, 0
-JMP cmp_end_22
-cmp_true_21:
-MOV P2, 1
-cmp_end_22:
-CMP P2, 0
-JZ for_end_19
-; If statement
-MOV P5, [0xCA00]
-ADD P5, P5
-MOV P6, 0x422A
-ADD P6, P5
-MOV P7, [P6]
-PUSH P7
-MOV P0, 3
-POP P7
-CMP P7, P0
-JZ cmp_true_25
-MOV P7, 0
-JMP cmp_end_26
-cmp_true_25:
-MOV P7, 1
-cmp_end_26:
-CMP P7, 0
-JZ if_end_23
-; If statement
-MOV P1, [0xCA00]
-ADD P1, P1
-MOV P2, 0x424A
-ADD P2, P1
-MOV P4, [P2]
-PUSH P4
-MOV P5, [FP+4]
-POP P4
-CMP P5, P4
-JNC cmp_true_29
+; Function: timer_isr
+func_timer_isr:
+; asm {
+INC [0x4266]
+; }
+; Implicit ISR return
+IRET
+; Function: con_clear
+func_con_clear:
+ENTER 0
+; Call to set_layer
 MOV P4, 0
-JMP cmp_end_30
-cmp_true_29:
-MOV P4, 1
-cmp_end_30:
-CMP P4, 0
-JZ if_end_27
-; Array assignment to task_state[...]
-MOV P6, [0xCA00]
+PUSH P4
+CALL builtin_set_layer
+; Args consumed by callee
+; Call to screen_fill
+MOV P6, 0
 PUSH P6
-MOV P7, 0
-POP P6
-ADD P6, P6
-MOV P0, 0x422A
-ADD P0, P6
-MOV [P0], P7
-if_end_27:
-if_end_23:
-for_continue_20:
-; Assignment to i
-MOV P1, [0xCA00]
-PUSH P1
-MOV P2, 1
-POP P1
-ADD P1, P2
-MOV [0xCA00], P1
-JMP for_start_18
-for_end_19:
+CALL builtin_screen_fill
+; Args consumed by callee
+; Assignment to con_row
+MOV P0, 3
+MOV [0x4268], P0
+; Assignment to con_col
+MOV P1, 2
+MOV [0x426A], P1
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-; Function: timer_isr
-func_timer_isr:
-; asm {
-MOV P0, [0x426E]
-ADD P0, 1
-MOV [0x426E], P0
-MOV P0, 1
-MOV [0x4270], P0
-; }
-; Implicit ISR return
-IRET
-; Function: shell_goto
-func_shell_goto:
+; Function: con_newline
+func_con_newline:
 ENTER 0
+; Assignment to con_col
+MOV P2, 2
+MOV [0x426A], P2
+; Prefix ++ on con_row
+MOV P4, [0x4268]
+INC P4
+MOV [0x4268], P4
+; If statement
+MOV P5, [0x4268]
+MOV P6, 31
+CMP P6, P5
+JNC if_end_23
+; Call to set_layer
+MOV P7, 0
+PUSH P7
+CALL builtin_set_layer
+; Args consumed by callee
+; Call to screen_fill
+MOV P1, 0
+PUSH P1
+CALL builtin_screen_fill
+; Args consumed by callee
+; Assignment to con_row
+MOV P4, 3
+MOV [0x4268], P4
+; Assignment to con_col
+MOV P5, 2
+MOV [0x426A], P5
+if_end_23:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: con_putc
+func_con_putc:
+ENTER 8
+; If statement
+MOV P6, 10
+MOV P7, [FP+4]
+CMP P6, P7
+JZ cj_skip_27
+MOV P0, 13
+MOV P1, [FP+4]
+CMP P0, P1
+JNZ if_end_25
+cj_skip_27:
+; Call to con_newline
+CALL func_con_newline
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_25:
+; If statement
+MOV P4, 8
+MOV P5, [FP+4]
+CMP P4, P5
+JNZ if_end_28
+; If statement
+MOV P6, [0x426A]
+MOV P7, 2
+CMP P7, P6
+JNC if_end_30
+; Prefix -- on con_col
+MOV P0, [0x426A]
+DEC P0
+MOV [0x426A], P0
+; var __inl2_col = ...
+MOV P1, [0x426A]
+MOV [0xCC80], P1
+; var __inl2_row = ...
+MOV P2, [0x4268]
+MOV [0xCC82], P2
 ; Call to set_pos
-MOV P4, [FP+6]
+MOV P4, [0xCC82]
 ; Unrolled shift SHL by 3
 SHL P4, 1
 SHL P4, 1
 SHL P4, 1
 PUSH P4
-MOV P5, [FP+4]
+MOV P5, [0xCC80]
 ; Unrolled shift SHL by 3
 SHL P5, 1
 SHL P5, 1
@@ -290,922 +143,1815 @@ SHL P5, 1
 PUSH P5
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P6, R0
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: shell_newline
-func_shell_newline:
-ENTER 0
-; Assignment to shell_col
-MOV P7, 2
-MOV [0x4274], P7
-; Assignment to shell_row
-MOV P0, [0x4272]
-PUSH P0
-MOV P1, 1
-POP P0
-ADD P0, P1
-MOV [0x4272], P0
-; If statement
-MOV P2, [0x4272]
-PUSH P2
-MOV P4, 31
-POP P2
-CMP P4, P2
-JC cmp_true_33
-MOV P2, 0
-JMP cmp_end_34
-cmp_true_33:
-MOV P2, 1
-cmp_end_34:
-CMP P2, 0
-JZ if_end_31
-; Assignment to shell_row
-MOV P5, 3
-MOV [0x4272], P5
-; Call to set_layer
-MOV P6, 0
-PUSH P6
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P7, R0
-; Call to screen_fill
-MOV P0, 0
-PUSH P0
-CALL builtin_screen_fill
-; Args consumed by callee
-MOV P1, R0
-if_end_31:
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: shell_putc
-func_shell_putc:
-ENTER 0
-; If statement
-MOV P2, 13
-PUSH P2
-MOV P4, [FP+4]
-POP P2
-CMP P2, P4
-JZ cmp_true_37
-MOV P2, 0
-JMP cmp_end_38
-cmp_true_37:
-MOV P2, 1
-cmp_end_38:
-CMP P2, 0
-JZ if_end_35
-; Call to shell_newline
-CALL func_shell_newline
-MOV P5, P0
-; Function return
-MOV SP, FP
-POP FP
-RET
-if_end_35:
-; If statement
-MOV P6, 10
-PUSH P6
-MOV P7, [FP+4]
-POP P6
-CMP P6, P7
-JZ cmp_true_41
-MOV P6, 0
-JMP cmp_end_42
-cmp_true_41:
-MOV P6, 1
-cmp_end_42:
-CMP P6, 0
-JZ if_end_39
-; Call to shell_newline
-CALL func_shell_newline
-; Function return
-MOV SP, FP
-POP FP
-RET
-if_end_39:
-; If statement
-MOV P1, 8
-PUSH P1
-MOV P2, [FP+4]
-POP P1
-CMP P1, P2
-JZ cmp_true_45
-MOV P1, 0
-JMP cmp_end_46
-cmp_true_45:
-MOV P1, 1
-cmp_end_46:
-CMP P1, 0
-JZ if_end_43
-; If statement
-MOV P4, [0x4274]
-PUSH P4
-MOV P5, 2
-POP P4
-CMP P5, P4
-JC cmp_true_49
-MOV P4, 0
-JMP cmp_end_50
-cmp_true_49:
-MOV P4, 1
-cmp_end_50:
-CMP P4, 0
-JZ if_end_47
-; Assignment to shell_col
-MOV P6, [0x4274]
-PUSH P6
-MOV P7, 1
-POP P6
-SUB P6, P7
-MOV [0x4274], P6
-; Call to shell_goto
-MOV P0, [0x4272]
-PUSH P0
-MOV P1, [0x4274]
-PUSH P1
-CALL func_shell_goto
-ADD SP, 4 ; Caller cleans up args
-MOV P2, P0
 ; Call to write_text
-MOV P4, 15
-PUSH P4
-MOV P5, str_51
-PUSH P5
+MOV P7, 15
+PUSH P7
+MOV P0, str_32
+PUSH P0
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P6, R0
-; Call to shell_goto
-MOV P7, [0x4272]
-PUSH P7
-MOV P0, [0x4274]
-PUSH P0
-CALL func_shell_goto
-ADD SP, 4 ; Caller cleans up args
-MOV P1, P0
-if_end_47:
+if_end_30:
 ; Function return
 MOV SP, FP
 POP FP
 RET
-if_end_43:
-; Call to shell_goto
-MOV P2, [0x4272]
-PUSH P2
-MOV P4, [0x4274]
-PUSH P4
-CALL func_shell_goto
-ADD SP, 4 ; Caller cleans up args
-MOV P5, P0
+if_end_28:
+; var __inl3_col = ...
+MOV P2, [0x426A]
+MOV [0xCC84], P2
+; var __inl3_row = ...
+MOV P4, [0x4268]
+MOV [0xCC86], P4
+; Call to set_pos
+MOV P5, [0xCC86]
+; Unrolled shift SHL by 3
+SHL P5, 1
+SHL P5, 1
+SHL P5, 1
+PUSH P5
+MOV P6, [0xCC84]
+; Unrolled shift SHL by 3
+SHL P6, 1
+SHL P6, 1
+SHL P6, 1
+PUSH P6
+CALL builtin_set_pos
+; Args consumed by callee
 ; Call to write_text
 ; Integer-to-string conversion for write_text
 ; Type cast: (char) expr
-MOV P6, [FP+4]
-MOV P7, :P6
+MOV P0, [FP+4]
+MOV P1, :P0
 ; Char argument: store as single-byte string
-MOV R0, P7
+MOV R0, P1
 MOV [0xC000], R0
 MOV [0xC001], 0
-MOV P0, 0xC000
-MOV P1, 15
-PUSH P1
-PUSH P0
+MOV P2, 0xC000
+MOV P4, 15
+PUSH P4
+PUSH P2
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P2, R0
-; Assignment to shell_col
-MOV P4, [0x4274]
-PUSH P4
-MOV P5, 1
-POP P4
-ADD P4, P5
-MOV [0x4274], P4
+MOV P5, R0
+; Prefix ++ on con_col
+MOV P6, [0x426A]
+INC P6
+MOV [0x426A], P6
 ; If statement
-MOV P6, [0x4274]
-PUSH P6
-MOV P7, 31
-POP P6
-CMP P7, P6
-JC cmp_true_54
-MOV P6, 0
-JMP cmp_end_55
-cmp_true_54:
-MOV P6, 1
-cmp_end_55:
-CMP P6, 0
-JZ if_end_52
-; Call to shell_newline
-CALL func_shell_newline
-if_end_52:
+MOV P7, [0x426A]
+MOV P0, 31
+CMP P0, P7
+JNC if_end_33
+; Call to con_newline
+CALL func_con_newline
+if_end_33:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-; Function: shell_prompt
-func_shell_prompt:
-ENTER 0
-; Assignment to shell_col
-MOV P1, 2
-MOV [0x4274], P1
-; Call to shell_goto
-MOV P2, [0x4272]
-PUSH P2
-MOV P4, [0x4274]
-PUSH P4
-CALL func_shell_goto
-ADD SP, 4 ; Caller cleans up args
-MOV P5, P0
-; Call to write_text
-MOV P6, 15
+; Function: con_print
+func_con_print:
+ENTER 4
+; var __inl4_col = ...
+MOV P2, [0x426A]
+MOV [0xCD00], P2
+; var __inl4_row = ...
+MOV P4, [0x4268]
+MOV [0xCD02], P4
+; Call to set_pos
+MOV P5, [0xCD02]
+; Unrolled shift SHL by 3
+SHL P5, 1
+SHL P5, 1
+SHL P5, 1
+PUSH P5
+MOV P6, [0xCD00]
+; Unrolled shift SHL by 3
+SHL P6, 1
+SHL P6, 1
+SHL P6, 1
 PUSH P6
-MOV P7, str_56
-PUSH P7
+CALL builtin_set_pos
+; Args consumed by callee
+; Call to write_text
+MOV P0, 15
+PUSH P0
+PUSH [FP+4]
 CALL builtin_write_text
 ; Args consumed by callee
-MOV P0, R0
-; Assignment to shell_col
-MOV P1, 4
-MOV [0x4274], P1
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: shell_puts
-func_shell_puts:
-ENTER 0
-; Call to shell_goto
-MOV P2, [0x4272]
-PUSH P2
-MOV P4, [0x4274]
+; Assignment to con_col
+MOV P4, [0x426A]
 PUSH P4
-CALL func_shell_goto
-ADD SP, 4 ; Caller cleans up args
-MOV P5, P0
-; Call to write_text
-MOV P6, 15
-PUSH P6
-MOV P7, [FP+4]
-PUSH P7
-CALL builtin_write_text
+; Call to strlen
+PUSH [FP+4]
+CALL builtin_strlen
 ; Args consumed by callee
-MOV P0, R0
-; Call to shell_newline
-CALL func_shell_newline
-MOV P1, P0
+MOV P6, P0
+POP P4
+ADD P4, P6
+MOV [0x426A], P4
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-; Function: shell_puthex
-func_shell_puthex:
-ENTER 6
-; Assignment to hi
+; Function: con_println
+func_con_println:
+ENTER 0
+; Call to con_print
+PUSH [FP+4]
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Call to con_newline
+CALL func_con_newline
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: con_dec
+func_con_dec:
+ENTER 0
+; Call to con_print
+; Type cast: (string) expr
 MOV P2, [FP+4]
-; Unrolled shift SHR by 4
-SHR P2, 1
-SHR P2, 1
-SHR P2, 1
-SHR P2, 1
-PUSH P2
-MOV P4, 15
-POP P2
-AND P2, P4
-MOV [0xCD80], P2
-; Assignment to lo
-MOV P5, 15
-PUSH P5
-MOV P6, [FP+4]
-POP P5
-AND P5, P6
-MOV [0xCD82], P5
-; Assignment to d
-MOV P7, 48
-PUSH P7
-MOV P0, [0xCD80]
-POP P7
-ADD P7, P0
-MOV [0xCD84], P7
-; If statement
-MOV P1, [0xCD84]
-PUSH P1
-MOV P2, 57
-POP P1
-CMP P2, P1
-JC cmp_true_59
-MOV P1, 0
-JMP cmp_end_60
-cmp_true_59:
-MOV P1, 1
-cmp_end_60:
-CMP P1, 0
-JZ if_end_57
-; Assignment to d
-MOV P4, [0xCD84]
-PUSH P4
-MOV P5, 7
-POP P4
-ADD P4, P5
-MOV [0xCD84], P4
-if_end_57:
-; Call to shell_putc
-MOV P6, [0xCD84]
-PUSH P6
-CALL func_shell_putc
-ADD SP, 2 ; Caller cleans up args
-MOV P7, P0
-; Assignment to d
-MOV P0, 48
-PUSH P0
-MOV P1, [0xCD82]
-POP P0
-ADD P0, P1
-MOV [0xCD84], P0
-; If statement
-MOV P2, [0xCD84]
-PUSH P2
-MOV P4, 57
-POP P2
-CMP P4, P2
-JC cmp_true_63
-MOV P2, 0
-JMP cmp_end_64
-cmp_true_63:
-MOV P2, 1
-cmp_end_64:
+; Signed decimal conversion (layout-local scratch)
 CMP P2, 0
-JZ if_end_61
-; Assignment to d
-MOV P5, [0xCD84]
-PUSH P5
-MOV P6, 7
-POP P5
-ADD P5, P6
-MOV [0xCD84], P5
-if_end_61:
-; Call to shell_putc
-MOV P7, [0xCD84]
-PUSH P7
-CALL func_shell_putc
-ADD SP, 2 ; Caller cleans up args
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: shell_peek
-func_shell_peek:
-ENTER 2
-; Assignment to v
-; Call to peek
-MOV P1, 0
-PUSH P1
-CALL builtin_peek
-; Args consumed by callee
-MOV P2, P0
-MOV [0xCE00], P2
-; Call to shell_puthex
-MOV P4, [0xCE00]
-PUSH P4
-CALL func_shell_puthex
-ADD SP, 2 ; Caller cleans up args
-MOV P5, P0
-; Call to shell_putc
-MOV P6, 32
-PUSH P6
-CALL func_shell_putc
-ADD SP, 2 ; Caller cleans up args
-MOV P7, P0
-; Assignment to v
-; Call to peek
-MOV P0, 1
-PUSH P0
-CALL builtin_peek
-; Args consumed by callee
-MOV P1, P0
-MOV [0xCE00], P1
-; Call to shell_puthex
-MOV P2, [0xCE00]
-PUSH P2
-CALL func_shell_puthex
-ADD SP, 2 ; Caller cleans up args
-MOV P4, P0
-; Call to shell_newline
-CALL func_shell_newline
-MOV P5, P0
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: shell_mem
-func_shell_mem:
-ENTER 2
-; Assignment to freeb
-; Call to kmalloc_free
-CALL func_kmalloc_free
+JS stoa_neg_40
+CMP P2, 0
+JZ utoa_zero_42
+MOV P6, P2
+MOV P7, 0xC100
+utoa_loop_43:
+CMP P6, 0
+JZ utoa_done_44
+MOV P0, P6
+MOV P1, 10
+DIV P0, P1
+MOV P1, P3
+ADD P1, 48
+MOV R0, P1
+MOV [P7], R0
 MOV P6, P0
-MOV [0xCE80], P6
-; Assignment to shell_col
-MOV P7, 2
-MOV [0x4274], P7
-; Call to shell_goto
-MOV P0, [0x4272]
-PUSH P0
-MOV P1, [0x4274]
-PUSH P1
-CALL func_shell_goto
-ADD SP, 4 ; Caller cleans up args
-MOV P2, P0
-; Call to write_text
-MOV P4, 15
+INC P7
+JMP utoa_loop_43
+utoa_done_44:
+DEC P7
+MOV P6, 0xC000
+utoa_rev_45:
+CMP P7, 0xC100
+JC utoa_finish_46
+MOV R0, [P7]
+MOV [P6], R0
+INC P6
+DEC P7
+JMP utoa_rev_45
+utoa_finish_46:
+MOV [P6], 0
+MOV P4, 0xC000
+JMP utoa_finish_46_end
+utoa_zero_42:
+MOV [0xC000], 48
+MOV [0xC001], 0
+MOV P4, 0xC000
+utoa_finish_46_end:
+JMP stoa_end_41
+stoa_neg_40:
+MOV P5, 0
+SUB P5, P2
+MOV R0, 45
+MOV [0xC000], R0
+MOV [0xC001], 0
+CMP P5, 0
+JZ utoa_zero_47
+MOV P2, P5
+MOV P6, 0xC100
+utoa_loop_48:
+CMP P2, 0
+JZ utoa_done_49
+MOV P7, P2
+MOV P0, 10
+DIV P7, P0
+MOV P0, P3
+ADD P0, 48
+MOV R0, P0
+MOV [P6], R0
+MOV P2, P7
+INC P6
+JMP utoa_loop_48
+utoa_done_49:
+DEC P6
+MOV P2, 0xC001
+utoa_rev_50:
+CMP P6, 0xC100
+JC utoa_finish_51
+MOV R0, [P6]
+MOV [P2], R0
+INC P2
+DEC P6
+JMP utoa_rev_50
+utoa_finish_51:
+MOV [P2], 0
+MOV P4, 0xC001
+JMP utoa_finish_51_end
+utoa_zero_47:
+MOV [0xC001], 48
+MOV [0xC002], 0
+MOV P4, 0xC001
+utoa_finish_51_end:
+MOV P4, 0xC000
+stoa_end_41:
 PUSH P4
-MOV P5, str_65
-PUSH P5
-CALL builtin_write_text
-; Args consumed by callee
-MOV P6, R0
-; Assignment to shell_col
-MOV P7, 11
-MOV [0x4274], P7
-; Call to shell_puthex
-; Optimized high-byte access: (val >> 8) & 0xFF
-MOV P0, [0xCE80]
-MOV P1, P0:
-PUSH P1
-CALL func_shell_puthex
+CALL func_con_print
 ADD SP, 2 ; Caller cleans up args
-MOV P2, P0
-; Call to shell_puthex
-MOV P4, 255
-PUSH P4
-MOV P5, [0xCE80]
-POP P4
-AND P4, P5
-PUSH P4
-CALL func_shell_puthex
-ADD SP, 2 ; Caller cleans up args
-MOV P6, P0
-; Call to shell_newline
-CALL func_shell_newline
-MOV P7, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-; Function: shell_time
-func_shell_time:
-ENTER 2
-; Assignment to t
-MOV P0, [0x426E]
-MOV [0xCF00], P0
-; Assignment to shell_col
-MOV P1, 2
-MOV [0x4274], P1
-; Call to shell_goto
-MOV P2, [0x4272]
-PUSH P2
-MOV P4, [0x4274]
-PUSH P4
-CALL func_shell_goto
-ADD SP, 4 ; Caller cleans up args
-MOV P5, P0
-; Call to write_text
-MOV P6, 15
-PUSH P6
-MOV P7, str_66
-PUSH P7
-CALL builtin_write_text
-; Args consumed by callee
-MOV P0, R0
-; Assignment to shell_col
-MOV P1, 7
-MOV [0x4274], P1
-; Call to shell_puthex
-; Optimized high-byte access: (val >> 8) & 0xFF
-MOV P2, [0xCF00]
-MOV P4, P2:
-PUSH P4
-CALL func_shell_puthex
-ADD SP, 2 ; Caller cleans up args
-MOV P5, P0
-; Call to shell_puthex
-MOV P6, 255
-PUSH P6
-MOV P7, [0xCF00]
-POP P6
-AND P6, P7
-PUSH P6
-CALL func_shell_puthex
-ADD SP, 2 ; Caller cleans up args
-; Call to shell_newline
-CALL func_shell_newline
-MOV P1, P0
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: shell_help
-func_shell_help:
-ENTER 0
-; Call to shell_puts
-MOV P2, str_67
-PUSH P2
-CALL func_shell_puts
-ADD SP, 2 ; Caller cleans up args
-MOV P4, P0
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: shell_dispatch
-func_shell_dispatch:
-ENTER 2
-; Assignment to cmd_count
-MOV P5, [0x42AA]
-PUSH P5
-MOV P6, 1
-POP P5
-ADD P5, P6
-MOV [0x42AA], P5
+; Function: parse_num
+func_parse_num:
+ENTER 12
+; Assignment to num_ok
+MOV P2, 0
+MOV [0x42E4], P2
+; Assignment to i
+MOV P4, 0
+MOV [0xCF00], P4
+; Assignment to neg
+MOV P5, 0
+MOV [0xCF0A], P5
+; Assignment to base
+MOV P6, 10
+MOV [0xCF08], P6
+; Assignment to v
+MOV P7, 0
+MOV [0xCF04], P7
 ; If statement
-MOV P7, 0
+; Call to peek
+MOV P0, [FP+4]
+PUSH P0
+CALL builtin_peek
+; Args consumed by callee
+MOV P1, P0
+CMP P1, 45
+JNZ if_end_52
+; Assignment to neg
+MOV P2, 1
+MOV [0xCF0A], P2
+; Assignment to i
+MOV P4, 1
+MOV [0xCF00], P4
+if_end_52:
+; If statement
+; Call to peek
+MOV P5, [FP+4]
+MOV P6, [0xCF00]
+ADD P5, P6
+PUSH P5
+CALL builtin_peek
+; Args consumed by callee
+MOV P7, P0
+CMP P7, 36
+JNZ if_else_55
+; Assignment to base
+MOV P0, 16
+MOV [0xCF08], P0
+; Prefix ++ on i
+MOV P1, [0xCF00]
+INC P1
+MOV [0xCF00], P1
+JMP if_end_54
+if_else_55:
+; If statement
+; Call to peek
+MOV P2, [FP+4]
+MOV P4, [0xCF00]
+ADD P2, P4
+PUSH P2
+CALL builtin_peek
+; Args consumed by callee
+MOV P5, P0
+CMP P5, 48
+JNZ if_end_56
+; Call to peek
+MOV P6, [FP+4]
+MOV P7, [0xCF00]
+ADD P6, P7
+MOV P0, 1
+ADD P6, P0
+PUSH P6
+CALL builtin_peek
+; Args consumed by callee
+MOV P1, P0
+OR P1, 32
+CMP P1, 120
+JNZ if_end_56
+; Assignment to base
+MOV P4, 16
+MOV [0xCF08], P4
+; Assignment to i
+MOV P5, [0xCF00]
+ADD P5, 2
+MOV [0xCF00], P5
+if_end_56:
+if_end_54:
+; If statement
+; Call to peek
+MOV P7, [FP+4]
+MOV P0, [0xCF00]
+ADD P7, P0
 PUSH P7
-MOV P0, [0x42A6]
-POP P7
-CMP P7, P0
-JZ cmp_true_70
-MOV P7, 0
-JMP cmp_end_71
-cmp_true_70:
-MOV P7, 1
-cmp_end_71:
-CMP P7, 0
-JZ if_end_68
+CALL builtin_peek
+; Args consumed by callee
+MOV P1, P0
+CMP P1, 0
+JNZ if_end_58
 ; Function return
+MOV P2, 0
+MOV P0, P2
+MOV R0, P2
+MOV SP, FP
+POP FP
+RET
+if_end_58:
+; Assignment to c
+; Call to peek
+MOV P4, [FP+4]
+MOV P5, [0xCF00]
+ADD P4, P5
+PUSH P4
+CALL builtin_peek
+; Args consumed by callee
+MOV P6, P0
+MOV [0xCF02], P6
+; While loop
+while_start_60:
+MOV P7, [0xCF02]
+CMP P7, 0
+JZ while_end_61
+; Assignment to c
+MOV P0, [0xCF02]
+OR P0, 32
+MOV [0xCF02], P0
+; If statement
+MOV P2, [0xCF02]
+CMP P2, 48
+JC if_else_63
+MOV P4, [0xCF02]
+CMP P4, 58
+JNC if_else_63
+; Assignment to d
+MOV P5, [0xCF02]
+SUB P5, 48
+MOV [0xCF06], P5
+JMP if_end_62
+if_else_63:
+; If statement
+MOV P7, [0xCF08]
+CMP P7, 16
+JNZ if_else_65
+MOV P0, [0xCF02]
+CMP P0, 97
+JC if_else_65
+MOV P1, [0xCF02]
+CMP P1, 103
+JNC if_else_65
+; Assignment to d
+MOV P2, [0xCF02]
+SUB P2, 97
+ADD P2, 10
+MOV [0xCF06], P2
+JMP if_end_64
+if_else_65:
+; Function return
+MOV P6, 0
+MOV P0, P6
+MOV R0, P6
+MOV SP, FP
+POP FP
+RET
+if_end_64:
+if_end_62:
+; Assignment to v
+MOV P7, [0xCF08]
+MOV P0, [0xCF04]
+MUL P7, P0
+MOV P1, [0xCF06]
+ADD P7, P1
+MOV [0xCF04], P7
+; Prefix ++ on i
+MOV P2, [0xCF00]
+INC P2
+MOV [0xCF00], P2
+; Assignment to c
+; Call to peek
+MOV P4, [FP+4]
+MOV P5, [0xCF00]
+ADD P4, P5
+PUSH P4
+CALL builtin_peek
+; Args consumed by callee
+MOV P6, P0
+MOV [0xCF02], P6
+JMP while_start_60
+while_end_61:
+; Assignment to num_ok
+MOV P7, 1
+MOV [0x42E4], P7
+; If statement
+MOV P0, [0xCF0A]
+CMP P0, 0
+JZ if_end_66
+; Function return
+MOV P1, [0xCF04]
+NEG P1
+MOV P0, P1
+MOV R0, P1
+MOV SP, FP
+POP FP
+RET
+if_end_66:
+; Function return
+MOV P2, [0xCF04]
+MOV P0, P2
+MOV R0, P2
+MOV SP, FP
+POP FP
+RET
+; Function: var_index
+func_var_index:
+ENTER 2
+; Assignment to c
+; Call to peek
+PUSH [FP+4]
+CALL builtin_peek
+; Args consumed by callee
+MOV P5, P0
+AND P5, 223
+MOV [0xCF80], P5
+; If statement
+; Call to peek
+MOV P7, [FP+4]
+MOV P0, 1
+ADD P7, P0
+PUSH P7
+CALL builtin_peek
+; Args consumed by callee
+MOV P1, P0
+CMP P1, 0
+JNZ if_end_68
+MOV P2, [0xCF80]
+CMP P2, 65
+JC if_end_68
+MOV P4, [0xCF80]
+CMP P4, 91
+JNC if_end_68
+; Function return
+MOV P5, [0xCF80]
+SUB P5, 65
+MOV P0, P5
+MOV R0, P5
 MOV SP, FP
 POP FP
 RET
 if_end_68:
-; Assignment to c
-MOV P1, 0
+; Function return
+MOV P7, -1
+MOV P0, P7
+MOV R0, P7
+MOV SP, FP
+POP FP
+RET
+; Function: term
+func_term:
+ENTER 2
+; Assignment to v
+; Call to var_index
+MOV P0, [FP+4]
+PUSH P0
+CALL func_var_index
+ADD SP, 2 ; Caller cleans up args
+MOV P1, P0
+MOV [0xD000], P1
+; If statement
+MOV P2, [0xD000]
+CMP P2, 0
+JLT if_end_70
+; Assignment to num_ok
+MOV P4, 1
+MOV [0x42E4], P4
+; Function return
+MOV P5, [0xD000]
+ADD P5, P5
+MOV P6, 0x42AE
+ADD P6, P5
+MOV P7, [P6]
+MOV P0, P7
+MOV R0, P7
+MOV SP, FP
+POP FP
+RET
+if_end_70:
+; Function return
+; Call to parse_num
+MOV P0, [FP+4]
+PUSH P0
+CALL func_parse_num
+ADD SP, 2 ; Caller cleans up args
+MOV P1, P0
+MOV P0, P1
+MOV R0, P1
+MOV SP, FP
+POP FP
+RET
+; Function: eval_args
+func_eval_args:
+ENTER 6
+; Assignment to num_ok
+MOV P2, 0
+MOV [0x42E4], P2
+; If statement
+MOV P4, [FP+4]
+MOV P5, [0x428A]
+CMP P4, P5
+JC if_end_72
+; Function return
+MOV P6, 0
+MOV P0, P6
+MOV R0, P6
+MOV SP, FP
+POP FP
+RET
+if_end_72:
+; Assignment to v
+; Call to term
+MOV P7, [FP+4]
+ADD P7, P7
+MOV P0, 0x428C
+ADD P0, P7
+PUSH [P0]
+CALL func_term
+ADD SP, 2 ; Caller cleans up args
+MOV P2, P0
+MOV [0xD082], P2
+; Assignment to i
+MOV P4, 1
+MOV P5, [FP+4]
+ADD P4, P5
+MOV [0xD080], P4
+; While loop
+while_start_74:
+MOV P6, [0x42E4]
+CMP P6, 0
+JZ while_end_75
+MOV P7, [0xD080]
+MOV P0, [0x428A]
+CMP P7, P0
+JNC while_end_75
+; Assignment to op
+; Call to peek
+MOV P1, [0xD080]
 ADD P1, P1
-MOV P2, 0x4276
+MOV P2, 0x428C
+ADD P2, P1
+PUSH [P2]
+CALL builtin_peek
+; Args consumed by callee
+MOV P5, P0
+MOV [0xD084], P5
+; If statement
+MOV P6, 1
+MOV P7, [0xD080]
+ADD P6, P7
+MOV P0, [0x428A]
+CMP P6, P0
+JNC cj_skip_78
+; Call to peek
+MOV P1, [0xD080]
+ADD P1, P1
+MOV P2, 0x428C
 ADD P2, P1
 MOV P4, [P2]
-MOV [0xD000], P4
-; If statement
-MOV P5, 104
-PUSH P5
-MOV P6, [0xD000]
-POP P5
-CMP P5, P6
-JZ cmp_true_74
-MOV P5, 0
-JMP cmp_end_75
-cmp_true_74:
-MOV P5, 1
-cmp_end_75:
-PUSH P5
-MOV P7, 72
-PUSH P7
-MOV P0, [0xD000]
-POP P7
-CMP P7, P0
-JZ cmp_true_76
-MOV P7, 0
-JMP cmp_end_77
-cmp_true_76:
-MOV P7, 1
-cmp_end_77:
-POP P5
-CMP P5, 0
-JNZ sc_true_78
-MOV P1, 72
-PUSH P1
-MOV P2, [0xD000]
-POP P1
-CMP P1, P2
-JZ cmp_true_80
+ADD P4, 1
+PUSH P4
+CALL builtin_peek
+; Args consumed by callee
+MOV P6, P0
+CMP P6, 0
+JNZ cj_skip_78
+MOV P7, [0xD084]
+CMP P7, 43
+JZ if_end_76
+MOV P0, [0xD084]
+CMP P0, 45
+JZ if_end_76
+cj_skip_78:
+; Assignment to num_ok
 MOV P1, 0
-JMP cmp_end_81
-cmp_true_80:
-MOV P1, 1
-cmp_end_81:
-CMP P1, 0
-JNZ sc_true_78
-MOV P5, 0
-JMP sc_end_79
-sc_true_78:
-MOV P5, 1
-sc_end_79:
-CMP P5, 0
-JZ if_else_73
-; Assignment to shell_cmd
-MOV P4, 1
-MOV [0x42A8], P4
-; Call to shell_help
-CALL func_shell_help
-MOV P5, P0
-JMP if_end_72
-if_else_73:
-; If statement
-MOV P6, 67
-PUSH P6
-MOV P7, [0xD000]
-POP P6
-CMP P6, P7
-JZ cmp_true_84
-MOV P6, 0
-JMP cmp_end_85
-cmp_true_84:
-MOV P6, 1
-cmp_end_85:
-PUSH P6
-MOV P0, 99
-PUSH P0
-MOV P1, [0xD000]
-POP P0
-CMP P0, P1
-JZ cmp_true_86
-MOV P0, 0
-JMP cmp_end_87
-cmp_true_86:
-MOV P0, 1
-cmp_end_87:
-POP P6
-CMP P6, 0
-JNZ sc_true_88
-MOV P2, 99
-PUSH P2
-MOV P4, [0xD000]
-POP P2
-CMP P2, P4
-JZ cmp_true_90
+MOV [0x42E4], P1
+; Function return
 MOV P2, 0
-JMP cmp_end_91
-cmp_true_90:
-MOV P2, 1
-cmp_end_91:
-CMP P2, 0
-JNZ sc_true_88
-MOV P6, 0
-JMP sc_end_89
-sc_true_88:
-MOV P6, 1
-sc_end_89:
+MOV P0, P2
+MOV R0, P2
+MOV SP, FP
+POP FP
+RET
+if_end_76:
+; If statement
+MOV P4, [0xD084]
+CMP P4, 43
+JNZ if_else_80
+; Assignment to v
+MOV P5, [0xD082]
+PUSH P5
+; Call to term
+MOV P6, [0xD080]
+ADD P6, 1
+ADD P6, P6
+MOV P0, 0x428C
+ADD P0, P6
+PUSH [P0]
+CALL func_term
+ADD SP, 2 ; Caller cleans up args
+MOV P2, P0
+POP P5
+ADD P5, P2
+MOV [0xD082], P5
+JMP if_end_79
+if_else_80:
+; Assignment to v
+MOV P4, [0xD082]
+PUSH P4
+; Call to term
+MOV P5, [0xD080]
+ADD P5, 1
+ADD P5, P5
+MOV P7, 0x428C
+ADD P7, P5
+MOV P0, [P7]
+PUSH P0
+CALL func_term
+ADD SP, 2 ; Caller cleans up args
+MOV P1, P0
+POP P4
+SUB P4, P1
+MOV [0xD082], P4
+if_end_79:
+; Assignment to i
+MOV P2, [0xD080]
+ADD P2, 2
+MOV [0xD080], P2
+JMP while_start_74
+while_end_75:
+; Function return
+MOV P5, [0xD082]
+MOV P0, P5
+MOV R0, P5
+MOV SP, FP
+POP FP
+RET
+; Function: arg_num
+func_arg_num:
+ENTER 2
+; If statement
+MOV P6, [FP+4]
+MOV P7, [0x428A]
+CMP P6, P7
+JC if_end_81
+; Function return
+MOV P0, [FP+6]
+MOV R0, P0
+MOV SP, FP
+POP FP
+RET
+if_end_81:
+; Assignment to v
+; Call to term
+MOV P1, [FP+4]
+ADD P1, P1
+MOV P2, 0x428C
+ADD P2, P1
+PUSH [P2]
+CALL func_term
+ADD SP, 2 ; Caller cleans up args
+MOV P5, P0
+MOV [0xD100], P5
+; If statement
+MOV P6, [0x42E4]
 CMP P6, 0
-JZ if_else_83
-; Assignment to shell_cmd
-MOV P5, 2
-MOV [0x42A8], P5
+JNZ if_end_83
+; Assignment to bad_args
+MOV P7, 1
+MOV [0x42E6], P7
+if_end_83:
+; Function return
+MOV P0, [0xD100]
+MOV R0, P0
+MOV SP, FP
+POP FP
+RET
+; Function: shell_tokenize
+func_shell_tokenize:
+ENTER 2
+; Assignment to i
+MOV P1, 0
+MOV [0xD180], P1
+; Assignment to argc
+MOV P2, 0
+MOV [0x428A], P2
+; While loop
+while_start_85:
+MOV P4, [0xD180]
+MOV P5, 0x426C
+ADD P5, P4
+MOV R0, [P5]
+MOV P6, R0
+CMP P6, 0
+JZ while_end_86
+; If statement
+MOV P7, [0xD180]
+MOV P0, 0x426C
+ADD P0, P7
+MOV R0, [P0]
+MOV P1, R0
+CMP P1, 32
+JNZ if_else_88
+; Array assignment to line[...]
+MOV P2, [0xD180]
+MOV P4, 0
+MOV P5, 0x426C
+ADD P5, P2
+MOV R0, P4
+MOV [P5], R0
+; Prefix ++ on i
+MOV P6, [0xD180]
+INC P6
+MOV [0xD180], P6
+JMP if_end_87
+if_else_88:
+; If statement
+MOV P7, [0x428A]
+CMP P7, 14
+JNC if_end_89
+; Array assignment to argv[...]
+MOV P1, [0x428A]
+PUSH P1
+MOV P2, [0xD180]
+MOV P4, 0x426C
+ADD P4, P2
+POP P1
+ADD P1, P1
+MOV P5, 0x428C
+ADD P5, P1
+MOV [P5], P4
+; Prefix ++ on argc
+MOV P6, [0x428A]
+INC P6
+MOV [0x428A], P6
+if_end_89:
+; While loop
+while_start_91:
+MOV P7, [0xD180]
+MOV P0, 0x426C
+ADD P0, P7
+MOV R0, [P0]
+MOV P1, R0
+CMP P1, 0
+JZ while_end_92
+MOV P2, [0xD180]
+MOV P4, 0x426C
+ADD P4, P2
+MOV R0, [P4]
+MOV P5, R0
+CMP P5, 32
+JZ while_end_92
+; Prefix ++ on i
+MOV P6, [0xD180]
+INC P6
+MOV [0xD180], P6
+JMP while_start_91
+while_end_92:
+if_end_87:
+JMP while_start_85
+while_end_86:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_cls
+func_cmd_cls:
+ENTER 0
 ; Call to set_layer
-MOV P6, 0
-PUSH P6
+MOV P7, 0
+PUSH P7
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P7, R0
 ; Call to screen_fill
-MOV P0, 0
-PUSH P0
+MOV P1, 0
+PUSH P1
 CALL builtin_screen_fill
 ; Args consumed by callee
-MOV P1, R0
-; Assignment to shell_row
-MOV P2, 12
-MOV [0x4272], P2
-; Assignment to shell_col
-MOV P4, 2
-MOV [0x4274], P4
-; Call to shell_prompt
-CALL func_shell_prompt
-MOV P5, P0
-JMP if_end_82
-if_else_83:
-; If statement
-MOV P6, 112
-PUSH P6
-MOV P7, [0xD000]
-POP P6
-CMP P6, P7
-JZ cmp_true_94
+; Assignment to con_row
+MOV P4, 3
+MOV [0x4268], P4
+; Assignment to con_col
+MOV P5, 2
+MOV [0x426A], P5
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_peek
+func_cmd_peek:
+ENTER 10
+; Assignment to addr
+; Call to arg_num
 MOV P6, 0
-JMP cmp_end_95
-cmp_true_94:
-MOV P6, 1
-cmp_end_95:
 PUSH P6
-MOV P0, 80
-PUSH P0
-MOV P1, [0xD000]
-POP P0
-CMP P0, P1
-JZ cmp_true_96
-MOV P0, 0
+MOV P7, 1
+PUSH P7
+CALL func_arg_num
+ADD SP, 4 ; Caller cleans up args
+MOV [0xD382], P0
+; Assignment to count
+; Call to arg_num
+; Ternary conditional
+MOV P1, [0x428A]
+MOV P2, 1
+CMP P2, P1
+JC cmp_true_96
+MOV P1, 0
 JMP cmp_end_97
 cmp_true_96:
-MOV P0, 1
+MOV P1, 1
 cmp_end_97:
-POP P6
-CMP P6, 0
-JNZ sc_true_98
-MOV P2, 80
-PUSH P2
-MOV P4, [0xD000]
-POP P2
-CMP P2, P4
-JZ cmp_true_100
-MOV P2, 0
-JMP cmp_end_101
-cmp_true_100:
-MOV P2, 1
-cmp_end_101:
-CMP P2, 0
-JNZ sc_true_98
-MOV P6, 0
-JMP sc_end_99
-sc_true_98:
-MOV P6, 1
-sc_end_99:
-CMP P6, 0
-JZ if_else_93
-; Assignment to shell_cmd
-MOV P5, 3
-MOV [0x42A8], P5
-; Call to shell_peek
-CALL func_shell_peek
-MOV P6, P0
-JMP if_end_92
-if_else_93:
-; If statement
-MOV P7, 66
-PUSH P7
-MOV P0, [0xD000]
-POP P7
-CMP P7, P0
-JZ cmp_true_104
-MOV P7, 0
-JMP cmp_end_105
-cmp_true_104:
-MOV P7, 1
-cmp_end_105:
-PUSH P7
-MOV P1, 98
-PUSH P1
-MOV P2, [0xD000]
-POP P1
-CMP P1, P2
-JZ cmp_true_106
-MOV P1, 0
-JMP cmp_end_107
-cmp_true_106:
-MOV P1, 1
-cmp_end_107:
-POP P7
-CMP P7, 0
-JNZ sc_true_108
-MOV P4, 98
-PUSH P4
-MOV P5, [0xD000]
-POP P4
-CMP P4, P5
-JZ cmp_true_110
-MOV P4, 0
-JMP cmp_end_111
-cmp_true_110:
-MOV P4, 1
-cmp_end_111:
-CMP P4, 0
-JNZ sc_true_108
-MOV P7, 0
-JMP sc_end_109
-sc_true_108:
-MOV P7, 1
-sc_end_109:
-CMP P7, 0
-JZ if_else_103
-; Assignment to shell_cmd
-MOV P6, 4
-MOV [0x42A8], P6
-; Assignment to shell_exit
-MOV P7, 1
-MOV [0x42AC], P7
-JMP if_end_102
-if_else_103:
-; If statement
-MOV P0, 109
-PUSH P0
-MOV P1, [0xD000]
-POP P0
-CMP P0, P1
-JZ cmp_true_114
-MOV P0, 0
-JMP cmp_end_115
-cmp_true_114:
-MOV P0, 1
-cmp_end_115:
-PUSH P0
-MOV P2, 77
-PUSH P2
-MOV P4, [0xD000]
-POP P2
-CMP P2, P4
-JZ cmp_true_116
-MOV P2, 0
-JMP cmp_end_117
-cmp_true_116:
-MOV P2, 1
-cmp_end_117:
-POP P0
-CMP P0, 0
-JNZ sc_true_118
-MOV P5, 77
-PUSH P5
-MOV P6, [0xD000]
-POP P5
-CMP P5, P6
-JZ cmp_true_120
-MOV P5, 0
-JMP cmp_end_121
-cmp_true_120:
-MOV P5, 1
-cmp_end_121:
-CMP P5, 0
-JNZ sc_true_118
-MOV P0, 0
-JMP sc_end_119
-sc_true_118:
-MOV P0, 1
-sc_end_119:
-CMP P0, 0
-JZ if_else_113
-; Assignment to shell_cmd
-MOV P7, 7
-MOV [0x42A8], P7
-; Call to shell_mem
-CALL func_shell_mem
-JMP if_end_112
-if_else_113:
-; If statement
-MOV P1, 105
-PUSH P1
-MOV P2, [0xD000]
-POP P1
-CMP P1, P2
-JZ cmp_true_124
-MOV P1, 0
-JMP cmp_end_125
-cmp_true_124:
-MOV P1, 1
-cmp_end_125:
-PUSH P1
-MOV P4, 73
-PUSH P4
-MOV P5, [0xD000]
-POP P4
-CMP P4, P5
-JZ cmp_true_126
-MOV P4, 0
-JMP cmp_end_127
-cmp_true_126:
-MOV P4, 1
-cmp_end_127:
-POP P1
 CMP P1, 0
-JNZ sc_true_128
-MOV P6, 73
+JZ tern_else_94
+MOV P4, 1
+PUSH P4
+JMP tern_end_95
+tern_else_94:
+MOV P5, 2
+PUSH P5
+tern_end_95:
+POP P6
 PUSH P6
-MOV P7, [0xD000]
+MOV P7, 2
+PUSH P7
+CALL func_arg_num
+ADD SP, 4 ; Caller cleans up args
+MOV [0xD384], P0
+; If statement
+MOV P1, [0x42E6]
+CMP P1, 0
+JNZ cj_skip_100
+MOV P2, [0xD384]
+CMP P2, 1
+JC cj_skip_100
+MOV P4, [0xD384]
+CMP P4, 9
+JC if_end_98
+cj_skip_100:
+; Call to con_print
+MOV P5, str_101
+PUSH P5
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Call to con_println
+MOV P7, str_102
+PUSH P7
+CALL func_con_println
+ADD SP, 2 ; Caller cleans up args
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_98:
+; For loop
+; Assignment to i
+MOV P1, 0
+MOV [0xD380], P1
+for_start_103:
+MOV P2, [0xD380]
+MOV P4, [0xD384]
+CMP P2, P4
+JNC for_end_104
+; If statement
+MOV P5, [0xD380]
+CMP P5, 0
+JLE if_end_106
+; Call to con_putc
+MOV P6, 32
+PUSH P6
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
+if_end_106:
+; var __inl7_v = ...
+; Call to peek
+MOV P0, [0xD382]
+MOV P1, [0xD380]
+ADD P0, P1
+PUSH P0
+CALL builtin_peek
+; Args consumed by callee
+MOV P2, P0
+MOV [0xD386], P2
+; For loop
+; Assignment to __inl7_shift
+; Constant folded: 2 - 1 = 1
+MOV P4, 1
+; Unrolled shift SHL by 2
+SHL P4, 1
+SHL P4, 1
+MOV [0xD388], P4
+for_start_108:
+MOV P5, [0xD388]
+CMP P5, 0
+JLT for_end_109
+; Call to con_putc
+MOV P6, [0xD386]
+MOV P7, [0xD388]
+; Runtime shift SHR by register P7
+CMP P7, 0
+JZ shift_end_111
+shift_loop_112:
+SHR P6, 1
+DEC P7
+JNZ shift_loop_112
+shift_end_111:
+MOV P0, 15
+AND P6, P0
+MOV P1, 0x0120
+ADD P1, P6
+MOV R0, [P1]
+MOV P2, R0
+PUSH P2
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
+for_continue_110:
+; Wrap-check: save __inl7_shift before update
+MOV P5, [0xD388]
+PUSH P5
+; Assignment to __inl7_shift
+MOV P6, [0xD388]
+SUB P6, 4
+MOV [0xD388], P6
+; Wrap-check: compare __inl7_shift new vs old
+POP P0
+MOV P1, [0xD388]
+CMP P1, P0
+JGT for_end_109
+JMP for_start_108
+for_end_109:
+for_continue_105:
+; Wrap-check: save i before update
+PUSH [0xD380]
+; Prefix ++ on i
+MOV P4, [0xD380]
+INC P4
+MOV [0xD380], P4
+; Wrap-check: compare i new vs old
+POP P5
+MOV P6, [0xD380]
+CMP P6, P5
+JC for_end_104
+JMP for_start_103
+for_end_104:
+; Call to con_newline
+CALL func_con_newline
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_poke
+func_cmd_poke:
+ENTER 6
+; Assignment to addr
+; Call to arg_num
+MOV P0, 0
+PUSH P0
+MOV P1, 1
+PUSH P1
+CALL func_arg_num
+ADD SP, 4 ; Caller cleans up args
+MOV P2, P0
+MOV [0xD404], P2
+; If statement
+MOV P4, [0x428A]
+CMP P4, 3
+JC cj_skip_115
+MOV P5, [0x42E6]
+CMP P5, 0
+JZ if_end_113
+cj_skip_115:
+; Call to con_print
+MOV P6, str_101
+PUSH P6
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Call to con_println
+MOV P0, str_116
+PUSH P0
+CALL func_con_println
+ADD SP, 2 ; Caller cleans up args
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_113:
+; For loop
+; Assignment to i
+MOV P2, 2
+MOV [0xD400], P2
+for_start_117:
+MOV P4, [0xD400]
+MOV P5, [0x428A]
+CMP P4, P5
+JNC for_end_118
+; Assignment to v
+; Call to term
+MOV P6, [0xD400]
+ADD P6, P6
+MOV P7, 0x428C
+ADD P7, P6
+MOV P0, [P7]
+PUSH P0
+CALL func_term
+ADD SP, 2 ; Caller cleans up args
+MOV P1, P0
+MOV [0xD402], P1
+; If statement
+MOV P2, [0x42E4]
+CMP P2, 0
+JNZ if_end_120
+; Call to con_print
+MOV P4, str_101
+PUSH P4
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Call to con_println
+MOV P6, str_116
+PUSH P6
+CALL func_con_println
+ADD SP, 2 ; Caller cleans up args
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_120:
+; Call to poke
+MOV P0, [0xD402]
+PUSH P0
+MOV P1, [0xD404]
+MOV P2, [0xD400]
+ADD P1, P2
+SUB P1, 2
+PUSH P1
+CALL builtin_poke
+; Args consumed by callee
+for_continue_119:
+; Wrap-check: save i before update
+PUSH [0xD400]
+; Prefix ++ on i
+MOV P7, [0xD400]
+INC P7
+MOV [0xD400], P7
+; Wrap-check: compare i new vs old
+POP P0
+MOV P1, [0xD400]
+CMP P1, P0
+JC for_end_118
+JMP for_start_117
+for_end_118:
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_bye
+func_cmd_bye:
+ENTER 0
+; Assignment to shell_exit
+MOV P2, 1
+MOV [0x42AC], P2
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_mem
+func_cmd_mem:
+ENTER 8
+; Call to con_print
+MOV P4, str_122
+PUSH P4
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; var __inl10_v = ...
+; Call to kmalloc_free
+CALL func_kmalloc_free
+MOV P6, P0
+MOV [0xD500], P6
+; For loop
+; Assignment to __inl10_shift
+; Constant folded: 4 - 1 = 3
+MOV P7, 3
+; Unrolled shift SHL by 2
+SHL P7, 1
+SHL P7, 1
+MOV [0xD502], P7
+for_start_123:
+MOV P0, [0xD502]
+CMP P0, 0
+JLT for_end_124
+; Call to con_putc
+MOV P1, [0xD500]
+MOV P2, [0xD502]
+; Runtime shift SHR by register P2
+CMP P2, 0
+JZ shift_end_126
+shift_loop_127:
+SHR P1, 1
+DEC P2
+JNZ shift_loop_127
+shift_end_126:
+MOV P4, 15
+AND P1, P4
+MOV P5, 0x0120
+ADD P5, P1
+MOV R0, [P5]
+MOV P6, R0
+PUSH P6
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
+for_continue_125:
+; Wrap-check: save __inl10_shift before update
+PUSH [0xD502]
+; Assignment to __inl10_shift
+MOV P1, [0xD502]
+SUB P1, 4
+MOV [0xD502], P1
+; Wrap-check: compare __inl10_shift new vs old
+POP P4
+MOV P5, [0xD502]
+CMP P5, P4
+JGT for_end_124
+JMP for_start_123
+for_end_124:
+; Call to con_print
+MOV P6, str_128
+PUSH P6
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; var __inl11_v = ...
+MOV P0, 0x2700
+MOV [0xD504], P0
+; For loop
+; Assignment to __inl11_shift
+; Constant folded: 4 - 1 = 3
+MOV P2, 3
+; Unrolled shift SHL by 2
+SHL P2, 1
+SHL P2, 1
+MOV [0xD506], P2
+for_start_129:
+MOV P4, [0xD506]
+CMP P4, 0
+JLT for_end_130
+; Call to con_putc
+MOV P5, [0xD504]
+MOV P6, [0xD506]
+; Runtime shift SHR by register P6
+CMP P6, 0
+JZ shift_end_132
+shift_loop_133:
+SHR P5, 1
+DEC P6
+JNZ shift_loop_133
+shift_end_132:
+MOV P7, 15
+AND P5, P7
+MOV P0, 0x0120
+ADD P0, P5
+MOV R0, [P0]
+MOV P1, R0
+PUSH P1
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
+for_continue_131:
+; Wrap-check: save __inl11_shift before update
+PUSH [0xD506]
+; Assignment to __inl11_shift
+MOV P5, [0xD506]
+SUB P5, 4
+MOV [0xD506], P5
+; Wrap-check: compare __inl11_shift new vs old
+POP P7
+MOV P0, [0xD506]
+CMP P0, P7
+JGT for_end_130
+JMP for_start_129
+for_end_130:
+; Call to con_newline
+CALL func_con_newline
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_time
+func_cmd_time:
+ENTER 4
+; Call to con_print
+MOV P2, str_134
+PUSH P2
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; var __inl12_v = ...
+MOV P5, [0x4266]
+MOV [0xD580], P5
+; For loop
+; Assignment to __inl12_shift
+; Constant folded: 4 - 1 = 3
+MOV P6, 3
+; Unrolled shift SHL by 2
+SHL P6, 1
+SHL P6, 1
+MOV [0xD582], P6
+for_start_135:
+MOV P7, [0xD582]
+CMP P7, 0
+JLT for_end_136
+; Call to con_putc
+MOV P0, [0xD580]
+MOV P1, [0xD582]
+; Runtime shift SHR by register P1
+CMP P1, 0
+JZ shift_end_138
+shift_loop_139:
+SHR P0, 1
+DEC P1
+JNZ shift_loop_139
+shift_end_138:
+MOV P2, 15
+AND P0, P2
+MOV P4, 0x0120
+ADD P4, P0
+MOV R0, [P4]
+MOV P5, R0
+PUSH P5
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
+for_continue_137:
+; Wrap-check: save __inl12_shift before update
+PUSH [0xD582]
+; Assignment to __inl12_shift
+MOV P0, [0xD582]
+SUB P0, 4
+MOV [0xD582], P0
+; Wrap-check: compare __inl12_shift new vs old
+POP P2
+MOV P4, [0xD582]
+CMP P4, P2
+JGT for_end_136
+JMP for_start_135
+for_end_136:
+; Call to con_newline
+CALL func_con_newline
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_echo
+func_cmd_echo:
+ENTER 2
+; For loop
+; Assignment to i
+MOV P6, 1
+MOV [0xD600], P6
+for_start_140:
+MOV P7, [0xD600]
+MOV P0, [0x428A]
+CMP P7, P0
+JNC for_end_141
+; If statement
+MOV P1, [0xD600]
+CMP P1, 2
+JC if_end_143
+; Call to con_putc
+MOV P2, 32
+PUSH P2
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
+if_end_143:
+; Call to con_print
+MOV P5, [0xD600]
+ADD P5, P5
+MOV P6, 0x428C
+ADD P6, P5
+PUSH [P6]
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+for_continue_142:
+; Wrap-check: save i before update
+PUSH [0xD600]
+; Prefix ++ on i
+MOV P2, [0xD600]
+INC P2
+MOV [0xD600], P2
+; Wrap-check: compare i new vs old
+POP P4
+MOV P5, [0xD600]
+CMP P5, P4
+JC for_end_141
+JMP for_start_140
+for_end_141:
+; Call to con_newline
+CALL func_con_newline
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_print
+func_cmd_print:
+ENTER 2
+; Assignment to v
+; Call to eval_args
+MOV P7, 1
+PUSH P7
+CALL func_eval_args
+ADD SP, 2 ; Caller cleans up args
+MOV [0xD680], P0
+; If statement
+MOV P1, [0x42E4]
+CMP P1, 0
+JNZ if_end_145
+; Call to con_print
+MOV P2, str_101
+PUSH P2
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Call to con_println
+MOV P5, str_147
+PUSH P5
+CALL func_con_println
+ADD SP, 2 ; Caller cleans up args
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_145:
+; Call to con_dec
+PUSH [0xD680]
+CALL func_con_dec
+ADD SP, 2 ; Caller cleans up args
+; Call to con_newline
+CALL func_con_newline
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_list
+func_cmd_list:
+ENTER 2
+; For loop
+; Assignment to i
+MOV P2, 0
+MOV [0xD700], P2
+for_start_148:
+MOV P4, [0xD700]
+CMP P4, 26
+JNC for_end_149
+; If statement
+MOV P5, [0xD700]
+ADD P5, P5
+MOV P6, 0x42AE
+ADD P6, P5
+MOV P7, [P6]
+CMP P7, 0
+JZ if_end_151
+; If statement
+MOV P0, [0x426A]
+MOV P1, 0x0017
+CMP P1, P0
+JNC if_end_153
+; Call to con_newline
+CALL func_con_newline
+if_end_153:
+; Call to con_putc
+MOV P5, 65
+MOV P6, [0xD700]
+ADD P5, P6
+PUSH P5
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
+; Call to con_putc
+MOV P0, 61
+PUSH P0
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
+; Call to con_dec
+MOV P2, [0xD700]
+ADD P2, P2
+MOV P4, 0x42AE
+ADD P4, P2
+PUSH [P4]
+CALL func_con_dec
+ADD SP, 2 ; Caller cleans up args
+; Call to con_putc
+MOV P7, 32
+PUSH P7
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
+if_end_151:
+for_continue_150:
+; Wrap-check: save i before update
+PUSH [0xD700]
+; Prefix ++ on i
+MOV P2, [0xD700]
+INC P2
+MOV [0xD700], P2
+; Wrap-check: compare i new vs old
+POP P4
+MOV P5, [0xD700]
+CMP P5, P4
+JC for_end_149
+JMP for_start_148
+for_end_149:
+; Call to con_newline
+CALL func_con_newline
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_let
+func_cmd_let:
+ENTER 2
+; Assignment to v
+; Call to eval_args
+MOV P7, 2
+PUSH P7
+CALL func_eval_args
+ADD SP, 2 ; Caller cleans up args
+MOV [0xD780], P0
+; If statement
+MOV P1, [0x42E4]
+CMP P1, 0
+JNZ if_end_155
+; Call to con_print
+MOV P2, str_101
+PUSH P2
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Call to con_println
+MOV P5, str_157
+PUSH P5
+CALL func_con_println
+ADD SP, 2 ; Caller cleans up args
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_155:
+; Array assignment to vars[...]
+; Call to var_index
+MOV P7, 0
+ADD P7, P7
+MOV P0, 0x428C
+ADD P0, P7
+PUSH [P0]
+CALL func_var_index
+ADD SP, 2 ; Caller cleans up args
+MOV P2, P0
+MOV P4, [0xD780]
+ADD P2, P2
+MOV P5, 0x42AE
+ADD P5, P2
+MOV [P5], P4
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_run
+func_cmd_run:
+ENTER 4
+; If statement
+MOV P6, [0x42E2]
+CMP P6, 0
+JNZ if_end_158
+; Call to con_print
+MOV P7, str_160
+PUSH P7
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Call to con_newline
+CALL func_con_newline
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_158:
+; var __inl16_addr = ...
+MOV P2, 22528
+MOV [0xD800], P2
+; Assignment to __inl16_entry
+MOV P4, [0xD800]
+MOV [0xD802], P4
+; Call to __inl16_entry
+; Indirect call via '__inl16_entry'
+MOV P5, [0xD802]
+CALL P5
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_call
+func_cmd_call:
+ENTER 6
+; Assignment to addr
+; Call to arg_num
+MOV P7, 0
+PUSH P7
+MOV P0, 1
+PUSH P0
+CALL func_arg_num
+ADD SP, 4 ; Caller cleans up args
+MOV P1, P0
+MOV [0xD880], P1
+; If statement
+MOV P2, [0x428A]
+CMP P2, 2
+JC cj_skip_163
+MOV P4, [0x42E6]
+CMP P4, 0
+JZ if_end_161
+cj_skip_163:
+; Call to con_print
+MOV P5, str_101
+PUSH P5
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Call to con_println
+MOV P7, str_164
+PUSH P7
+CALL func_con_println
+ADD SP, 2 ; Caller cleans up args
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_161:
+; var __inl18_addr = ...
+MOV P1, [0xD880]
+MOV [0xD882], P1
+; Assignment to __inl18_entry
+MOV P2, [0xD882]
+MOV [0xD884], P2
+; Call to __inl18_entry
+; Indirect call via '__inl18_entry'
+MOV P4, [0xD884]
+CALL P4
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_new
+func_cmd_new:
+ENTER 0
+; Call to memset
+MOV P6, 0x2700
+PUSH P6
+MOV P0, 0
+PUSH P0
+MOV P1, 22528
+PUSH P1
+CALL builtin_memset
+; Args consumed by callee
+; Assignment to prog_size
+MOV P4, 0
+MOV [0x42E2], P4
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: cmd_help
+func_cmd_help:
+ENTER 4
+; For loop
+; Assignment to i
+MOV P5, 0
+MOV [0xD980], P5
+for_start_165:
+MOV P6, [0xD980]
+PUSH P6
+MOV P7, 78
+MOV P0, 6
+DIV P7, P0
 POP P6
 CMP P6, P7
-JZ cmp_true_130
-MOV P6, 0
-JMP cmp_end_131
-cmp_true_130:
-MOV P6, 1
-cmp_end_131:
-CMP P6, 0
-JNZ sc_true_128
-MOV P1, 0
-JMP sc_end_129
-sc_true_128:
-MOV P1, 1
-sc_end_129:
-CMP P1, 0
-JZ if_end_122
+JNC for_end_166
+; Assignment to name
+; Member read (name)
+MOV P2, [0xD980]
+MUL P2, 6
+MOV P1, 0x0130
+ADD P1, P2
+MOV P4, [P1]
+MOV [0xD982], P4
+; If statement
+; Call to strlen
+PUSH [0xD982]
+CALL builtin_strlen
+; Args consumed by callee
+MOV P6, P0
+MOV P7, [0x426A]
+ADD P6, P7
+PUSH P6
+MOV P0, 1
+MOV P1, 31
+ADD P0, P1
+POP P6
+CMP P0, P6
+JNC if_end_168
+; Call to con_newline
+CALL func_con_newline
+if_end_168:
+; Call to con_print
+PUSH [0xD982]
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Prefix ++ on con_col
+MOV P6, [0x426A]
+INC P6
+MOV [0x426A], P6
+for_continue_167:
+; Wrap-check: save i before update
+PUSH [0xD980]
+; Prefix ++ on i
+MOV P0, [0xD980]
+INC P0
+MOV [0xD980], P0
+; Wrap-check: compare i new vs old
+POP P1
+MOV P2, [0xD980]
+CMP P2, P1
+JC for_end_166
+JMP for_start_165
+for_end_166:
+; Call to con_newline
+CALL func_con_newline
+; Implicit return for void function
+MOV SP, FP
+POP FP
+RET
+; Function: shell_execute
+func_shell_execute:
+ENTER 4
+; Prefix ++ on cmd_count
+MOV P5, [0x42AA]
+INC P5
+MOV [0x42AA], P5
 ; Assignment to shell_cmd
-MOV P0, 8
-MOV [0x42A8], P0
-; Call to shell_time
-CALL func_shell_time
-MOV P1, P0
-if_end_122:
-if_end_112:
-if_end_102:
-if_end_92:
-if_end_82:
-if_end_72:
+MOV P6, 0
+MOV [0x42A8], P6
+; Assignment to bad_args
+MOV P7, 0
+MOV [0x42E6], P7
+; Call to shell_tokenize
+CALL func_shell_tokenize
+; If statement
+MOV P1, [0x428A]
+CMP P1, 0
+JNZ if_end_170
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_170:
+; If statement
+MOV P2, [0x428A]
+CMP P2, 3
+JC if_end_172
+; Call to var_index
+MOV P4, 0
+ADD P4, P4
+MOV P5, 0x428C
+ADD P5, P4
+PUSH [P5]
+CALL func_var_index
+ADD SP, 2 ; Caller cleans up args
+MOV P7, P0
+CMP P7, 0
+JLT if_end_172
+; Call to strcmp
+MOV P0, 65535
+PUSH P0
+MOV P1, str_174
+PUSH P1
+MOV P2, 1
+ADD P2, P2
+MOV P4, 0x428C
+ADD P4, P2
+PUSH [P4]
+CALL builtin_strcmp
+; Args consumed by callee
+MOV P6, P0
+CMP P6, 0
+JNZ if_end_172
+; Assignment to shell_cmd
+MOV P7, 14
+MOV [0x42A8], P7
+; Call to cmd_let
+CALL func_cmd_let
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_172:
+; Call to strupr
+MOV P1, 0
+ADD P1, P1
+MOV P2, 0x428C
+ADD P2, P1
+PUSH [P2]
+CALL builtin_strupr
+; Args consumed by callee
+; For loop
+; Assignment to i
+MOV P6, 0
+MOV [0xDA00], P6
+for_start_175:
+MOV P7, [0xDA00]
+PUSH P7
+MOV P0, 78
+MOV P1, 6
+DIV P0, P1
+POP P7
+CMP P7, P0
+JNC for_end_176
+; If statement
+; Call to strcmp
+MOV P2, 65535
+PUSH P2
+; Member read (name)
+MOV P5, [0xDA00]
+MUL P5, 6
+MOV P4, 0x0130
+ADD P4, P5
+PUSH [P4]
+MOV P7, 0
+ADD P7, P7
+MOV P0, 0x428C
+ADD P0, P7
+PUSH [P0]
+CALL builtin_strcmp
+; Args consumed by callee
+MOV P2, P0
+CMP P2, 0
+JNZ if_end_178
+; Assignment to shell_cmd
+; Member read (id)
+MOV P5, [0xDA00]
+MUL P5, 6
+MOV P4, 0x0130
+ADD P4, P5
+ADD P4, 2
+MOV P6, [P4]
+MOV [0x42A8], P6
+; Assignment to handler
+; Member read (handler)
+MOV P0, [0xDA00]
+MUL P0, 6
+MOV P7, 0x0130
+ADD P7, P0
+ADD P7, 4
+MOV P1, [P7]
+MOV [0xDA02], P1
+; Call to handler
+; Indirect call via 'handler'
+MOV P2, [0xDA02]
+CALL P2
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_178:
+for_continue_177:
+; Wrap-check: save i before update
+PUSH [0xDA00]
+; Prefix ++ on i
+MOV P6, [0xDA00]
+INC P6
+MOV [0xDA00], P6
+; Wrap-check: compare i new vs old
+POP P7
+MOV P0, [0xDA00]
+CMP P0, P7
+JC for_end_176
+JMP for_start_175
+for_end_176:
+; Call to con_print
+MOV P1, str_180
+PUSH P1
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Call to con_newline
+CALL func_con_newline
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -1214,463 +1960,311 @@ RET
 func_shell_key:
 ENTER 0
 ; If statement
-MOV P2, 147
-PUSH P2
+MOV P2, 10
 MOV P4, [FP+4]
-POP P2
 CMP P2, P4
-JZ cmp_true_134
-MOV P2, 0
-JMP cmp_end_135
-cmp_true_134:
-MOV P2, 1
-cmp_end_135:
-PUSH P2
-MOV P5, 10
-PUSH P5
+JZ cj_skip_186
+MOV P5, 13
 MOV P6, [FP+4]
-POP P5
 CMP P5, P6
-JZ cmp_true_136
-MOV P5, 0
-JMP cmp_end_137
-cmp_true_136:
-MOV P5, 1
-cmp_end_137:
-PUSH P5
-MOV P7, 13
-PUSH P7
+JZ cj_skip_186
+MOV P7, 147
 MOV P0, [FP+4]
-POP P7
 CMP P7, P0
-JZ cmp_true_138
-MOV P7, 0
-JMP cmp_end_139
-cmp_true_138:
-MOV P7, 1
-cmp_end_139:
-POP P5
-CMP P5, 0
-JNZ sc_true_140
-MOV P1, 13
-PUSH P1
-MOV P2, [FP+4]
-POP P1
-CMP P1, P2
-JZ cmp_true_142
-MOV P1, 0
-JMP cmp_end_143
-cmp_true_142:
-MOV P1, 1
-cmp_end_143:
-CMP P1, 0
-JNZ sc_true_140
-MOV P5, 0
-JMP sc_end_141
-sc_true_140:
-MOV P5, 1
-sc_end_141:
-POP P2
-CMP P2, 0
-JNZ sc_true_144
-MOV P4, 10
-PUSH P4
-MOV P5, [FP+4]
-POP P4
-CMP P4, P5
-JZ cmp_true_146
+JNZ if_end_184
+cj_skip_186:
+; Call to con_newline
+CALL func_con_newline
+; Array assignment to line[...]
+MOV P2, [0x4288]
 MOV P4, 0
-JMP cmp_end_147
-cmp_true_146:
-MOV P4, 1
-cmp_end_147:
-PUSH P4
-MOV P6, 13
-PUSH P6
-MOV P7, [FP+4]
-POP P6
-CMP P6, P7
-JZ cmp_true_148
-MOV P6, 0
-JMP cmp_end_149
-cmp_true_148:
-MOV P6, 1
-cmp_end_149:
-POP P4
-CMP P4, 0
-JNZ sc_true_150
-MOV P0, 13
-PUSH P0
-MOV P1, [FP+4]
-POP P0
-CMP P0, P1
-JZ cmp_true_152
-MOV P0, 0
-JMP cmp_end_153
-cmp_true_152:
-MOV P0, 1
-cmp_end_153:
-CMP P0, 0
-JNZ sc_true_150
-MOV P4, 0
-JMP sc_end_151
-sc_true_150:
-MOV P4, 1
-sc_end_151:
-CMP P4, 0
-JNZ sc_true_144
-MOV P2, 0
-JMP sc_end_145
-sc_true_144:
-MOV P2, 1
-sc_end_145:
-CMP P2, 0
-JZ if_end_132
-; Call to shell_newline
-CALL func_shell_newline
-MOV P2, P0
-; Call to shell_dispatch
-CALL func_shell_dispatch
-MOV P4, P0
+MOV P5, 0x426C
+ADD P5, P2
+MOV R0, P4
+MOV [P5], R0
+; Call to shell_execute
+CALL func_shell_execute
 ; Assignment to line_len
-MOV P5, 0
-MOV [0x42A6], P5
+MOV P7, 0
+MOV [0x4288], P7
 ; If statement
-MOV P6, 0
-PUSH P6
-MOV P7, [0x42AC]
-POP P6
-CMP P6, P7
-JZ cmp_true_156
-MOV P6, 0
-JMP cmp_end_157
-cmp_true_156:
-MOV P6, 1
-cmp_end_157:
-CMP P6, 0
-JZ if_end_154
-; Call to shell_prompt
-CALL func_shell_prompt
-if_end_154:
+MOV P0, [0x42AC]
+CMP P0, 0
+JNZ if_end_187
+; If statement
+MOV P1, 2
+MOV P2, [0x426A]
+CMP P1, P2
+JZ if_end_189
+; Call to con_newline
+CALL func_con_newline
+if_end_189:
+; Call to con_print
+MOV P5, str_191
+PUSH P5
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+if_end_187:
 ; Function return
 MOV SP, FP
 POP FP
 RET
-if_end_132:
+if_end_184:
 ; If statement
+MOV P7, 8
+MOV P0, [FP+4]
+CMP P7, P0
+JZ cj_skip_194
 MOV P1, 146
-PUSH P1
 MOV P2, [FP+4]
-POP P1
 CMP P1, P2
-JZ cmp_true_160
-MOV P1, 0
-JMP cmp_end_161
-cmp_true_160:
-MOV P1, 1
-cmp_end_161:
-PUSH P1
-MOV P4, 8
-PUSH P4
-MOV P5, [FP+4]
-POP P4
-CMP P4, P5
-JZ cmp_true_162
-MOV P4, 0
-JMP cmp_end_163
-cmp_true_162:
-MOV P4, 1
-cmp_end_163:
-POP P1
-CMP P1, 0
-JNZ sc_true_164
+JNZ if_end_192
+cj_skip_194:
+; If statement
+MOV P4, [0x4288]
+CMP P4, 0
+JLE if_end_195
+; Prefix -- on line_len
+MOV P5, [0x4288]
+DEC P5
+MOV [0x4288], P5
+; Call to con_putc
 MOV P6, 8
 PUSH P6
-MOV P7, [FP+4]
-POP P6
-CMP P6, P7
-JZ cmp_true_166
-MOV P6, 0
-JMP cmp_end_167
-cmp_true_166:
-MOV P6, 1
-cmp_end_167:
-CMP P6, 0
-JNZ sc_true_164
-MOV P1, 0
-JMP sc_end_165
-sc_true_164:
-MOV P1, 1
-sc_end_165:
-CMP P1, 0
-JZ if_end_158
-; If statement
-MOV P0, [0x42A6]
-PUSH P0
-MOV P1, 0
-POP P0
-; Signed comparison (two's complement)
-CMP P0, P1
-JGT cmp_true_170
-MOV P0, 0
-JMP cmp_end_171
-cmp_true_170:
-MOV P0, 1
-cmp_end_171:
-CMP P0, 0
-JZ if_end_168
-; Assignment to line_len
-MOV P2, [0x42A6]
-PUSH P2
-MOV P4, 1
-POP P2
-SUB P2, P4
-MOV [0x42A6], P2
-; Call to shell_putc
-MOV P5, 8
-PUSH P5
-CALL func_shell_putc
+CALL func_con_putc
 ADD SP, 2 ; Caller cleans up args
-MOV P6, P0
-if_end_168:
+if_end_195:
 ; Function return
 MOV SP, FP
 POP FP
 RET
-if_end_158:
+if_end_192:
 ; If statement
-MOV P7, 27
-PUSH P7
-MOV P0, [FP+4]
-POP P7
-CMP P7, P0
-JZ cmp_true_174
-MOV P7, 0
-JMP cmp_end_175
-cmp_true_174:
-MOV P7, 1
-cmp_end_175:
-CMP P7, 0
-JZ if_end_172
-; Assignment to shell_exit
-MOV P1, 1
-MOV [0x42AC], P1
-; Function return
-MOV SP, FP
-POP FP
-RET
-if_end_172:
-; If statement
-MOV P2, [FP+4]
-PUSH P2
-MOV P4, 32
-POP P2
-CMP P2, P4
-JC cmp_true_178
-MOV P2, 0
-JMP cmp_end_179
-cmp_true_178:
-MOV P2, 1
-cmp_end_179:
-PUSH P2
-MOV P5, [FP+4]
-PUSH P5
-MOV P6, 126
-POP P5
-CMP P6, P5
-JC cmp_true_180
-MOV P5, 0
-JMP cmp_end_181
-cmp_true_180:
-MOV P5, 1
-cmp_end_181:
-POP P2
-CMP P2, 0
-JNZ sc_true_182
-MOV P7, [FP+4]
-PUSH P7
-MOV P0, 126
-POP P7
-CMP P0, P7
-JC cmp_true_184
-MOV P7, 0
-JMP cmp_end_185
-cmp_true_184:
-MOV P7, 1
-cmp_end_185:
-CMP P7, 0
-JNZ sc_true_182
-MOV P2, 0
-JMP sc_end_183
-sc_true_182:
-MOV P2, 1
-sc_end_183:
-CMP P2, 0
-JZ if_end_176
-; Function return
-MOV SP, FP
-POP FP
-RET
-if_end_176:
-; If statement
-MOV P1, [0x42A6]
-PUSH P1
-MOV P2, 24
-POP P1
-CMP P1, P2
-JC cmp_true_188
-MOV P1, 0
-JMP cmp_end_189
-cmp_true_188:
-MOV P1, 1
-cmp_end_189:
-CMP P1, 0
-JZ if_end_186
-; Array assignment to line_buf[...]
-MOV P4, [0x42A6]
-PUSH P4
-MOV P5, [FP+4]
-POP P4
-ADD P4, P4
-MOV P6, 0x4276
-ADD P6, P4
-MOV [P6], P5
-; Assignment to line_len
-MOV P7, [0x42A6]
-PUSH P7
-MOV P0, 1
-POP P7
-ADD P7, P0
-MOV [0x42A6], P7
-; Call to shell_putc
+MOV P0, 27
 MOV P1, [FP+4]
-PUSH P1
-CALL func_shell_putc
-ADD SP, 2 ; Caller cleans up args
-MOV P2, P0
-if_end_186:
-; Implicit return for void function
+CMP P0, P1
+JZ cj_skip_199
+MOV P2, 154
+MOV P4, [FP+4]
+CMP P2, P4
+JNZ if_end_197
+cj_skip_199:
+; Assignment to shell_exit
+MOV P5, 1
+MOV [0x42AC], P5
+; Function return
 MOV SP, FP
 POP FP
 RET
-; Function: banner
-func_banner:
-ENTER 0
-; Call to set_mode
-MOV P4, 1
-PUSH P4
-CALL builtin_set_vmode
-; Args consumed by callee
-MOV P5, R0
-; Call to set_layer
-MOV P6, 0
-PUSH P6
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P7, R0
-; Call to screen_fill
-MOV P0, 0
-PUSH P0
-CALL builtin_screen_fill
-; Args consumed by callee
-MOV P1, R0
-; Call to set_pos
-MOV P2, 8
-PUSH P2
-MOV P4, 16
-PUSH P4
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P5, R0
-; Call to write_text
-MOV P6, 15
-PUSH P6
-MOV P7, str_190
+if_end_197:
+; If statement
+MOV P6, [FP+4]
+CMP P6, 32
+JC cj_skip_202
+MOV P7, [FP+4]
+CMP P7, 127
+JNC cj_skip_202
+MOV P0, [0x4288]
+MOV P1, 27
+CMP P0, P1
+JC if_end_200
+cj_skip_202:
+; Function return
+MOV SP, FP
+POP FP
+RET
+if_end_200:
+; Array assignment to line[...]
+MOV P2, [0x4288]
+MOV P4, [FP+4]
+MOV P5, 0x426C
+ADD P5, P2
+MOV R0, P4
+MOV [P5], R0
+; Prefix ++ on line_len
+MOV P6, [0x4288]
+INC P6
+MOV [0x4288], P6
+; Call to con_putc
+MOV P7, [FP+4]
 PUSH P7
-CALL builtin_write_text
-; Args consumed by callee
-MOV P0, R0
-; Call to set_pos
-MOV P1, 16
-PUSH P1
-MOV P2, 16
-PUSH P2
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P4, R0
-; Call to write_text
-MOV P5, 10
-PUSH P5
-MOV P6, str_191
-PUSH P6
-CALL builtin_write_text
-; Args consumed by callee
-MOV P7, R0
-; Assignment to shell_row
-MOV P0, 3
-MOV [0x4272], P0
-; Assignment to shell_col
-MOV P1, 2
-MOV [0x4274], P1
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-; Function: demo_task
-func_demo_task:
-ENTER 0
-; Assignment to demo_hits
-MOV P2, [0x4386]
-PUSH P2
-MOV P4, 1
-POP P2
-ADD P2, P4
-MOV [0x4386], P2
-; Call to task_switch
-MOV P5, 0x435A
-PUSH P5
-MOV P6, 0x42AE
-PUSH P6
-CALL builtin_task_switch
-; Args consumed by callee
-MOV P7, P0
-; Assignment to demo_hits
-MOV P0, [0x4386]
+; Function: sys_isr
+func_sys_isr:
+; Save general registers (interrupt entry only saves PC+flags)
 PUSH P0
-MOV P1, 10
-POP P0
-ADD P0, P1
-MOV [0x4386], P0
-; Call to task_switch
-MOV P2, 0x435A
+PUSH P1
 PUSH P2
-MOV P4, 0x42AE
+PUSH P3
+PUSH P4
+PUSH P5
+PUSH P6
+PUSH P7
+PUSH P9
+PUSH R0
+PUSH R1
+PUSH R2
+PUSH R3
+PUSH R4
+PUSH R5
+PUSH R6
+PUSH R7
+PUSH R8
+PUSH R9
+; Prefix ++ on sys_calls
+MOV P1, [0x42E8]
+INC P1
+MOV [0x42E8], P1
+; Assignment to sys_ret
+MOV P2, 0
+MOV [0x0014], P2
+; Switch statement
+MOV P4, [0x0012]
+CMP P4, 12
+JZ case_204
+MOV P6, 9
+CMP P4, P6
+JZ case_205
+CMP P4, 11
+JZ case_206
+CMP P4, 24
+JZ case_207
+; Assignment to sys_ret
+MOV P1, 65535
+MOV [0x0014], P1
+JMP switch_end_203
+case_204:
+; Call to con_putc
+PUSH [0x0016]
+CALL func_con_putc
+ADD SP, 2 ; Caller cleans up args
+; break
+JMP switch_end_203
+case_205:
+; Call to con_print
+MOV P5, [0x0016]
+PUSH P5
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; break
+JMP switch_end_203
+case_206:
+; Assignment to sys_ret
+MOV P7, 0
+MOV [0x0014], P7
+; If statement
+; Call to key_available
+CALL builtin_key_available
+CMP P0, 0
+JZ if_end_208
+; Assignment to sys_ret
+; Call to key_read
+CALL builtin_key_read
+MOV P1, P0
+MOV [0x0014], P1
+if_end_208:
+; break
+JMP switch_end_203
+case_207:
+; Assignment to sys_ret
+MOV P2, [0x4266]
+MOV [0x0014], P2
+; break
+JMP switch_end_203
+switch_end_203:
+; Implicit ISR return
+POP R9
+POP R8
+POP R7
+POP R6
+POP R5
+POP R4
+POP R3
+POP R2
+POP R1
+POP R0
+POP P9
+POP P7
+POP P6
+POP P5
+POP P4
+POP P3
+POP P2
+POP P1
+POP P0
+IRET
+; Function: bg_task
+func_bg_task:
+ENTER 4
+; While loop
+while_start_212:
+; var __inl21_now = ...
+MOV P5, [0x4266]
+MOV [0xDC80], P5
+; For loop
+; Assignment to __inl21_i
+MOV P6, 0
+MOV [0xDC82], P6
+for_start_214:
+MOV P7, [0xDC82]
+CMP P7, 16
+JNC for_end_215
+; If statement
+MOV P0, [0xDC82]
+ADD P0, P0
+MOV P1, 0x4222
+ADD P1, P0
+MOV P2, [P1]
+CMP P2, 3
+JNZ if_end_217
+MOV P5, [0xDC82]
+ADD P5, P5
+MOV P6, 0x4242
+ADD P6, P5
+MOV P7, [P6]
+MOV P0, [0xDC80]
+CMP P0, P7
+JC if_end_217
+; Array assignment to task_state[...]
+MOV P1, [0xDC82]
+MOV P2, 0
+ADD P1, P1
+MOV P4, 0x4222
+ADD P4, P1
+MOV [P4], P2
+if_end_217:
+for_continue_216:
+; Wrap-check: save __inl21_i before update
+PUSH [0xDC82]
+; Prefix ++ on __inl21_i
+MOV P6, [0xDC82]
+INC P6
+MOV [0xDC82], P6
+; Wrap-check: compare __inl21_i new vs old
+POP P7
+MOV P0, [0xDC82]
+CMP P0, P7
+JC for_end_215
+JMP for_start_214
+for_end_215:
+; Prefix ++ on bg_runs
+MOV P1, [0x43C2]
+INC P1
+MOV [0x43C2], P1
+; Call to task_switch
+MOV P2, 0x42EA
+PUSH P2
+MOV P4, 0x4316
 PUSH P4
 CALL builtin_task_switch
 ; Args consumed by callee
-MOV P5, P0
-; Assignment to demo_hits
-MOV P6, [0x4386]
-PUSH P6
-MOV P7, 100
-POP P6
-ADD P6, P7
-MOV [0x4386], P6
-; While loop
-while_start_192:
-MOV P0, 1
-CMP P0, 0
-JZ while_end_193
-; Call to task_switch
-MOV P1, 0x435A
-PUSH P1
-MOV P2, 0x42AE
-PUSH P2
-CALL builtin_task_switch
-; Args consumed by callee
-MOV P4, P0
-JMP while_start_192
-while_end_193:
+JMP while_start_212
+while_end_213:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -1678,90 +2272,77 @@ RET
 ; Function: main
 func_main:
 ENTER 4
-; Call to mem_init
-CALL func_mem_init
-MOV P5, P0
 ; For loop
-; Assignment to i
+; Assignment to __inl22_i
 MOV P6, 0
-MOV [0xD200], P6
-for_start_194:
-MOV P7, [0xD200]
+MOV [0xDD02], P6
+for_start_219:
+MOV P7, [0xDD02]
+CMP P7, 16
+JNC for_end_220
+; Array assignment to task_pid[...]
+MOV P0, [0xDD02]
+MOV P1, -1
+ADD P0, P0
+MOV P2, 0x4202
+ADD P2, P0
+MOV [P2], P1
+; Array assignment to task_state[...]
+MOV P4, [0xDD02]
+MOV P5, 5
+ADD P4, P4
+MOV P6, 0x4222
+ADD P6, P4
+MOV [P6], P5
+for_continue_221:
+; Wrap-check: save __inl22_i before update
+PUSH [0xDD02]
+; Prefix ++ on __inl22_i
+MOV P0, [0xDD02]
+INC P0
+MOV [0xDD02], P0
+; Wrap-check: compare __inl22_i new vs old
+POP P1
+MOV P2, [0xDD02]
+CMP P2, P1
+JC for_end_220
+JMP for_start_219
+for_end_220:
+; Call to set_mode
+MOV P4, 1
+PUSH P4
+CALL builtin_set_vmode
+; Args consumed by callee
+; Call to con_clear
+CALL func_con_clear
+; Call to set_pos
+MOV P7, 8
 PUSH P7
 MOV P0, 16
-POP P7
-CMP P7, P0
-JC cmp_true_197
-MOV P7, 0
-JMP cmp_end_198
-cmp_true_197:
-MOV P7, 1
-cmp_end_198:
-CMP P7, 0
-JZ for_end_195
-; Array assignment to task_pid[...]
-MOV P1, [0xD200]
-PUSH P1
-MOV P2, -1
-POP P1
-ADD P1, P1
-MOV P4, 0x420A
-ADD P4, P1
-MOV [P4], P2
-; Array assignment to task_state[...]
-MOV P5, [0xD200]
-PUSH P5
-MOV P6, 1
-POP P5
-ADD P5, P5
-MOV P7, 0x422A
-ADD P7, P5
-MOV [P7], P6
-for_continue_196:
-; Assignment to i
-MOV P0, [0xD200]
 PUSH P0
-MOV P1, 1
-POP P0
-ADD P0, P1
-MOV [0xD200], P0
-JMP for_start_194
-for_end_195:
-; Call to poke
-MOV P2, 78
+CALL builtin_set_pos
+; Args consumed by callee
+; Call to write_text
+MOV P2, 15
 PUSH P2
-MOV P4, 0
+MOV P4, str_222
 PUSH P4
-CALL builtin_poke
+CALL builtin_write_text
 ; Args consumed by callee
-MOV P5, R0
-; Call to poke
-MOV P6, 68
+; Call to set_pos
+MOV P6, 16
 PUSH P6
-MOV P7, 1
+MOV P7, 16
 PUSH P7
-CALL builtin_poke
+CALL builtin_set_pos
 ; Args consumed by callee
-MOV P0, R0
-; Call to poke
-MOV P1, 1
+; Call to write_text
+MOV P1, 10
 PUSH P1
-MOV P2, 2
+MOV P2, str_223
 PUSH P2
-CALL builtin_poke
+CALL builtin_write_text
 ; Args consumed by callee
-MOV P4, R0
-; Call to poke
-MOV P5, 0
-PUSH P5
-MOV P6, 3
-PUSH P6
-CALL builtin_poke
-; Args consumed by callee
-MOV P7, R0
-; asm {
-STI
-; }
 ; asm {
 MOV TT, 0
 ; }
@@ -1774,278 +2355,90 @@ MOV TS, 31
 ; asm {
 MOV TC, 3
 ; }
-; Call to banner
-CALL func_banner
-; Call to shell_prompt
-CALL func_shell_prompt
-MOV P1, P0
+; asm {
+STI
+; }
 ; Call to task_spawn
-MOV P2, func_demo_task
-PUSH P2
-MOV P4, 64
-PUSH P4
-MOV P5, 0x42DA
+MOV P5, func_bg_task
 PUSH P5
-MOV P6, 0x42AE
+MOV P6, 64
 PUSH P6
+MOV P7, 0x4342
+PUSH P7
+MOV P0, 0x4316
+PUSH P0
 CALL builtin_task_spawn
 ; Args consumed by callee
-MOV P7, R0
-; Call to task_switch
-MOV P0, 0x42AE
-PUSH P0
-MOV P1, 0x435A
-PUSH P1
-CALL builtin_task_switch
-; Args consumed by callee
-MOV P2, P0
-; Call to wake_sleepers
-MOV P4, [0x426E]
-PUSH P4
-CALL func_wake_sleepers
-ADD SP, 2 ; Caller cleans up args
-MOV P5, P0
-; Call to shell_putc
-MOV P6, 72
-PUSH P6
-CALL func_shell_putc
-ADD SP, 2 ; Caller cleans up args
-MOV P7, P0
-; Call to shell_putc
-MOV P0, 105
-PUSH P0
-CALL func_shell_putc
-ADD SP, 2 ; Caller cleans up args
-MOV P1, P0
-; Call to task_switch
-MOV P2, 0x42AE
-PUSH P2
-MOV P4, 0x435A
-PUSH P4
-CALL builtin_task_switch
-; Args consumed by callee
-MOV P5, P0
-; Call to shell_newline
-CALL func_shell_newline
-MOV P6, P0
-; Call to shell_prompt
-CALL func_shell_prompt
-MOV P7, P0
-; Assignment to shell_exit
-MOV P0, 0
-MOV [0x42AC], P0
-; Assignment to i
-MOV P1, 0
-MOV [0xD200], P1
-; While loop
-while_start_199:
-MOV P2, [0xD200]
-PUSH P2
-MOV P4, 200
-POP P2
+; If statement
+MOV P2, 2
+MOV P4, [0x426A]
 CMP P2, P4
-JC cmp_true_201
-MOV P2, 0
-JMP cmp_end_202
-cmp_true_201:
-MOV P2, 1
-cmp_end_202:
-PUSH P2
-MOV P5, 0
-PUSH P5
-MOV P6, [0x42AC]
-POP P5
-CMP P5, P6
-JZ cmp_true_203
-MOV P5, 0
-JMP cmp_end_204
-cmp_true_203:
-MOV P5, 1
-cmp_end_204:
-POP P2
-CMP P2, 0
-JZ sc_false_205
-MOV P7, 0
-PUSH P7
-MOV P0, [0x42AC]
-POP P7
-CMP P7, P0
-JZ cmp_true_207
-MOV P7, 0
-JMP cmp_end_208
-cmp_true_207:
-MOV P7, 1
-cmp_end_208:
-CMP P7, 0
-JZ sc_false_205
-MOV P2, 1
-JMP sc_end_206
-sc_false_205:
-MOV P2, 0
-sc_end_206:
-CMP P2, 0
-JZ while_end_200
-; Call to wake_sleepers
-MOV P1, [0x426E]
-PUSH P1
-CALL func_wake_sleepers
+JZ if_end_224
+; Call to con_newline
+CALL func_con_newline
+if_end_224:
+; Call to con_print
+MOV P6, str_191
+PUSH P6
+CALL func_con_print
 ADD SP, 2 ; Caller cleans up args
-MOV P2, P0
+; For loop
+; Assignment to polls
+MOV P0, 0
+MOV [0xDD00], P0
+for_start_226:
+MOV P1, [0xDD00]
+CMP P1, 200
+JNC for_end_227
+MOV P2, [0x42AC]
+CMP P2, 0
+JNZ for_end_227
+; Call to task_switch
+MOV P4, 0x4316
+PUSH P4
+MOV P5, 0x42EA
+PUSH P5
+CALL builtin_task_switch
+; Args consumed by callee
 ; If statement
 ; Call to key_available
 CALL builtin_key_available
-MOV P4, P0
-CMP P4, 0
-JZ if_end_209
+MOV P7, P0
+CMP P7, 0
+JZ if_end_229
 ; Call to shell_key
 ; Call to key_read
 CALL builtin_key_read
-MOV P5, P0
-PUSH P5
+PUSH P0
 CALL func_shell_key
 ADD SP, 2 ; Caller cleans up args
-MOV P6, P0
-if_end_209:
-; Assignment to i
-MOV P7, [0xD200]
-PUSH P7
-MOV P0, 1
-POP P7
-ADD P7, P0
-MOV [0xD200], P7
-JMP while_start_199
-while_end_200:
-; Call to task_switch
-MOV P1, 0x42AE
-PUSH P1
-MOV P2, 0x435A
-PUSH P2
-CALL builtin_task_switch
-; Args consumed by callee
-MOV P4, P0
-; Assignment to had_sleep
-MOV P5, [0x4386]
-MOV [0xD202], P5
-; Call to set_pos
-MOV P6, 60
-PUSH P6
-MOV P7, 2
-PUSH P7
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P0, R0
-; Call to write_text
-MOV P1, 10
-PUSH P1
-; Type cast: (string) expr
-MOV P2, [0xD202]
-; Signed decimal conversion (layout-local scratch)
-CMP P2, 0
-JS stoa_neg_211
-CMP P2, 0
-JZ utoa_zero_213
-MOV P6, P2
-MOV P7, 0xC100
-utoa_loop_214:
-CMP P6, 0
-JZ utoa_done_215
-MOV P0, P6
-MOV P1, 10
-DIV P0, P1
-MOV P1, P3
-ADD P1, 48
-MOV R0, P1
-MOV [P7], R0
-MOV P6, P0
-INC P7
-JMP utoa_loop_214
-utoa_done_215:
-DEC P7
-MOV P6, 0xC000
-utoa_rev_216:
-CMP P7, 0xC100
-JC utoa_finish_217
-MOV R0, [P7]
-MOV [P6], R0
-INC P6
-DEC P7
-JMP utoa_rev_216
-utoa_finish_217:
-MOV [P6], 0
-MOV P4, 0xC000
-JMP utoa_finish_217_end
-utoa_zero_213:
-MOV [0xC000], 48
-MOV [0xC001], 0
-MOV P4, 0xC000
-utoa_finish_217_end:
-JMP stoa_end_212
-stoa_neg_211:
-MOV P5, 0
-SUB P5, P2
-MOV R0, 45
-MOV [0xC000], R0
-MOV [0xC001], 0
-CMP P5, 0
-JZ utoa_zero_218
-MOV P2, P5
-MOV P6, 0xC100
-utoa_loop_219:
-CMP P2, 0
-JZ utoa_done_220
-MOV P7, P2
-MOV P0, 10
-DIV P7, P0
-MOV P0, P3
-ADD P0, 48
-MOV R0, P0
-MOV [P6], R0
-MOV P2, P7
-INC P6
-JMP utoa_loop_219
-utoa_done_220:
-DEC P6
-MOV P2, 0xC001
-utoa_rev_221:
-CMP P6, 0xC100
-JC utoa_finish_222
-MOV R0, [P6]
-MOV [P2], R0
+if_end_229:
+for_continue_228:
+; Prefix ++ on polls
+MOV P2, [0xDD00]
 INC P2
-DEC P6
-JMP utoa_rev_221
-utoa_finish_222:
-MOV [P2], 0
-MOV P4, 0xC001
-JMP utoa_finish_222_end
-utoa_zero_218:
-MOV [0xC001], 48
-MOV [0xC002], 0
-MOV P4, 0xC001
-utoa_finish_222_end:
-MOV P4, 0xC000
-stoa_end_212:
-PUSH P4
-CALL builtin_write_text
-; Args consumed by callee
-MOV P1, R0
-; Call to shell_newline
-CALL func_shell_newline
-MOV P2, P0
+MOV [0xDD00], P2
+JMP for_start_226
+for_end_227:
+; If statement
+MOV P4, 2
+MOV P5, [0x426A]
+CMP P4, P5
+JZ if_end_231
+; Call to con_newline
+CALL func_con_newline
+if_end_231:
+; Call to con_print
+MOV P7, str_233
+PUSH P7
+CALL func_con_print
+ADD SP, 2 ; Caller cleans up args
+; Call to con_newline
+CALL func_con_newline
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-;
-; Data Section
-;
-str_51: DEFSTR " "
-str_56: DEFSTR "> "
-str_65: DEFSTR "MEM free="
-str_66: DEFSTR "TIME "
-str_67: DEFSTR "HELP PEEK CLS MEM TIME BYE"
-str_190: DEFSTR "NovaDOS v0.1"
-str_191: DEFSTR "boot slice: shell + scheduler + timer"
 ; Built-in Function Implementations
 builtin_set_vmode:
 POP P0
@@ -2087,6 +2480,43 @@ RET
 builtin_key_read:
 KEYIN P0
 RET
+builtin_strcmp:
+POP P3
+POP P1
+POP P2
+POP P4
+STRCMP P1, P2, P4
+MOV P0, R0
+CMP P0, 0x80
+JC builtin_strcmp_done
+OR P0, 0xFF00
+builtin_strcmp_done:
+PUSH P3
+RET
+builtin_strlen:
+; STRLEN writes result to R0
+POP P3
+POP P1
+STRLEN P1
+MOV P0, R0
+PUSH P3
+RET
+builtin_strupr:
+POP P3
+POP P1
+STRUPR P1
+MOV P0, P1
+PUSH P3
+RET
+builtin_memset:
+POP P3
+POP P1
+POP P2
+POP P4
+MEMSET P1, P2, P4
+MOV P0, P1
+PUSH P3
+RET
 builtin_peek:
 ; peek(addr) -> the byte stored at addr.
 ; The data bus is word-granular and big-endian (the high byte of a
@@ -2109,8 +2539,7 @@ POP P3
 POP P1
 POP P2
 MOV P4, [P1]
-MOV P5, 255
-AND P4, P5
+AND P4, 255
 MOV P5, P2
 ; val << 8: unrolled two-operand shifts (the bare "SHL Px" form
 ; mis-encodes -- the ISA defines SHL as dst,count)
@@ -2244,8 +2673,7 @@ MOV [P1+4], P5
 ; --- restore phase: P2 stays the base pointer throughout; P6
 ; is the only scratch and is re-loaded from memory near the end
 ; (memory->R loads are byte loads, so R values stage via P6).
-MOV P6, [P2+0]
-PUSH P6
+PUSH [P2+0]
 POPF
 MOV P6, [P2+8]
 MOV R0, P6
@@ -2280,18 +2708,19 @@ MOV FP, [P2+2]
 MOV SP, [P2+4]
 MOV P2, [P2+32]
 RET
+; Const data -- read-only program image
+ORG 0x0120
+; const global 'hex_digits'
+gvar_hex_digits:
+DB 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70
+ORG 0x0130
+; const global 'commands'
+gvar_commands:
+DW str_0, 1, func_cmd_help, str_1, 2, func_cmd_cls, str_2, 3, func_cmd_peek, str_3, 9, func_cmd_poke, str_4, 7, func_cmd_mem, str_5, 8, func_cmd_time, str_6, 11, func_cmd_echo, str_7, 12, func_cmd_print, str_8, 13, func_cmd_list, str_9, 16, func_cmd_run, str_10, 18, func_cmd_call, str_11, 19, func_cmd_new, str_12, 4, func_cmd_bye
 ORG 0x4200
 ; Global Variables
-gvar_mem_heap_start:
-DW 12288
 gvar_mem_heap_next:
-DW 12288
-gvar_mem_heap_end:
-DW 32768
-gvar_mem_heap_used:
-DW 0
-gvar_mem_initialized:
-DW 0
+DW 20480
 gvar_task_pid:
 DS 32
 gvar_task_state:
@@ -2304,27 +2733,97 @@ gvar_current_task:
 DW 65535
 gvar_system_ticks:
 DW 0
-gvar_pending_timer:
-DW 0
-gvar_shell_row:
-DW 12
-gvar_shell_col:
+gvar_con_row:
+DW 3
+gvar_con_col:
 DW 2
-gvar_line_buf:
-DS 48
+gvar_line:
+DS 28
 gvar_line_len:
 DW 0
+gvar_argc:
+DW 0
+gvar_argv:
+DS 28
 gvar_shell_cmd:
 DW 0
 gvar_cmd_count:
 DW 0
 gvar_shell_exit:
 DW 0
-gvar_demo_ctx:
-DS 44
-gvar_demo_stack:
-DS 128
-gvar_demo_ctx_main:
-DS 44
-gvar_demo_hits:
+gvar_vars:
+DS 52
+gvar_prog_size:
 DW 0
+gvar_num_ok:
+DW 0
+gvar_bad_args:
+DW 0
+gvar_sys_calls:
+DW 0
+gvar_shell_ctx:
+DS 44
+gvar_bg_ctx:
+DS 44
+gvar_bg_stack:
+DS 128
+gvar_bg_runs:
+DW 0
+ORG 0x0012
+; Placed global 'sys_num'
+gvar_sys_num:
+DS 2
+ORG 0x0014
+; Placed global 'sys_ret'
+gvar_sys_ret:
+DS 2
+ORG 0x0016
+; Placed global 'sys_arg0'
+gvar_sys_arg0:
+DS 2
+ORG 0x0018
+; Placed global 'sys_arg1'
+gvar_sys_arg1:
+DS 2
+ORG 0x001A
+; Placed global 'sys_arg2'
+gvar_sys_arg2:
+DS 2
+ORG 0x0000
+; Placed global 'os_signature'
+gvar_os_signature:
+DW 20036, 256
+ORG 0x017E
+;
+; Data Section
+;
+str_0: DEFSTR "HELP"
+str_1: DEFSTR "CLS"
+str_2: DEFSTR "PEEK"
+str_3: DEFSTR "POKE"
+str_4: DEFSTR "MEM"
+str_5: DEFSTR "TIME"
+str_6: DEFSTR "ECHO"
+str_7: DEFSTR "PRINT"
+str_8: DEFSTR "LIST"
+str_9: DEFSTR "RUN"
+str_10: DEFSTR "CALL"
+str_11: DEFSTR "NEW"
+str_12: DEFSTR "BYE"
+str_32: DEFSTR " "
+str_101: DEFSTR "usage: "
+str_102: DEFSTR "PEEK [addr] [1-8]"
+str_116: DEFSTR "POKE addr byte..."
+str_122: DEFSTR "MEM heap="
+str_128: DEFSTR " prog="
+str_134: DEFSTR "TIME "
+str_147: DEFSTR "PRINT expr"
+str_157: DEFSTR "X = expr"
+str_160: DEFSTR "no program loaded"
+str_164: DEFSTR "CALL addr"
+str_174: DEFSTR "="
+str_180: DEFSTR "bad command"
+str_191: DEFSTR "> "
+str_222: DEFSTR "NovaDOS v0.2"
+str_223: DEFSTR "Astrid kernel - type HELP"
+str_233: DEFSTR "System halted."

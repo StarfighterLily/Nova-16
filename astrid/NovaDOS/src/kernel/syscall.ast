@@ -1,0 +1,58 @@
+// =============================================================================
+// NovaDOS - SYS mailbox (software interrupt 4)
+// WHAT: the one door from a loaded program into the kernel. The program
+//       stores an operation in SYS_NUM and arguments in SYS_ARG0..2, executes
+//       INT 4, and reads the result from SYS_RET.
+// WHY a mailbox in zero page: programs are assembled separately from the
+//      kernel and cannot know its symbol addresses; fixed addresses and one
+//      vector are the whole ABI (docs/plans/programs-and-syscalls.md).
+// NOTE: INT is ignored while the I flag is clear, so main() executes STI
+//      whenever this unit is enabled, even with the timer disabled.
+// =============================================================================
+
+#ifndef NOVADOS_ENABLE_SYSCALLS
+#define NOVADOS_ENABLE_SYSCALLS 1
+#endif
+#if NOVADOS_ENABLE_SYSCALLS != 0 && NOVADOS_ENABLE_SYSCALLS != 1
+#error NOVADOS_ENABLE_SYSCALLS must be 0 or 1
+#endif
+
+#if NOVADOS_ENABLE_SYSCALLS
+
+// Placed in zero page; volatile because a program writes them between
+// kernel accesses.
+volatile int sys_num  @ SYS_MAILBOX;
+volatile int sys_ret  @ SYS_MAILBOX + 2;
+volatile int sys_arg0 @ SYS_MAILBOX + 4;
+volatile int sys_arg1 @ SYS_MAILBOX + 6;
+volatile int sys_arg2 @ SYS_MAILBOX + 8;
+
+int sys_calls = 0;          // calls served since boot
+
+// A full (non-naked) handler: it calls into the console, so every register
+// the interrupted program had is saved and restored around the body.
+interrupt(4) void sys_isr() {
+    sys_calls++;
+    sys_ret = SYS_OK;
+    switch (sys_num) {
+    case SYS_PUTC:
+        con_putc(sys_arg0);
+        break;
+    case SYS_WRITE:                 // ARG0 = address of a NUL-terminated string
+        con_print(sys_arg0);
+        break;
+    case SYS_GETC:                  // RET = next key, or 0 if none waiting
+        sys_ret = 0;
+        if (key_available()) {
+            sys_ret = key_read();
+        }
+        break;
+    case SYS_TIME:                  // RET = timer ticks since boot
+        sys_ret = system_ticks;
+        break;
+    default:
+        sys_ret = SYS_EBADOP;
+    }
+}
+
+#endif

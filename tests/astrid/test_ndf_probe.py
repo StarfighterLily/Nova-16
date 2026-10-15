@@ -1,188 +1,146 @@
-"""Probe the isolated NDF layer under the bank-safe layout.
+"""Probe the isolated NovaDOS NDF layer under the bank-safe layout.
 
-WHY: ndf.ast is compiled in isolation from the kernel so we can assert the
-bank-page path (set_bank/peek/poke) before trusting it inside kernel.ast.
-Each test compiles, assembles and runs a tiny program that reads/writes bank 1
-through the NDF primitives, then inspects the emulator's bank pages directly.
+WHY: ndf.ast is compiled in isolation from the kernel so the bank-page path
+(set_bank + window access) is proven before kernel.ast relies on it. Each
+test compiles a tiny program that drives bank 1 through the NDF API, runs
+it, and inspects the emulator's bank pages directly.
 
-Negative cases: unstored bank pages return 0 (never formatted), the name scan
-stops at NUL padding, and add() returns -1 when the directory is full.
+Probe sources are staged in pytest's tmp_path and include ndf.ast by
+absolute path. (They used to be written next to ndf.ast in
+astrid/NovaDOS/src/fs/ and the .ast/.nex files were never removed.)
 """
-import os
-import re
-import sys
 from pathlib import Path
 
 import pytest
 
 # Fixtures + sys.path injected by tests/astrid/conftest.py at collection time.
-
 from nova_main import initialize_system  # noqa: E402
 from astrid.compiler_api import compile_astrid  # noqa: E402
-from astrid.codegen.codegen import CodeGenerator  # noqa: E402
-from astrid.lexer.lexer import Lexer  # noqa: E402
-from astrid.parser.parser import Parser  # noqa: E402
+
+_NDF = (Path(__file__).resolve().parent.parent.parent
+        / "astrid" / "NovaDOS" / "src" / "fs" / "ndf.ast")
+assert _NDF.is_file(), f"ndf.ast missing: {_NDF}"
 
 
-# Determine the NDF source directory from the test file's location so
-# include "ndf.ast" resolves correctly when probe sources are staged
-# alongside it. This is an absolute path so pytest collection works
-# regardless of the current working directory.
-_NDF_DIR = (
-    Path(__file__).resolve().parent.parent.parent
-    / "astrid" / "NovaDOS" / "src" / "fs"
-)
-assert _NDF_DIR.is_dir(), f"ndf dir missing: {_NDF_DIR}"
-
-
-def _build(source: str, tmp_path: Path, layout: str = "bank-safe"):
-    """Compile source with ndf.ast included; return (asm, binp, gen).
-
-    gen is a CodeGenerator that has actually compiled the source, so its
-    global_vars table has real addresses for the probe to assert against.
-    """
-    fs_dir = (
-        Path(__file__).resolve().parent.parent.parent
-        / "astrid" / "NovaDOS" / "src" / "fs"
-    )
-    src_tag = re.sub(r"[^A-Za-z0-9_.-]+$", "", tmp_path.name)
-    src = fs_dir / f"probe_{src_tag}.ast"
-    asm = src.with_suffix(".asm")
-    src.write_text(source, encoding="utf-8")
-    try:
-        compile_astrid(str(src), str(asm), verbose=False, memory_layout=layout,
-                       log=None)
-        from nova_assembler import Assembler
-        assembler = Assembler(log=None, trace=False)
-        ok = assembler.assemble(str(asm))
-        assert ok, f"assemble failed for probe_{src_tag}"
-        binp = asm.with_suffix(".bin")
-        assert binp.exists(), f"bin file not created: {binp}"
-
-        # Recompile to get a CodeGenerator with real global addresses.
-        tokens = Lexer(source).tokenize()
-        ast = Parser(tokens, source_path=str(src)).parse()
-        gen = CodeGenerator(memory_layout=layout)
-        gen.generate(ast)
-        return asm, binp, gen
-    except Exception:
-        _probe_cleanup(asm)
-        raise
-
-
-def _probe_cleanup(asm_path: Path) -> None:
-    """Remove a probe's generated artifacts (call after _run is done)."""
-    for p in (asm_path, asm_path.with_suffix(".bin"),
-              asm_path.with_suffix(".org"), asm_path.with_suffix(".sym")):
-        p.unlink(missing_ok=True)
-
-
-def _run(bin_path: Path, max_cycles=200000):
+def _run(source: str, tmp_path: Path, max_cycles=300000):
+    from nova_assembler import Assembler
+    src = tmp_path / "probe.ast"
+    asm = tmp_path / "probe.asm"
+    src.write_text(f'include "{_NDF.as_posix()}";\n' + source, encoding="utf-8")
+    compile_astrid(str(src), str(asm), memory_layout="bank-safe", log=None)
+    assert Assembler(log=None, trace=False).assemble(str(asm))
     proc, mem, gfx, kbd, snd = initialize_system(enable_sound=False)
-    proc.pc = mem.load(bin_path)
+    proc.pc = mem.load(str(asm.with_suffix(".bin")))
     n = 0
     while not proc.halted and n < max_cycles:
         proc.step()
         n += 1
-    return proc, mem, n
+    assert proc.halted, f"did not halt (PC=0x{proc.pc:04X})"
+    assert mem.current_bank == 0, "an NDF call left a disk bank mapped"
+    syms = {}
+    for line in asm.with_suffix(".sym").read_text().splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            syms[parts[0].lower()] = int(parts[1], 16)
+    return mem, syms
 
 
-def test_ndf_format_writes_header_and_count_is_zero(tmp_path):
-    asm, binp, gen = _build(
-        """
-include "ndf.ast";
-int mounted;
+def _signed(v):
+    return v - 0x10000 if v & 0x8000 else v
 
+
+def _words(mem, syms, name, n):
+    return [_signed(mem.read_word(syms[f"gvar_{name}"] + 2 * i)) for i in range(n)]
+
+
+def test_format_writes_header_and_mounts(tmp_path):
+    mem, syms = _run("""
+int r[3];
+void main() {
+    r[0] = ndf_mounted(1);
+    ndf_format(1);
+    r[1] = ndf_mounted(1);
+    r[2] = ndf_count(1);
+}
+""", tmp_path)
+    assert _words(mem, syms, "r", 3) == [0, 1, 0]
+    page = mem._bank_pages[1]
+    assert bytes(page[0:8]) == b"NDF1\x00\x00\x04\x00"   # magic, count 0, free 0x400
+
+
+def test_create_find_and_read_back(tmp_path):
+    mem, syms = _run("""
+int r[8];
+char buf[16];
+char name[9];
 void main() {
     ndf_format(1);
-    mounted = ndf_mounted(1);
+    r[0] = ndf_create(1, "BOOT", NDF_TEXT, "HELLO", 5);
+    r[1] = ndf_create(1, "PROG", NDF_PROG, "ABCDEFG", 7);
+    r[2] = ndf_find(1, "PROG");
+    r[3] = ndf_size(1, 1);
+    r[4] = ndf_type(1, 1);
+    r[5] = ndf_read(1, 1, 0, buf, 16);
+    r[6] = ndf_read(1, 1, 5, buf + 8, 16);   // tail from offset 5
+    r[7] = ndf_free(1);
+    ndf_name(1, 0, name);
 }
-""",
-        tmp_path,
-    )
-
-    proc, mem, n = _run(binp)
-    _probe_cleanup(asm)
-    assert proc.halted, f"did not halt (PC=0x{proc.pc:04X})"
-    assert proc.pc in (0x100E, 0x100F), f"halted at 0x{proc.pc:04X}"
-
+""", tmp_path)
+    assert _words(mem, syms, "r", 8) == [0, 1, 1, 7, 1, 7, 2, 0x4000 - 0x400 - 12]
+    buf = syms["gvar_buf"]
+    assert bytes(mem._mem[buf:buf + 7]) == b"ABCDEFG"
+    assert bytes(mem._mem[buf + 8:buf + 10]) == b"FG"
+    name = syms["gvar_name"]
+    assert bytes(mem._mem[name:name + 9]) == b"BOOT\x00\x00\x00\x00\x00"
     page = mem._bank_pages[1]
-    assert bytes(page[0:4]) == b"NDF1"
-    assert (page[4] << 8) | page[5] == 0
-    # Use the compiled global address (gen has the real layout layout).
-    mounted_addr = gen.global_vars["mounted"]["address"]
-    assert mem.read_word(mounted_addr) == 1
-    print("PASS: ndf_format(mounted=1) leaves header intact")
+    # Header: count 2, next free 0x040C; data packed in creation order.
+    assert bytes(page[4:8]) == b"\x00\x02\x04\x0C"
+    assert bytes(page[0x10:0x20]) == b"BOOT\x00\x00\x00\x00\x00\x00\x00\x05\x04\x00\x00\x00"
+    assert bytes(page[0x20:0x30]) == b"PROG\x00\x00\x00\x00\x01\x00\x00\x07\x04\x05\x00\x00"
+    assert bytes(page[0x400:0x40C]) == b"HELLOABCDEFG"
 
 
-def test_ndf_add_one_entry_and_read_back(tmp_path):
-    asm, binp, gen = _build(
-        """
-include "ndf.ast";
-int count;
-int first_name_byte;
-
+def test_name_matching_is_exact(tmp_path):
+    mem, syms = _run("""
+int r[5];
 void main() {
     ndf_format(1);
-    ndf_add(1, 66, 83, 89, 116, 0, 12);  // "BSYt"  type=0 size=12
-    count = ndf_entry_count(1);
-    first_name_byte = ndf_name_byte(1, 0, 0);
+    ndf_create(1, "ABCDEFGH", NDF_TEXT, "x", 1);
+    ndf_create(1, "AB", NDF_TEXT, "y", 1);
+    r[0] = ndf_find(1, "ABCDEFGH");
+    r[1] = ndf_find(1, "ABCDEFG");     // prefix of an 8-byte name
+    r[2] = ndf_find(1, "ABCDEFGHI");   // longer than any stored name
+    r[3] = ndf_find(1, "AB");
+    r[4] = ndf_find(1, "A");
 }
-""",
-        tmp_path,
-    )
+""", tmp_path)
+    assert _words(mem, syms, "r", 5) == [0, -1, -1, 1, -1]
 
-    proc, mem, n = _run(binp)
-    _probe_cleanup(asm)
-    assert proc.halted, f"did not halt (PC=0x{proc.pc:04X})"
 
-    count_addr = gen.global_vars["count"]["address"]
-    name_addr = gen.global_vars["first_name_byte"]["address"]
-    assert mem.read_word(count_addr) == 1
-    assert mem.read_word(name_addr) == ord("B")
-
+def test_create_errors(tmp_path):
+    lines = ["int r[5];", "void main() {", "    ndf_format(1);",
+             '    ndf_create(1, "DUP", NDF_TEXT, "x", 1);',
+             '    r[0] = ndf_create(1, "DUP", NDF_TEXT, "x", 1);',
+             '    r[1] = ndf_create(1, "", NDF_TEXT, "x", 1);',
+             '    r[2] = ndf_create(1, "NINECHARS", NDF_TEXT, "x", 1);',
+             '    r[3] = ndf_create(1, "BIG", NDF_TEXT, 0x1000, 0x3C00);']
+    for i in range(15):
+        lines.append(f'    ndf_create(1, "F{i}", NDF_TEXT, "x", 1);')
+    lines += ['    r[4] = ndf_create(1, "ONEMORE", NDF_TEXT, "x", 1);', "}"]
+    mem, syms = _run("\n".join(lines), tmp_path)
+    # exists, bad name, bad name, no space, directory full
+    assert _words(mem, syms, "r", 5) == [-4, -5, -5, -3, -2]
     page = mem._bank_pages[1]
-    entry0 = 0x0010
-    assert chr(page[entry0]) == "B"
-    assert page[entry0 + 8] == 0  # type
-    assert (page[entry0 + 10] << 8) | page[entry0 + 11] == 12  # length
-    print("PASS: ndf_add installs an entry whose name/type/size read back")
+    assert (page[4] << 8) | page[5] == 16
 
 
-def test_ndf_add_returns_minus_one_only_path(tmp_path):
-    # Fill directory past the known hard limit, then assert add() returns -1.
-    # The layout already reserves bank 1 as a real disk page, so this tests
-    # the overflow guard without polluting bank 0.
-    lines = []
-    lines.append('include "ndf.ast";')
-    lines.append("int r;")
-    lines.append("int i;")
-    lines.append("")
-    lines.append("void main() {")
-    lines.append("    ndf_format(1);")
-    for i in range(16):
-        lines.append(
-            f'    ndf_add(1, {65}, {65}, {65}, {65}, 0, 0);  // "AAAA"'
-        )
-    lines.append("    r = ndf_add(1, 72, 76, 76, 84, 0, 0);  // overflow")
-    lines.append("}")
-    source = "\n".join(lines)
-
-    asm, binp, gen = _build(source, tmp_path)
-    proc, mem, n = _run(binp)
-    _probe_cleanup(asm)
-    assert proc.halted, f"did not halt (PC=0x{proc.pc:04X})"
-
-    r_addr = gen.global_vars["r"]["address"]
-    assert mem.read_word(r_addr) == 0xFFFF  # -1 stored as 16-bit unsigned
-    # The directory itself should have exactly 16 entries after the loop.
-    assert (mem._bank_pages[1][4] << 8) | mem._bank_pages[1][5] == 16
-    # Last slot should be "AAAA" (first 32 lines wrote 16 entries, then the
-    # overflow call returned -1 without overwriting slot 0).
-    assert mem._bank_pages[1][0x0010 + 15 * 0x10] == ord("A")
-    print("PASS: ndf_add returns -1 past the directory capacity")
-
-
-if __name__ == "__main__":
-    main = pytest.main([__file__, "-v", "-p", "no:cacheprovider"])
-    raise SystemExit(0 if main == 0 else 1)
+def test_unformatted_bank_is_not_mounted(tmp_path):
+    mem, syms = _run("""
+int r[2];
+void main() {
+    ndf_format(1);
+    r[0] = ndf_mounted(2);
+    r[1] = ndf_mounted(1);
+}
+""", tmp_path)
+    assert _words(mem, syms, "r", 2) == [0, 1]

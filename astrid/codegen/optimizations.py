@@ -13,8 +13,22 @@ from astrid.parser.parser import (
     FuncCall, Expression, Assignment, Return, If, While, DoWhile, For,
     Switch, Break, Continue, VarDecl, PostfixOp, FunctionDef, Cast,
     MemberAccess, MemberAssignment, ArrayAssignment, ArrayAccess,
-    PrefixOp, AddressOf, Deref, AsmBlock,
+    PrefixOp, AddressOf, Deref, AsmBlock, SizeofExpr, Label, Goto,
 )
+
+
+def _has_side_effects(expr: Any) -> bool:
+    """Conservatively: could evaluating `expr` change program state?"""
+    if isinstance(expr, (FuncCall, Assignment, PostfixOp, PrefixOp,
+                         MemberAssignment, ArrayAssignment, AsmBlock)):
+        return True
+    if isinstance(expr, list):
+        return any(_has_side_effects(e) for e in expr)
+    if expr is None or isinstance(expr, (str, int, float, bytes)):
+        return False
+    if hasattr(expr, '__dict__'):
+        return any(_has_side_effects(v) for v in vars(expr).values())
+    return False
 
 
 def _num_value(expr: Any) -> Optional[int]:
@@ -354,24 +368,27 @@ class ExpressionSimplifier:
         if operator in {"<<", ">>"}:
             if _is_number_literal(right, 0):
                 return left
+        # Logical rules may only drop an operand C would not evaluate, or
+        # one with no side effects: `f() && 0` still calls f(). `x && 1`
+        # is NOT `x` (the result must be 0/1), so only literal-left rules
+        # that keep the right operand as a truth test are applied.
         if operator == "&&":
-            if _is_number_literal(left, 0) or _is_number_literal(right, 0):
-                return Number("0")
-            if _is_number_literal(left, 1):
-                return right
-            if _is_number_literal(right, 1):
-                return left
-        if operator == "||":
-            if _is_number_literal(left, 1) or _is_number_literal(right, 1):
-                return Number("1")
             if _is_number_literal(left, 0):
-                return right
-            if _is_number_literal(right, 0):
-                return left
+                return Number("0")
+            if _is_number_literal(right, 0) and not _has_side_effects(left):
+                return Number("0")
+        if operator == "||":
+            if _is_number_literal(left, 1):
+                return Number("1")
+            if _is_number_literal(right, 1) and not _has_side_effects(left):
+                return Number("1")
         return None
 
     def _canonicalize_operands(self, operator: str, left: Any, right: Any) -> Tuple[Any, Any]:
-        if operator not in {"+", "*", "&", "|", "^", "==", "!=", "&&", "||"}:
+        # && and || are NOT commutative in C: the left operand is evaluated
+        # first and the right one only when needed. Swapping them turned
+        # `p != 0 && p->x` around and made `zero && hit()` call hit().
+        if operator not in {"+", "*", "&", "|", "^", "==", "!="}:
             return left, right
         # String concatenation ('+' between two string values) is NOT
         # commutative: swapping `final + "\r\n"` into `"\r\n" + final`
@@ -553,47 +570,79 @@ class ExpressionSimplifier:
 @dataclass
 class FunctionInliner:
     max_statements: int = 8
+    # Retained for API compatibility; the call-site cost is now governed by
+    # growth_budget below.
     min_call_sites: int = 2
+    # Upper bound on (callee statement weight) x (number of call sites).
+    # The out-of-line body is always emitted as well, so every inlined copy
+    # is pure code growth bought for speed. A one-statement wrapper may be
+    # copied into 16 sites, an 8-statement helper into at most 2.
+    growth_budget: int = 16
     debug: bool = False
 
     def __post_init__(self):
         self._inlineable: Dict[str, bool] = {}
         self._call_graph: Dict[str, Set[str]] = {}
         self._call_counts: Dict[str, int] = Counter()
+        self._inline_seq = 0
 
     def analyze(self, functions: List[FunctionDef]) -> Set[str]:
         functions_dict = {f.name: f for f in functions}
         for func in functions:
-            called = self._collect_callees(func)
-            self._call_graph[func.name] = called
-            for callee in called:
-                self._call_counts[callee] += 1
+            self._call_graph[func.name] = self._collect_callees(func)
+            self._count_call_sites(func.body)
         inlineable = set()
         for func in functions:
             if self._eligible(func, functions_dict):
                 inlineable.add(func.name)
         return inlineable
 
+    @staticmethod
+    def _walk_calls(node, visit):
+        """Call visit(FuncCall) for every call in the subtree, nested
+        argument calls included (f(g(x)) visits both)."""
+        if isinstance(node, FuncCall):
+            visit(node)
+        if isinstance(node, list):
+            for n in node:
+                FunctionInliner._walk_calls(n, visit)
+        elif hasattr(node, '__dict__'):
+            for v in vars(node).values():
+                FunctionInliner._walk_calls(v, visit)
+
+    def _count_call_sites(self, body) -> None:
+        def visit(call):
+            if call.name is not None:
+                self._call_counts[call.name] += 1
+        self._walk_calls(body, visit)
+
     def _collect_callees(self, func: FunctionDef) -> Set[str]:
         callees = set()
-        def walk(node):
-            if isinstance(node, FuncCall):
-                # Indirect calls have no static callee (node.name is None);
-                # they cannot be inlined by name, so leave them out.
-                if node.name is not None:
-                    callees.add(node.name)
-            elif isinstance(node, list):
-                for n in node:
-                    walk(n)
-            elif hasattr(node, '__dict__'):
-                for v in vars(node).values():
-                    walk(v)
-        walk(func.body)
+        def visit(call):
+            # Indirect calls have no static callee (node.name is None);
+            # they cannot be inlined by name, so leave them out.
+            if call.name is not None:
+                callees.add(call.name)
+        self._walk_calls(func.body, visit)
         return callees
 
     def _eligible(self, func: FunctionDef, functions_dict: Dict[str, FunctionDef]) -> bool:
-        stmt_count = len(func.body)
-        if stmt_count > self.max_statements:
+        # Count every statement, nested ones included. Counting only the
+        # top level let a whole if/else-if dispatch chain (one statement) or
+        # a line editor (five statements wrapping big branches) qualify as
+        # "small"; every call site then received a full copy while the
+        # out-of-line body was still emitted. NovaDOS grew from 11 KB to
+        # 16 KB of code that way and overran its globals segment.
+        weight = self._statement_weight(func.body)
+        if weight > self.max_statements:
+            return False
+        sites = self._call_counts.get(func.name, 0)
+        # Nothing to expand into. Marking an uncalled function (main, an
+        # ISR) inlineable would also exempt its own body from rewriting,
+        # because inline_functions leaves inlineable functions untouched.
+        if sites == 0:
+            return False
+        if weight * sites > self.growth_budget:
             return False
         callees = self._collect_callees(func)
         if func.name in callees:
@@ -603,8 +652,79 @@ class FunctionInliner:
         # out-of-line body -- duplicate labels the assembler silently accepts.
         if self._contains_asm(func.body):
             return False
-        # simple control flow check
+        # A `return` anywhere but the very end would leave the CALLER once
+        # pasted in; labels would be duplicated per call site.
+        if self._contains_node(self._strip_trailing_return(func.body), (Return, Label, Goto)):
+            return False
+        # A static local is one object shared by every call; copies of it
+        # would each get their own storage.
+        if any('static' in (getattr(d, 'qualifiers', None) or [])
+               for d in self._iter_decls(func.body)):
+            return False
         return True
+
+    @classmethod
+    def _iter_decls(cls, node: Any):
+        if isinstance(node, VarDecl):
+            yield node
+        if isinstance(node, list):
+            for item in node:
+                yield from cls._iter_decls(item)
+        elif node is not None and hasattr(node, '__dict__') and not isinstance(node, (str, int, float)):
+            for value in vars(node).values():
+                yield from cls._iter_decls(value)
+
+    # Expressions the code generator expands inline into a loop of dozens of
+    # instructions; each counts as this many statements. A one-line helper
+    # such as `con_print((string)v)` is otherwise "tiny" yet costs ~60
+    # instructions per inlined copy.
+    HEAVY_EXPRESSION_WEIGHT = 8
+    _HEAVY_CASTS = ('string', 'binary', 'stringh', 'stringb')
+    _HEAVY_CALLS = ('format', 'writef')
+
+    @classmethod
+    def _heavy_expressions(cls, node) -> int:
+        count = 0
+        if (isinstance(node, Cast) and node.target_type in cls._HEAVY_CASTS
+                and not getattr(node, 'pointer_depth', 0)):
+            count += 1
+        elif isinstance(node, FuncCall) and node.name in cls._HEAVY_CALLS:
+            count += 1
+        if isinstance(node, list):
+            return count + sum(cls._heavy_expressions(n) for n in node)
+        if node is None or isinstance(node, (str, int, float, bytes)):
+            return count
+        if hasattr(node, '__dict__'):
+            count += sum(cls._heavy_expressions(v) for v in vars(node).values())
+        return count
+
+    @classmethod
+    def _statement_weight(cls, body) -> int:
+        """Size estimate of `body` in statements: every statement, nested
+        blocks included, plus HEAVY_EXPRESSION_WEIGHT per expression that
+        expands into a large inline sequence."""
+        return (cls._count_statements(body)
+                + cls.HEAVY_EXPRESSION_WEIGHT * cls._heavy_expressions(body))
+
+    @classmethod
+    def _count_statements(cls, body) -> int:
+        if body is None:
+            return 0
+        if not isinstance(body, list):
+            body = [body]
+        total = 0
+        for stmt in body:
+            total += 1
+            if isinstance(stmt, If):
+                total += cls._count_statements(stmt.then_body)
+                total += cls._count_statements(stmt.else_body)
+            elif isinstance(stmt, (While, DoWhile, For)):
+                total += cls._count_statements(stmt.body)
+            elif isinstance(stmt, Switch):
+                for case in stmt.cases:
+                    total += cls._count_statements(case.body)
+                total += cls._count_statements(stmt.default_body)
+        return total
 
     def _contains_asm(self, node) -> bool:
         if isinstance(node, AsmBlock):
@@ -656,21 +776,12 @@ class FunctionInliner:
                     # parameter, which only stays valid when the call-site
                     # argument is storage -- too risky to substitute.
                     return [node]
-                mapping = {param.name: arg for param, arg in
-                           zip(callee.params, node.args)}
-                expanded: List[Any] = []
-                for stmt in callee.body:
-                    # Substitute over a COPY: the callee must keep its own
-                    # body intact so every other call site (and the emitted
-                    # callee itself, which stays in the program) sees the
-                    # original parameters. _substitute returns statements
-                    # unwrapped, so normalize before extending.
-                    sub = self._substitute(copy.deepcopy(stmt), mapping)
-                    if isinstance(sub, list):
-                        expanded.extend(sub)
-                    else:
-                        expanded.append(sub)
-                return expanded
+                if any(getattr(p, 'is_array_param', False) or getattr(p, 'struct_tag', None)
+                       for p in callee.params):
+                    # Array and by-value aggregate parameters have no plain
+                    # one-word local to bind the argument to.
+                    return [node]
+                return self._expand_call(callee, node.args)
             if isinstance(node, VarDecl):
                 if node.value is not None:
                     node.value = self._substitute(node.value, {})
@@ -717,6 +828,114 @@ class FunctionInliner:
 
         func.body = rewrite(func.body)
         return func
+
+    # Argument shapes that may be pasted into every use of a parameter:
+    # evaluating them has no side effects and their value cannot change
+    # while the inlined body runs.
+    _PURE_ARGS = (Number, CharLiteral, StringLiteral)
+
+    def _expand_call(self, callee: FunctionDef, args: List[Any]) -> List[Any]:
+        """Statements that replace one `callee(args)` statement.
+
+        C semantics are kept by construction:
+        * every local the callee declares gets a name unique to this call
+          site, so it can neither shadow nor clobber a caller variable;
+        * an argument that is not a literal is evaluated once, in order, into
+          a fresh local initialised before the body (so f(next()) calls
+          next() exactly once even when the parameter is used twice or not
+          at all);
+        * the trailing bare `return;` is dropped (eligibility already
+          rejected callees that return anywhere else).
+        """
+        self._inline_seq += 1
+        prefix = f"__inl{self._inline_seq}_"
+        renames = {name: prefix + name for name in self._declared_locals(callee.body)}
+        prologue: List[Any] = []
+        mapping: Dict[str, Any] = {}
+        called = self._collect_callees(callee)
+        for param, arg in zip(callee.params, args):
+            # A parameter that is called (a function pointer) must stay a
+            # variable; anything else literal can be pasted in directly.
+            if isinstance(arg, self._PURE_ARGS) and param.name not in called:
+                mapping[param.name] = arg
+                continue
+            temp = copy.deepcopy(param)
+            temp.name = prefix + param.name
+            temp.value = arg
+            prologue.append(temp)
+            mapping[param.name] = Identifier(temp.name)
+        body = self._strip_trailing_return(callee.body)
+        expanded: List[Any] = list(prologue)
+        for stmt in body:
+            # Work on a COPY: the callee keeps its own body for every other
+            # call site and for its out-of-line emission.
+            stmt = self._rename_locals(copy.deepcopy(stmt), renames)
+            sub = self._substitute(stmt, mapping)
+            if isinstance(sub, list):
+                expanded.extend(sub)
+            else:
+                expanded.append(sub)
+        return expanded
+
+    @staticmethod
+    def _strip_trailing_return(body: List[Any]) -> List[Any]:
+        if body and isinstance(body[-1], Return) and body[-1].value is None:
+            return body[:-1]
+        return body
+
+    @classmethod
+    def _contains_node(cls, node: Any, kinds) -> bool:
+        if isinstance(node, kinds):
+            return True
+        if isinstance(node, list):
+            return any(cls._contains_node(n, kinds) for n in node)
+        if node is None or isinstance(node, (str, int, float, bytes)):
+            return False
+        if hasattr(node, '__dict__'):
+            return any(cls._contains_node(v, kinds) for v in vars(node).values())
+        return False
+
+    @classmethod
+    def _declared_locals(cls, node: Any) -> Set[str]:
+        names: Set[str] = set()
+        def walk(cur):
+            if isinstance(cur, VarDecl):
+                names.add(cur.name)
+            if isinstance(cur, list):
+                for item in cur:
+                    walk(item)
+            elif cur is not None and hasattr(cur, '__dict__'):
+                for value in vars(cur).values():
+                    walk(value)
+        walk(node)
+        return names
+
+    @classmethod
+    def _rename_locals(cls, node: Any, renames: Dict[str, str]) -> Any:
+        """Rename variable references in place (callee locals only)."""
+        if not renames:
+            return node
+        if isinstance(node, list):
+            for item in node:
+                cls._rename_locals(item, renames)
+            return node
+        if node is None or not hasattr(node, '__dict__'):
+            return node
+        if isinstance(node, (Identifier, VarDecl, Assignment, ArrayAccess)):
+            if node.name in renames:
+                node.name = renames[node.name]
+        elif isinstance(node, FuncCall) and isinstance(node.callee, str):
+            # A call through a local function-pointer variable names the
+            # variable as a plain-string callee.
+            if node.callee in renames:
+                node.callee = renames[node.callee]
+        elif isinstance(node, SizeofExpr) and isinstance(node.target, str):
+            if node.target in renames:
+                node.target = renames[node.target]
+        for value in vars(node).values():
+            if isinstance(value, list) or hasattr(value, '__dict__'):
+                cls._rename_locals(value, renames)
+        return node
 
     @staticmethod
     def _root_name(expr: Any) -> Optional[str]:
@@ -814,6 +1033,11 @@ class FunctionInliner:
             if node.name in mapping:
                 return copy.deepcopy(mapping[node.name])
             return node
+        if (isinstance(node, FuncCall) and isinstance(node.callee, str)
+                and isinstance(mapping.get(node.callee), Identifier)):
+            # Calling a function-pointer parameter: call the variable the
+            # argument was bound to instead.
+            node.callee = mapping[node.callee].name
         if node is None or isinstance(node, (str, int, float, bytes)):
             return node
         if not hasattr(node, '__dict__'):
@@ -1173,6 +1397,8 @@ def get_optimization_config() -> Dict[str, Any]:
         'enable_strength_reduction': True,
         'inlining_max_statements': 8,
         'inlining_min_call_sites': 2,
+        'inlining_growth_budget': 16,
+        'enable_dead_function_elimination': True,
         'debug_optimizations': False,
         'pressure_threshold_percentile': 75.0,
         'zero_page_base': 0x0080,

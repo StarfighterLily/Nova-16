@@ -121,3 +121,17 @@ __13. Extended-asm operands__ — ✅ **DONE**: `asm("..." : "=r"(out) : "r"(in)
 ### Stale doc (not a language gap, but worth fixing)
 
 *Partly addressed:* every feature added from this list is now documented in `astrid.md`, but the gap below still stands. `astrid/docs/astrid.md`'s Table of Contents lists sections 9–15 (*Basic syntax, Types, Memory model, Function calling conventions, Structs and unions, Standard builtins, Common patterns*) that don't exist in the file — `string`/`binary`/`stringh`, the `float` Q8.8 model, and most of the builtin library are __undocumented__, and `docs/features.md` is 0 bytes.
+
+### Found while reworking NovaDOS (2026-10-15)
+
+Not fixed; each has a working alternative.
+
+* **Typed pointer casts to structs.** `(struct NdfEntry *)addr` and
+  `(Typedef *)addr` do not parse (`Unexpected token in expression`). Assign
+  the address directly instead: pointers are untyped words, so
+  `struct NdfEntry *e; e = addr;` then `e->size` works.
+* **`sizeof(union Tag)`** does not parse; `sizeof(variable)` works.
+* **`void (*fp)()` at file scope** is rejected ("Unexpected 'void' at top
+  level"); declare function pointers with an `int` return type.
+* **`const` on a function-pointer table** is accepted but ignored: the table
+  lands in writable globals, not the read-only window.

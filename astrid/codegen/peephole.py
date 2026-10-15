@@ -10,6 +10,9 @@
 # 5. Load-Store Copy Propagation - MOV A, X; MOV Y, A -> MOV Y, X
 # 6. Constant Folding - MOV A, 5; ADD A, 3 -> MOV A, 8
 # 7. Register Chain Elimination - MOV A, B; MOV C, A -> MOV C, B
+# 8. Redundant Save - PUSH A; MOV B, X; POP A -> MOV B, X  (B != A, no SP use)
+# 9. Push From Memory - MOV A, [m]; PUSH A -> PUSH [m]  (A a dead P register)
+# 10. Immediate Operand - MOV B, imm; OP A, B -> OP A, imm  (B dead, OP an ALU op)
 
 import re
 from typing import List, Dict, Tuple, Optional
@@ -115,6 +118,18 @@ class PeepholeOptimizer:
             return result
 
         result = self._pattern_register_chain(index)
+        if result:
+            return result
+
+        result = self._pattern_redundant_save(index)
+        if result:
+            return result
+
+        result = self._pattern_push_from_memory(index)
+        if result:
+            return result
+
+        result = self._pattern_immediate_operand(index)
         if result:
             return result
 
@@ -316,6 +331,100 @@ class PeepholeOptimizer:
         return [optimized], 2
 
     # ===== Helper Methods =====
+
+    def _pattern_redundant_save(self, index):
+        """PUSH A; MOV B, X; POP A  ->  MOV B, X
+
+        The code generator protects a binary operator's left operand across
+        evaluation of the right one with PUSH/POP. When the right operand is
+        a leaf (constant, variable load) the protected register is never
+        touched, so the pair only costs two instructions and two stack
+        accesses. Safe when B is a different register than A (byte views of
+        A included) and neither operand addresses through SP, whose value
+        the PUSH shifts. MOV, PUSH and POP leave the flags alone.
+        """
+        if index + 2 >= len(self.instructions):
+            return None
+        push, mid, pop = self.instructions[index:index + 3]
+        if any(i.is_label or i.is_directive for i in (push, mid, pop)):
+            return None
+        if not (push.matches('PUSH', 1) and pop.matches('POP', 1) and mid.matches('MOV', 2)):
+            return None
+        saved = push.operands[0].strip().upper()
+        if saved != pop.operands[0].strip().upper() or not re.fullmatch(r'P[0-7]', saved):
+            return None
+        dest = mid.operands[0].strip().upper()
+        if not re.fullmatch(r'R[0-9]|P[0-7]', dest) or dest == saved:
+            return None
+        for operand in mid.operands:
+            if re.search(r'\b(?:SP|P8)\b', operand.upper()):
+                return None
+        self.optimizations_applied['redundant_save'] += 1
+        return [mid], 3
+
+    def _pattern_push_from_memory(self, index):
+        """MOV A, [m]; PUSH A  ->  PUSH [m]
+
+        Call arguments are loaded into a temporary only to be pushed. A
+        memory-operand PUSH pushes a full word in both emulators (the width
+        rule pushes one byte only for R registers and imm8), so the load can
+        be folded when A is a 16-bit P register whose value is dead after
+        the PUSH. SP-relative operands are left alone.
+        """
+        if index + 1 >= len(self.instructions):
+            return None
+        mov, push = self.instructions[index:index + 2]
+        if mov.is_label or mov.is_directive or push.is_label or push.is_directive:
+            return None
+        if not (mov.matches('MOV', 2) and push.matches('PUSH', 1)):
+            return None
+        reg = mov.operands[0].strip().upper()
+        src = mov.operands[1].strip()
+        if push.operands[0].strip().upper() != reg or not re.fullmatch(r'P[0-7]', reg):
+            return None
+        if not (src.startswith('[') and src.endswith(']')):
+            return None
+        if re.search(r'\b(?:SP|P8)\b', src.upper()):
+            return None
+        if not self._is_register_dead_after(reg, index + 2):
+            return None
+        self.optimizations_applied['push_from_memory'] += 1
+        return [Instruction('PUSH', [src], f"PUSH {src}")], 2
+
+    _IMMEDIATE_ALU_OPS = ('ADD', 'SUB', 'AND', 'OR', 'XOR', 'CMP')
+
+    def _pattern_immediate_operand(self, index):
+        """MOV B, imm; OP A, B  ->  OP A, imm
+
+        The code generator loads every constant operand into a temporary
+        (`MOV P5, 32` / `OR P4, P5`). The ALU ops accept an immediate source
+        directly. Only non-negative literals are folded, and only into a
+        16-bit P destination, so the immediate is zero-extended exactly like
+        the register value it replaces; B must be dead afterwards.
+        """
+        if index + 1 >= len(self.instructions):
+            return None
+        mov, op = self.instructions[index:index + 2]
+        if mov.is_label or mov.is_directive or op.is_label or op.is_directive:
+            return None
+        if not (mov.matches('MOV', 2) and op.opcode in self._IMMEDIATE_ALU_OPS
+                and len(op.operands) == 2):
+            return None
+        temp = mov.operands[0].strip().upper()
+        imm = mov.operands[1].strip()
+        dest = op.operands[0].strip().upper()
+        if op.operands[1].strip().upper() != temp or temp == dest:
+            return None
+        if not (re.fullmatch(r'P[0-7]', temp) and re.fullmatch(r'P[0-7]', dest)):
+            return None
+        value = self._parse_constant(imm)
+        if value is None or not (0 <= value <= 0xFFFF):
+            return None
+        if not self._is_register_dead_after(temp, index + 2):
+            return None
+        self.optimizations_applied['immediate_operand'] += 1
+        return [Instruction(op.opcode, [op.operands[0], imm],
+                            f"{op.opcode} {op.operands[0]}, {imm}")], 2
 
     def _is_register_operand(self, operand):
         cleaned = operand.strip().upper()

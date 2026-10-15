@@ -1,12 +1,18 @@
 // =============================================================================
-// NovaDOS Kernel - Boot Shell (bot-up slice)
-// WHAT: minimal text console + cooperative scheduler smoke test using Astrid
-//       builtins only (set_layer/set_pos/write_text/key_available/key_read).
-// WHY: proves kernel pieces execute on the emulator before adding FS/drivers.
+// NovaDOS Kernel - entry unit
+// WHAT: build settings, boot (signature, disk, timer, tasks) and the shell's
+//       keyboard poll loop. Everything else lives in the included units:
+//         console.ast    cursor and text output
+//         shell.ast      line editor, tokenizer, command table, commands
+//         syscall.ast    INT 4 SYS mailbox for loaded programs
+//         interrupts.ast timer heartbeat
+//         memmgr.ast     kmalloc, sleeper table, optional full scheduler
+//         ../fs/ndf.ast  NDF volumes on bank pages
+// BUILD: py -3.13 astrid/astrid_compiler.py astrid/NovaDOS/src/kernel/kernel.ast
+//            --memory-layout bank-safe     (see docs/plans/build-settings.md)
 // =============================================================================
 
-// Build settings live in the entry unit so include-site snapshots propagate
-// consistently. Keep the historical boot slice unless explicitly overridden.
+// Build settings live in the entry unit so every included unit sees them.
 #ifndef NOVADOS_ENABLE_NDF
 #define NOVADOS_ENABLE_NDF 1
 #endif
@@ -20,480 +26,109 @@
 #if NOVADOS_POLL_LIMIT < 1 || NOVADOS_POLL_LIMIT > 32767
 #error NOVADOS_POLL_LIMIT must be between 1 and 32767
 #endif
-// Timer heartbeat (vector 0): brings the timer ISR in interrupts.ast to life.
-// NOVADOS_ENABLE_TIMER 0 removes only the bring-up (the ISR and its vector
-// table entry stay compiled in but never fire, restoring the pre-heartbeat
-// behaviour for deterministic bank-free debugging runs). The arm sequence in
-// main() programs the cadence directly (TM=100, TS=31 -> one tick per
-// (31+1)*100 = 3200 cycles, roughly one tick per poll-loop iteration so
-// system_ticks advances visibly in every headless run without dominating the
-// cycle budget).
+// Timer heartbeat on vector 0: one tick per (TS+1)*TM = 32*100 = 3200
+// cycles, roughly one per poll iteration.
 #ifndef NOVADOS_ENABLE_TIMER
 #define NOVADOS_ENABLE_TIMER 1
 #endif
 #if NOVADOS_ENABLE_TIMER != 0 && NOVADOS_ENABLE_TIMER != 1
 #error NOVADOS_ENABLE_TIMER must be 0 or 1
 #endif
-
+#ifndef NOVADOS_ENABLE_SYSCALLS
+#define NOVADOS_ENABLE_SYSCALLS 1
+#endif
 
 include "memmgr.ast";
-
-
 include "interrupts.ast";
-// NDF disk layer: bank-page access + volume/directory primitives. Requires the
-// bank-safe memory layout (see docs/notes/start.md).
+include "console.ast";
 #if NOVADOS_ENABLE_NDF
 include "../fs/ndf.ast";
 #endif
+include "shell.ast";
+include "syscall.ast";
 
-// Console cursor: DOS-style prompt block; no graphics imports yet.
-// Geometry: set_pos takes PIXELS, so every draw goes through shell_goto which
-// scales cell -> pixel (8x8 glyphs, 32x32 cells per memory-map.md §4).
-int shell_row = 12;
-int shell_col = 2;
-
-// Shell state (globals so tests can read them through the .sym table).
-int line_buf[24];       // chars typed on the current command line
-int line_len = 0;       // 0..24
-int shell_cmd = 0;      // 0 none, 1 HELP, 2 CLS, 3 PEEK, 4 BYE, 5 DIR, 6 TYPE, 7 MEM, 8 TIME
-int cmd_count = 0;      // total dispatched command lines
-int shell_exit = 0;     // set by BYE/ESC: main leaves the poll loop and halts
-
-// Position the text cursor at a CHARACTER CELL (col/row), scaling to the
-// 8x8-glyph pixel grid. WHY: set_pos consumes raw pixels; passing cell values
-// directly crammed every line into the top ~60 pixels of the screen.
-void shell_goto(int col, int row) {
-    set_pos(col * 8, row * 8);
-}
-
-void shell_newline() {
-    shell_col = 2;
-    shell_row = shell_row + 1;
-    if (shell_row > 31) {
-        shell_row = 3;      // banner owns cells 0-2; scroll region is 3..31
-        set_layer(0);
-        screen_fill(0x00);
-    }
-}
-
-void shell_putc(int c) {
-    if (c == 13) {
-        shell_newline();
-        return;
-    }
-    if (c == 10) {
-        shell_newline();
-        return;
-    }
-    if (c == 8) {
-        if (shell_col > 2) {
-            shell_col = shell_col - 1;
-            shell_goto(shell_col, shell_row);
-            write_text(" ", 0x0F);
-            shell_goto(shell_col, shell_row);
-        }
-        return;
-    }
-    shell_goto(shell_col, shell_row);
-    // WHY: (char) routes through the single-glyph path (one byte stored at the
-    // ITOS scratch cell); a plain (string) cast would ITOS the key code and
-    // print decimal digits instead of the typed character.
-    write_text((char)c, 0x0F);
-    shell_col = shell_col + 1;
-    if (shell_col > 31) {
-        shell_newline();
-    }
-}
-
-void shell_prompt() {
-    shell_col = 2;
-    shell_goto(shell_col, shell_row);
-    write_text("> ", 0x0F);
-    shell_col = 4;
-}
-
-// Print a literal at the current cursor cell, then advance to the next row.
-// WHY: write_text leaves VX/VY where the glyphs ended; routing every line
-// through here keeps the cursor and the glyphs in sync (the assembly kernel
-// hit the same desync bug before PUTCHAR owned the cursor).
-void shell_puts(string s) {
-    shell_goto(shell_col, shell_row);
-    write_text(s, 0x0F);
-    shell_newline();
-}
-
-// Print the byte in v as two uppercase hex glyphs ("4E" for 0x4E).
-// WHY: no nibble-extracting builtin exists; shifting + the digit boundary at
-// ASCII '9' (57) reproduces the assembly PRINTHEX behaviour exactly.
-void shell_puthex(int v) {
-    int hi;
-    int lo;
-    int d;
-    hi = (v >> 4) & 0x0F;
-    lo = v & 0x0F;
-    d = hi + 48;
-    if (d > 57) {
-        d = d + 7;      // 'A'-'F' start at 65: 58..63 map onto 65..70
-    }
-    shell_putc(d);
-    d = lo + 48;
-    if (d > 57) {
-        d = d + 7;
-    }
-    shell_putc(d);
-}
-
-// PEEK: dump the OS signature at 0x0000 as "4E 44" (Phase-1 checklist item).
-void shell_peek() {
-    int v;
-    v = peek(0x0000);
-    shell_puthex(v);
-    shell_putc(32);     // space between the two signature bytes
-    v = peek(0x0001);
-    shell_puthex(v);
-    shell_newline();
-}
+// OS signature "ND" 0x01 0x00 at 0x0000. Placed data is written by the
+// loader, so it is in memory before the first instruction runs.
+const int os_signature[2] @ OS_SIG = {0x4E44, 0x0100};
 
 #if NOVADOS_ENABLE_NDF
-// DIR: list the NDF volume in bank 1 (entry count + each directory name).
-// WHY bank 1 is the default disk: bank 0 aliases base RAM (never a disk), so
-// the first private page is the boot volume, which main() formats at startup.
-void shell_dir() {
-    int bank;
-    int count;
-    int i;
-    int j;
-    int ch;
-    bank = 1;
-    if (ndf_mounted(bank) == 0) {
-        shell_puts("no NDF volume in bank 1");
-        return;
-    }
-    count = ndf_entry_count(bank);
-    shell_col = 2;
-    shell_goto(shell_col, shell_row);
-    write_text("DIR bank1=", 0x0F);
-    // "DIR bank1=" is 10 glyphs starting at cell column 2 -> column 12. The
-    // entry count is a single hex byte (the directory holds at most 16).
-    shell_col = 12;
-    shell_puthex(count);
-    shell_newline();
-    for (i = 0; i < count; i = i + 1) {
-        shell_col = 4;
-        shell_goto(shell_col, shell_row);
-        for (j = 0; j < ndf_name_len; j = j + 1) {
-            ch = ndf_name_byte(bank, i, j);
-            if (ch != 0) {
-                shell_putc(ch);
-            }
-        }
-        shell_newline();
-    }
-}
+// HI, the sample program on the boot volume: the bytes of src/progs/hi.asm
+// assembled for PROG_BASE. Keep the two in sync (a test checks).
+const char hi_prog[36] = {
+    0x06, 0x08, 0xF1, 0x58, 0x17, 0x06, 0x83, 0x00, 0x16, 0xF1, 0x06, 0x04,
+    0xF1, 0x09, 0x06, 0x83, 0x00, 0x12, 0xF1, 0x30, 0x01, 0x04, 0x01, 0x48,
+    0x49, 0x20, 0x46, 0x52, 0x4F, 0x4D, 0x20, 0x44, 0x49, 0x53, 0x4B, 0x00
+};
 
-// TYPE: display file contents from the NDF volume in bank 1.
-// Reads the filename from line_buf[1..line_len-1] and scans the directory
-// for a matching 8-byte entry name. On match, reads and displays the file
-// data bytes from the bank page.
-void shell_type() {
-    int bank;
-    int count;
-    int slot;
-    int name_i;
-    int match;
-    int file_size;
-    int data_off;
-    int byte_i;
-    int c;
-    int want;
-    bank = 1;
-    if (ndf_mounted(bank) == 0) {
-        shell_puts("no NDF volume in bank 1");
-        return;
-    }
-    count = ndf_entry_count(bank);
-    // One bank open for the whole directory name scan (was 16 flips/slot).
-    set_bank(bank);
-    slot = 0;
-    match = 0;
-    while (slot < count) {
-        name_i = 0;
-        match = 1;
-        while (name_i < 8) {
-            if (name_i < line_len - 1) {
-                want = line_buf[name_i + 1];
-            } else {
-                want = 0;
-            }
-            if (peek(ndf_window + ndf_entry_base + slot * ndf_entry_size + name_i) != want) {
-                match = 0;
-            }
-            name_i = name_i + 1;
-        }
-        if (match != 0) {
-            break;
-        }
-        slot = slot + 1;
-    }
-    set_bank(0);
-    if (match == 0) {
-        shell_puts("file not found");
-        return;
-    }
-    file_size = ndf_entry_size(bank, slot);
-    data_off = ndf_entry_data(bank, slot);
-    shell_puts("---");
-    // Hold bank for payload stream; shell_putc only touches graphics/cursor.
-    set_bank(bank);
-    byte_i = 0;
-    while (byte_i < file_size) {
-        c = peek(ndf_window + data_off + byte_i);
-        shell_putc(c);
-        byte_i = byte_i + 1;
-    }
-    set_bank(0);
-    shell_newline();
-    shell_puts("---");
+// Bank 1 is the boot volume: bank 0 aliases base RAM, so 1 is the first
+// private page. RAM banks start empty, so the volume is built at boot.
+void disk_init() {
+    ndf_format(1);
+    ndf_create(1, "BOOT", NDF_TEXT, "HELLO", 5);
+    ndf_create(1, "HI", NDF_PROG, hi_prog, sizeof(hi_prog));
 }
-
 #endif
-
-// MEM: report kmalloc bump-allocator free bytes as 4 hex digits.
-void shell_mem() {
-    int freeb;
-    freeb = kmalloc_free();
-    shell_col = 2;
-    shell_goto(shell_col, shell_row);
-    write_text("MEM free=", 0x0F);
-    shell_col = 11;
-    shell_puthex((freeb >> 8) & 0xFF);
-    shell_puthex(freeb & 0xFF);
-    shell_newline();
-}
-
-// TIME: print system_ticks (ISR counter) as 4 hex digits.
-// First-char dispatch uses 'I' because 'T' is already TYPE.
-void shell_time() {
-    int t;
-    t = system_ticks;
-    shell_col = 2;
-    shell_goto(shell_col, shell_row);
-    write_text("TIME ", 0x0F);
-    shell_col = 7;
-    shell_puthex((t >> 8) & 0xFF);
-    shell_puthex(t & 0xFF);
-    shell_newline();
-}
-
-// HELP: only advertise commands compiled into this build.
-void shell_help() {
-#if NOVADOS_ENABLE_NDF
-    shell_puts("HELP PEEK CLS DIR TYPE MEM TIME BYE");
-#else
-    shell_puts("HELP PEEK CLS MEM TIME BYE");
-#endif
-}
-
-// Dispatch one completed command line by its FIRST character (the same
-// first-char + second-char strategy the assembly REPL uses; word comparison
-// is not needed for four single-letter commands).
-void shell_dispatch() {
-    int c;
-    cmd_count = cmd_count + 1;
-    if (line_len == 0) {
-        return;
-    }
-    c = line_buf[0];
-    if (c == 72 || c == 104) {          // 'H' / 'h'
-        shell_cmd = 1;
-        shell_help();
-    } else if (c == 67 || c == 99) {    // 'C' / 'c'
-        shell_cmd = 2;
-        set_layer(0);
-        screen_fill(0x00);
-        shell_row = 12;
-        shell_col = 2;
-        shell_prompt();
-    } else if (c == 80 || c == 112) {   // 'P' / 'p'
-        shell_cmd = 3;
-        shell_peek();
-    } else if (c == 66 || c == 98) {    // 'B' / 'b'
-        shell_cmd = 4;
-        shell_exit = 1;                 // graceful shutdown: main halts after the loop
-    } else if (c == 77 || c == 109) {   // 'M' / 'm'
-        shell_cmd = 7;
-        shell_mem();
-    } else if (c == 73 || c == 105) {   // 'I' / 'i'  (tIme -- T is TYPE)
-        shell_cmd = 8;
-        shell_time();
-#if NOVADOS_ENABLE_NDF
-    } else if (c == 68 || c == 100) {   // 'D' / 'd'
-        shell_cmd = 5;
-        shell_dir();
-    } else if (c == 84 || c == 116) {   // 'T' / 't'
-        shell_cmd = 6;
-        shell_type();
-#endif
-    }
-    // Unknown first character: fall through silently (the '?' error of the
-    // assembly REPL is skipped so the headless run stays quiet).
-}
-
-// Line editor: consume one key scan code. Enter (0x0A, or CR 0x0D and the
-// design-doc 0x93) terminates the line, Backspace (0x08 / 0x92) erases,
-// ESC (0x1B) requests shutdown, and everything outside printable ASCII is
-// swallowed exactly like the assembly GETLINE does.
-void shell_key(int k) {
-    if (k == 10 || k == 13 || k == 147) {   // Enter: GUI code, CR, and 0x93
-        shell_newline();
-        shell_dispatch();
-        line_len = 0;
-        if (shell_exit == 0) {
-            shell_prompt();
-        }
-        return;
-    }
-    if (k == 8 || k == 146) {               // Backspace: GUI code and 0x92
-        if (line_len > 0) {
-            line_len = line_len - 1;
-            shell_putc(8);
-        }
-        return;
-    }
-    if (k == 27) {                          // ESC: orderly power-down
-        shell_exit = 1;
-        return;
-    }
-    if (k < 32 || k > 126) {
-        return;                             // arrows/F-keys/Tab: swallowed
-    }
-    if (line_len < 24) {
-        line_buf[line_len] = k;
-        line_len = line_len + 1;
-        shell_putc(k);
-    }
-}
 
 void banner() {
     set_mode(1);
-    set_layer(0);
-    screen_fill(0x00);
-    // Cell geometry: title on cell rows 1-2, scroll region starts at row 3.
+    con_clear();
     set_pos(16, 8);
-    write_text("NovaDOS v0.1", 0x0F);
+    write_text("NovaDOS v0.2", CON_FG);
     set_pos(16, 16);
-    write_text("boot slice: shell + scheduler + timer", 0x0A);
-    shell_row = 3;
-    shell_col = 2;
+    write_text("Astrid kernel - type HELP", CON_ACCENT);
 }
 
-// Demo worker: wakes through sleep/yield pings so the scheduler path runs.
-int demo_ctx[22];
-int demo_stack[64];
-int demo_ctx_main[22];
-int demo_hits = 0;
+// ---------------------------------------------------------------------------
+// Tasks: the shell runs on the boot stack; the background task runs
+// housekeeping once per shell poll and yields straight back.
+// ---------------------------------------------------------------------------
+int shell_ctx[22];
+int bg_ctx[22];
+int bg_stack[64];
+int bg_runs = 0;            // background passes since boot
 
-void demo_task() {
-    demo_hits = demo_hits + 1;
-    task_switch(demo_ctx, demo_ctx_main);
-    demo_hits = demo_hits + 10;
-    task_switch(demo_ctx, demo_ctx_main);
-    demo_hits = demo_hits + 100;
-    // WHY: a spawned task must never fall off the end of its entry function.
-    // task_spawn (builtin_task_spawn) parks ONLY the resume PC on the fresh
-    // task stack, so a function-return RET would pop uninitialized words and
-    // jump to junk (observed: halt at an incidental HLT byte at 0x0181).
-    // Park here forever instead: the final switch hands control back to main,
-    // which then completes its own frame and RETs to the stub's HLT at 0x100E.
+// A spawned task must never return: task_spawn parks only the entry address
+// on the new stack, so a RET from here would pop garbage.
+void bg_task() {
     while (1) {
-        task_switch(demo_ctx, demo_ctx_main);
+        wake_sleepers(system_ticks);
+        bg_runs++;
+        task_switch(bg_ctx, shell_ctx);
     }
 }
 
 void main() {
-    int i;
-    int had_sleep;
-    mem_init();
-    for (i = 0; i < 16; i = i + 1) {
-        task_pid[i] = -1;
-        task_state[i] = 1;
-    }
-    // OS signature "ND\x01\x00" at 0x0000 (memory-map.md §2): PEEK 0x0000 must
-    // print "4E 44", and tests assert the bytes directly.
-    poke(0x0000, 0x4E);
-    poke(0x0001, 0x44);
-    poke(0x0002, 1);
-    poke(0x0003, 0);
+    int polls;
+    sched_init();
+    banner();
 #if NOVADOS_ENABLE_NDF
-    // Bring up the boot NDF volume on bank 1 and give it one directory entry.
-    // WHY: the bank-safe layout frees 0x8000-0xBFFF, so the disk layer can
-    // switch banks without swapping out the running kernel. This is the first
-    // user-visible proof that banked storage works.
-    ndf_format(1);
-    ndf_add(1, 66, 79, 79, 84, 0, 5);   // "BOOT" with 5 bytes of data
-    // Word writes keep the boot sample compact enough to leave code below
-    // the bank-safe globals at 0x4200; NDF words are big-endian.
-    ndf_write16(1, ndf_data_base, 0x4845);     // "HE"
-    ndf_write16(1, ndf_data_base + 2, 0x4C4C); // "LL"
-    ndf_write8(1, ndf_data_base + 4, 79);      // "O"
+    // Before the timer is armed, so formatting runs interrupt-free.
+    disk_init();
 #endif
 #if NOVADOS_ENABLE_TIMER
-    // Arm the tick heartbeat AFTER the NDF bring-up so boot-time disk
-    // formatting stays interrupt-free, then let every later banked access
-    // (DIR/TYPE below) run under live timer pressure. TC=3 = count enable +
-    // interrupt enable: the peripheral unmasks vector 0 in the interrupt
-    // controller and publishes 'timer.fired' every (TS+1)*TM cycles. STI
-    // raises the global I flag; nesting stays off because entry clears I and
-    // timer_isr never re-enables it.
-    //
-    // WHY a live interrupt source is safe next to the banked disk layer at
-    // all: interrupt entry snapshots the BANK register onto the CPU's IRQ
-    // bank stack ("Pure Option B", nova/bus/interrupt.py) and forces bank 0
-    // for the handler; IRET pops the snapshot and restores the entry bank.
-    // A tick landing inside an ndf_read8/ndf_write8 bracket therefore runs
-    // with base RAM visible and hands the disk bank back on return -- the
-    // ISR can never leak a bank switch into either the interrupted disk
-    // access or its own global updates.
-    //
-    // FOOTPRINT: the bank-safe layout caps kernel code below the globals
-    // segment at 0x4200 and this boot slice's headroom is only ~23 bytes.
-    // The CALL-based sti()/set_timer() builtins cost ~85 bytes here, which
-    // overflowed the cap so the loader overwrote the code tail with globals
-    // (wild PC into 0x4200 on the first POP). Raw register writes do the
-    // same job in ~13 bytes; asm blocks are also compiler barriers, so the
-    // optimizer cannot reorder the arm sequence.
-    asm("STI");            // raise I: accept interrupts
-    asm("MOV TT, 0");      // restart the tick counter
-    asm("MOV TM, 100");    // modulo threshold: TM counts per tick
-    asm("MOV TS, 31");     // divisor: (TS+1) cycles per count -> ~3200 cycles/tick
-    asm("MOV TC, 3");      // bit0 = enable, bit1 = interrupt enable
+    // TC=3: count enable + interrupt enable (unmasks vector 0). Raw register
+    // writes: asm is a compiler barrier, so the sequence stays in order.
+    asm("MOV TT, 0");
+    asm("MOV TM, 100");
+    asm("MOV TS, 31");
+    asm("MOV TC, 3");
 #endif
-    banner();
+#if NOVADOS_ENABLE_TIMER || NOVADOS_ENABLE_SYSCALLS
+    // Global interrupt enable: the timer needs it, and INT 4 is ignored
+    // without it.
+    asm("STI");
+#endif
+    task_spawn(bg_ctx, bg_stack, 64, &bg_task);
     shell_prompt();
-    task_spawn(demo_ctx, demo_stack, 64, &demo_task);
-    task_switch(demo_ctx_main, demo_ctx);
-    wake_sleepers(system_ticks);
-    shell_putc(72);
-    shell_putc(105);
-    task_switch(demo_ctx_main, demo_ctx);
-    shell_newline();
-    shell_prompt();
-    // WHY: keyboard polling must be bounded or headless runs stall forever;
-    // shell_key owns the line editor and dispatch, and ESC/BYE set shell_exit
-    // so an interactive user can leave early while a keyless headless run
-    // still drains the full 200 iterations and halts deterministically.
-    shell_exit = 0;
-    i = 0;
-    while (i < NOVADOS_POLL_LIMIT && shell_exit == 0) {
-        wake_sleepers(system_ticks);
+    // Bounded so headless runs terminate; BYE/Esc leave early.
+    for (polls = 0; polls < NOVADOS_POLL_LIMIT && !shell_exit; polls++) {
+        task_switch(shell_ctx, bg_ctx);
         if (key_available()) {
             shell_key(key_read());
         }
-        i = i + 1;
     }
-    task_switch(demo_ctx_main, demo_ctx);
-    had_sleep = demo_hits;
-    set_pos(2, 60);
-    write_text((string)had_sleep, 0x0A);
-    shell_newline();
+    if (con_col != CON_LEFT) {
+        con_newline();
+    }
+    con_println("System halted.");
 }

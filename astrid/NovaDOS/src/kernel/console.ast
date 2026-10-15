@@ -1,0 +1,96 @@
+// =============================================================================
+// NovaDOS - Console
+// WHAT: the text cursor and every way the kernel puts text on screen.
+//       32x32 cells of 8x8 glyphs on layer 0; rows 0-2 hold the banner and
+//       rows 3-31 scroll (by clearing: the Nova-16 has no text scroll op).
+// WHY its own cursor: the emulator keeps none. write_text leaves VX/VY where
+//      the glyphs ended, so every write goes through con_goto from the
+//      tracked cell and then advances con_col itself.
+// INVARIANT: nothing here touches 0x8000-0xBFFF (the char glyph scratch
+//      lives at 0xC000 under bank-safe), so the disk layer may print while
+//      a disk bank is mapped.
+// =============================================================================
+
+enum ConsoleGeom {
+    CON_LEFT      = 2,       // first text column
+    CON_RIGHT     = 31,      // last text column
+    CON_TOP       = 3,       // first scrolling row (banner owns 0-2)
+    CON_BOTTOM    = 31,
+    CON_FG        = 0x0F,    // text colour
+    CON_ACCENT    = 0x0A     // banner subtitle colour
+};
+
+const char hex_digits[16] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                             '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+
+int con_row = CON_TOP;
+int con_col = CON_LEFT;
+
+// set_pos takes pixels; cells are 8x8.
+void con_goto(int col, int row) {
+    set_pos(col * 8, row * 8);
+}
+
+void con_clear() {
+    set_layer(0);
+    screen_fill(COLOR_BLACK);
+    con_row = CON_TOP;
+    con_col = CON_LEFT;
+}
+
+void con_newline() {
+    con_col = CON_LEFT;
+    con_row++;
+    if (con_row > CON_BOTTOM) {
+        con_clear();
+    }
+}
+
+void con_putc(int c) {
+    if (c == KEY_LF || c == KEY_CR) {
+        con_newline();
+        return;
+    }
+    if (c == KEY_BS) {
+        if (con_col > CON_LEFT) {
+            con_col--;
+            con_goto(con_col, con_row);
+            write_text(" ", CON_FG);
+        }
+        return;
+    }
+    con_goto(con_col, con_row);
+    // (char) draws the glyph itself; an int argument would be printed as
+    // its decimal value.
+    write_text((char)c, CON_FG);
+    con_col++;
+    if (con_col > CON_RIGHT) {
+        con_newline();
+    }
+}
+
+// Print s at the cursor without a newline. Long strings are clipped at the
+// screen edge rather than wrapped (the shell never prints wider lines).
+void con_print(string s) {
+    con_goto(con_col, con_row);
+    write_text(s, CON_FG);
+    con_col += strlen(s);
+}
+
+void con_println(string s) {
+    con_print(s);
+    con_newline();
+}
+
+// `digits` hex digits of v, most significant first ("4E" for (0x4E, 2)).
+void con_hex(int v, int digits) {
+    signed int shift;
+    for (shift = (digits - 1) * 4; shift >= 0; shift -= 4) {
+        con_putc(hex_digits[(v >> shift) & 0x0F]);
+    }
+}
+
+// Signed decimal.
+void con_dec(int v) {
+    con_print((string)v);
+}

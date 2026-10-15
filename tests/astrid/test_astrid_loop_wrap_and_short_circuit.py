@@ -171,4 +171,16 @@ def test_logical_chain_code_is_linear():
     proc, mem, asm, syms = _build_and_run(source)
     assert proc.halted
     assert mem.read_word(syms['gvar_r']) == 1
+    # As an if condition the chain lowers to compare-and-branch: exactly one
+    # conditional jump per term.
+    body = asm[asm.index('func_main:'):asm.index('builtin_halt:')]
+    assert len(re.findall(r'^\s*J(?:Z|NZ|C|NC|LT|GE|GT|LE)\s', body, re.M)) == 6
+
+    # As a value the chain keeps the materializing short-circuit sequence:
+    # one block per operator, not 2^n.
+    proc, mem, asm, syms = _build_and_run(source.replace(
+        'if (x < 0 || x > 255 || x == 7 || x == 9 || x == 11 || x == 13) { r = 1; }',
+        'r = (x < 0 || x > 255 || x == 7 || x == 9 || x == 11 || x == 13);'))
+    assert proc.halted
+    assert mem.read_word(syms['gvar_r']) == 1
     assert len(re.findall(r'^sc_true_\d+:', asm, re.M)) == 5

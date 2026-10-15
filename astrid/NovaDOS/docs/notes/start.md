@@ -21,8 +21,10 @@ the continuation at the bottom.
 | Enum/include baseline | done | `kdos.ast`, `types.ast`, `memmgr.ast`, `interrupts.ast` compile |
 | Compiler ORG layout | fixed | codegen emits ISR code at `ORG 0x1100`; the 0x1000 entry stub stays intact |
 | Kernel boot slice | done | boots, runs the scheduler demo, halts cleanly at the stub `HLT` (0x100E) |
-| Kernel regression tests | done | `astrid/NovaDOS/tests/test_kernel_compile.py` (5 tests, includes the boot-slice end-to-end) |
+| Kernel regression tests | done | `astrid/NovaDOS/tests/` (kernel image, shell, programs, timer); text-level screen checks via `novados_harness.py` |
 | FS / drivers / shell | done | NDF volume (`ndf.ast`) + shell commands: HELP/CLS/PEEK/DIR/TYPE/BYE; kernel compiles and runs headless ✅ |
+| Phase 1 shell + loader | done (2026-10-15) | 20 word commands, A-Z variables, LOAD/RUN/SAVE/CALL, INT 4 SYS mailbox; see `docs/plans/shell.md`, `docs/plans/programs-and-syscalls.md` |
+| Str0-9 string variables | open | last Phase-1 item |
 
 ## 2026-09-15 — NovaDOS boot slice (scheduler + timer ISR)
 - what was decided / discovered
@@ -111,6 +113,19 @@ the continuation at the bottom.
   concurrently (or leaving a stale `.bin`) can silently keep the previous
   binary even though the `.asm` changed. Rebuild sequentially and cross-check
   the `.org` segment lengths as a fingerprint.
+- [2026-10-15] Kernel code must end below the globals at 0x4200 (12,544
+  bytes from 0x1100). An overflow used to assemble cleanly, and the loader
+  then wrote the globals over the code tail. Both assemblers now stop with
+  "ORG segments overlap: ..."; `test_code_fits_below_globals` checks it too.
+- [2026-10-15] Console output lines must stay within 30 characters. TEXT
+  wraps at the screen edge to column 0 of the next row, under the prompt.
+- [2026-10-15] The keyboard FIFO drops keys beyond its capacity. Tests and
+  scripts must feed keys as the shell drains them (`novados_harness.boot`).
+- [2026-10-15] `arg_num` failures are sticky in `bad_args`; checking
+  `num_ok` after a second `arg_num` call hides an error in the first.
+- [2026-10-15] A struct pointer cannot be written as a cast
+  (`(struct NdfEntry *)addr` does not parse); assign the address directly:
+  `e = ndf_entry_addr(slot);` (Astrid pointers are untyped words).
 
 ## 2026-09-15 — Astrid codegen ORG overlap fix
 
@@ -200,3 +215,91 @@ the continuation at the bottom.
   for word globals.
 - **Result**: diskless BYE passes; suite 39 passed (NovaDOS) + 3 (NDF probes)
   + 24 compiler naked/interrupt tier tests. Binary 12,010 bytes.
+
+## 2026-10-15 — compiler regression fixed, kernel reworked, Phase 1 shell
+
+- what was decided / discovered
+  - **The kernel no longer worked**: 27 of 65 tests failed. Code at 0x1100
+    had grown from 11,601 to 16,413 bytes and ran past the globals at
+    0x4200. Cause: the Astrid function inliner (added after the 09-21 work)
+    measured callees by TOP-LEVEL statement count, so `shell_dispatch` (one
+    if/else-if chain) and `shell_key` counted as small and were pasted into
+    every caller, while the out-of-line copies were still emitted.
+  - Inliner fixes (`astrid/codegen/optimizations.py`, `FunctionInliner`):
+    nested statements are counted; inline expansions of string casts and
+    `format` weigh 8 statements; weight x call sites is capped
+    (`inlining_growth_budget`, 16); functions that are never called (main,
+    ISRs) are no longer "inlineable", which had exempted them from
+    rewriting. Four semantic bugs found on the way, all with tests in
+    `tests/astrid/test_astrid_inliner_semantics.py`: callee locals were not
+    renamed (an inlined `int i` loop reset the caller's `i` -- the kernel's
+    poll loop never ended); arguments were pasted textually (side effects
+    ran once per use); a `return` in the callee returned from the caller;
+    calls through a local function pointer kept the old name.
+  - Dead-function elimination (`CodeGenerator._eliminate_dead_functions`):
+    whole programs drop functions nothing reaches (roots: main, ISRs, naked,
+    extern; anything named in a global initializer or asm text). Dead bodies
+    are still compiled so their errors are reported, then discarded.
+  - Other compiler work this pass (tests in `tests/astrid/`):
+    compare-and-branch for if/while/do/for conditions (`_emit_cond_jump`;
+    a test used to take ~9 instructions); the ExpressionSimplifier no longer
+    swaps the operands of `&&`/`||` or drops a side-effecting operand
+    (`f() && 0`); peephole patterns for redundant PUSH/POP saves,
+    `PUSH [mem]` and ALU immediates; call statements skip the dead result
+    copy; `i++;` compiles as `++i;`; string literals go into the read-only
+    window 0x0120-0x0EFF when they fit; `string` arrays and struct arrays
+    accept string literals and `&func` in global initializers; `strcmp`
+    returned the first argument's address (STRCMP leaves its result in R0)
+    and now also accepts C's two-argument form; `include` dropped the
+    unions, bit-field layouts and typedefs of the included file (an included
+    4-byte bit-field struct became 6 bytes).
+  - Measured: the 09-21 kernel source with the fixed compiler is 8,510 bytes
+    of code (was 11,601) and boots in 75k cycles (was 99.7k). All 18
+    `astrid/progs` demos still compile; most shrink (room3d -1 KB).
+  - Kernel rework (`src/`):
+    - Split into `console.ast` (cursor/text), `shell.ast` (line editor,
+      tokenizer, command table, commands), `syscall.ast` (INT 4) and the
+      entry unit `kernel.ast`.
+    - Shell: word commands looked up in a `const struct Command` table
+      (name, id, handler address) and called through the function pointer;
+      HELP prints the table. 20 commands, A-Z variables with `+`/`-`
+      expressions, decimal and hex numbers. Ids in `shell_cmd` kept their
+      old values (HELP 1 ... TIME 8).
+    - NDF rewritten on `peek2`/`poke2`/`memcpy`/`strncpy` with named files
+      (`ndf_create/find/read/name/size/type/free`), a bit-field
+      `struct NdfEntry` overlaid on the window, `static_assert` geometry
+      guards, a next-free pointer in the header (files were capped at one
+      256-byte cluster each), and error codes. The console never runs with a
+      disk bank mapped: TYPE copies 32-byte chunks out first.
+    - LOAD/RUN/SAVE/CALL/NEW with a program area at 0x5800 and a sample
+      program `src/progs/hi.asm` on the boot volume -- the parent design's
+      Phase-1 exit criterion. Programs talk to the kernel through the INT 4
+      mailbox at 0x0012 (`@`-placed volatile globals).
+    - The OS signature is an `@ 0x0000` const, written by the loader rather
+      than by boot code. The scheduler demo (demo_hits 1+10+100) became a
+      real background task that runs once per poll iteration.
+      `pending_timer` (written, never read) is gone. kmalloc's heap moved
+      from 0x3000, which was inside kernel code, to 0x5000-0x57FF.
+    - Fixed in the opt-in full scheduler: `task_create` left
+      `task_pid[slot] = -1`, so created tasks were never scheduled;
+      `task_yield` switched through stack copies of the contexts and set
+      `current_task` after the switch.
+  - Kernel: 11,947 bytes of code (limit 12,544), 495 bytes of globals,
+    755 bytes of read-only data. Tests: 65 NovaDOS + 5 NDF probe, plus the
+    rest of `tests/astrid`, all green.
+- exact commands run
+  - `py -3.13 -m pytest astrid/NovaDOS/tests tests/astrid -q -n auto`
+  - `py -3.13 astrid/astrid_compiler.py astrid/NovaDOS/src/kernel/kernel.ast -o astrid/NovaDOS/build/kernel.asm --memory-layout bank-safe`
+  - `py -3.13 nova_assembler.py astrid/NovaDOS/build/kernel.asm`
+- links to code/doc evidence
+  - `astrid/codegen/optimizations.py` (`FunctionInliner._eligible`,
+    `_expand_call`), `astrid/codegen/codegen.py` (`_eliminate_dead_functions`,
+    `_emit_cond_jump`, `generate_strings`), `astrid/codegen/peephole.py`
+    (patterns 8-10), `astrid/parser/parser.py` (`_merge_include_unit`)
+  - `docs/plans/shell.md`, `docs/plans/programs-and-syscalls.md`,
+    `docs/plans/build-settings.md`, `docs/plans/design.md` (phase status)
+  - Removed: scratch scripts and probe outputs in `build/` and `src/fs/`
+    (the old NDF probe test wrote its sources next to `ndf.ast` and never
+    deleted them; it now stages in pytest's tmp dir). `build/diag_kernel.py`
+    traced the old demo; `tests/novados_harness.py` replaces it.
+

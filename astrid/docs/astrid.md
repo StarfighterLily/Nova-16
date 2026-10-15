@@ -30,6 +30,7 @@ A C language for the Nova-16, built from the ground up.
 26. [Adjacent string literal concatenation](#adjacent-string-literal-concatenation)
 27. [String library additions](#string-library-additions)
 28. [static_assert](#static_assert)
+29. [Optimizer behaviour](#optimizer-behaviour)
 
 ---
 
@@ -767,6 +768,28 @@ initializer elements; referencing a builtin this way links its
 implementation. Assigning into a pointer array element at runtime works too
 (`handlers[0] = &op_add;`).
 
+String literals are accepted the same way in `string` arrays, and struct
+arrays may mix numbers, string literals and function addresses. The list is
+flat: it fills each struct's words in order. That gives a dispatch table
+with one row per entry:
+
+```c
+struct Command { string name; int id; int handler; };
+
+const struct Command commands[] = {
+    "HELP", 1, &cmd_help,
+    "DIR",  5, &cmd_dir
+};
+
+int (*h)();
+for (i = 0; i < sizeof(commands) / sizeof(struct Command); i++) {
+    if (strcmp(word, commands[i].name) == 0) {
+        h = commands[i].handler;
+        h();
+    }
+}
+```
+
 > **Caveat -- indirect calls must target user functions.** An indirect call
 > site cannot know *what* it will call. User functions follow the cdecl-style
 > convention (they **leave** the pushed arguments for the caller to pop),
@@ -1171,6 +1194,11 @@ A `const` with an `@ address` placement keeps its own segment instead of
 entering the window. Locals and parameters shadow globals per C scoping, so
 a local `int x` may shadow a global `const int x`.
 
+String literals share the window: when all of a program's literals fit after
+its const tables, they are emitted there instead of inside the code. That
+matters under the `bank-safe` layout, where code must end below the globals.
+Programs whose literals do not fit keep them in the code segment.
+
 ---
 
 ## Signed and unsigned integers
@@ -1302,6 +1330,35 @@ linked only when used.
 
 As with C's `strncpy`, the result is not NUL-terminated when `src` is `n`
 bytes or longer.
+
+`strcmp(a, b)` returns -1, 0 or 1 like C. An optional third argument bounds
+the comparison to `n` bytes (`strcmp(a, b, 4)` compares like `strncmp`).
+Before 2026-10-15 the result was the address of `a`, and the two-argument
+form read a stray stack word as the bound.
+
+## Optimizer behaviour
+
+With optimizations on (the default), three passes change which functions
+appear in the output:
+
+* **Inlining.** A call statement to a `void` function is replaced by a copy
+  of its body when the body is small: at most 8 statements, nested ones
+  included, where a string cast or `format` call counts as 8 because it
+  expands to a loop. The body size times the number of call sites must also
+  stay within 16, since every copy adds code. Functions containing `asm`,
+  labels, `static` locals or a `return` before the end are never inlined, and
+  the `inline` qualifier forces it. Inlining keeps C semantics: callee locals
+  get private names, and each non-literal argument is evaluated exactly
+  once, before the body.
+* **Dead functions.** In a whole program (one with `main`, not an object
+  unit), a function nothing can reach is dropped. Roots are `main`,
+  interrupt handlers and `naked` or `extern` functions. A function is
+  reachable once a live function, a global initializer or an `asm` string
+  mentions its name (`CALL func_name` counts). Dead functions are still
+  compiled, so their errors are reported.
+* **Conditions.** `if`, `while`, `do` and `for` conditions compile to a
+  compare and a conditional jump; `&&`, `||` and `!` become branch chains
+  that still short-circuit left to right.
 
 ## static_assert
 

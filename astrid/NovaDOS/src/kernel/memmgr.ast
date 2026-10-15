@@ -1,13 +1,10 @@
 // =============================================================================
 // NovaDOS - Memory Manager + Cooperative Scheduler State
-// A TI-OS / DOS / Plan-9 Hybrid written in Astrid
-// WHAT: bump allocator + the minimal tables the boot-slice demo needs.
-// WHY: the previous 16-slot full TCB (ctx_words[352] + task_stacks[4096] +
-//      eight parallel metadata arrays + proc_table) reserved ~9.5 KB of RAM
-//      and emitted ~1 KB of task_create/yield/sleep code that the boot slice
-//      never calls. The demo uses task_spawn/task_switch builtins directly on
-//      its own demo_ctx/demo_stack; keep only wake_sleepers + a compact ready
-//      bitmap so the poll loop still has a real scheduler hook.
+// WHAT: kmalloc bump heap, the sleeper table the background task services,
+//       and (opt-in) the full multi-task create/yield path.
+// WHY: the boot kernel runs two cooperative tasks (shell + background) on the
+//      task_spawn/task_switch builtins; the 16-slot TCB with per-task stacks
+//      costs ~3 KB and stays behind NOVADOS_ENABLE_FULL_SCHEDULER.
 // =============================================================================
 
 include "types.ast";
@@ -15,14 +12,17 @@ include "types.ast";
 // =============================================================================
 // Build-time scheduler capacity
 // =============================================================================
-// NOVADOS_MAX_TASKS bounds the parallel metadata arrays. The full multi-task
-// create/yield path is gated by NOVADOS_ENABLE_FULL_SCHEDULER (default 0) so
-// the boot slice pays neither the code nor the 8 KB task_stacks arena.
 #ifndef NOVADOS_MAX_TASKS
 #define NOVADOS_MAX_TASKS 16
 #endif
 #if NOVADOS_MAX_TASKS < 1 || NOVADOS_MAX_TASKS > 16
 #error NOVADOS_MAX_TASKS must be between 1 and 16
+#endif
+#ifndef NOVADOS_TASK_STACK_WORDS
+#define NOVADOS_TASK_STACK_WORDS 64
+#endif
+#if NOVADOS_TASK_STACK_WORDS < 32 || NOVADOS_TASK_STACK_WORDS > 256
+#error NOVADOS_TASK_STACK_WORDS must be between 32 and 256
 #endif
 #ifndef NOVADOS_ENABLE_FULL_SCHEDULER
 #define NOVADOS_ENABLE_FULL_SCHEDULER 0
@@ -32,61 +32,40 @@ include "types.ast";
 #endif
 
 // =============================================================================
-// Memory manager state: bump allocator from 0x3000 upward; totals only.
+// kmalloc: bump allocator over KHEAP_START..KHEAP_END, word aligned.
 // =============================================================================
+// WHY its own range: the heap used to start at 0x3000, which under the
+// bank-safe layout is inside kernel code (0x1100-0x41FF) and below the
+// globals at 0x4200 -- the first allocation would have overwritten code.
+// The kernel test suite checks that every global ends below KHEAP_START.
 
-int mem_heap_start = 0x3000;
-int mem_heap_next = 0x3000;
-int mem_heap_end = 0x8000;
-int mem_heap_used = 0;
-int mem_initialized = 0;
-
-void mem_init() {
-    mem_heap_next = mem_heap_start;
-    mem_heap_used = 0;
-    mem_initialized = 1;
-}
+int mem_heap_next = KHEAP_START;
 
 int kmalloc(int size) {
-    int aligned;
     int addr;
-    if (mem_initialized == 0) {
-        mem_init();
-    }
-    aligned = size;
-    if (aligned & 1) {
-        aligned = aligned + 1;
-    }
-    if (mem_heap_next + aligned > mem_heap_end) {
+    size = (size + 1) & 0xFFFE;
+    if (size > KHEAP_END - mem_heap_next) {
         return 0;
     }
     addr = mem_heap_next;
-    mem_heap_next = mem_heap_next + aligned;
-    mem_heap_used = mem_heap_used + aligned;
+    mem_heap_next += size;
     return addr;
 }
 
+// Bump allocator: blocks have no headers, so free cannot reclaim anything.
+// Kept so callers can be written against the usual pair.
 void kfree(int ptr) {
-    if (ptr == 0) {
-        return;
-    }
-    // WHY: bump allocator has no per-block headers; free is a no-op so the
-    // kernel never corrupts live data by pretending to reclaim it.
 }
 
 int kmalloc_free() {
-    if (mem_initialized == 0) {
-        return mem_heap_end - mem_heap_start;
-    }
-    return mem_heap_end - mem_heap_next;
+    return KHEAP_END - mem_heap_next;
 }
 
 // =============================================================================
-// Compact scheduler tables (always present; tiny)
+// Sleeper table (always present; tiny)
 // =============================================================================
-// task_state/task_wake are enough for wake_sleepers. task_pid marks free vs
-// occupied so main()'s init loop still has something real to seed. No stacks
-// and no 22-word context windows until FULL_SCHEDULER is enabled.
+// task_state[i] == TASK_SLEEPING with task_wake[i] <= now becomes TASK_READY
+// the next time the background task runs wake_sleepers().
 
 int task_pid[NOVADOS_MAX_TASKS];
 int task_state[NOVADOS_MAX_TASKS];
@@ -94,13 +73,19 @@ int task_wake[NOVADOS_MAX_TASKS];
 int task_count = 0;
 int current_task = -1;
 
-void wake_sleepers(int current_time) {
+void sched_init() {
     int i;
-    for (i = 0; i < NOVADOS_MAX_TASKS; i = i + 1) {
-        if (task_state[i] == 3) {
-            if (task_wake[i] <= current_time) {
-                task_state[i] = 0;
-            }
+    for (i = 0; i < NOVADOS_MAX_TASKS; i++) {
+        task_pid[i] = -1;
+        task_state[i] = TASK_STOPPED;
+    }
+}
+
+void wake_sleepers(int now) {
+    int i;
+    for (i = 0; i < NOVADOS_MAX_TASKS; i++) {
+        if (task_state[i] == TASK_SLEEPING && task_wake[i] <= now) {
+            task_state[i] = TASK_READY;
         }
     }
 }
@@ -108,30 +93,19 @@ void wake_sleepers(int current_time) {
 // =============================================================================
 // Full multi-task create/yield path (opt-in)
 // =============================================================================
-// Restores the 16-slot TCB, per-task stacks, and priority yield when a real
-// multi-task shell needs them. Default off: ~9 KB globals + create/yield code
-// stay out of the boot-slice binary.
 
 #if NOVADOS_ENABLE_FULL_SCHEDULER
 
-// Slot i owns ctx_words[i*22 .. i*22+21] and task_stacks[i*256 .. i*256+255].
+// Slot i owns ctx_words[i*22 ..] and NOVADOS_TASK_STACK_WORDS words of
+// task_stacks from i*NOVADOS_TASK_STACK_WORDS. The tables must end below
+// KHEAP_START (the kernel tests check the built image).
 int ctx_words[NOVADOS_MAX_TASKS * 22];
-int task_stacks[NOVADOS_MAX_TASKS * 256];
-int task_tid[NOVADOS_MAX_TASKS];
+int task_stacks[NOVADOS_MAX_TASKS * NOVADOS_TASK_STACK_WORDS];
 int task_prio[NOVADOS_MAX_TASKS];
-int task_events[NOVADOS_MAX_TASKS];
-int task_sigmask[NOVADOS_MAX_TASKS];
-int task_sysarg[NOVADOS_MAX_TASKS];
-int task_sysret[NOVADOS_MAX_TASKS];
-int task_syserr[NOVADOS_MAX_TASKS];
-
-struct ProcEntry proc_table[8];
-int proc_count = 0;
-int next_pid = 1;
 
 int find_free_task_slot() {
     int i;
-    for (i = 0; i < NOVADOS_MAX_TASKS; i = i + 1) {
+    for (i = 0; i < NOVADOS_MAX_TASKS; i++) {
         if (task_pid[i] == -1) {
             return i;
         }
@@ -139,83 +113,56 @@ int find_free_task_slot() {
     return -1;
 }
 
-int task_create(int stack_base, int stack_words, int entry, int priority) {
+// The context lives directly in the slot's ctx_words window: task_spawn and
+// task_switch take the window's address, so nothing is copied.
+int task_create(int entry, int priority) {
     int slot;
-    int ctx[22];
-    int i;
     slot = find_free_task_slot();
     if (slot < 0) {
         return -1;
     }
-    task_spawn(ctx, stack_base, stack_words, entry);
-    // WHY: copy the fabricated context word-by-word into this slot's window;
-    // the task_switch builtin restores from the same window later.
-    for (i = 0; i < 22; i = i + 1) {
-        ctx_words[slot * 22 + i] = ctx[i];
-    }
-    task_pid[slot] = -1;
-    task_tid[slot] = slot;
+    task_spawn(&ctx_words[slot * 22], &task_stacks[slot * NOVADOS_TASK_STACK_WORDS],
+               NOVADOS_TASK_STACK_WORDS, entry);
+    task_pid[slot] = slot;
     task_prio[slot] = priority;
-    task_state[slot] = 0;
+    task_state[slot] = TASK_READY;
     task_wake[slot] = 0;
-    task_events[slot] = 0;
-    task_sigmask[slot] = 0;
-    task_sysarg[slot] = 0;
-    task_sysret[slot] = 0;
-    task_syserr[slot] = 0;
-    task_count = task_count + 1;
+    task_count++;
     return slot;
 }
 
+// Switch to the highest-priority READY task other than the current one.
 void task_yield() {
     int old_task;
     int new_task;
     int best_prio;
     int i;
-    int save_ctx[22];
-    int restore_ctx[22];
-    if (task_count <= 1) {
-        return;
-    }
     old_task = current_task;
-    if (old_task < 0) {
+    if (old_task < 0 || task_count <= 1) {
         return;
     }
     best_prio = -1;
     new_task = -1;
-    for (i = 0; i < NOVADOS_MAX_TASKS; i = i + 1) {
-        if (task_state[i] == 0 && task_pid[i] != -1) {
-            if (task_prio[i] > best_prio) {
-                best_prio = task_prio[i];
-                new_task = i;
-            }
+    for (i = 0; i < NOVADOS_MAX_TASKS; i++) {
+        if (i != old_task && task_state[i] == TASK_READY && task_pid[i] != -1
+                && task_prio[i] > best_prio) {
+            best_prio = task_prio[i];
+            new_task = i;
         }
     }
     if (new_task < 0) {
         return;
     }
-    if (new_task == old_task) {
-        return;
-    }
-    for (i = 0; i < 22; i = i + 1) {
-        save_ctx[i] = ctx_words[old_task * 22 + i];
-        restore_ctx[i] = ctx_words[new_task * 22 + i];
-    }
-    task_switch(save_ctx, restore_ctx);
-    for (i = 0; i < 22; i = i + 1) {
-        ctx_words[old_task * 22 + i] = save_ctx[i];
-    }
     current_task = new_task;
+    task_switch(&ctx_words[old_task * 22], &ctx_words[new_task * 22]);
 }
 
-void task_sleep(int ticks) {
-    int ct;
-    ct = current_task;
-    if (ct < 0) {
+void task_sleep(int until) {
+    if (current_task < 0) {
         return;
     }
-    task_state[ct] = 3;
-    task_wake[ct] = ticks;
+    task_state[current_task] = TASK_SLEEPING;
+    task_wake[current_task] = until;
     task_yield();
 }
 

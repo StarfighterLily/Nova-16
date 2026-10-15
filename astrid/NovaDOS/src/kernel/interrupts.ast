@@ -1,13 +1,12 @@
-include "types.ast";
+// =============================================================================
+// NovaDOS - Timer heartbeat (vector 0)
+// WHAT: system_ticks, advanced by a naked timer ISR when
+//       NOVADOS_ENABLE_TIMER is 1 (main() arms the timer after disk bring-up).
+// WHY: with the timer disabled no vector-0 handler is emitted, so diskless or
+//      debug builds pay no ISR bytes and the IVT slot stays empty.
+// =============================================================================
 
-// =============================================================================
-// Interrupt Handlers (minimal verified chunk)
-// =============================================================================
-// WHAT: timer heartbeat state + optional vector-0 ISR.
-// WHY: NOVADOS_ENABLE_TIMER gates both the arm sequence (kernel.ast) and the
-//      ISR body itself. When 0, no vector-0 handler is emitted so the IVT slot
-//      stays empty and diskless/debug builds pay zero ISR bytes.
-// =============================================================================
+include "types.ast";
 
 #ifndef NOVADOS_ENABLE_TIMER
 #define NOVADOS_ENABLE_TIMER 1
@@ -16,25 +15,17 @@ include "types.ast";
 #error NOVADOS_ENABLE_TIMER must be 0 or 1
 #endif
 
-// Always present so the poll loop and tests can read them even when the ISR
-// is compiled out (they simply stay at 0).
+// Always present so TIME, SYS_TIME and the background task can read it even
+// when the ISR is compiled out (it then stays 0).
 volatile int system_ticks = 0;
-volatile int pending_timer = 0;
 
 #if NOVADOS_ENABLE_TIMER
-// Naked timer ISR: only touches system_ticks and pending_timer, so a full
-// 19-register save/restore is pure waste. Semicolon-separated string form so
-// the parser splits instructions; {varname} resolves globals to absolutes.
-// Implicit naked-ISR IRET is emitted by the compiler.
-// WHY memory-operand INC, not MOV P0/add/store: interrupt entry saves only
-// PC + flags (+ the bank snapshot), so ANY register the ISR touches comes
-// back corrupted to the interrupted code. The first naked ISR used P0 as
-// scratch and intermittently trashed the caller's live P0 (the ABI
-// return/scratch register) -- observed as a wild PC into the OS-signature
-// bytes at 0x0001 on the diskless BYE path. INC [abs] performs a word
-// increment entirely in memory: zero register clobber, and no flag
-// leakage (IRET restores the entry-time flags anyway).
+// Naked: interrupt entry saves only PC + flags (+ the BANK snapshot), so the
+// ISR must not touch a register. INC [abs] increments the word in memory.
+// (An earlier version used P0 as scratch and intermittently corrupted the
+// interrupted code's P0 -- the ABI return register.) The compiler appends
+// the IRET.
 naked interrupt(0) void timer_isr() {
-    asm("INC {system_ticks}; INC {pending_timer}");
+    asm("INC {system_ticks}");
 }
 #endif

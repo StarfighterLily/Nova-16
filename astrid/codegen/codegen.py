@@ -2,6 +2,7 @@
 # File: astrid/codegen/codegen.py
 # Translates Astrid AST to Nova-16 assembly code with register allocation optimizations
 
+import re
 from typing import List, Dict, Optional, Set, Tuple
 from collections import Counter
 from astrid.parser.parser import (
@@ -545,7 +546,14 @@ class CodeGenerator:
             'POP P3', 'POP P1', 'POP P2', 'STRCAT P1, P2', 'MOV P0, P1', 'PUSH P3', 'RET',
         ],
         'builtin_strcmp': [
-            'POP P3', 'POP P1', 'POP P2', 'POP P4', 'STRCMP P1, P2, P4', 'MOV P0, P1', 'PUSH P3', 'RET',
+            # strcmp(a, b[, n]) -> -1 / 0 / 1. STRCMP leaves its result only
+            # in R0 (and the flags), so widen R0 with sign: the stub used to
+            # return P1, which still held the address of `a`.
+            'POP P3', 'POP P1', 'POP P2', 'POP P4', 'STRCMP P1, P2, P4',
+            'MOV P0, R0', 'CMP P0, 0x80', 'JC builtin_strcmp_done',
+            'OR P0, 0xFF00',
+            'builtin_strcmp_done:',
+            'PUSH P3', 'RET',
         ],
         'builtin_strlen': [
             '; STRLEN writes result to R0',
@@ -1752,6 +1760,7 @@ class CodeGenerator:
                 inliner = FunctionInliner(
                     max_statements=self.opt_config.get('inlining_max_statements', 8),
                     min_call_sites=self.opt_config.get('inlining_min_call_sites', 2),
+                    growth_budget=self.opt_config.get('inlining_growth_budget', 16),
                     debug=self.debug_optimizations
                 )
                 # Analyze and inline; ast.functions is a list of FunctionDef
@@ -1794,6 +1803,13 @@ class CodeGenerator:
         except Exception:
             if self.debug_optimizations:
                 import traceback; traceback.print_exc()
+
+        # Drop functions nothing can reach any more (after inlining, a helper
+        # whose every call site was expanded is dead weight).
+        self._dead_functions = set()
+        if self.enable_optimizations and self.opt_config.get(
+                'enable_dead_function_elimination', True):
+            self._eliminate_dead_functions(ast)
 
         # Allocate global variables (scalars and arrays) at fixed addresses
         # in the dedicated global region so code can reference them directly.
@@ -1856,8 +1872,20 @@ class CodeGenerator:
         self._emit_object_prologue(ast)
 
         # Generate all functions and data AFTER interrupt vector.
+        dead = self._dead_functions
         for func_def in ast.functions:
+            if func_def.name not in dead:
+                self.generate_function_with_diagnostics(func_def)
+                continue
+            # Compile for diagnostics, then roll back everything the body
+            # contributed to the output.
+            mark = len(self.assembly)
+            builtins_before = set(self.used_builtins)
+            strings_before = dict(self.strings)
             self.generate_function_with_diagnostics(func_def)
+            del self.assembly[mark:]
+            self.used_builtins = builtins_before
+            self.strings = strings_before
 
         # Generate impl-block method bodies (namespaced labels).
         for block in getattr(ast, 'impl_blocks', None) or []:
@@ -1867,6 +1895,7 @@ class CodeGenerator:
         self.generate_strings()
         self.generate_builtins()
         self._emit_globals_data()
+        self._emit_rom_strings()
 
         assembly_output = "\n".join(self.assembly)
         assembly_lines = assembly_output.splitlines()
@@ -1908,6 +1937,96 @@ class CodeGenerator:
                 )
 
         return assembly_lines
+
+    _DCE_TOKEN = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+
+    def _eliminate_dead_functions(self, ast: Program) -> None:
+        """Remove user functions that no live code can reach.
+
+        Dead functions are only recorded in self._dead_functions; generate()
+        still compiles them (so their errors are reported, as C requires for
+        unused functions) and then discards the output.
+
+        Whole programs only: an object unit (or a unit with no main) exports
+        its functions to other units, so nothing there is provably dead.
+
+        Roots are main, interrupt handlers, naked and extern functions, plus
+        every name mentioned outside ast.functions (global initializers such
+        as `{ &op_add }`, impl method bodies). A function is live once a live
+        function mentions it. "Mentions" is deliberately coarse: every
+        identifier-like token in any string anywhere in the subtree counts,
+        which covers `&f` function pointers and `CALL func_f` inside asm
+        templates. Over-approximating can only keep a dead function, never
+        drop a live one.
+        """
+        if self.object_mode:
+            return
+        by_name = {f.name: f for f in ast.functions
+                   if not getattr(f, 'prototype', False)}
+        if 'main' not in by_name:
+            return
+
+        def mentions(node, skip_name_of=None) -> Set[str]:
+            found: Set[str] = set()
+            seen: Set[int] = set()
+            stack = [node]
+            while stack:
+                cur = stack.pop()
+                if isinstance(cur, str):
+                    if cur in by_name:
+                        found.add(cur)
+                    else:
+                        for tok in self._DCE_TOKEN.findall(cur):
+                            if tok.startswith('func_'):
+                                tok = tok[5:]
+                            if tok in by_name:
+                                found.add(tok)
+                    continue
+                if cur is None or isinstance(cur, (int, float, bool, bytes)):
+                    continue
+                if id(cur) in seen:
+                    continue
+                seen.add(id(cur))
+                if isinstance(cur, (list, tuple, set, frozenset)):
+                    stack.extend(cur)
+                elif isinstance(cur, dict):
+                    stack.extend(cur.keys())
+                    stack.extend(cur.values())
+                elif hasattr(cur, '__dict__'):
+                    for key, value in vars(cur).items():
+                        if cur is skip_name_of and key == 'name':
+                            continue
+                        stack.append(value)
+            return found
+
+        live: Set[str] = set()
+        work: List[str] = []
+
+        def mark(name: str) -> None:
+            if name in by_name and name not in live:
+                live.add(name)
+                work.append(name)
+
+        for func in ast.functions:
+            quals = set(getattr(func, 'qualifiers', None) or [])
+            if (func.name == 'main'
+                    or getattr(func, 'interrupt_vector', None) is not None
+                    or func.name == 'timer_interrupt'
+                    or quals & {'naked', 'extern'}):
+                mark(func.name)
+        for key, value in vars(ast).items():
+            if key != 'functions':
+                for name in mentions(value):
+                    mark(name)
+        while work:
+            func = by_name[work.pop()]
+            for name in mentions(func, skip_name_of=func):
+                mark(name)
+
+        self._dead_functions = {f.name for f in ast.functions
+                                if f.name in by_name and f.name not in live}
+        if self._dead_functions and self.debug_optimizations:
+            print(f"[CODEGEN] Dead functions removed: {sorted(self._dead_functions)}")
 
     def _assembly_symbol(self, kind: str, name: str) -> str:
         """Map a source-level linkage name to its assembly label.
@@ -2329,9 +2448,43 @@ class CodeGenerator:
 
         func.body = [simplify_node(n) or n for n in func.body]
 
+    def _string_bytes(self) -> int:
+        """Bytes the DEFSTR data of every literal occupies (text + NUL)."""
+        total = 0
+        for value in self.strings:
+            # DEFSTR text is stored escaped; count the bytes it assembles to.
+            total += len(value.encode('latin-1', 'replace')
+                         .decode('unicode_escape', 'replace')) + 1
+        return total
+
     def generate_strings(self):
+        """Emit string literal data.
+
+        Literals are read-only, so when they fit in what is left of the
+        const-ROM window (0x0120-0x0EFF) they are placed there, at the end of
+        the output (_emit_rom_strings), instead of inside the code segment.
+        That frees code space -- under bank-safe the code must end below the
+        globals. Object units keep them in the code segment for relocation.
+        """
+        self._rom_strings_addr = None
         if not self.strings:
             return
+        if not self.object_mode:
+            start = (self._const_rom_next_addr if self._const_rom_next_addr
+                     is not None else self.const_rom_start)
+            if start + self._string_bytes() <= self.const_rom_end:
+                self._rom_strings_addr = start
+                return
+        self._emit_string_lines()
+
+    def _emit_rom_strings(self):
+        if getattr(self, '_rom_strings_addr', None) is None:
+            return
+        self.assembly.append("")
+        self.assembly.append(f"ORG 0x{self._rom_strings_addr:04X}")
+        self._emit_string_lines()
+
+    def _emit_string_lines(self):
         self.assembly.append(";")
         self.assembly.append("; Data Section")
         self.assembly.append(";")
@@ -3523,7 +3676,7 @@ class CodeGenerator:
                                 f"but global '{decl.name}' lists "
                                 f"{len(decl.init_list)} initializers")
                         for e in decl.init_list:
-                            v = self._const_eval(e)
+                            v = self._global_init_word(e, decl.name, True)
                             if v is None:
                                 raise TypeError(
                                     f"Global struct '{decl.name}' initializers "
@@ -3558,7 +3711,7 @@ class CodeGenerator:
                             f"{count} element(s) but has {len(decl.init_list)} "
                             f"initializer value(s)")
                     for e in (decl.init_list or []):
-                        v = self._const_eval(e)
+                        v = self._global_init_word(e, decl.name, True)
                         if v is None:
                             raise TypeError(
                                 f"Global array '{decl.name}' initializers must be "
@@ -3568,15 +3721,9 @@ class CodeGenerator:
                     count = self._resolve_array_count(decl)
                     if decl.init_list:
                         for e in decl.init_list:
-                            v = self._const_eval(e)
-                            if v is None:
-                                # A function-pointer array's initializer is a
-                                # function ADDRESS, which is an assembly label
-                                # resolved in the assembler's second pass, not
-                                # a numeric constant. Accept `&func` for user
-                                # functions and builtins (the builtin's
-                                # implementation is linked on demand here).
-                                v = self._fnptr_array_init(e, decl.name)
+                            v = self._global_init_word(
+                                e, decl.name,
+                                decl.var_type in ('string', 'binary'))
                             if v is None:
                                 raise TypeError(
                                     f"Global array '{decl.name}' initializers must be "
@@ -4554,7 +4701,16 @@ class CodeGenerator:
                     self._emitted_return = True
                     return  # Exit function after IRET
                 else:
+                    # A call statement discards its value: skip the copy of
+                    # P0/R0 into a temporary.
+                    self._discard_call_result = True
                     self.generate_call(statement)
+            elif (isinstance(statement, PostfixOp)
+                    and isinstance(statement.left, Identifier)
+                    and statement.op in ('++', '--')):
+                # `i++;` discards the old value, so it is `++i;`: the postfix
+                # form would copy the old value into a dead temporary.
+                self.generate_prefix(PrefixOp(statement.op, statement.left))
             elif isinstance(statement, Expression):
                 self.generate_expression(statement)
             else:
@@ -5779,14 +5935,144 @@ class CodeGenerator:
         self.free_register()  # src
 
 
+    # Relational operators: logical negation and operand-swap mirror.
+    _NEGATED_REL = {'==': '!=', '!=': '==', '<': '>=', '>=': '<',
+                    '>': '<=', '<=': '>'}
+    _MIRRORED_REL = {'==': '==', '!=': '!=', '<': '>', '>': '<',
+                     '<=': '>=', '>=': '<='}
+
+    def _emit_cond_jump(self, cond: Expression, label: str, jump_if: bool) -> None:
+        """Branch to `label` when `cond`'s truth equals `jump_if`; else fall through.
+
+        Statement conditions used to materialize every comparison as 0/1
+        (CMP, Jcc, MOV 0, JMP, MOV 1) and then test that against zero:
+        about 9 instructions for `if (c == 72)` where CMP + one jump do.
+        && / || become branch chains (still short-circuit, never evaluate
+        the right side twice), ! flips the sense, and a constant right
+        operand is compared as an immediate without a second register.
+        Anything else falls back to evaluate-and-test.
+        """
+        known = self._constant_truth(cond)
+        if known is not None:
+            # while (1), or a test that inlining turned into `72 == 1`.
+            if known == jump_if:
+                self.emit(f"    JMP {label}")
+            return
+        if isinstance(cond, BinaryOp) and cond.op in ('&&', '||'):
+            if (cond.op == '&&') == jump_if:
+                # Both sides must agree to take the branch: the left side
+                # failing skips straight past the right side.
+                skip = self.generate_label("cj_skip")
+                self._emit_cond_jump(cond.left, skip, not jump_if)
+                self._emit_cond_jump(cond.right, label, jump_if)
+                self.emit_label(skip)
+            else:
+                # Either side alone decides the branch.
+                self._emit_cond_jump(cond.left, label, jump_if)
+                self._emit_cond_jump(cond.right, label, jump_if)
+            return
+        if isinstance(cond, UnaryOp) and cond.op == '!':
+            self._emit_cond_jump(cond.right, label, not jump_if)
+            return
+        if (isinstance(cond, BinaryOp) and cond.op in self._NEGATED_REL
+                and not (isinstance(cond.left, Number) and isinstance(cond.right, Number))
+                and self._cast_source_type(cond.left) != 'float'
+                and self._cast_source_type(cond.right) != 'float'):
+            self._emit_compare_jump(cond, label, jump_if)
+            return
+        reg = self.generate_expression(cond)
+        self.emit(f"    CMP {reg}, 0")
+        self.free_register()
+        self.emit(f"    {'JNZ' if jump_if else 'JZ'} {label}")
+
+    @staticmethod
+    def _constant_truth(cond: Expression) -> Optional[bool]:
+        """Truth of an integer-literal condition, or None if not constant."""
+        def lit(e):
+            if isinstance(e, CharLiteral):
+                return e.char_value
+            if isinstance(e, Number) and '.' not in str(e.value):
+                try:
+                    return int(str(e.value), 0)
+                except ValueError:
+                    return None
+            return None
+        value = lit(cond)
+        if value is not None:
+            return value != 0
+        if isinstance(cond, BinaryOp) and cond.op in ('==', '!=', '<', '>', '<=', '>='):
+            a, b = lit(cond.left), lit(cond.right)
+            if a is not None and b is not None:
+                return {'==': a == b, '!=': a != b, '<': a < b, '>': a > b,
+                        '<=': a <= b, '>=': a >= b}[cond.op]
+        return None
+
+    def _compare_immediate(self, expr: Expression, left_reg: str) -> Optional[int]:
+        """`expr` as a CMP immediate for `left_reg`, or None."""
+        if isinstance(expr, CharLiteral):
+            value = expr.char_value
+        elif isinstance(expr, Number) and '.' not in str(expr.value):
+            try:
+                value = int(str(expr.value), 0)
+            except ValueError:
+                return None
+        else:
+            return None
+        if left_reg.startswith('P'):
+            return value & 0xFFFF if -0x8000 <= value <= 0xFFFF else None
+        return value if 0 <= value <= 0xFF else None
+
+    def _emit_compare_jump(self, cond: BinaryOp, label: str, jump_if: bool) -> None:
+        op = cond.op if jump_if else self._NEGATED_REL[cond.op]
+        left, right = cond.left, cond.right
+        # The simplifier canonicalizes constants to the LEFT of == / !=;
+        # put them back on the right so they can be an immediate.
+        if (isinstance(left, (Number, CharLiteral))
+                and not isinstance(right, (Number, CharLiteral))):
+            left, right = right, left
+            op = self._MIRRORED_REL[op]
+        signed = op not in ('==', '!=') and self._use_signed_comparison(cond.left, cond.right)
+        left_reg = self.generate_expression(left)
+        imm = self._compare_immediate(right, left_reg)
+        if imm is not None and not signed and op in ('>', '<='):
+            # Unsigned a > k is a >= k+1 and a <= k is a < k+1, which keeps
+            # the immediate on the right (CMP cannot take it on the left).
+            if imm < (0xFFFF if left_reg.startswith('P') else 0xFF):
+                imm += 1
+                op = '>=' if op == '>' else '<'
+            else:
+                imm = None
+        if imm is not None:
+            first, second = left_reg, str(imm)
+        else:
+            can_push_left = not self._is_interrupt_handler
+            if can_push_left:
+                self.emit(f"    PUSH {left_reg}")
+            right_reg = self.generate_expression(right)
+            if can_push_left:
+                right_reg = self._pop_preserving(left_reg, right_reg)
+            first, second = left_reg, right_reg
+            if not signed and op in ('>', '<='):
+                # Unsigned > / <= test the borrow of the swapped subtraction.
+                first, second = second, first
+                op = '<' if op == '>' else '>='
+        self.emit(f"    CMP {first}, {second}")
+        if op in ('==', '!='):
+            jump = 'JZ' if op == '==' else 'JNZ'
+        elif signed:
+            jump = {'<': 'JLT', '>=': 'JGE', '>': 'JGT', '<=': 'JLE'}[op]
+        else:
+            jump = {'<': 'JC', '>=': 'JNC'}[op]
+        self.emit(f"    {jump} {label}")
+        self.free_register()
+
     def generate_if(self, if_stmt: If):
         self.emit_comment("If statement")
         end_label = self.generate_label("if_end")
         else_label = self.generate_label("if_else")
-        reg = self.generate_expression(if_stmt.cond)
-        self.emit(f"    CMP {reg}, 0")
-        self.free_register()
-        self.emit(f"    JZ {else_label if if_stmt.else_body else end_label}")
+        self._emit_cond_jump(if_stmt.cond,
+                             else_label if if_stmt.else_body else end_label,
+                             jump_if=False)
         # Reset _emitted_return before generating branches so a conditional
         # return inside an if-then body doesn't permanently suppress the
         # function-level epilogue for the fall-through path (when there is
@@ -5823,10 +6109,7 @@ class CodeGenerator:
         # For while loops, continue jumps to the start (condition check)
         self.loop_stack.append((start_label, end_label))
         self.emit_label(start_label)
-        reg = self.generate_expression(while_stmt.cond)
-        self.emit(f"    CMP {reg}, 0")
-        self.free_register()
-        self.emit(f"    JZ {end_label}")
+        self._emit_cond_jump(while_stmt.cond, end_label, jump_if=False)
         self.generate_block(while_stmt.body)
         self.emit(f"    JMP {start_label}")
         self.emit_label(end_label)
@@ -5957,10 +6240,7 @@ class CodeGenerator:
         # Condition check: evaluate cond to 0/1, exit if false (zero)
         self.emit_label(start_label)
         if for_stmt.cond:
-            reg = self.generate_expression(for_stmt.cond)
-            self.emit(f"    CMP {reg}, 0")
-            self.free_register()
-            self.emit(f"    JZ {end_label}")
+            self._emit_cond_jump(for_stmt.cond, end_label, jump_if=False)
 
         # Loop body
         self.generate_block(for_stmt.body)
@@ -6078,10 +6358,7 @@ class CodeGenerator:
         self.emit_label(start_label)
         self.generate_block(stmt.body)
         self.emit_label(cond_label)
-        reg = self.generate_expression(stmt.cond)
-        self.emit(f"    CMP {reg}, 0")
-        self.free_register()
-        self.emit(f"    JNZ {start_label}")  # Loop back if condition is true
+        self._emit_cond_jump(stmt.cond, start_label, jump_if=True)  # loop while true
         self.emit_label(end_label)
         self.loop_stack.pop()
 
@@ -8051,6 +8328,10 @@ class CodeGenerator:
 
     def generate_call(self, call: FuncCall) -> str:
         self.emit_comment(f"Call to {call.name}")
+        # Consumed here, before any argument is evaluated, so calls nested in
+        # the arguments still deliver their values.
+        discard = getattr(self, '_discard_call_result', False)
+        self._discard_call_result = False
 
         # --- format(fmt, ...) / writef(fmt, ...) ---
         # Compile-time expanded: the format literal is parsed now and each
@@ -8067,6 +8348,14 @@ class CodeGenerator:
         # builtin stubs further down, so only `float` is special-cased here.)
         if call.name == 'float' and len(call.args) == 1:
             return self.generate_cast(Cast('float', call.args[0]))
+
+        # strcmp(a, b) is C's two-argument form. The stub pops a third word
+        # (a length bound), so a two-argument call used to pop a stray stack
+        # word as the bound; supply "unbounded" -- STRCMP still stops at the
+        # shared terminator.
+        if (call.name == 'strcmp' and len(call.args) == 2
+                and 'strcmp' not in self.functions):
+            call.args = list(call.args) + [Number('0xFFFF')]
 
         # --- write_text with a non-string first argument ---
         # The TEXT instruction expects a memory address (null-terminated string).
@@ -8202,7 +8491,8 @@ class CodeGenerator:
                     # word -- by-value aggregates span several; sret adds one).
                     self.emit(f"    ADD SP, {total_arg_words * 2} ; Caller cleans up args")
                 result_reg = self.get_register()
-                self.emit(f"    MOV {result_reg}, P0")
+                if not discard:
+                    self.emit(f"    MOV {result_reg}, P0")
                 return result_reg
             # Record builtin usage so generate_builtins only emits what is called.
             if label in self.BUILTIN_IMPLEMENTATIONS:
@@ -8294,7 +8584,9 @@ class CodeGenerator:
             'bcda', 'bcds', 'bcdcmp',
             'mouse_ctrl', 'mouse_read', 'mouse_pos',
         }
-        if (indirect_call or call.name in self.functions
+        if discard:
+            pass
+        elif (indirect_call or call.name in self.functions
                 or call.name in p0_returning_builtins):
             self.emit(f"    MOV {result_reg}, P0")
         else:
@@ -8315,6 +8607,22 @@ class CodeGenerator:
         if isinstance(expr, ArrayAccess):
             return self._is_fnptr_var(expr.name)
         return False
+
+    def _global_init_word(self, expr, decl_name: str, allow_string: bool):
+        """One word of a global initializer list, or None if not constant.
+
+        A numeric constant folds to its value. `&func` is a symbol, emitted
+        as the function's label and resolved by the assembler (builtins link
+        on demand). With allow_string, a string literal is the literal's
+        label: string tables (`string names[] = {"A", "B"}`) and string
+        fields of struct tables (`{"HELP", 1, &cmd_help, ...}`).
+        """
+        v = self._const_eval(expr)
+        if v is None:
+            v = self._fnptr_array_init(expr, decl_name)
+        if v is None and allow_string and isinstance(expr, StringLiteral):
+            v = self.get_string_label(expr.value)
+        return v
 
     def _fnptr_array_init(self, expr, arr_name: str):
         """Resolve one global function-pointer-array initializer element.

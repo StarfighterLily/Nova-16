@@ -698,7 +698,8 @@ def test_signed_bitfield_in_unsigned_comparison():
         "struct F { signed int d : 5; };\n"
         "int main() { struct F f; f.d = -3; if (f.d < 0) return 1; return 0; }")
     cond = asm.split("func_main:")[1]
-    assert "JLT" in cond
+    # A false-branch tests the negated relation, so < may lower to JGE.
+    assert "JLT" in cond or "JGE" in cond
     assert "\nJC " not in cond and "\nJNC " not in cond
 
 

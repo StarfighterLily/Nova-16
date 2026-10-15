@@ -1,9 +1,10 @@
 // =============================================================================
 // NovaDOS Kernel - Type Definitions
-// WHAT: minimal scalar-only structs the Astrid parser accepts.
-// WHY: struct fields must be scalar base types; arrays and struct pointers are
-//      variables, not fields. Task contexts/stacks live as parallel globals in
-//      memmgr.ast (gated by NOVADOS_ENABLE_FULL_SCHEDULER).
+// WHAT: records for the open-file, directory and process tables of the later
+//       phases (Plan-9 device files, multitasking). Nothing instantiates them
+//       yet; they cost nothing until a variable of the type exists.
+// NOTE: the on-disk directory record lives with its users in fs/ndf.ast
+//       (struct NdfEntry).
 // =============================================================================
 
 include "../kdos.ast";

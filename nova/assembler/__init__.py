@@ -154,6 +154,7 @@ class Assembler:
             machine_code, out_segments = cg.second_pass(
                 nodes, symbol_table, segments, segment_types)
             self.segments = out_segments
+            self._check_segment_overlap(out_segments)
 
             if self.errors:
                 self._emit("Assembly failed due to errors:")
@@ -201,6 +202,23 @@ class Assembler:
             if self.log is not None:
                 self._emit(traceback.format_exc())
             return False
+
+    def _check_segment_overlap(self, segments) -> None:
+        """Report ORG segments that occupy the same addresses.
+
+        The loader writes segments in address order, so an overlap is not
+        an assembly-time crash but silent corruption at load time: a later
+        segment overwrites the tail of an earlier one. The Astrid NovaDOS
+        kernel once grew past its globals at 0x4200 this way and the globals
+        were loaded over its code.
+        """
+        spans = sorted((start, start + length) for start, length, _ in segments
+                       if length > 0)
+        for (start, end), (next_start, next_end) in zip(spans, spans[1:]):
+            if end > next_start:
+                self.errors.append(
+                    f"ORG segments overlap: 0x{start:04X}-0x{end - 1:04X} "
+                    f"and 0x{next_start:04X}-0x{next_end - 1:04X}")
 
     def _write_nomf(self, base_name: str, source_filename: str,
                     machine_code: bytearray,

@@ -1247,6 +1247,21 @@ class Parser:
                     f"Struct '{tag}' redefined with a different layout via "
                     f"include")
             self.struct_defs.setdefault(tag, fields)
+        # Unions, bit-field widths and typedefs merge with the same strict
+        # rule. They used to be dropped by include (only inherits merged
+        # them): an included struct lost its bit-field packing (a 4-byte
+        # struct grew to 6 and its fields moved), included unions and
+        # typedef names were unknown to the including file.
+        for table, mine, what in (
+                (unit.union_defs, self.union_defs, 'Union'),
+                (unit.struct_bitfields, self.struct_bitfields, 'Struct'),
+                (unit.union_bitfields, self.union_bitfields, 'Union'),
+                (unit.type_aliases, self.type_aliases, 'Typedef')):
+            for name, value in table.items():
+                if name in mine and mine[name] != value:
+                    raise self.error(
+                        f"{what} '{name}' redefined differently via include")
+                mine.setdefault(name, value)
         # impl methods merge strictly, like functions: redefining a method
         # for the same type after an include is an error. Diamond includes
         # dedupe through `include_state['seen']`, so the same method can

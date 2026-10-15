@@ -1,17 +1,15 @@
 // =============================================================================
 // NovaDOS - Nova-16 Operating System Kernel
-// A TI-OS / DOS / Plan-9 Hybrid
-// Written in Astrid
+// A TI-OS / DOS / Plan-9 Hybrid, written in Astrid
+// WHAT: system-wide constants. Enums fold to immediates, so nothing here costs
+//       code or RAM until it is used.
 // =============================================================================
 
-// No includes: pure enum constants (stdlib arrives later).
-
-// =============================================================================
-// System Constants (using Astrid enums)
-// =============================================================================
-
+// SYS mailbox operation ids (SYS_NUM). The kernel implements the ones listed
+// in docs/plans/programs-and-syscalls.md; the rest are reserved numbers from
+// the parent design so programs and kernel agree on them.
 enum SysCall {
-    SYS_NULL      = 0,
+    SYS_NULL          = 0,
     SYS_THREAD_CREATE = 1,
     SYS_THREAD_EXIT   = 2,
     SYS_THREAD_YIELD  = 3,
@@ -48,14 +46,28 @@ enum SysCall {
     SYS_WAIT          = 34
 };
 
+// SYS_RET status codes.
+enum SysStatus {
+    SYS_OK      = 0,
+    SYS_EBADOP  = 0xFFFF     // unknown SYS_NUM
+};
+
+// Memory map under the Astrid bank-safe layout (the only layout NovaDOS
+// supports; see docs/plans/build-settings.md). The compiler owns code,
+// globals, string scratch, spills and the stack; NovaDOS owns the rest.
 enum Memory {
-    VIDEO_BASE    = 0x0000,
-    FREE_RAM      = 0x1000,
-    KERNEL_START  = 0x1000,
-    KERNEL_END    = 0x2FFF,
-    USER_START    = 0x3000,
-    STACK_BASE    = 0x8000,
-    GLOBALS_BASE  = 0x8000,
+    OS_SIG        = 0x0000,  // "ND" 0x01 0x00, placed by kernel.ast
+    SYS_MAILBOX   = 0x0012,  // SYS_NUM, SYS_RET, SYS_ARG0..2 (one word each)
+    CODE_BASE     = 0x1100,  // kernel code (compiler: code_org)
+    CODE_LIMIT    = 0x4200,  // kernel code must end below here
+    GLOBALS_BASE  = 0x4200,  // kernel globals (compiler: globals_start),
+                             // room for the full scheduler's task tables
+    KHEAP_START   = 0x5000,  // kmalloc bump heap
+    KHEAP_END     = 0x5800,
+    PROG_BASE     = 0x5800,  // LOAD target and RUN entry point
+    PROG_END      = 0x7F00,  // static-local window starts here
+    BANK_WINDOW   = 0x8000,  // 16 KB window onto bank pages 1-15 (disks)
+    BANK_WINDOW_END = 0xC000,
     SCB_BASE      = 0xF000,
     SCB_END       = 0xF0FF
 };
@@ -125,21 +137,36 @@ enum Color {
     COLOR_YELLOW      = 0x07,
     COLOR_MAGENTA     = 0x04,
     COLOR_LIGHT_GRAY  = 0x0E,
-    COLOR_DARK_GRAY   = 0x0D
+    COLOR_DARK_GRAY   = 0x0D,
+    COLOR_LIME        = 0x0A
 };
 
+// Console geometry: 8x8 glyphs on the 256x256 screen.
 enum TextConfig {
-    TEXT_COLS      = 64,
-    TEXT_ROWS      = 64,
-    CHAR_WIDTH     = 4,
+    TEXT_COLS      = 32,
+    TEXT_ROWS      = 32,
+    CHAR_WIDTH     = 8,
     CHAR_HEIGHT    = 8
+};
+
+// Key codes as the keyboard FIFO delivers them: the GUI path sends ASCII
+// (Enter 0x0A, Backspace 0x08, Esc 0x1B); the design-doc scan codes are
+// accepted too.
+enum Keys {
+    KEY_BS       = 0x08,
+    KEY_LF       = 0x0A,
+    KEY_CR       = 0x0D,
+    KEY_ESC      = 0x1B,
+    KEY_BS_SC    = 0x92,
+    KEY_ENTER_SC = 0x93,
+    KEY_ESC_SC   = 0x9A
 };
 
 enum MaxResources {
     MAX_TASKS      = 16,
-    MAX_PROCESSES = 8,
-    MAX_FILES     = 32,
-    MAX_DIRS      = 16,
-    BLOCK_SIZE    = 256,
-    NAME_LEN      = 16
+    MAX_PROCESSES  = 8,
+    MAX_FILES      = 32,
+    MAX_DIRS       = 16,
+    BLOCK_SIZE     = 256,
+    NAME_LEN       = 16
 };

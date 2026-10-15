@@ -1,0 +1,639 @@
+// =============================================================================
+// NovaDOS - Shell
+// WHAT: the command line. A line editor collects one line, the tokenizer
+//       splits it into words, and the first word is looked up in the
+//       command table and dispatched through its handler pointer.
+//       `X = expr` assigns one of the 26 integer variables A-Z.
+// WHY a table: HELP lists exactly the commands compiled into this build, a
+//      command is added by writing its handler and one table row, and each
+//      row's id is what tests observe in shell_cmd.
+// Numbers are decimal ("-12"), or hex with a 0x or $ prefix ("0x1F", "$1F").
+// =============================================================================
+
+enum ShellLimits {
+    LINE_MAX  = 27,     // "> " at columns 2-3 + 27 chars ends at column 30
+    MAX_ARGS  = 14,     // a full line of one-letter words
+    IO_CHUNK  = 32      // TYPE reads files in chunks of this many bytes
+};
+
+// shell_cmd values. Stable across builds: tests and docs refer to them.
+enum ShellCmd {
+    CMD_NONE   = 0,
+    CMD_HELP   = 1,
+    CMD_CLS    = 2,
+    CMD_PEEK   = 3,
+    CMD_BYE    = 4,
+    CMD_DIR    = 5,
+    CMD_TYPE   = 6,
+    CMD_MEM    = 7,
+    CMD_TIME   = 8,
+    CMD_POKE   = 9,
+    CMD_BANK   = 10,
+    CMD_ECHO   = 11,
+    CMD_PRINT  = 12,
+    CMD_LIST   = 13,
+    CMD_LET    = 14,
+    CMD_LOAD   = 15,
+    CMD_RUN    = 16,
+    CMD_SAVE   = 17,
+    CMD_CALL   = 18,
+    CMD_NEW    = 19,
+    CMD_FORMAT = 20
+};
+
+char line[LINE_MAX + 1];    // the line being edited, NUL-terminated on Enter
+int line_len = 0;
+int argc = 0;
+int argv[MAX_ARGS];         // word addresses inside line[]
+int shell_cmd = CMD_NONE;   // id of the last command that ran
+int cmd_count = 0;          // lines entered since boot
+int shell_exit = 0;         // set by BYE/Esc: main leaves the poll loop
+signed int vars[26];        // A-Z
+int prog_size = 0;          // bytes LOADed at PROG_BASE (0 = none)
+int num_ok = 0;             // set by parse_num / eval_args
+int bad_args = 0;           // sticky: some arg_num word was not a number
+#if NOVADOS_ENABLE_NDF
+int cur_bank = 1;           // volume used by DIR/TYPE/LOAD/SAVE/FORMAT
+char io_buf[IO_CHUNK];
+char name_buf[NDF_NAME_LEN + 1];
+#endif
+
+// ---------------------------------------------------------------------------
+// Parsing helpers
+// ---------------------------------------------------------------------------
+
+// Parse s as a number; num_ok says whether all of it was one.
+int parse_num(string s) {
+    int i;
+    int c;
+    int d;
+    int base;
+    int neg;
+    int v;
+    num_ok = 0;
+    i = 0;
+    neg = 0;
+    base = 10;
+    v = 0;
+    if (peek(s) == '-') {
+        neg = 1;
+        i = 1;
+    }
+    if (peek(s + i) == '$') {
+        base = 16;
+        i++;
+    } else if (peek(s + i) == '0' && (peek(s + i + 1) | 0x20) == 'x') {
+        base = 16;
+        i += 2;
+    }
+    if (peek(s + i) == 0) {
+        return 0;
+    }
+    c = peek(s + i);
+    while (c != 0) {
+        c |= 0x20;                      // fold A-F to a-f (digits unchanged)
+        if (c >= '0' && c <= '9') {
+            d = c - '0';
+        } else if (base == 16 && c >= 'a' && c <= 'f') {
+            d = c - 'a' + 10;
+        } else {
+            return 0;
+        }
+        v = v * base + d;
+        i++;
+        c = peek(s + i);
+    }
+    num_ok = 1;
+    if (neg) {
+        return -v;
+    }
+    return v;
+}
+
+// Index 0-25 if s is a one-letter variable name, else -1.
+int var_index(string s) {
+    int c;
+    c = peek(s) & 0xDF;                 // upper-case
+    if (peek(s + 1) == 0 && c >= 'A' && c <= 'Z') {
+        return c - 'A';
+    }
+    return -1;
+}
+
+// A variable or a number.
+int term(string s) {
+    int v;
+    v = var_index(s);
+    if (v >= 0) {
+        num_ok = 1;
+        return vars[v];
+    }
+    return parse_num(s);
+}
+
+// Value of argv[first..]: term { (+|-) term }. num_ok reports success.
+int eval_args(int first) {
+    int v;
+    int i;
+    int op;
+    num_ok = 0;
+    if (first >= argc) {
+        return 0;
+    }
+    v = term(argv[first]);
+    i = first + 1;
+    while (num_ok && i < argc) {
+        op = peek(argv[i]);
+        if (i + 1 >= argc || peek(argv[i] + 1) != 0 || (op != '+' && op != '-')) {
+            num_ok = 0;
+            return 0;
+        }
+        if (op == '+') {
+            v += term(argv[i + 1]);
+        } else {
+            v -= term(argv[i + 1]);
+        }
+        i += 2;
+    }
+    return v;
+}
+
+// argv[i] as a number, or `fallback` when the word is missing. A word that
+// is present but not a number sets bad_args, which stays set for the rest
+// of the command (shell_execute clears it before each one).
+int arg_num(int i, int fallback) {
+    int v;
+    if (i >= argc) {
+        return fallback;
+    }
+    v = term(argv[i]);
+    if (!num_ok) {
+        bad_args = 1;
+    }
+    return v;
+}
+
+// Split line[] into argv[] in place (spaces become NULs).
+void shell_tokenize() {
+    int i;
+    i = 0;
+    argc = 0;
+    while (line[i] != 0) {
+        if (line[i] == ' ') {
+            line[i] = 0;
+            i++;
+        } else {
+            if (argc < MAX_ARGS) {
+                argv[argc] = &line[i];
+                argc++;
+            }
+            while (line[i] != 0 && line[i] != ' ') {
+                i++;
+            }
+        }
+    }
+}
+
+void say_usage(string usage) {
+    con_print("usage: ");
+    con_println(usage);
+}
+
+// ---------------------------------------------------------------------------
+// Programs: RUN and CALL enter code with a CALL through a function pointer.
+// The program must preserve SP/FP and RET; Astrid keeps no values in
+// registers across a call, so nothing else needs saving.
+// ---------------------------------------------------------------------------
+
+void run_at(int addr) {
+    int (*entry)();
+    entry = addr;
+    entry();
+}
+
+// ---------------------------------------------------------------------------
+// Commands (one handler per table row below)
+// ---------------------------------------------------------------------------
+
+// Defined after the table it lists.
+void cmd_help();
+
+void cmd_cls() {
+    con_clear();
+}
+
+// PEEK [addr] [count]: hex bytes (one by default). With no address it
+// dumps the two signature bytes "4E 44".
+void cmd_peek() {
+    int addr;
+    int count;
+    int i;
+    addr = arg_num(1, OS_SIG);
+    count = arg_num(2, argc > 1 ? 1 : 2);
+    if (bad_args || count < 1 || count > 8) {
+        say_usage("PEEK [addr] [1-8]");
+        return;
+    }
+    for (i = 0; i < count; i++) {
+        if (i > 0) {
+            con_putc(' ');
+        }
+        con_hex(peek(addr + i), 2);
+    }
+    con_newline();
+}
+
+// POKE addr byte [byte...]
+void cmd_poke() {
+    int addr;
+    int i;
+    int v;
+    addr = arg_num(1, 0);
+    if (argc < 3 || bad_args) {
+        say_usage("POKE addr byte...");
+        return;
+    }
+    for (i = 2; i < argc; i++) {
+        v = term(argv[i]);
+        if (!num_ok) {
+            say_usage("POKE addr byte...");
+            return;
+        }
+        poke(addr + i - 2, v);
+    }
+}
+
+void cmd_bye() {
+    shell_exit = 1;
+}
+
+// MEM: free kmalloc heap and the size of the program area, in hex.
+void cmd_mem() {
+    con_print("MEM heap=");
+    con_hex(kmalloc_free(), 4);
+    con_print(" prog=");
+    con_hex(PROG_END - PROG_BASE, 4);
+    con_newline();
+}
+
+void cmd_time() {
+    con_print("TIME ");
+    con_hex(system_ticks, 4);
+    con_newline();
+}
+
+void cmd_echo() {
+    int i;
+    for (i = 1; i < argc; i++) {
+        if (i > 1) {
+            con_putc(' ');
+        }
+        con_print(argv[i]);
+    }
+    con_newline();
+}
+
+void cmd_print() {
+    int v;
+    v = eval_args(1);
+    if (!num_ok) {
+        say_usage("PRINT expr");
+        return;
+    }
+    con_dec(v);
+    con_newline();
+}
+
+// LIST: every variable that is not zero, as NAME=value.
+void cmd_list() {
+    int i;
+    for (i = 0; i < 26; i++) {
+        if (vars[i] != 0) {
+            if (con_col > CON_RIGHT - 8) {
+                con_newline();
+            }
+            con_putc('A' + i);
+            con_putc('=');
+            con_dec(vars[i]);
+            con_putc(' ');
+        }
+    }
+    con_newline();
+}
+
+// X = expr (dispatched before the table lookup).
+void cmd_let() {
+    int v;
+    v = eval_args(2);
+    if (!num_ok) {
+        say_usage("X = expr");
+        return;
+    }
+    vars[var_index(argv[0])] = v;
+}
+
+void cmd_run() {
+    if (prog_size == 0) {
+        con_println("no program loaded");
+        return;
+    }
+    run_at(PROG_BASE);
+}
+
+void cmd_call() {
+    int addr;
+    addr = arg_num(1, 0);
+    if (argc < 2 || bad_args) {
+        say_usage("CALL addr");
+        return;
+    }
+    run_at(addr);
+}
+
+void cmd_new() {
+    memset(PROG_BASE, 0, PROG_END - PROG_BASE);
+    prog_size = 0;
+}
+
+#if NOVADOS_ENABLE_NDF
+const string ndf_messages[6] = {"", "file not found", "directory full",
+                                "disk full", "file exists", "bad name"};
+
+void say_ndf_error(int rc) {
+    con_println(ndf_messages[-rc]);
+}
+
+// The file name argument, upper-cased in place (names are stored upper case).
+string arg_name(int i) {
+    strupr(argv[i]);
+    return argv[i];
+}
+
+int require_volume() {
+    if (ndf_mounted(cur_bank)) {
+        return 1;
+    }
+    con_print("no volume in bank ");
+    con_dec(cur_bank);
+    con_newline();
+    return 0;
+}
+
+void cmd_dir() {
+    int count;
+    int slot;
+    if (!require_volume()) {
+        return;
+    }
+    count = ndf_count(cur_bank);
+    con_print("DIR bank ");
+    con_dec(cur_bank);
+    con_newline();
+    for (slot = 0; slot < count; slot++) {
+        ndf_name(cur_bank, slot, name_buf);
+        con_col = CON_LEFT + 2;
+        con_print(name_buf);
+        con_col = CON_LEFT + 12;
+        if (ndf_type(cur_bank, slot) == NDF_PROG) {
+            con_print("PRG ");
+        } else {
+            con_print("TXT ");
+        }
+        con_dec(ndf_size(cur_bank, slot));
+        con_newline();
+    }
+    con_dec(count);
+    con_print(" files, ");
+    con_dec(ndf_free(cur_bank));
+    con_println(" free");
+}
+
+void cmd_type() {
+    int slot;
+    int offset;
+    int n;
+    int i;
+    if (argc < 2) {
+        say_usage("TYPE name");
+        return;
+    }
+    if (!require_volume()) {
+        return;
+    }
+    slot = ndf_find(cur_bank, arg_name(1));
+    if (slot < 0) {
+        say_ndf_error(slot);
+        return;
+    }
+    offset = 0;
+    n = ndf_read(cur_bank, slot, offset, io_buf, IO_CHUNK);
+    while (n > 0) {
+        for (i = 0; i < n; i++) {
+            con_putc(io_buf[i]);
+        }
+        offset += n;
+        n = ndf_read(cur_bank, slot, offset, io_buf, IO_CHUNK);
+    }
+    con_newline();
+}
+
+// BANK [n]: show or select the volume bank (1-15; bank 0 is base RAM).
+void cmd_bank() {
+    int b;
+    b = arg_num(1, cur_bank);
+    if (bad_args || b < 1 || b > 15) {
+        say_usage("BANK [1-15]");
+        return;
+    }
+    cur_bank = b;
+    con_print("BANK ");
+    con_dec(cur_bank);
+    if (!ndf_mounted(cur_bank)) {
+        con_print(" (no volume)");
+    }
+    con_newline();
+}
+
+void cmd_format() {
+    ndf_format(cur_bank);
+    con_print("formatted bank ");
+    con_dec(cur_bank);
+    con_newline();
+}
+
+void cmd_load() {
+    int slot;
+    if (argc < 2) {
+        say_usage("LOAD name");
+        return;
+    }
+    if (!require_volume()) {
+        return;
+    }
+    slot = ndf_find(cur_bank, arg_name(1));
+    if (slot < 0) {
+        say_ndf_error(slot);
+        return;
+    }
+    if (ndf_size(cur_bank, slot) > PROG_END - PROG_BASE) {
+        con_println("too big for program area");
+        return;
+    }
+    prog_size = ndf_read(cur_bank, slot, 0, PROG_BASE, PROG_END - PROG_BASE);
+    con_dec(prog_size);
+    con_println(" bytes loaded");
+}
+
+// SAVE name [addr len]: store memory as a program file. Without addr/len it
+// saves the program area as last LOADed.
+void cmd_save() {
+    int addr;
+    int len;
+    int rc;
+    addr = arg_num(2, PROG_BASE);
+    len = arg_num(3, prog_size);
+    if (argc < 2 || argc == 3 || bad_args || len == 0) {
+        say_usage("SAVE name [addr len]");
+        return;
+    }
+    // The source must not overlap the window the volume is mapped into.
+    if (addr < BANK_WINDOW_END && addr + len > BANK_WINDOW) {
+        con_println("can't save the bank window");
+        return;
+    }
+    if (!require_volume()) {
+        return;
+    }
+    rc = ndf_create(cur_bank, arg_name(1), NDF_PROG, addr, len);
+    if (rc < 0) {
+        say_ndf_error(rc);
+        return;
+    }
+    con_dec(len);
+    con_println(" bytes saved");
+}
+#endif
+
+// ---------------------------------------------------------------------------
+// Command table
+// ---------------------------------------------------------------------------
+
+struct Command {
+    string name;
+    int id;
+    int handler;            // address of a no-argument handler
+};
+
+const struct Command commands[] = {
+    "HELP",   CMD_HELP,   &cmd_help,
+    "CLS",    CMD_CLS,    &cmd_cls,
+    "PEEK",   CMD_PEEK,   &cmd_peek,
+    "POKE",   CMD_POKE,   &cmd_poke,
+    "MEM",    CMD_MEM,    &cmd_mem,
+    "TIME",   CMD_TIME,   &cmd_time,
+    "ECHO",   CMD_ECHO,   &cmd_echo,
+    "PRINT",  CMD_PRINT,  &cmd_print,
+    "LIST",   CMD_LIST,   &cmd_list,
+#if NOVADOS_ENABLE_NDF
+    "DIR",    CMD_DIR,    &cmd_dir,
+    "TYPE",   CMD_TYPE,   &cmd_type,
+    "BANK",   CMD_BANK,   &cmd_bank,
+    "FORMAT", CMD_FORMAT, &cmd_format,
+    "LOAD",   CMD_LOAD,   &cmd_load,
+    "SAVE",   CMD_SAVE,   &cmd_save,
+#endif
+    "RUN",    CMD_RUN,    &cmd_run,
+    "CALL",   CMD_CALL,   &cmd_call,
+    "NEW",    CMD_NEW,    &cmd_new,
+    "BYE",    CMD_BYE,    &cmd_bye
+};
+
+#define NUM_COMMANDS (sizeof(commands) / sizeof(struct Command))
+
+// HELP: the table itself, wrapped at the right edge.
+void cmd_help() {
+    int i;
+    string name;
+    for (i = 0; i < NUM_COMMANDS; i++) {
+        name = commands[i].name;
+        if (con_col + strlen(name) > CON_RIGHT + 1) {
+            con_newline();
+        }
+        con_print(name);
+        con_col++;
+    }
+    con_newline();
+}
+
+// Run the line in line[].
+void shell_execute() {
+    int i;
+    int (*handler)();
+    cmd_count++;
+    shell_cmd = CMD_NONE;
+    bad_args = 0;
+    shell_tokenize();
+    if (argc == 0) {
+        return;
+    }
+    if (argc >= 3 && var_index(argv[0]) >= 0 && strcmp(argv[1], "=") == 0) {
+        shell_cmd = CMD_LET;
+        cmd_let();
+        return;
+    }
+    strupr(argv[0]);
+    for (i = 0; i < NUM_COMMANDS; i++) {
+        if (strcmp(argv[0], commands[i].name) == 0) {
+            shell_cmd = commands[i].id;
+            handler = commands[i].handler;
+            handler();
+            return;
+        }
+    }
+    con_println("bad command");
+}
+
+// ---------------------------------------------------------------------------
+// Line editor
+// ---------------------------------------------------------------------------
+
+// The prompt starts a fresh line: a program run with RUN may leave the
+// cursor mid-line.
+void shell_prompt() {
+    if (con_col != CON_LEFT) {
+        con_newline();
+    }
+    con_print("> ");
+}
+
+// Handle one key: Enter runs the line, Backspace erases, Esc requests
+// shutdown; other non-printable keys (arrows, F-keys) are ignored.
+void shell_key(int k) {
+    if (k == KEY_LF || k == KEY_CR || k == KEY_ENTER_SC) {
+        con_newline();
+        line[line_len] = 0;
+        shell_execute();
+        line_len = 0;
+        if (!shell_exit) {
+            shell_prompt();
+        }
+        return;
+    }
+    if (k == KEY_BS || k == KEY_BS_SC) {
+        if (line_len > 0) {
+            line_len--;
+            con_putc(KEY_BS);
+        }
+        return;
+    }
+    if (k == KEY_ESC || k == KEY_ESC_SC) {
+        shell_exit = 1;
+        return;
+    }
+    if (k < ' ' || k > '~' || line_len >= LINE_MAX) {
+        return;
+    }
+    line[line_len] = k;
+    line_len++;
+    con_putc(k);
+}

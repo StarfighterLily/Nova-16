@@ -1156,6 +1156,17 @@ class Assembler:
             self._emit("Second pass...")
             machine_code, segments = self.second_pass(lines, symbol_table)
 
+            # Overlapping ORG segments load as silent corruption (a later
+            # segment overwrites an earlier one's tail); same check as the
+            # new assembler (nova/assembler/__init__.py).
+            spans = sorted((start, start + length)
+                           for start, length, _ in segments if length > 0)
+            for (start, end), (next_start, next_end) in zip(spans, spans[1:]):
+                if end > next_start:
+                    self.errors.append(
+                        f"ORG segments overlap: 0x{start:04X}-0x{end - 1:04X} "
+                        f"and 0x{next_start:04X}-0x{next_end - 1:04X}")
+
             if self.errors:
                 self._emit("Assembly failed due to errors:")
                 for error in self.errors:

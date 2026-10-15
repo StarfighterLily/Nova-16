@@ -133,13 +133,15 @@ def test_unsigned_string_cast_keeps_unsigned_decimal_output():
 
 
 def test_signed_comparison_emits_signed_jump():
-    """`g.hit > 0` must lower to CMP + JGT (signed), not the unsigned
-    borrow-based JC family or a bare zero-test."""
+    """`g.hit > 0` must lower to CMP + a signed jump (JGT, or JLE when the
+    loop exits on the negated relation), not the unsigned borrow-based JC
+    family or a bare zero-test."""
     ast = _parse(SRC)
     asm = "\n".join(CodeGenerator().generate(ast))
     loop = asm[asm.index("while_start_0:"):]
     cond = loop[:loop.index("while_end_1:")]
-    assert "JGT" in cond, f"expected signed JGT in loop condition, got:\n{cond}"
+    assert "JGT" in cond or "JLE" in cond, (
+        f"expected signed JGT/JLE in loop condition, got:\n{cond}")
     # The unsigned family must not appear in the condition.
     for bad in ("\nJC ", "\nJNC "):
         assert bad not in cond, f"unsigned {bad.strip()} leaked into signed compare"
@@ -191,7 +193,7 @@ int main() {
 }
 """
     asm = "\n".join(CodeGenerator().generate(_parse(src)))
-    assert "JGT" in asm, "signed typedef alias should still emit signed comparisons"
+    assert "JGT" in asm or "JLE" in asm, "signed typedef alias should still emit signed comparisons"
 
 
 def test_typedef_unsigned_alias_parses_and_compiles():

@@ -9,7 +9,7 @@ DIR/TYPE run banked while ticks advance.
 WHY: interrupt entry snapshots the BANK register and forces bank 0 for the
 handler ("Pure Option B", nova/bus/interrupt.py); IRET restores it. With the
 heartbeat armed, a tick landing between set_bank(1) and the closing
-set_bank(0) in ndf_read8/ndf_write8 must be a safe deferral, not disk
+set_bank(0) of an NDF call must be a safe deferral, not disk
 corruption -- exactly the guarantee the NovaDOS kernel depends on.
 """
 import os
@@ -91,8 +91,6 @@ def test_timer_heartbeat_drives_isr_and_balances_bank_stack(kernel_binary):
     assert ticks > 0, (
         "system_ticks never advanced -- the timer heartbeat is not armed, so "
         "the bank-snapshot path is never exercised by the kernel")
-    assert mem.read_word(syms["gvar_pending_timer"]) >= 1, (
-        "timer_isr ran but never latched pending_timer")
 
     # Nesting balance: one snapshot pushed per entry, popped per IRET.
     assert proc._bank_irq_stack == [], (
@@ -108,7 +106,7 @@ def test_timer_heartbeat_drives_isr_and_balances_bank_stack(kernel_binary):
 @pytest.mark.memory
 @pytest.mark.graphics
 def test_banked_disk_access_survives_interrupt_storm(kernel_binary):
-    """DIR performs dozens of banked ndf_read8 brackets while the heartbeat
+    """DIR performs a dozen banked NDF brackets while the heartbeat
     fires; the disk page must come out byte-identical and the ISR's global
     updates must land in base RAM (never in the banked window)."""
     proc, mem, gfx, cycles = _boot(kernel_binary, (*map(ord, "DIR"), ENTER))
@@ -116,7 +114,7 @@ def test_banked_disk_access_survives_interrupt_storm(kernel_binary):
     syms = _load_syms(kernel_binary)
 
     # The shell actually ran DIR (banked reads) with ticks flowing.
-    assert mem.read_word(syms["gvar_shell_cmd"]) == 5
+    assert mem.read_word(syms["gvar_shell_cmd"]) == 5   # CMD_DIR
     ticks = mem.read_word(syms["gvar_system_ticks"])
     assert ticks > 0, "heartbeat did not fire during the DIR command"
 
@@ -124,7 +122,7 @@ def test_banked_disk_access_survives_interrupt_storm(kernel_binary):
     # (16-byte record at 0x10: name + type/flags + size 5 + offset 0x400) and
     # the HELLO data bytes. Any ISR window write would scramble one of these.
     page = mem._bank_pages[1]
-    assert bytes(page[:6]) == b"NDF1\x00\x01"
+    assert bytes(page[:6]) == b"NDF1\x00\x02"      # BOOT + HI
     assert bytes(page[0x10:0x18]) == b"BOOT\x00\x00\x00\x00"
     assert bytes(page[0x1A:0x1E]) == b"\x00\x05\x04\x00"
     assert bytes(page[0x400:0x405]) == b"HELLO"
