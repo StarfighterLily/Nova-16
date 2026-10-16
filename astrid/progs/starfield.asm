@@ -280,7 +280,7 @@ INC P5
 MOV [0xC200], P5
 ; If statement
 MOV P6, [0xC200]
-MOV P7, 5120
+MOV P7, 8000
 MOD P6, P7
 CMP P6, 0
 JNZ if_end_21

@@ -72,7 +72,7 @@ void main() {
 	while (1) {
 		// Infinite loop
 		counter++;
-		if ((counter % 5120) == 0) {
+		if ((counter % 8000) == 0) {
 			parallax();
 			counter = 0;
 		}
