@@ -5,27 +5,6 @@ MOV SP, 0xFFFF ; Set stack pointer to high memory
 MOV FP, 0xFFFF ; Also init frame pointer
 CALL func_main
 HLT
-; Function: setup
-func_setup:
-ENTER 0
-; Call to set_vmode
-MOV P0, 1
-PUSH P0
-CALL builtin_set_vmode
-; Args consumed by callee
-MOV P1, R0
-; Call to set_pos
-MOV P2, 0
-PUSH P2
-MOV P4, 0
-PUSH P4
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P5, R0
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
 ; Function: draw_stars
 func_draw_stars:
 ENTER 14
@@ -40,25 +19,15 @@ MOV P0, [FP+4]
 PUSH P0
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P1, R0
 ; For loop
 ; Assignment to p
 MOV P2, [0xC088]
 MOV [0xC080], P2
 for_start_0:
 MOV P4, [0xC080]
-PUSH P4
 MOV P5, [0xC08A]
-POP P4
 CMP P5, P4
-JNC cmp_true_3
-MOV P4, 0
-JMP cmp_end_4
-cmp_true_3:
-MOV P4, 1
-cmp_end_4:
-CMP P4, 0
-JZ for_end_1
+JC for_end_1
 ; var rnd = ...
 ; Call to random
 CALL builtin_random
@@ -71,35 +40,27 @@ MOV P0, P7:
 MOV [0xC082], P0
 ; Assignment to y
 MOV P1, 255
-PUSH P1
 MOV P2, [0xC08C]
-POP P1
 AND P1, P2
 MOV [0xC084], P1
 ; Assignment to color
 ; Call to random_range
-MOV P4, [FP+10]
-PUSH P4
-MOV P5, [FP+8]
-PUSH P5
+PUSH [FP+10]
+PUSH [FP+8]
 CALL builtin_random_range
 ; Args consumed by callee
 MOV P6, P0
 MOV [0xC086], P6
 ; Call to set_pos
-MOV P7, [0xC084]
-PUSH P7
+PUSH [0xC084]
 MOV P0, [0xC082]
 PUSH P0
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P1, R0
 ; Call to write_screen
-MOV P2, [0xC086]
-PUSH P2
+PUSH [0xC086]
 CALL builtin_write_screen
 ; Args consumed by callee
-MOV P4, R0
 ; If statement
 ; Call to random_range
 MOV P5, 15
@@ -109,136 +70,57 @@ PUSH P6
 CALL builtin_random_range
 ; Args consumed by callee
 MOV P7, P0
-PUSH P7
-MOV P0, 0
-POP P7
-CMP P7, P0
-JZ cmp_true_7
-MOV P7, 0
-JMP cmp_end_8
-cmp_true_7:
-MOV P7, 1
-cmp_end_8:
 CMP P7, 0
-JZ if_end_5
+JNZ if_end_3
 ; Call to set_color
-MOV P1, [0xC086]
-PUSH P1
+PUSH [0xC086]
 CALL builtin_set_color
 ; Args consumed by callee
-MOV P2, R0
+; Call to draw_circle
+MOV P2, 1
+PUSH P2
+MOV P4, 1
+PUSH P4
+CALL builtin_draw_circle
+; Args consumed by callee
+if_end_3:
+; If statement
+; Call to random_range
+MOV P6, 63
+PUSH P6
+MOV P7, 0
+PUSH P7
+CALL builtin_random_range
+; Args consumed by callee
+CMP P0, 0
+JNZ if_end_5
+; Call to set_color
+PUSH [0xC086]
+CALL builtin_set_color
+; Args consumed by callee
 ; Call to draw_circle
 MOV P4, 1
 PUSH P4
-MOV P5, 1
+MOV P5, 2
 PUSH P5
 CALL builtin_draw_circle
 ; Args consumed by callee
-MOV P6, R0
 if_end_5:
-; If statement
-; Call to random_range
-MOV P7, 63
-PUSH P7
-MOV P0, 0
-PUSH P0
-CALL builtin_random_range
-; Args consumed by callee
-MOV P1, P0
-PUSH P1
-MOV P2, 0
-POP P1
-CMP P1, P2
-JZ cmp_true_11
-MOV P1, 0
-JMP cmp_end_12
-cmp_true_11:
-MOV P1, 1
-cmp_end_12:
-CMP P1, 0
-JZ if_end_9
-; Call to set_color
-MOV P4, [0xC086]
-PUSH P4
-CALL builtin_set_color
-; Args consumed by callee
-MOV P5, R0
-; Call to draw_circle
-MOV P6, 1
-PUSH P6
-MOV P7, 2
-PUSH P7
-CALL builtin_draw_circle
-; Args consumed by callee
-MOV P0, R0
-if_end_9:
 for_continue_2:
 ; Wrap-check: save p before update
-MOV P1, [0xC080]
-PUSH P1
+PUSH [0xC080]
 ; Assignment to p
-MOV P2, [0xC080]
-MOV P4, [FP+6]
-ADD P2, P4
-MOV [0xC080], P2
+MOV P0, [0xC080]
+MOV P1, [FP+6]
+ADD P0, P1
+MOV [0xC080], P0
 ; Wrap-check: compare p new vs old
-POP P5
-MOV P6, [0xC080]
-CMP P6, P5
+POP P2
+MOV P4, [0xC080]
+CMP P4, P2
 JC for_end_1
 JMP for_start_0
 for_end_1:
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
-; Function: draw_text
-func_draw_text:
-ENTER 0
-; Call to set_layer
-MOV P7, 5
-PUSH P7
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P0, R0
-; Call to set_vmode
-MOV P1, 0
-PUSH P1
-CALL builtin_set_vmode
-; Args consumed by callee
-MOV P2, R0
-; Call to set_pos
-MOV P4, 123
-PUSH P4
-MOV P5, 101
-PUSH P5
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P6, R0
-; Call to write_text
-MOV P7, 21
-PUSH P7
-MOV P0, str_13
-PUSH P0
-CALL builtin_write_text
-; Args consumed by callee
-MOV P1, R0
-; Call to set_pos
-MOV P2, 124
-PUSH P2
-MOV P4, 100
-PUSH P4
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P5, R0
-; Call to write_text
-MOV P6, 31
-PUSH P6
-MOV P7, str_13
-PUSH P7
-CALL builtin_write_text
-; Args consumed by callee
-MOV P0, R0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -248,143 +130,82 @@ func_parallax:
 ENTER 2
 ; For loop
 ; var layer = ...
-MOV P1, 1
-MOV [0xC180], P1
-for_start_14:
-MOV P2, [0xC180]
-PUSH P2
-MOV P4, 4
-POP P2
-CMP P4, P2
-JNC cmp_true_17
-MOV P2, 0
-JMP cmp_end_18
-cmp_true_17:
-MOV P2, 1
-cmp_end_18:
-CMP P2, 0
-JZ for_end_15
+MOV P7, 1
+MOV [0xC180], P7
+for_start_8:
+MOV P0, [0xC180]
+CMP P0, 5
+JNC for_end_9
 ; Call to set_layer
-MOV P5, [0xC180]
-PUSH P5
+PUSH [0xC180]
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P6, R0
 ; If statement
-MOV P7, 1
-PUSH P7
-MOV P0, [0xC180]
-POP P7
-CMP P7, P0
-JZ cmp_true_21
-MOV P7, 0
-JMP cmp_end_22
-cmp_true_21:
-MOV P7, 1
-cmp_end_22:
-CMP P7, 0
-JZ if_end_19
-; Call to scroll_x
-MOV P1, 1
-PUSH P1
-MOV P2, 0
-PUSH P2
 MOV P4, [0xC180]
-PUSH P4
+CMP P4, 1
+JNZ if_end_11
+; Call to scroll_x
+MOV P5, 1
+PUSH P5
+MOV P6, 0
+PUSH P6
+PUSH [0xC180]
 CALL builtin_scroll_x_3
 ; Args consumed by callee
-MOV P5, R0
-if_end_19:
+if_end_11:
 ; If statement
-MOV P6, 2
-PUSH P6
-MOV P7, [0xC180]
-POP P6
-CMP P6, P7
-JZ cmp_true_25
-MOV P6, 0
-JMP cmp_end_26
-cmp_true_25:
-MOV P6, 1
-cmp_end_26:
-CMP P6, 0
-JZ if_end_23
+MOV P1, [0xC180]
+CMP P1, 2
+JNZ if_end_13
 ; Call to scroll_x
-MOV P0, 2
+MOV P2, 2
+PUSH P2
+MOV P4, 0
+PUSH P4
+PUSH [0xC180]
+CALL builtin_scroll_x_3
+; Args consumed by callee
+if_end_13:
+; If statement
+MOV P7, [0xC180]
+CMP P7, 3
+JNZ if_end_15
+; Call to scroll_x
+MOV P0, 3
 PUSH P0
 MOV P1, 0
 PUSH P1
-MOV P2, [0xC180]
-PUSH P2
+PUSH [0xC180]
 CALL builtin_scroll_x_3
 ; Args consumed by callee
-MOV P4, R0
-if_end_23:
+if_end_15:
 ; If statement
-MOV P5, 3
-PUSH P5
-MOV P6, [0xC180]
-POP P5
-CMP P5, P6
-JZ cmp_true_29
-MOV P5, 0
-JMP cmp_end_30
-cmp_true_29:
-MOV P5, 1
-cmp_end_30:
-CMP P5, 0
-JZ if_end_27
-; Call to scroll_x
-MOV P7, 3
-PUSH P7
-MOV P0, 0
-PUSH P0
-MOV P1, [0xC180]
-PUSH P1
-CALL builtin_scroll_x_3
-; Args consumed by callee
-MOV P2, R0
-if_end_27:
-; If statement
-MOV P4, 4
-PUSH P4
 MOV P5, [0xC180]
-POP P4
-CMP P4, P5
-JZ cmp_true_33
-MOV P4, 0
-JMP cmp_end_34
-cmp_true_33:
-MOV P4, 1
-cmp_end_34:
-CMP P4, 0
-JZ if_end_31
+CMP P5, 4
+JNZ if_end_17
 ; Call to scroll_x
 MOV P6, 4
 PUSH P6
 MOV P7, 0
 PUSH P7
-MOV P0, [0xC180]
-PUSH P0
+PUSH [0xC180]
 CALL builtin_scroll_x_3
 ; Args consumed by callee
-MOV P1, R0
-if_end_31:
-for_continue_16:
+if_end_17:
+for_continue_10:
 ; Wrap-check: save layer before update
-MOV P2, [0xC180]
-PUSH P2
+PUSH [0xC180]
+; Prefix ++ on layer
 MOV P4, [0xC180]
-MOV P5, P4
 INC P4
 MOV [0xC180], P4
 ; Wrap-check: compare layer new vs old
-POP P6
-MOV P7, [0xC180]
-CMP P7, P6
-JC for_end_15
-JMP for_start_14
-for_end_15:
+POP P5
+MOV P6, [0xC180]
+CMP P6, P5
+JC for_end_9
+JMP for_start_8
+for_end_9:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -393,101 +214,88 @@ RET
 func_main:
 ENTER 2
 ; var counter = ...
-MOV P0, 0
-MOV [0xC200], P0
-; Call to setup
-CALL func_setup
-MOV P1, P0
-; Call to draw_stars
-MOV P2, 4
+MOV P7, 0
+MOV [0xC200], P7
+; Call to set_vmode
+MOV P0, 1
+PUSH P0
+CALL builtin_set_vmode
+; Args consumed by callee
+; Call to set_pos
+MOV P2, 0
 PUSH P2
 MOV P4, 0
 PUSH P4
-MOV P5, 32
-PUSH P5
-MOV P6, 1
+CALL builtin_set_pos
+; Args consumed by callee
+; Call to draw_stars
+MOV P6, 4
 PUSH P6
+MOV P7, 0
+PUSH P7
+MOV P0, 32
+PUSH P0
+MOV P1, 1
+PUSH P1
 CALL func_draw_stars
 ADD SP, 8 ; Caller cleans up args
-MOV P7, P0
 ; Call to draw_stars
-MOV P0, 7
-PUSH P0
-MOV P1, 4
+MOV P4, 7
+PUSH P4
+MOV P5, 4
+PUSH P5
+MOV P6, 128
+PUSH P6
+MOV P7, 2
+PUSH P7
+CALL func_draw_stars
+ADD SP, 8 ; Caller cleans up args
+; Call to draw_stars
+MOV P1, 10
 PUSH P1
-MOV P2, 128
+MOV P2, 7
 PUSH P2
-MOV P4, 2
+MOV P4, 256
 PUSH P4
-CALL func_draw_stars
-ADD SP, 8 ; Caller cleans up args
-MOV P5, P0
-; Call to draw_stars
-MOV P6, 10
-PUSH P6
-MOV P7, 7
-PUSH P7
-MOV P0, 256
-PUSH P0
-MOV P1, 3
-PUSH P1
-CALL func_draw_stars
-ADD SP, 8 ; Caller cleans up args
-MOV P2, P0
-; Call to draw_stars
-MOV P4, 15
-PUSH P4
-MOV P5, 10
+MOV P5, 3
 PUSH P5
-MOV P6, 512
-PUSH P6
-MOV P7, 4
+CALL func_draw_stars
+ADD SP, 8 ; Caller cleans up args
+; Call to draw_stars
+MOV P7, 15
 PUSH P7
+MOV P0, 10
+PUSH P0
+MOV P1, 512
+PUSH P1
+MOV P2, 4
+PUSH P2
 CALL func_draw_stars
 ADD SP, 8 ; Caller cleans up args
 ; While loop
-while_start_35:
-MOV P1, 1
-CMP P1, 0
-JZ while_end_36
-MOV P2, [0xC200]
-MOV P4, P2
-INC P2
-MOV [0xC200], P2
-; If statement
+while_start_19:
+; Prefix ++ on counter
 MOV P5, [0xC200]
-PUSH P5
-MOV P6, 5120
-POP P5
-MOD P5, P6
-PUSH P5
-MOV P7, 0
-POP P5
-CMP P5, P7
-JZ cmp_true_39
-MOV P5, 0
-JMP cmp_end_40
-cmp_true_39:
-MOV P5, 1
-cmp_end_40:
-CMP P5, 0
-JZ if_end_37
+INC P5
+MOV [0xC200], P5
+; If statement
+MOV P6, [0xC200]
+MOV P7, 5120
+MOD P6, P7
+CMP P6, 0
+JNZ if_end_21
 ; Call to parallax
 CALL func_parallax
 ; Assignment to counter
 MOV P1, 0
 MOV [0xC200], P1
-if_end_37:
-JMP while_start_35
-while_end_36:
+if_end_21:
+JMP while_start_19
+while_end_20:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-;
-; Data Section
-;
-str_13: DEFSTR "StarField"
 ; Built-in Function Implementations
 builtin_set_vmode:
 POP P0
@@ -542,14 +350,6 @@ POP P0
 POP P1
 POP P2
 SCIRC P1, P2
-PUSH P0
-RET
-builtin_write_text:
-POP P0
-POP P1
-POP P2
-MOV VC, P2
-TEXT P1
 PUSH P0
 RET
 builtin_random:

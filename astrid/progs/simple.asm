@@ -13,90 +13,63 @@ MOV P0, 1
 PUSH P0
 CALL builtin_set_vmode
 ; Args consumed by callee
-MOV P1, R0
 ; Call to set_layer
 MOV P2, 0
 PUSH P2
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P4, R0
 ; For loop
 ; var x = ...
 MOV P5, 0
 MOV [0xC000], P5
 for_start_0:
 MOV P6, [0xC000]
-PUSH P6
-MOV P7, 128
-POP P6
-CMP P6, P7
-JC cmp_true_3
-MOV P6, 0
-JMP cmp_end_4
-cmp_true_3:
-MOV P6, 1
-cmp_end_4:
-CMP P6, 0
-JZ for_end_1
+CMP P6, 128
+JNC for_end_1
 ; For loop
 ; var y = ...
-MOV P0, 0
-MOV [0xC002], P0
-for_start_5:
+MOV P7, 0
+MOV [0xC002], P7
+for_start_3:
+MOV P0, [0xC002]
+CMP P0, 128
+JNC for_end_4
+; Call to set_pos
 MOV P1, [0xC002]
 PUSH P1
-MOV P2, 128
-POP P1
-CMP P1, P2
-JC cmp_true_8
-MOV P1, 0
-JMP cmp_end_9
-cmp_true_8:
-MOV P1, 1
-cmp_end_9:
-CMP P1, 0
-JZ for_end_6
-; Call to set_pos
-MOV P4, [0xC002]
-PUSH P4
-MOV P5, [0xC000]
-PUSH P5
+PUSH [0xC000]
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P6, R0
 ; Call to write_screen
-MOV P7, 31
-PUSH P7
+MOV P5, 31
+PUSH P5
 CALL builtin_write_screen
 ; Args consumed by callee
-MOV P0, R0
-for_continue_7:
+for_continue_5:
 ; Wrap-check: save y before update
-MOV P1, [0xC002]
-PUSH P1
-MOV P2, [0xC002]
-MOV P4, P2
-INC P2
-MOV [0xC002], P2
+PUSH [0xC002]
+; Prefix ++ on y
+MOV P0, [0xC002]
+INC P0
+MOV [0xC002], P0
 ; Wrap-check: compare y new vs old
-POP P5
-MOV P6, [0xC002]
-CMP P6, P5
-JC for_end_6
-JMP for_start_5
-for_end_6:
+POP P1
+MOV P2, [0xC002]
+CMP P2, P1
+JC for_end_4
+JMP for_start_3
+for_end_4:
 for_continue_2:
 ; Wrap-check: save x before update
-MOV P7, [0xC000]
-PUSH P7
-MOV P0, [0xC000]
-MOV P1, P0
-INC P0
-MOV [0xC000], P0
+PUSH [0xC000]
+; Prefix ++ on x
+MOV P5, [0xC000]
+INC P5
+MOV [0xC000], P5
 ; Wrap-check: compare x new vs old
-POP P2
-MOV P4, [0xC000]
-CMP P4, P2
+POP P6
+MOV P7, [0xC000]
+CMP P7, P6
 JC for_end_1
 JMP for_start_0
 for_end_1:

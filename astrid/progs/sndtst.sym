@@ -3,10 +3,10 @@
 start 0x1000
 func_main 0x100F
 while_start_0 0x1012
-if_else_3 0x1055
-if_end_2 0x105D
-while_end_1 0x1061
-builtin_sound_play 0x1069
-builtin_key_available 0x1086
-builtin_key_read 0x108A
-builtin_nop 0x108E
+if_else_3 0x1041
+if_end_2 0x1045
+while_end_1 0x1049
+builtin_sound_play 0x1051
+builtin_key_available 0x106E
+builtin_key_read 0x1072
+builtin_nop 0x1076

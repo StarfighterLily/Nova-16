@@ -3,5 +3,5 @@
 start 0x1000
 func_main 0x100F
 while_start_0 0x1012
-while_end_1 0x1040
-builtin_screen_fill 0x1048
+while_end_1 0x102C
+builtin_screen_fill 0x1034

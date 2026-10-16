@@ -15,13 +15,11 @@ MOV P1, 0
 PUSH P1
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P2, R0
 ; Call to vwrite
 MOV P4, 255
 PUSH P4
 CALL builtin_vwrite
 ; Args consumed by callee
-MOV P5, R0
 ; var var = ...
 ; Call to vread
 CALL builtin_vread
@@ -51,8 +49,7 @@ MOV P4, P0
 MOV [0xC080], P4
 ; var curlen = ...
 ; Call to strlen
-MOV P5, [FP+6]
-PUSH P5
+PUSH [FP+6]
 CALL builtin_strlen
 ; Args consumed by callee
 MOV P6, P0
@@ -66,201 +63,122 @@ ADD P0, 4
 MOV P1, [P0]
 POP P7
 CMP P1, P7
-JC cmp_true_2
-MOV P7, 0
-JMP cmp_end_3
-cmp_true_2:
-MOV P7, 1
-cmp_end_3:
-CMP P7, 0
-JZ if_end_0
+JNC if_end_0
 ; Member assignment to ...longest
 MOV P2, [FP+4]
 ADD P2, 4
-PUSH P2
 MOV P4, [0xC082]
-POP P2
 MOV [P2], P4
 if_end_0:
 ; If statement
 ; Member read (x)
 MOV P5, [FP+4]
 MOV P6, [P5]
-PUSH P6
-MOV P7, 256
-POP P6
-CMP P6, P7
-JNC cmp_true_6
-MOV P6, 0
-JMP cmp_end_7
-cmp_true_6:
-MOV P6, 1
-cmp_end_7:
-CMP P6, 0
-JZ if_end_4
+CMP P6, 256
+JC if_end_2
 ; Member assignment to ...x
-MOV P0, [FP+4]
-PUSH P0
-MOV P1, 0
-POP P0
-MOV [P0], P1
-if_end_4:
-; If statement
-; Member read (y)
-MOV P2, [FP+4]
-ADD P2, 2
-MOV P4, [P2]
-PUSH P4
-MOV P5, 256
-POP P4
-CMP P4, P5
-JNC cmp_true_10
-MOV P4, 0
-JMP cmp_end_11
-cmp_true_10:
-MOV P4, 1
-cmp_end_11:
-CMP P4, 0
-JZ if_end_8
-; Member assignment to ...y
-MOV P6, [FP+4]
-ADD P6, 2
-PUSH P6
-MOV P7, 0
-POP P6
-MOV [P6], P7
-if_end_8:
-; Call to set_layer
-MOV P0, 8
-PUSH P0
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P1, R0
-; Call to set_pos
-; Member read (y)
-MOV P2, [FP+4]
-ADD P2, 2
-MOV P4, [P2]
-PUSH P4
-; Member read (x)
-MOV P5, [FP+4]
-MOV P6, [P5]
-PUSH P6
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P7, R0
-; Call to write_text
-MOV P0, 31
-PUSH P0
-MOV P1, [FP+6]
-PUSH P1
-CALL builtin_write_text
-; Args consumed by callee
-MOV P2, R0
-; Call to set_layer
-MOV P4, [0xC080]
-PUSH P4
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P5, R0
-; Member assignment to ...y
-MOV P6, [FP+4]
-ADD P6, 2
-MOV P7, [P6]
-PUSH P7
-PUSH P6
-MOV P0, 8
-POP P6
-POP P7
-ADD P7, P0
-MOV [P6], P7
+MOV P7, [FP+4]
+MOV P0, 0
+MOV [P7], P0
+if_end_2:
 ; If statement
 ; Member read (y)
 MOV P1, [FP+4]
 ADD P1, 2
 MOV P2, [P1]
-PUSH P2
-MOV P4, 248
-POP P2
-CMP P2, P4
-JNC cmp_true_14
-MOV P2, 0
-JMP cmp_end_15
-cmp_true_14:
-MOV P2, 1
-cmp_end_15:
-CMP P2, 0
-JZ if_end_12
+CMP P2, 256
+JC if_end_4
 ; Member assignment to ...y
-MOV P5, [FP+4]
-ADD P5, 2
-PUSH P5
-MOV P6, 0
-POP P5
-MOV [P5], P6
-; Member assignment to ...x
-MOV P7, [FP+4]
-MOV P0, [P7]
-PUSH P0
-PUSH P7
-; Member read (longest)
-MOV P1, [FP+4]
-ADD P1, 4
-MOV P2, [P1]
-PUSH P2
-MOV P4, 8
-POP P2
-MUL P2, P4
-PUSH P2
-MOV P5, 2
-POP P2
-ADD P2, P5
-POP P7
-POP P0
-ADD P0, P2
-MOV [P7], P0
-if_end_12:
-; If statement
-; Member read (x)
-MOV P6, [FP+4]
-MOV P7, [P6]
-PUSH P7
-MOV P0, 248
-POP P7
-CMP P7, P0
-JNC cmp_true_18
-MOV P7, 0
-JMP cmp_end_19
-cmp_true_18:
-MOV P7, 1
-cmp_end_19:
-CMP P7, 0
-JZ if_end_16
+MOV P4, [FP+4]
+ADD P4, 2
+MOV P5, 0
+MOV [P4], P5
+if_end_4:
 ; Call to set_layer
-MOV P1, 8
-PUSH P1
-CALL builtin_set_layer
-; Args consumed by callee
-MOV P2, R0
-; Call to screen_fill
-MOV P4, 0
-PUSH P4
-CALL builtin_screen_fill
-; Args consumed by callee
-MOV P5, R0
-; Call to set_layer
-MOV P6, [0xC080]
+MOV P6, 8
 PUSH P6
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P7, R0
-; Member assignment to ...x
+; Call to set_pos
+; Member read (y)
 MOV P0, [FP+4]
-PUSH P0
-MOV P1, 0
-POP P0
-MOV [P0], P1
-if_end_16:
+ADD P0, 2
+PUSH [P0]
+; Member read (x)
+MOV P2, [FP+4]
+PUSH [P2]
+CALL builtin_set_pos
+; Args consumed by callee
+; Call to write_text
+MOV P6, 31
+PUSH P6
+PUSH [FP+6]
+CALL builtin_write_text
+; Args consumed by callee
+; Call to set_layer
+PUSH [0xC080]
+CALL builtin_set_layer
+; Args consumed by callee
+; Member assignment to ...y
+MOV P4, [FP+4]
+ADD P4, 2
+MOV P5, [P4]
+ADD P5, 8
+MOV [P4], P5
+; If statement
+; Member read (y)
+MOV P7, [FP+4]
+ADD P7, 2
+MOV P0, [P7]
+CMP P0, 248
+JC if_end_6
+; Member assignment to ...y
+MOV P1, [FP+4]
+ADD P1, 2
+MOV P2, 0
+MOV [P1], P2
+; Member assignment to ...x
+MOV P4, [FP+4]
+MOV P5, [P4]
+PUSH P5
+PUSH P4
+; Member read (longest)
+MOV P6, [FP+4]
+ADD P6, 4
+MOV P7, [P6]
+MOV P0, 8
+MUL P7, P0
+ADD P7, 2
+POP P4
+POP P5
+ADD P5, P7
+MOV [P4], P5
+if_end_6:
+; If statement
+; Member read (x)
+MOV P2, [FP+4]
+MOV P4, [P2]
+CMP P4, 248
+JC if_end_8
+; Call to set_layer
+MOV P5, 8
+PUSH P5
+CALL builtin_set_layer
+; Args consumed by callee
+; Call to screen_fill
+MOV P7, 0
+PUSH P7
+CALL builtin_screen_fill
+; Args consumed by callee
+; Call to set_layer
+PUSH [0xC080]
+CALL builtin_set_layer
+; Args consumed by callee
+; Member assignment to ...x
+MOV P4, [FP+4]
+MOV P5, 0
+MOV [P4], P5
+if_end_8:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -270,14 +188,14 @@ func_dbg_print_int:
 ENTER 0
 ; Method call dbg::print
 ; Type cast: (string) expr
-MOV P2, [FP+6]
-ITOS P4, P2
-PUSH P4
-MOV P5, [FP+4]
-PUSH P5 ; Receiver := self
+MOV P6, [FP+6]
+ITOS P7, P6
+PUSH P7
+MOV P0, [FP+4]
+PUSH P0 ; Receiver := self
 CALL func_dbg_print
 ADD SP, 4 ; Caller cleans up args + receiver
-MOV P6, P0
+MOV P1, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -287,69 +205,69 @@ func_dbg_print_hex:
 ENTER 0
 ; Method call dbg::print
 ; Type cast: (stringh) expr
-MOV P7, [FP+6]
+MOV P2, [FP+6]
 ; Hex string conversion
-MOV P2, 0xA000
-MOV P1, P7
-MOV P4, P1
-SHR P4, 12
-AND P4, 0x0F
-CMP P4, 10
-JS .hex_digit_12
-ADD P4, 55
-JMP .hex_done_12
-.hex_digit_12:
-ADD P4, 48
-.hex_done_12:
-MOV R0, P4
-MOV [P2], R0
-INC P2
-MOV P4, P1
-SHR P4, 8
-AND P4, 0x0F
-CMP P4, 10
-JS .hex_digit_8
-ADD P4, 55
-JMP .hex_done_8
-.hex_digit_8:
-ADD P4, 48
-.hex_done_8:
-MOV R0, P4
-MOV [P2], R0
-INC P2
-MOV P4, P1
-SHR P4, 4
-AND P4, 0x0F
-CMP P4, 10
-JS .hex_digit_4
-ADD P4, 55
-JMP .hex_done_4
-.hex_digit_4:
-ADD P4, 48
-.hex_done_4:
-MOV R0, P4
-MOV [P2], R0
-INC P2
-MOV P4, P1
-AND P4, 0x0F
-CMP P4, 10
-JS .hex_digit_0
-ADD P4, 55
-JMP .hex_done_0
-.hex_digit_0:
-ADD P4, 48
-.hex_done_0:
-MOV R0, P4
-MOV [P2], R0
-INC P2
-MOV [P2], 0
-MOV P0, 0xA000
-PUSH P0
-MOV P5, [FP+4]
-PUSH P5 ; Receiver := self
+MOV P6, 0xA000
+MOV P5, P2
+MOV P7, P5
+SHR P7, 12
+AND P7, 0x0F
+CMP P7, 10
+JS hex_10_d12
+ADD P7, 55
+JMP hex_10_e12
+hex_10_d12:
+ADD P7, 48
+hex_10_e12:
+MOV R0, P7
+MOV [P6], R0
+INC P6
+MOV P7, P5
+SHR P7, 8
+AND P7, 0x0F
+CMP P7, 10
+JS hex_10_d8
+ADD P7, 55
+JMP hex_10_e8
+hex_10_d8:
+ADD P7, 48
+hex_10_e8:
+MOV R0, P7
+MOV [P6], R0
+INC P6
+MOV P7, P5
+SHR P7, 4
+AND P7, 0x0F
+CMP P7, 10
+JS hex_10_d4
+ADD P7, 55
+JMP hex_10_e4
+hex_10_d4:
+ADD P7, 48
+hex_10_e4:
+MOV R0, P7
+MOV [P6], R0
+INC P6
+MOV P7, P5
+AND P7, 0x0F
+CMP P7, 10
+JS hex_10_d0
+ADD P7, 55
+JMP hex_10_e0
+hex_10_d0:
+ADD P7, 48
+hex_10_e0:
+MOV R0, P7
+MOV [P6], R0
+INC P6
+MOV [P6], 0
+MOV P4, 0xA000
+PUSH P4
+MOV P0, [FP+4]
+PUSH P0 ; Receiver := self
 CALL func_dbg_print
 ADD SP, 4 ; Caller cleans up args + receiver
-MOV P6, P0
+MOV P1, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -358,21 +276,18 @@ RET
 func_dbg_print_labeled_int:
 ENTER 0
 ; Method call dbg::print
-MOV P7, [FP+6]
-PUSH P7
-MOV P0, [FP+4]
-PUSH P0 ; Receiver := self
-CALL func_dbg_print
-ADD SP, 4 ; Caller cleans up args + receiver
-MOV P1, P0
-; Method call dbg::print_int
-MOV P2, [FP+8]
-PUSH P2
+PUSH [FP+6]
 MOV P4, [FP+4]
 PUSH P4 ; Receiver := self
-CALL func_dbg_print_int
+CALL func_dbg_print
 ADD SP, 4 ; Caller cleans up args + receiver
 MOV P5, P0
+; Method call dbg::print_int
+PUSH [FP+8]
+MOV P7, [FP+4]
+PUSH P7 ; Receiver := self
+CALL func_dbg_print_int
+ADD SP, 4 ; Caller cleans up args + receiver
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -381,20 +296,19 @@ RET
 func_dbg_print_labeled_hex:
 ENTER 0
 ; Method call dbg::print
-MOV P6, [FP+6]
-PUSH P6
-MOV P7, [FP+4]
-PUSH P7 ; Receiver := self
-CALL func_dbg_print
-ADD SP, 4 ; Caller cleans up args + receiver
-; Method call dbg::print_hex
-MOV P1, [FP+8]
-PUSH P1
+PUSH [FP+6]
 MOV P2, [FP+4]
 PUSH P2 ; Receiver := self
-CALL func_dbg_print_hex
+CALL func_dbg_print
 ADD SP, 4 ; Caller cleans up args + receiver
 MOV P4, P0
+; Method call dbg::print_hex
+PUSH [FP+8]
+MOV P6, [FP+4]
+PUSH P6 ; Receiver := self
+CALL func_dbg_print_hex
+ADD SP, 4 ; Caller cleans up args + receiver
+MOV P7, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -403,21 +317,20 @@ RET
 func_dbg_print_labeled:
 ENTER 0
 ; Method call dbg::print
-MOV P5, [FP+6]
-PUSH P5
-MOV P6, [FP+4]
-PUSH P6 ; Receiver := self
-CALL func_dbg_print
-ADD SP, 4 ; Caller cleans up args + receiver
-MOV P7, P0
-; Method call dbg::print
-MOV P0, [FP+8]
+MOV P0, [FP+6]
 PUSH P0
 MOV P1, [FP+4]
 PUSH P1 ; Receiver := self
 CALL func_dbg_print
 ADD SP, 4 ; Caller cleans up args + receiver
 MOV P2, P0
+; Method call dbg::print
+PUSH [FP+8]
+MOV P5, [FP+4]
+PUSH P5 ; Receiver := self
+CALL func_dbg_print
+ADD SP, 4 ; Caller cleans up args + receiver
+MOV P6, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -426,28 +339,28 @@ RET
 func_dbg_print_bool:
 ENTER 0
 ; If statement
-MOV P4, [FP+6]
-CMP P4, 0
-JZ if_else_21
+MOV P7, [FP+6]
+CMP P7, 0
+JZ if_else_12
 ; Method call dbg::print
-MOV P5, str_22
-PUSH P5
-MOV P6, [FP+4]
-PUSH P6 ; Receiver := self
-CALL func_dbg_print
-ADD SP, 4 ; Caller cleans up args + receiver
-MOV P7, P0
-JMP if_end_20
-if_else_21:
-; Method call dbg::print
-MOV P0, str_23
+MOV P0, str_13
 PUSH P0
 MOV P1, [FP+4]
 PUSH P1 ; Receiver := self
 CALL func_dbg_print
 ADD SP, 4 ; Caller cleans up args + receiver
 MOV P2, P0
-if_end_20:
+JMP if_end_11
+if_else_12:
+; Method call dbg::print
+MOV P4, str_14
+PUSH P4
+MOV P5, [FP+4]
+PUSH P5 ; Receiver := self
+CALL func_dbg_print
+ADD SP, 4 ; Caller cleans up args + receiver
+MOV P6, P0
+if_end_11:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -456,13 +369,13 @@ RET
 func_dbg_separator:
 ENTER 0
 ; Method call dbg::print
-MOV P4, str_24
-PUSH P4
-MOV P5, [FP+4]
-PUSH P5 ; Receiver := self
+MOV P7, str_15
+PUSH P7
+MOV P0, [FP+4]
+PUSH P0 ; Receiver := self
 CALL func_dbg_print
 ADD SP, 4 ; Caller cleans up args + receiver
-MOV P6, P0
+MOV P1, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -473,46 +386,36 @@ ENTER 2
 ; var origlayer = ...
 ; Call to get_layer
 CALL builtin_get_layer
-MOV P7, P0
-MOV [0xC480], P7
+MOV P2, P0
+MOV [0xC480], P2
 ; Call to set_layer
-MOV P0, 8
-PUSH P0
+MOV P4, 8
+PUSH P4
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P1, R0
 ; Call to screen_fill
-MOV P2, 0
-PUSH P2
+MOV P6, 0
+PUSH P6
 CALL builtin_screen_fill
 ; Args consumed by callee
-MOV P4, R0
 ; Call to set_layer
-MOV P5, [0xC480]
-PUSH P5
+PUSH [0xC480]
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P6, R0
 ; Member assignment to ...x
-MOV P7, [FP+4]
-PUSH P7
-MOV P0, 0
-POP P7
-MOV [P7], P0
+MOV P2, [FP+4]
+MOV P4, 0
+MOV [P2], P4
 ; Member assignment to ...y
-MOV P1, [FP+4]
-ADD P1, 2
-PUSH P1
-MOV P2, 0
-POP P1
-MOV [P1], P2
+MOV P5, [FP+4]
+ADD P5, 2
+MOV P6, 0
+MOV [P5], P6
 ; Member assignment to ...longest
-MOV P4, [FP+4]
-ADD P4, 4
-PUSH P4
-MOV P5, 0
-POP P4
-MOV [P4], P5
+MOV P7, [FP+4]
+ADD P7, 4
+MOV P0, 0
+MOV [P7], P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -521,25 +424,19 @@ RET
 func_dbg_reset:
 ENTER 0
 ; Member assignment to ...x
-MOV P6, [FP+4]
-PUSH P6
-MOV P7, 0
-POP P6
-MOV [P6], P7
+MOV P1, [FP+4]
+MOV P2, 0
+MOV [P1], P2
 ; Member assignment to ...y
-MOV P0, [FP+4]
-ADD P0, 2
-PUSH P0
-MOV P1, 0
-POP P0
-MOV [P0], P1
+MOV P4, [FP+4]
+ADD P4, 2
+MOV P5, 0
+MOV [P4], P5
 ; Member assignment to ...longest
-MOV P2, [FP+4]
-ADD P2, 4
-PUSH P2
-MOV P4, 0
-POP P2
-MOV [P2], P4
+MOV P6, [FP+4]
+ADD P6, 4
+MOV P7, 0
+MOV [P6], P7
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -549,54 +446,42 @@ func_dbg_peer:
 ENTER 2
 ; For loop
 ; var x = ...
-MOV P5, [FP+6]
-MOV [0xC580], P5
-for_start_25:
-MOV P6, [0xC580]
-PUSH P6
-MOV P7, [FP+6]
-PUSH P7
-MOV P0, [FP+8]
-POP P7
-ADD P7, P0
-POP P6
-CMP P6, P7
-JC cmp_true_28
-MOV P6, 0
-JMP cmp_end_29
-cmp_true_28:
-MOV P6, 1
-cmp_end_29:
-CMP P6, 0
-JZ for_end_26
-; Method call dbg::print_hex
-; Call to peek
+MOV P0, [FP+6]
+MOV [0xC580], P0
+for_start_16:
 MOV P1, [0xC580]
 PUSH P1
+MOV P2, [FP+6]
+MOV P4, [FP+8]
+ADD P2, P4
+POP P1
+CMP P1, P2
+JNC for_end_17
+; Method call dbg::print_hex
+; Call to peek
+PUSH [0xC580]
 CALL builtin_peek
 ; Args consumed by callee
-MOV P2, P0
-PUSH P2
-MOV P4, [FP+4]
-PUSH P4 ; Receiver := self
+MOV P6, P0
+PUSH P6
+MOV P7, [FP+4]
+PUSH P7 ; Receiver := self
 CALL func_dbg_print_hex
 ADD SP, 4 ; Caller cleans up args + receiver
-MOV P5, P0
-for_continue_27:
+for_continue_18:
 ; Wrap-check: save x before update
-MOV P6, [0xC580]
-PUSH P6
-MOV P7, [0xC580]
-MOV P0, P7
-INC P7
-MOV [0xC580], P7
-; Wrap-check: compare x new vs old
-POP P1
+PUSH [0xC580]
+; Prefix ++ on x
 MOV P2, [0xC580]
-CMP P2, P1
-JC for_end_26
-JMP for_start_25
-for_end_26:
+INC P2
+MOV [0xC580], P2
+; Wrap-check: compare x new vs old
+POP P4
+MOV P5, [0xC580]
+CMP P5, P4
+JC for_end_17
+JMP for_start_16
+for_end_17:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -605,15 +490,13 @@ RET
 func_dbg_scope:
 ENTER 0
 ; Method call dbg::peer
-MOV P4, [FP+8]
-PUSH P4
-MOV P5, [FP+6]
-PUSH P5
-MOV P6, [FP+4]
-PUSH P6 ; Receiver := self
+PUSH [FP+8]
+PUSH [FP+6]
+MOV P0, [FP+4]
+PUSH P0 ; Receiver := self
 CALL func_dbg_peer
 ADD SP, 6 ; Caller cleans up args + receiver
-MOV P7, P0
+MOV P1, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -622,40 +505,37 @@ RET
 func_dbg_dump:
 ENTER 0
 ; Method call dbg::print_labeled_hex
-MOV P0, [FP+6]
-PUSH P0
-MOV P1, str_30
-PUSH P1
-MOV P2, [FP+4]
-PUSH P2 ; Receiver := self
+PUSH [FP+6]
+MOV P4, str_19
+PUSH P4
+MOV P5, [FP+4]
+PUSH P5 ; Receiver := self
 CALL func_dbg_print_labeled_hex
 ADD SP, 6 ; Caller cleans up args + receiver
-MOV P4, P0
+MOV P6, P0
 ; Method call dbg::print_labeled_hex
-MOV P5, [FP+8]
-PUSH P5
-MOV P6, str_31
-PUSH P6
-MOV P7, [FP+4]
-PUSH P7 ; Receiver := self
-CALL func_dbg_print_labeled_hex
-ADD SP, 6 ; Caller cleans up args + receiver
-; Method call dbg::separator
+PUSH [FP+8]
+MOV P0, str_20
+PUSH P0
 MOV P1, [FP+4]
 PUSH P1 ; Receiver := self
+CALL func_dbg_print_labeled_hex
+ADD SP, 6 ; Caller cleans up args + receiver
+MOV P2, P0
+; Method call dbg::separator
+MOV P4, [FP+4]
+PUSH P4 ; Receiver := self
 CALL func_dbg_separator
 ADD SP, 2 ; Caller cleans up args + receiver
-MOV P2, P0
+MOV P5, P0
 ; Method call dbg::peer
-MOV P4, [FP+8]
-PUSH P4
-MOV P5, [FP+6]
-PUSH P5
-MOV P6, [FP+4]
-PUSH P6 ; Receiver := self
+PUSH [FP+8]
+PUSH [FP+6]
+MOV P0, [FP+4]
+PUSH P0 ; Receiver := self
 CALL func_dbg_peer
 ADD SP, 6 ; Caller cleans up args + receiver
-MOV P7, P0
+MOV P1, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -664,15 +544,14 @@ RET
 func_dbg_dump_default:
 ENTER 0
 ; Method call dbg::dump
-MOV P0, 216
-PUSH P0
-MOV P1, [FP+6]
-PUSH P1
-MOV P2, [FP+4]
-PUSH P2 ; Receiver := self
+MOV P2, 216
+PUSH P2
+PUSH [FP+6]
+MOV P5, [FP+4]
+PUSH P5 ; Receiver := self
 CALL func_dbg_dump
 ADD SP, 6 ; Caller cleans up args + receiver
-MOV P4, P0
+MOV P6, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -682,16 +561,15 @@ func_dbg_print_byte:
 ENTER 0
 ; Method call dbg::print_hex
 ; Call to peek
-MOV P5, [FP+6]
-PUSH P5
+PUSH [FP+6]
 CALL builtin_peek
 ; Args consumed by callee
-MOV P6, P0
-PUSH P6
-MOV P7, [FP+4]
-PUSH P7 ; Receiver := self
+PUSH P0
+MOV P1, [FP+4]
+PUSH P1 ; Receiver := self
 CALL func_dbg_print_hex
 ADD SP, 4 ; Caller cleans up args + receiver
+MOV P2, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
@@ -701,29 +579,20 @@ func_dbg_print_word:
 ENTER 0
 ; Method call dbg::print_hex
 ; Call to peek2
-MOV P1, [FP+6]
-PUSH P1
+PUSH [FP+6]
 CALL builtin_peek2
 ; Args consumed by callee
-MOV P2, P0
-PUSH P2
-MOV P4, [FP+4]
-PUSH P4 ; Receiver := self
+MOV P5, P0
+PUSH P5
+MOV P6, [FP+4]
+PUSH P6 ; Receiver := self
 CALL func_dbg_print_hex
 ADD SP, 4 ; Caller cleans up args + receiver
-MOV P5, P0
+MOV P7, P0
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
-;
-; Data Section
-;
-str_22: DEFSTR "true"
-str_23: DEFSTR "false"
-str_24: DEFSTR "----------------"
-str_30: DEFSTR "DUMP "
-str_31: DEFSTR "LEN  "
 ; Built-in Function Implementations
 builtin_set_layer:
 POP P0
@@ -808,3 +677,12 @@ ORG 0x8000
 ; Global Variables
 gvar_dbg:
 DW 0, 0, 0
+ORG 0x0120
+;
+; Data Section
+;
+str_13: DEFSTR "true"
+str_14: DEFSTR "false"
+str_15: DEFSTR "----------------"
+str_19: DEFSTR "DUMP "
+str_20: DEFSTR "LEN  "

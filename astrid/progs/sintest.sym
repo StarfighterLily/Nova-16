@@ -1,23 +1,18 @@
 # Symbol table
 # Format: <symbol> <value>
 start 0x1000
-func_sine 0x100F
-func_main 0x1069
-while_start_0 0x10AF
-cmp_true_4 0x1111
-cmp_end_5 0x1115
-if_end_2 0x1126
-cmp_true_8 0x1153
-cmp_end_9 0x1157
-if_end_6 0x11BC
-while_end_1 0x11C0
-builtin_set_vmode 0x11C8
-builtin_set_layer 0x11D6
-builtin_set_pos 0x11E4
-builtin_screen_fill 0x11F9
-builtin_set_color 0x1206
-builtin_draw_circle 0x1214
-builtin_sin 0x1225
+func_main 0x100F
+while_start_0 0x1045
+if_end_2 0x108A
+if_end_4 0x1119
+while_end_1 0x111D
+builtin_set_vmode 0x1125
+builtin_set_layer 0x1133
+builtin_set_pos 0x1141
+builtin_screen_fill 0x1156
+builtin_set_color 0x1163
+builtin_draw_circle 0x1171
+builtin_sin 0x1182
 gvar_counter 0x8000
 gvar_x 0x8002
 gvar_y 0x8004

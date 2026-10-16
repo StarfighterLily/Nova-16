@@ -41,71 +41,6 @@ JNZ cws_row
 MOV SP, FP
 POP FP
 RET
-; Function: set_cell
-func_set_cell:
-ENTER 2
-; var addr = ...
-MOV P0, [FP+4]
-; Unrolled shift SHR by 4
-SHR P0, 1
-SHR P0, 1
-SHR P0, 1
-SHR P0, 1
-; Unrolled shift SHL by 1
-SHL P0, 1
-PUSH P0
-MOV P1, 34
-PUSH P1
-MOV P2, [FP+6]
-POP P1
-MUL P1, P2
-PUSH P1
-MOV P4, 20514
-POP P1
-ADD P1, P4
-POP P0
-ADD P0, P1
-MOV [0xC100], P0
-; Call to poke2
-MOV P5, 1
-PUSH P5
-MOV P6, 15
-PUSH P6
-MOV P7, 15
-PUSH P7
-MOV P0, [FP+4]
-POP P7
-AND P7, P0
-POP P6
-SUB P6, P7
-POP P5
-; Runtime shift SHL by register P6
-CMP P6, 0
-JZ shift_end_0
-shift_loop_1:
-SHL P5, 1
-DEC P6
-JNZ shift_loop_1
-shift_end_0:
-PUSH P5
-; Call to peek2
-MOV P1, [0xC100]
-PUSH P1
-CALL builtin_peek2
-; Args consumed by callee
-MOV P2, P0
-POP P5
-OR P5, P2
-PUSH P5
-MOV P4, [0xC100]
-PUSH P4
-CALL builtin_poke2
-; Args consumed by callee
-MOV P5, R0
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
 ; Function: draw_board
 func_draw_board:
 ENTER 0
@@ -287,30 +222,21 @@ MOV P6, 0
 PUSH P6
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P7, R0
 ; Call to screen_fill
 MOV P0, 0
 PUSH P0
 CALL builtin_screen_fill
 ; Args consumed by callee
-MOV P1, R0
 ; Call to clear_board
 CALL func_clear_board
-MOV P2, P0
 ; Call to seed_random
 CALL func_seed_random
-MOV P4, P0
 ; Call to draw_board
 CALL func_draw_board
-MOV P5, P0
 ; While loop
 while_start_2:
-MOV P6, 1
-CMP P6, 0
-JZ while_end_3
 ; Call to update_board
 CALL func_update_board
-MOV P7, P0
 JMP while_start_2
 while_end_3:
 ; Implicit return for void function
@@ -329,25 +255,4 @@ POP P0
 POP P1
 SFILL P1
 PUSH P0
-RET
-builtin_peek2:
-; peek2(addr) -> the 16-bit word stored at addr.
-; A single bus load grabs both bytes at once -- no read-modify-
-; write dance needed. Big-endian layout: high byte at addr, low
-; byte at addr+1, which is exactly how the CPU stores a word.
-POP P3
-POP P1
-MOV P0, [P1]
-PUSH P3
-RET
-builtin_poke2:
-; poke2(addr, val): store a full 16-bit word at addr.
-; One bus write deposits both bytes at once -- the high byte of
-; val lands at addr, the low byte at addr+1. No neighbor-byte
-; preservation needed since we own the entire word.
-POP P3
-POP P1
-POP P2
-MOV [P1], P2
-PUSH P3
 RET

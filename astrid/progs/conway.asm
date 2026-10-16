@@ -5,695 +5,487 @@ MOV SP, 0xFFFF ; Set stack pointer to high memory
 MOV FP, 0xFFFF ; Also init frame pointer
 CALL func_main
 HLT
-; Function: seed_random
-func_seed_random:
-ENTER 4
-; For loop
-; var y = ...
-MOV P0, 1
-MOV [0xC000], P0
-for_start_0:
-MOV P1, [0xC000]
-PUSH P1
-MOV P2, 48
-POP P1
-CMP P2, P1
-JNC cmp_true_3
-MOV P1, 0
-JMP cmp_end_4
-cmp_true_3:
-MOV P1, 1
-cmp_end_4:
-CMP P1, 0
-JZ for_end_1
-; For loop
-; var x = ...
-MOV P4, 1
-MOV [0xC002], P4
-for_start_5:
-MOV P5, [0xC002]
-PUSH P5
-MOV P6, 48
-POP P5
-CMP P6, P5
-JNC cmp_true_8
-MOV P5, 0
-JMP cmp_end_9
-cmp_true_8:
-MOV P5, 1
-cmp_end_9:
-CMP P5, 0
-JZ for_end_6
-; Call to set_pos
-MOV P7, [0xC000]
-PUSH P7
-MOV P0, [0xC002]
-PUSH P0
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P1, R0
-; If statement
-; Call to random_range
-MOV P2, 2
-PUSH P2
-MOV P4, 0
-PUSH P4
-CALL builtin_random_range
-; Args consumed by callee
-MOV P5, P0
-PUSH P5
-MOV P6, 0
-POP P5
-CMP P5, P6
-JZ cmp_true_12
-MOV P5, 0
-JMP cmp_end_13
-cmp_true_12:
-MOV P5, 1
-cmp_end_13:
-CMP P5, 0
-JZ if_else_11
-; Call to write_screen
-MOV P7, 15
-PUSH P7
-CALL builtin_write_screen
-; Args consumed by callee
-MOV P0, R0
-JMP if_end_10
-if_else_11:
-; Call to write_screen
-MOV P1, 0
-PUSH P1
-CALL builtin_write_screen
-; Args consumed by callee
-MOV P2, R0
-if_end_10:
-for_continue_7:
-; Wrap-check: save x before update
-MOV P4, [0xC002]
-PUSH P4
-MOV P5, [0xC002]
-MOV P6, P5
-INC P5
-MOV [0xC002], P5
-; Wrap-check: compare x new vs old
-POP P7
-MOV P0, [0xC002]
-CMP P0, P7
-JC for_end_6
-JMP for_start_5
-for_end_6:
-for_continue_2:
-; Wrap-check: save y before update
-MOV P1, [0xC000]
-PUSH P1
-MOV P2, [0xC000]
-MOV P4, P2
-INC P2
-MOV [0xC000], P2
-; Wrap-check: compare y new vs old
-POP P5
-MOV P6, [0xC000]
-CMP P6, P5
-JC for_end_1
-JMP for_start_0
-for_end_1:
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
 ; Function: update_board
 func_update_board:
 ENTER 10
 ; For loop
 ; Assignment to y
-MOV P7, 1
-MOV [0xC082], P7
-for_start_14:
-MOV P0, [0xC082]
-PUSH P0
-MOV P1, 48
-POP P0
-CMP P1, P0
-JNC cmp_true_17
-MOV P0, 0
-JMP cmp_end_18
-cmp_true_17:
-MOV P0, 1
-cmp_end_18:
-CMP P0, 0
-JZ for_end_15
+MOV P1, 1
+MOV [0xC082], P1
+for_start_8:
+MOV P2, [0xC082]
+CMP P2, 49
+JNC for_end_9
 ; For loop
 ; Assignment to x
-MOV P2, 1
-MOV [0xC080], P2
-for_start_19:
-MOV P4, [0xC080]
-PUSH P4
-MOV P5, 48
-POP P4
-CMP P5, P4
-JNC cmp_true_22
-MOV P4, 0
-JMP cmp_end_23
-cmp_true_22:
 MOV P4, 1
-cmp_end_23:
-CMP P4, 0
-JZ for_end_20
+MOV [0xC080], P4
+for_start_11:
+MOV P5, [0xC080]
+CMP P5, 49
+JNC for_end_12
 ; Assignment to live
 MOV P6, 0
 MOV [0xC084], P6
 ; Call to set_pos
 MOV P7, [0xC082]
-PUSH P7
 MOV P0, 1
-POP P7
 SUB P7, P0
 PUSH P7
 MOV P1, [0xC080]
-PUSH P1
-MOV P2, 1
-POP P1
-SUB P1, P2
+SUB P1, 1
 PUSH P1
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P4, R0
 ; Assignment to live
 MOV P5, [0xC084]
 PUSH P5
 ; Call to read_screen
 CALL builtin_read_screen
 MOV P6, P0
-PUSH P6
-MOV P7, 1
-POP P6
-AND P6, P7
+AND P6, 1
 POP P5
 ADD P5, P6
 MOV [0xC084], P5
 ; Call to set_pos
 MOV P0, [0xC082]
+SUB P0, 1
 PUSH P0
-MOV P1, 1
-POP P0
-SUB P0, P1
-PUSH P0
-MOV P2, [0xC080]
-PUSH P2
+PUSH [0xC080]
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P4, R0
 ; Assignment to live
 MOV P5, [0xC084]
 PUSH P5
 ; Call to read_screen
 CALL builtin_read_screen
 MOV P6, P0
-PUSH P6
-MOV P7, 1
-POP P6
-AND P6, P7
+AND P6, 1
 POP P5
 ADD P5, P6
 MOV [0xC084], P5
 ; Call to set_pos
 MOV P0, [0xC082]
-PUSH P0
-MOV P1, 1
-POP P0
-SUB P0, P1
+SUB P0, 1
 PUSH P0
 MOV P2, 1
-PUSH P2
 MOV P4, [0xC080]
-POP P2
 ADD P2, P4
 PUSH P2
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P5, R0
 ; Assignment to live
 MOV P6, [0xC084]
 PUSH P6
 ; Call to read_screen
 CALL builtin_read_screen
 MOV P7, P0
-PUSH P7
 MOV P0, 1
-POP P7
 AND P7, P0
 POP P6
 ADD P6, P7
 MOV [0xC084], P6
 ; Call to set_pos
-MOV P1, [0xC082]
-PUSH P1
+PUSH [0xC082]
 MOV P2, [0xC080]
-PUSH P2
-MOV P4, 1
-POP P2
-SUB P2, P4
+SUB P2, 1
 PUSH P2
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P5, R0
 ; Assignment to live
 MOV P6, [0xC084]
 PUSH P6
 ; Call to read_screen
 CALL builtin_read_screen
 MOV P7, P0
-PUSH P7
 MOV P0, 1
-POP P7
 AND P7, P0
 POP P6
 ADD P6, P7
 MOV [0xC084], P6
 ; Call to set_pos
-MOV P1, [0xC082]
-PUSH P1
+PUSH [0xC082]
 MOV P2, 1
-PUSH P2
 MOV P4, [0xC080]
-POP P2
 ADD P2, P4
 PUSH P2
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P5, R0
 ; Assignment to live
 MOV P6, [0xC084]
 PUSH P6
 ; Call to read_screen
 CALL builtin_read_screen
 MOV P7, P0
-PUSH P7
 MOV P0, 1
-POP P7
 AND P7, P0
 POP P6
 ADD P6, P7
 MOV [0xC084], P6
 ; Call to set_pos
 MOV P1, 1
-PUSH P1
 MOV P2, [0xC082]
-POP P1
 ADD P1, P2
 PUSH P1
 MOV P4, [0xC080]
-PUSH P4
-MOV P5, 1
-POP P4
-SUB P4, P5
+SUB P4, 1
 PUSH P4
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P6, R0
 ; Assignment to live
 MOV P7, [0xC084]
 PUSH P7
 ; Call to read_screen
 CALL builtin_read_screen
-PUSH P0
-MOV P1, 1
-POP P0
-AND P0, P1
+AND P0, 1
 POP P7
 ADD P7, P0
 MOV [0xC084], P7
 ; Call to set_pos
 MOV P2, 1
-PUSH P2
 MOV P4, [0xC082]
-POP P2
 ADD P2, P4
 PUSH P2
-MOV P5, [0xC080]
-PUSH P5
+PUSH [0xC080]
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P6, R0
 ; Assignment to live
 MOV P7, [0xC084]
 PUSH P7
 ; Call to read_screen
 CALL builtin_read_screen
-PUSH P0
-MOV P1, 1
-POP P0
-AND P0, P1
+AND P0, 1
 POP P7
 ADD P7, P0
 MOV [0xC084], P7
 ; Call to set_pos
 MOV P2, 1
-PUSH P2
 MOV P4, [0xC082]
-POP P2
 ADD P2, P4
 PUSH P2
 MOV P5, 1
-PUSH P5
 MOV P6, [0xC080]
-POP P5
 ADD P5, P6
 PUSH P5
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P7, R0
 ; Assignment to live
 MOV P0, [0xC084]
 PUSH P0
 ; Call to read_screen
 CALL builtin_read_screen
 MOV P1, P0
-PUSH P1
-MOV P2, 1
-POP P1
-AND P1, P2
+AND P1, 1
 POP P0
 ADD P0, P1
 MOV [0xC084], P0
 ; Call to set_pos
-MOV P4, [0xC082]
-PUSH P4
-MOV P5, [0xC080]
-PUSH P5
+PUSH [0xC082]
+PUSH [0xC080]
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P6, R0
 ; Assignment to cur
 ; Call to read_screen
 CALL builtin_read_screen
 MOV P7, P0
-PUSH P7
-MOV P0, 1
-POP P7
-AND P7, P0
+AND P7, 1
 MOV [0xC086], P7
 ; If statement
-MOV P1, 1
-PUSH P1
-MOV P2, [0xC086]
+MOV P1, [0xC086]
+CMP P1, 1
+JNZ if_else_15
+; Assignment to next
+; Ternary conditional
+MOV P2, 2
+MOV P4, [0xC084]
+CMP P2, P4
+JZ cmp_true_18
+MOV P2, 0
+JMP cmp_end_19
+cmp_true_18:
+MOV P2, 1
+cmp_end_19:
+CMP P2, 0
+JNZ sc_true_21
+MOV P5, 3
+MOV P6, [0xC084]
+CMP P5, P6
+JZ cmp_true_22
+MOV P5, 0
+JMP cmp_end_23
+cmp_true_22:
+MOV P5, 1
+cmp_end_23:
+CMP P5, 0
+JNZ sc_true_21
+MOV P2, 0
+JMP sc_end_20
+sc_true_21:
+MOV P2, 1
+sc_end_20:
+CMP P2, 0
+JZ tern_else_16
+MOV P7, 1
+PUSH P7
+JMP tern_end_17
+tern_else_16:
+MOV P0, 0
+PUSH P0
+tern_end_17:
 POP P1
-CMP P1, P2
+MOV [0xC088], P1
+JMP if_end_14
+if_else_15:
+; Assignment to next
+; Ternary conditional
+MOV P2, 3
+MOV P4, [0xC084]
+CMP P2, P4
 JZ cmp_true_26
-MOV P1, 0
+MOV P2, 0
 JMP cmp_end_27
 cmp_true_26:
-MOV P1, 1
-cmp_end_27:
-CMP P1, 0
-JZ if_else_25
-; Assignment to next
-; Ternary conditional
-MOV P4, 2
-PUSH P4
-MOV P5, [0xC084]
-POP P4
-CMP P4, P5
-JZ cmp_true_30
-MOV P4, 0
-JMP cmp_end_31
-cmp_true_30:
-MOV P4, 1
-cmp_end_31:
-CMP P4, 0
-JNZ sc_true_33
-MOV P6, 3
-PUSH P6
-MOV P7, [0xC084]
-POP P6
-CMP P6, P7
-JZ cmp_true_34
-MOV P6, 0
-JMP cmp_end_35
-cmp_true_34:
-MOV P6, 1
-cmp_end_35:
-CMP P6, 0
-JNZ sc_true_33
-MOV P4, 0
-JMP sc_end_32
-sc_true_33:
-MOV P4, 1
-sc_end_32:
-CMP P4, 0
-JZ tern_else_28
-MOV P0, 1
-PUSH P0
-JMP tern_end_29
-tern_else_28:
-MOV P1, 0
-PUSH P1
-tern_end_29:
-POP P2
-MOV [0xC088], P2
-JMP if_end_24
-if_else_25:
-; Assignment to next
-; Ternary conditional
-MOV P4, 3
-PUSH P4
-MOV P5, [0xC084]
-POP P4
-CMP P4, P5
-JZ cmp_true_38
-MOV P4, 0
-JMP cmp_end_39
-cmp_true_38:
-MOV P4, 1
-cmp_end_39:
-CMP P4, 0
-JZ tern_else_36
-MOV P6, 1
-PUSH P6
-JMP tern_end_37
-tern_else_36:
-MOV P7, 0
-PUSH P7
-tern_end_37:
-POP P0
-MOV [0xC088], P0
-if_end_24:
-; Call to write_screen
-MOV P1, [0xC088]
-; Unrolled shift SHL by 1
-SHL P1, 1
-PUSH P1
-MOV P2, [0xC086]
-POP P1
-OR P1, P2
-PUSH P1
-CALL builtin_write_screen
-; Args consumed by callee
-MOV P4, R0
-for_continue_21:
-; Wrap-check: save x before update
-MOV P5, [0xC080]
-PUSH P5
-MOV P6, [0xC080]
-MOV P7, P6
-INC P6
-MOV [0xC080], P6
-; Wrap-check: compare x new vs old
-POP P0
-MOV P1, [0xC080]
-CMP P1, P0
-JC for_end_20
-JMP for_start_19
-for_end_20:
-for_continue_16:
-; Wrap-check: save y before update
-MOV P2, [0xC082]
-PUSH P2
-MOV P4, [0xC082]
-MOV P5, P4
-INC P4
-MOV [0xC082], P4
-; Wrap-check: compare y new vs old
-POP P6
-MOV P7, [0xC082]
-CMP P7, P6
-JC for_end_15
-JMP for_start_14
-for_end_15:
-; For loop
-; Assignment to y
-MOV P0, 1
-MOV [0xC082], P0
-for_start_40:
-MOV P1, [0xC082]
-PUSH P1
-MOV P2, 48
-POP P1
-CMP P2, P1
-JNC cmp_true_43
-MOV P1, 0
-JMP cmp_end_44
-cmp_true_43:
-MOV P1, 1
-cmp_end_44:
-CMP P1, 0
-JZ for_end_41
-; For loop
-; Assignment to x
-MOV P4, 1
-MOV [0xC080], P4
-for_start_45:
-MOV P5, [0xC080]
-PUSH P5
-MOV P6, 48
-POP P5
-CMP P6, P5
-JNC cmp_true_48
-MOV P5, 0
-JMP cmp_end_49
-cmp_true_48:
-MOV P5, 1
-cmp_end_49:
-CMP P5, 0
-JZ for_end_46
-; Call to set_pos
-MOV P7, [0xC082]
-PUSH P7
-MOV P0, [0xC080]
-PUSH P0
-CALL builtin_set_pos
-; Args consumed by callee
-MOV P1, R0
-; If statement
-; Call to read_screen
-CALL builtin_read_screen
-MOV P2, P0
-; Unrolled shift SHR by 1
-SHR P2, 1
-PUSH P2
-MOV P4, 1
-POP P2
-CMP P2, P4
-JZ cmp_true_52
-MOV P2, 0
-JMP cmp_end_53
-cmp_true_52:
 MOV P2, 1
-cmp_end_53:
+cmp_end_27:
 CMP P2, 0
-JZ if_else_51
-; Call to write_screen
-MOV P5, 15
+JZ tern_else_24
+MOV P5, 1
 PUSH P5
-CALL builtin_write_screen
-; Args consumed by callee
-MOV P6, R0
-JMP if_end_50
-if_else_51:
+JMP tern_end_25
+tern_else_24:
+MOV P6, 0
+PUSH P6
+tern_end_25:
+POP P7
+MOV [0xC088], P7
+if_end_14:
 ; Call to write_screen
-MOV P7, 0
-PUSH P7
+MOV P0, [0xC088]
+; Unrolled shift SHL by 1
+SHL P0, 1
+MOV P1, [0xC086]
+OR P0, P1
+PUSH P0
 CALL builtin_write_screen
 ; Args consumed by callee
-MOV P0, R0
-if_end_50:
-for_continue_47:
+for_continue_13:
 ; Wrap-check: save x before update
-MOV P1, [0xC080]
-PUSH P1
-MOV P2, [0xC080]
-MOV P4, P2
-INC P2
-MOV [0xC080], P2
+PUSH [0xC080]
+; Prefix ++ on x
+MOV P5, [0xC080]
+INC P5
+MOV [0xC080], P5
 ; Wrap-check: compare x new vs old
-POP P5
-MOV P6, [0xC080]
-CMP P6, P5
-JC for_end_46
-JMP for_start_45
-for_end_46:
-for_continue_42:
+POP P6
+MOV P7, [0xC080]
+CMP P7, P6
+JC for_end_12
+JMP for_start_11
+for_end_12:
+for_continue_10:
 ; Wrap-check: save y before update
-MOV P7, [0xC082]
-PUSH P7
-MOV P0, [0xC082]
-MOV P1, P0
-INC P0
-MOV [0xC082], P0
+PUSH [0xC082]
+; Prefix ++ on y
+MOV P1, [0xC082]
+INC P1
+MOV [0xC082], P1
 ; Wrap-check: compare y new vs old
 POP P2
 MOV P4, [0xC082]
 CMP P4, P2
-JC for_end_41
-JMP for_start_40
-for_end_41:
+JC for_end_9
+JMP for_start_8
+for_end_9:
+; For loop
+; Assignment to y
+MOV P5, 1
+MOV [0xC082], P5
+for_start_28:
+MOV P6, [0xC082]
+CMP P6, 49
+JNC for_end_29
+; For loop
+; Assignment to x
+MOV P7, 1
+MOV [0xC080], P7
+for_start_31:
+MOV P0, [0xC080]
+CMP P0, 49
+JNC for_end_32
+; Call to set_pos
+MOV P1, [0xC082]
+PUSH P1
+PUSH [0xC080]
+CALL builtin_set_pos
+; Args consumed by callee
+; If statement
+; Call to read_screen
+CALL builtin_read_screen
+MOV P5, P0
+; Unrolled shift SHR by 1
+SHR P5, 1
+CMP P5, 1
+JNZ if_else_35
+; Call to write_screen
+MOV P6, 15
+PUSH P6
+CALL builtin_write_screen
+; Args consumed by callee
+JMP if_end_34
+if_else_35:
+; Call to write_screen
+MOV P0, 0
+PUSH P0
+CALL builtin_write_screen
+; Args consumed by callee
+if_end_34:
+for_continue_33:
+; Wrap-check: save x before update
+PUSH [0xC080]
+; Prefix ++ on x
+MOV P4, [0xC080]
+INC P4
+MOV [0xC080], P4
+; Wrap-check: compare x new vs old
+POP P5
+MOV P6, [0xC080]
+CMP P6, P5
+JC for_end_32
+JMP for_start_31
+for_end_32:
+for_continue_30:
+; Wrap-check: save y before update
+MOV P7, [0xC082]
+PUSH P7
+; Prefix ++ on y
+MOV P0, [0xC082]
+INC P0
+MOV [0xC082], P0
+; Wrap-check: compare y new vs old
+POP P1
+MOV P2, [0xC082]
+CMP P2, P1
+JC for_end_29
+JMP for_start_28
+for_end_29:
 ; Implicit return for void function
 MOV SP, FP
 POP FP
 RET
 ; Function: main
 func_main:
-ENTER 2
+ENTER 6
 ; Call to set_layer
-MOV P5, 0
-PUSH P5
+MOV P4, 0
+PUSH P4
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P6, R0
 ; Call to screen_fill
-MOV P7, 0
-PUSH P7
+MOV P6, 0
+PUSH P6
 CALL builtin_screen_fill
 ; Args consumed by callee
-MOV P0, R0
-; Call to seed_random
-CALL func_seed_random
-MOV P1, P0
-; While loop
-while_start_54:
+; For loop
+; var __inl1_y = ...
+MOV P0, 1
+MOV [0xC100], P0
+for_start_36:
+MOV P1, [0xC100]
+CMP P1, 49
+JNC for_end_37
+; For loop
+; var __inl1_x = ...
 MOV P2, 1
+MOV [0xC102], P2
+for_start_39:
+MOV P4, [0xC102]
+CMP P4, 49
+JNC for_end_40
+; Call to set_pos
+PUSH [0xC100]
+PUSH [0xC102]
+CALL builtin_set_pos
+; Args consumed by callee
+; If statement
+; Call to random_range
+MOV P0, 2
+PUSH P0
+MOV P1, 0
+PUSH P1
+CALL builtin_random_range
+; Args consumed by callee
+MOV P2, P0
 CMP P2, 0
-JZ while_end_55
+JNZ if_else_43
+; Call to write_screen
+MOV P4, 15
+PUSH P4
+CALL builtin_write_screen
+; Args consumed by callee
+JMP if_end_42
+if_else_43:
+; Call to write_screen
+MOV P6, 0
+PUSH P6
+CALL builtin_write_screen
+; Args consumed by callee
+if_end_42:
+for_continue_41:
+; Wrap-check: save __inl1_x before update
+PUSH [0xC102]
+; Prefix ++ on __inl1_x
+MOV P1, [0xC102]
+INC P1
+MOV [0xC102], P1
+; Wrap-check: compare __inl1_x new vs old
+POP P2
+MOV P4, [0xC102]
+CMP P4, P2
+JC for_end_40
+JMP for_start_39
+for_end_40:
+for_continue_38:
+; Wrap-check: save __inl1_y before update
+PUSH [0xC100]
+; Prefix ++ on __inl1_y
+MOV P6, [0xC100]
+INC P6
+MOV [0xC100], P6
+; Wrap-check: compare __inl1_y new vs old
+POP P7
+MOV P0, [0xC100]
+CMP P0, P7
+JC for_end_37
+JMP for_start_36
+for_end_37:
+; While loop
+while_start_44:
 ; Call to update_board
 CALL func_update_board
-MOV P4, P0
 ; For loop
 ; var d = ...
-MOV P5, 0
-MOV [0xC100], P5
-for_start_56:
-MOV P6, [0xC100]
-PUSH P6
-MOV P7, 8000
-POP P6
-CMP P6, P7
-JC cmp_true_59
-MOV P6, 0
-JMP cmp_end_60
-cmp_true_59:
-MOV P6, 1
-cmp_end_60:
-CMP P6, 0
-JZ for_end_57
-for_continue_58:
+MOV P2, 0
+MOV [0xC104], P2
+for_start_46:
+MOV P4, [0xC104]
+CMP P4, 8000
+JNC for_end_47
+for_continue_48:
 ; Wrap-check: save d before update
-MOV P0, [0xC100]
-PUSH P0
-MOV P1, [0xC100]
-MOV P2, P1
-INC P1
-MOV [0xC100], P1
+PUSH [0xC104]
+; Prefix ++ on d
+MOV P6, [0xC104]
+INC P6
+MOV [0xC104], P6
 ; Wrap-check: compare d new vs old
-POP P4
-MOV P5, [0xC100]
-CMP P5, P4
-JC for_end_57
-JMP for_start_56
-for_end_57:
-JMP while_start_54
-while_end_55:
+POP P7
+MOV P0, [0xC104]
+CMP P0, P7
+JC for_end_47
+JMP for_start_46
+for_end_47:
+JMP while_start_44
+while_end_45:
 ; Implicit return for void function
 MOV SP, FP
 POP FP

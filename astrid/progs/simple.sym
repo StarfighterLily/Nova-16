@@ -2,17 +2,13 @@
 # Format: <symbol> <value>
 start 0x1000
 func_main 0x100F
-for_start_0 0x1039
-cmp_true_3 0x1059
-cmp_end_4 0x105D
-for_start_5 0x106E
-cmp_true_8 0x108E
-cmp_end_9 0x1092
-for_continue_7 0x10C1
-for_end_6 0x10EE
-for_continue_2 0x10EE
-for_end_1 0x111B
-builtin_set_vmode 0x1123
-builtin_set_layer 0x1131
-builtin_set_pos 0x113F
-builtin_write_screen 0x1154
+for_start_0 0x1031
+for_start_3 0x1048
+for_continue_5 0x1071
+for_end_4 0x1096
+for_continue_2 0x1096
+for_end_1 0x10BB
+builtin_set_vmode 0x10C3
+builtin_set_layer 0x10D1
+builtin_set_pos 0x10DF
+builtin_write_screen 0x10F4

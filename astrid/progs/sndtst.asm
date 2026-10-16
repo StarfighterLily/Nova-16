@@ -10,32 +10,26 @@ func_main:
 ENTER 0
 ; While loop
 while_start_0:
-MOV P0, 1
-CMP P0, 0
-JZ while_end_1
 ; If statement
 ; Call to key_available
 CALL builtin_key_available
-MOV P1, P0
-CMP P1, 0
+CMP P0, 0
 JZ if_else_3
 ; Call to sound_play
-MOV P2, 138
+MOV P1, 138
+PUSH P1
+MOV P2, 128
 PUSH P2
-MOV P4, 128
-PUSH P4
 ; Call to key_read
 CALL builtin_key_read
-MOV P5, P0
-PUSH P5
+MOV P4, P0
+PUSH P4
 CALL builtin_sound_play
 ; Args consumed by callee
-MOV P6, R0
 JMP if_end_2
 if_else_3:
 ; Call to nop
 CALL builtin_nop
-MOV P7, R0
 if_end_2:
 JMP while_start_0
 while_end_1:

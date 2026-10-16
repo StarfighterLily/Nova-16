@@ -5,42 +5,6 @@ MOV SP, 0xFFFF ; Set stack pointer to high memory
 MOV FP, 0xFFFF ; Also init frame pointer
 CALL func_main
 HLT
-; Function: sine
-func_sine:
-ENTER 0
-; Assignment to y
-; Type cast: (int) expr
-; Call to sin
-MOV P0, [0x800E]
-PUSH P0
-MOV P1, [0x8002]
-POP P0
-; Float (Q8.8) operation - promote operands
-; Promote int operand to float (Q8.8)
-ITOF P1
-FMUL P0, P1
-PUSH P0
-CALL builtin_sin
-; Args consumed by callee
-MOV P2, P0
-PUSH P2
-MOV P4, [0x800C]
-POP P2
-; Float (Q8.8) operation - promote operands
-; Promote int operand to float (Q8.8)
-ITOF P4
-FMUL P2, P4
-MOV P5, P2
-FTOI P5
-PUSH P5
-MOV P6, [0x800A]
-POP P5
-ADD P5, P6
-MOV [0x8004], P5
-; Implicit return for void function
-MOV SP, FP
-POP FP
-RET
 ; Function: main
 func_main:
 ENTER 0
@@ -49,13 +13,11 @@ MOV P7, 1
 PUSH P7
 CALL builtin_set_vmode
 ; Args consumed by callee
-MOV P0, R0
 ; Call to set_layer
 MOV P1, 1
 PUSH P1
 CALL builtin_set_layer
 ; Args consumed by callee
-MOV P2, R0
 ; Call to set_pos
 MOV P4, 0
 PUSH P4
@@ -63,91 +25,79 @@ MOV P5, 0
 PUSH P5
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P6, R0
 ; Call to set_color
 MOV P7, 0
 PUSH P7
 CALL builtin_set_color
 ; Args consumed by callee
-MOV P0, R0
 ; While loop
 while_start_0:
-MOV P1, 1
-CMP P1, 0
-JZ while_end_1
-MOV P2, [0x8000]
-MOV P4, P2
-INC P2
-MOV [0x8000], P2
+; Prefix ++ on counter
+MOV P1, [0x8000]
+INC P1
+MOV [0x8000], P1
 ; Assignment to oldx
-MOV P5, [0x8002]
-MOV [0x8006], P5
-; Assignment to oldy
-MOV P6, [0x8004]
-MOV [0x8008], P6
-MOV P7, [0x8002]
-MOV P0, P7
-INC P7
-MOV [0x8002], P7
-; If statement
-MOV P1, 255
-PUSH P1
 MOV P2, [0x8002]
-POP P1
-CMP P1, P2
-JZ cmp_true_4
-MOV P1, 0
-JMP cmp_end_5
-cmp_true_4:
-MOV P1, 1
-cmp_end_5:
-CMP P1, 0
-JZ if_end_2
+MOV [0x8006], P2
+; Assignment to oldy
+MOV P4, [0x8004]
+MOV [0x8008], P4
+; Prefix ++ on x
+MOV P5, [0x8002]
+INC P5
+MOV [0x8002], P5
+; If statement
+MOV P6, [0x8002]
+CMP P6, 255
+JNZ if_end_2
 ; Assignment to x
-MOV P4, 0
-MOV [0x8002], P4
+MOV P7, 0
+MOV [0x8002], P7
 if_end_2:
 ; If statement
-MOV P5, [0x8000]
-PUSH P5
-MOV P6, 60
-POP P5
-MOD P5, P6
-PUSH P5
-MOV P7, 0
-POP P5
-CMP P5, P7
-JZ cmp_true_8
-MOV P5, 0
-JMP cmp_end_9
-cmp_true_8:
-MOV P5, 1
-cmp_end_9:
-CMP P5, 0
-JZ if_end_6
+MOV P0, [0x8000]
+MOV P1, 60
+MOD P0, P1
+CMP P0, 0
+JNZ if_end_4
 ; Call to screen_fill
-MOV P0, 0
-PUSH P0
+MOV P2, 0
+PUSH P2
 CALL builtin_screen_fill
 ; Args consumed by callee
-MOV P1, R0
-; Call to sine
-CALL func_sine
-MOV P2, P0
-; Call to set_pos
-MOV P4, [0x8002]
-PUSH P4
-MOV P5, [0x8004]
+; Assignment to y
+; Type cast: (int) expr
+; Call to sin
+MOV P5, [0x800E]
+MOV P6, [0x8002]
+; Float (Q8.8) operation - promote operands
+; Promote int operand to float (Q8.8)
+ITOF P6
+FMUL P5, P6
 PUSH P5
+CALL builtin_sin
+; Args consumed by callee
+MOV P7, P0
+MOV P0, [0x800C]
+; Float (Q8.8) operation - promote operands
+; Promote int operand to float (Q8.8)
+ITOF P0
+FMUL P7, P0
+MOV P1, P7
+FTOI P1
+MOV P2, [0x800A]
+ADD P1, P2
+MOV [0x8004], P1
+; Call to set_pos
+PUSH [0x8002]
+PUSH [0x8004]
 CALL builtin_set_pos
 ; Args consumed by callee
-MOV P6, R0
 ; Call to set_color
 MOV P7, 95
 PUSH P7
 CALL builtin_set_color
 ; Args consumed by callee
-MOV P0, R0
 ; Call to draw_circle
 MOV P1, 1
 PUSH P1
@@ -155,11 +105,10 @@ MOV P2, 1
 PUSH P2
 CALL builtin_draw_circle
 ; Args consumed by callee
-MOV P4, R0
 ; Assignment to counter
 MOV P5, 0
 MOV [0x8000], P5
-if_end_6:
+if_end_4:
 JMP while_start_0
 while_end_1:
 ; Implicit return for void function
